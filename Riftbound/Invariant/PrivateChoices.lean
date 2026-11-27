@@ -204,6 +204,73 @@ theorem legalActions_eq_of_frame_and_roster {s t : GameState}
       simp [allowed, other]
   simp only [legalActions, result, frame, concede]
 
+/-- Translate a Combat damage assignment when the Units have different engine identifiers. -/
+def Action.renameAssignPick (rename : ObjId → ObjId) (action : Action) : Action :=
+  match action.kind with
+  | .assignPick id => { action with kind := .assignPick (rename id) }
+  | _ => action
+
+/-- Combat assignment uses the targets, their public controller and assignment priority,
+and the targets already assigned. Changing internal references preserves those choices. -/
+theorem legalAssigns_rename {s t : GameState} {before after : ObjId} {side : PlayerId}
+    {assigned : List ObjId} (rename : ObjId → ObjId) (injective : Function.Injective rename)
+    (targets : t.assignmentTargets after side = (s.assignmentTargets before side).map rename)
+    (controller : ∀ id ∈ s.assignmentTargets before side,
+      t.controllerOf (rename id) = s.controllerOf id)
+    (priority : ∀ id ∈ s.assignmentTargets before side,
+      t.assignmentRank after side (rename id) = s.assignmentRank before side id) :
+    legalAssigns t after side (assigned.map rename) =
+      (legalAssigns s before side assigned).map (Action.renameAssignPick rename) := by
+  have mem_map (ids : List ObjId) (id : ObjId) : rename id ∈ ids.map rename ↔ id ∈ ids := by
+    constructor
+    · intro present
+      obtain ⟨other, present, equal⟩ := List.mem_map.mp present
+      exact (injective equal) ▸ present
+    · intro present
+      exact List.mem_map.mpr ⟨id, present, rfl⟩
+  have pick (id : ObjId) (present : id ∈ s.assignmentTargets before side) :
+      t.pickOk after side (assigned.map rename) (rename id) = s.pickOk before side assigned id := by
+    simp only [GameState.pickOk, targets, List.all_map, mem_map, controller id present, priority id present]
+    congr 1
+    apply Bool.eq_iff_iff.mpr
+    simp only [List.all_eq_true, Function.comp_def]
+    constructor
+    · intro holds other member
+      simpa only [mem_map, controller other member, priority other member] using holds other member
+    · intro holds other member
+      simpa only [mem_map, controller other member, priority other member] using holds other member
+  have done : t.doneOk after side (assigned.map rename) = s.doneOk before side assigned := by
+    unfold GameState.doneOk
+    rw [targets, List.all_map]
+    apply List.all_congr rfl
+    intro id
+    simp only [Function.comp_def, mem_map]
+  have filtered : ((s.assignmentTargets before side).map rename).filter
+        (t.pickOk after side (assigned.map rename)) =
+      ((s.assignmentTargets before side).filter (s.pickOk before side assigned)).map rename := by
+    rw [List.filter_map]
+    exact congrArg (List.map rename) (List.filter_congr pick)
+  unfold legalAssigns
+  rw [targets, filtered, done, List.map_append]
+  by_cases complete : s.doneOk before side assigned = true <;>
+    simp [complete, List.map_map, Function.comp_def, Action.renameAssignPick]
+
+/-- With those same public facts, the open assignment frame offers the same answers independently
+of the earlier Combat assignments, which only become relevant on resolution. -/
+theorem legalFrameActions_assign_rename {s t : GameState} {before after : ObjId}
+    {attacker side : PlayerId} {assigned : List ObjId} {oldDamage newDamage : List (ObjId × Nat)}
+    {tailS tailT : List Frame} (rename : ObjId → ObjId) (injective : Function.Injective rename)
+    (hs : s.pending = .assign before attacker side assigned oldDamage :: tailS)
+    (ht : t.pending = .assign after attacker side (assigned.map rename) newDamage :: tailT)
+    (targets : t.assignmentTargets after side = (s.assignmentTargets before side).map rename)
+    (controller : ∀ id ∈ s.assignmentTargets before side,
+      t.controllerOf (rename id) = s.controllerOf id)
+    (priority : ∀ id ∈ s.assignmentTargets before side,
+      t.assignmentRank after side (rename id) = s.assignmentRank before side id) :
+    legalFrameActions t = (legalFrameActions s).map (Action.renameAssignPick rename) := by
+  simp only [legalFrameActions, hs, ht]
+  exact legalAssigns_rename rename injective targets controller priority
+
 end Riftbound
 
 end
