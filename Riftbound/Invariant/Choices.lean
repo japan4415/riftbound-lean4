@@ -261,6 +261,35 @@ theorem spellCostsOk_requiresPrintedCostChoice {s : GameState} {p : PlayerId} {c
     simp [legal.2.1] at printed
   | some choice => rfl
 
+private theorem mem_permanentCostSets_iff {s : GameState} {p : PlayerId}
+    {card : ObjId} {d : CardDef} {elected : List Nat} :
+    elected ∈ s.permanentCostSets p card d ↔
+      elected.Sublist (List.range (s.extrasRaw p card d).length) := by
+  rw [GameState.permanentCostSets, mem_subseqsUpTo]
+  exact ⟨And.left, fun choices => ⟨choices, by simpa only [List.length_range] using choices.length_le⟩⟩
+
+/-- A declaration can elect any ordered subset of a permanent's printed optional costs and
+Accelerate. The empty subset declines all of them (CR 355.1.a, 356.4.f.1, 805). -/
+theorem permanentCostPicks_offersSubset (s : GameState) (p : PlayerId) (card : ObjId) (d : CardDef)
+    {elected : List Nat} (permanent : (d.hasType .unit || d.hasType .gear) = true)
+    (available : (s.extrasRaw p card d).isEmpty = false)
+    (choices : elected.Sublist (List.range (s.extrasRaw p card d).length)) :
+    SpellPick.withPermanentCosts elected ∈ s.permanentCostPicks p card d := by
+  have member := mem_permanentCostSets_iff.mpr choices
+  simp only [GameState.permanentCostPicks, permanent, ite_true, available, Bool.false_eq_true,
+    ite_false, List.mem_append]
+  exact Or.inl (Or.inl (Or.inl (Or.inl (List.mem_map.mpr ⟨elected, member, rfl⟩))))
+
+/-- Paying an offered Battlefield fee leaves the same independent choice of optional costs,
+including paying the Battlefield fee alone (CR 355.17, 356.4.c). -/
+theorem battlefieldPicks_offersSubset (s : GameState) (p : PlayerId) (card : ObjId) (d : CardDef)
+    {sources : List ObjId} {elected : List Nat} (fees : sources ∈ s.battlefieldFeeChoices p card d)
+    (choices : elected.Sublist (List.range (s.extrasRaw p card d).length)) :
+    SpellPick.payForBattlefield sources elected ∈ s.battlefieldPicks p card d := by
+  have member := mem_permanentCostSets_iff.mpr choices
+  simp only [GameState.battlefieldPicks, List.mem_append, List.mem_flatMap]
+  exact Or.inl (Or.inl (Or.inl ⟨sources, fees, elected, member, by simp⟩))
+
 /-- A Spell's explicit additional-cost decisions are recorded verbatim, including when a chosen
 cost is discounted to zero (CR 355.1, 356.4.f.1). -/
 theorem playMark_declaredOptionalCosts (s : GameState) (p : PlayerId) (card : ObjId)

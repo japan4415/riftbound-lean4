@@ -3,7 +3,7 @@ module
 public import Riftbound.Engine.Step
 public import Riftbound.Spec.PlayerView
 
-/-! # Privacy of hand and Predict decisions (I10) -/
+/-! # Privacy of hand, deck and card-name decisions (I10) -/
 
 @[expose] public section
 
@@ -149,6 +149,26 @@ theorem legalFrameActions_predict_disclosed {s : GameState} {p : PlayerId} {coun
   rcases chosen with first | second
   · exact ⟨id, false, first, disclosed⟩
   · exact ⟨id, true, second, disclosed⟩
+
+/-- A guesser has the same card-type choices even when the controller's private card and
+everything remembered by the resolving instruction change. -/
+theorem legalFrameActions_guessCardType_view {s t : GameState} {guesser p q : PlayerId}
+    {srcS srcT : ObjId} {envS envT : Env} {unitS gearS spellS unitT gearT spellT : Effect}
+    {restS restT : EffectList} {tailS tailT : List Frame}
+    (hs : s.pending = .guessCardType guesser p srcS envS unitS gearS spellS restS :: tailS)
+    (ht : t.pending = .guessCardType guesser q srcT envT unitT gearT spellT restT :: tailT) :
+    legalFrameActions s = legalFrameActions t := by
+  simp [legalFrameActions, hs, ht]
+
+/-- Naming a card uses the names offered to the acting seat. Copies in hidden zones
+and changes to the resolving instruction's internal references have no effect. -/
+theorem legalFrameActions_nameCard_view {s t : GameState} {p : PlayerId} {first : CardId}
+    {more : List CardId} {srcS srcT : ObjId} {envS envT : Env}
+    {restS restT : EffectList} {tailS tailT : List Frame}
+    (hs : s.pending = .nameCard p srcS envS first more restS :: tailS)
+    (ht : t.pending = .nameCard p srcT envT first more restT :: tailT) :
+    legalFrameActions s = legalFrameActions t := by
+  simp [legalFrameActions, hs, ht]
 
 end Riftbound
 
