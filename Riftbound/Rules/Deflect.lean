@@ -11,8 +11,9 @@ domain more, as an additional cost. The picks of targets are legal only when the
 (`paySurcharge`), whichever kind of answer chose the target: a Spell, an activated ability, or a
 triggered ability.
 
-Model decision: the player does not choose which Power pays. The Power of a domain goes first, in
-the order of the domains, and Power of any domain last, so the flexible Power is kept.
+Direct Spells can declare exact sources for a separate surcharge. Its canonical allocation
+spends domain Power first and flexible Power last. Other answers still use the canonical
+allocation when their cost does not include Deflect in an ordinary payment.
 -/
 
 @[expose] public section
@@ -155,6 +156,50 @@ def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
       | _ => false)
   | _ => false
 
+/-- The surcharge paid separately from a direct Spell's printed and additional costs. -/
+def separateSpellDeflectCost (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  if (s.cardDef? c).any (·.hasType .spell) && s.playPowerCut p c ts == 0 then
+    s.deflectCost p ts (some c)
+  else 0
+
+/-- Exchange the canonical allocation for its named sources when describing a declaration. -/
+def spellDeflectSources (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)
+    (pay : RunePool.Payment) (pick : SpellPick) : Option (List PowerBucket) := do
+  let amount := s.separateSpellDeflectCost p c ts
+  if amount == 0 then none else
+    let pool ← s.spendFor p false pay (spell := true)
+    if pool.totalPower < amount then none else
+      let after := pool.takeN amount
+      some (pick.deflectPayment.getD (PowerBucket.all.flatMap (fun source =>
+        List.replicate (pool.powerIn source - after.powerIn source) source)))
+
+/-- Offer each affordable alternative to the canonical allocation for a direct Spell's
+separate Deflect cost. The canonical choice already has the ordinary input form. -/
+def spellDeflectPicks (s : GameState) (p : PlayerId) (c : ObjId)
+    (targets : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) : List SpellPick :=
+  let amount := s.separateSpellDeflectCost p c targets
+  pick :: (if amount == 0 then [] else
+    match s.spendFor p false pay (spell := true) with
+    | some pool =>
+      let canonical := pool.takeN amount
+      ((pool.allocatedPowerPayments amount).filter
+        (fun sources => pool.takeBuckets sources != some canonical)).map
+        (SpellPick.withDeflectPayment pick)
+    | none => [])
+
+/-- The ordinary submission names the canonical separate payment. -/
+theorem mem_spellDeflectPicks_base (s : GameState) (p : PlayerId) (c : ObjId)
+    (targets : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) :
+    pick ∈ s.spellDeflectPicks p c targets pay pick :=
+  List.mem_cons_self
+
+/-- The separate surcharge uses any recorded sources and otherwise its canonical allocation. -/
+def paidDeflectPool (pool : RunePool) (a : Action) (amount : Nat) : RunePool :=
+  let explicitSources := match a.kind with
+    | .playCard _ _ _ _ _ pick => pick.deflectPayment
+    | _ => none
+  (explicitSources.bind pool.takeBuckets).getD (pool.takeN amount)
+
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
@@ -166,7 +211,7 @@ def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
       else ((s2.spendSymbols p pay false).map (s2.setPool p)).getD s2
     | _ =>
       if s.deflectInPayment p a then s2
-      else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
+      else s2.setPool p (paidDeflectPool (s2.poolOf p) a (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/

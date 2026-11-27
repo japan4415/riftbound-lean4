@@ -123,6 +123,8 @@ Basic Rune は `kind` を `runeExhaust` または `runeRecycle` として、使�
 
 カードのプレイは `observedCardPlay` の `play` に、プレイした `seat`、出したカード `source`、宣言順の対象 `targets` を指定できる。各カードを `{"card":{"code":"OGN-001"}}` で表し、観測できた `location`、`controller`、`exhausted` で候補を絞れる。支払いは `payment`、Flow の費用は `flowCost`、追加コストの捨て札は `discard`、最初のモードや移動先は `choice`、対象のプレイヤーは `playerTarget` で指定できる。入力例は `inspect` の `answerByCode` に出る。一致する合法手が複数なら `exact: false` になる。推定したプレイは `inferredCardPlay` の `play` と `evidence` に記録する。
 
+呪文の Deflect を別に支払った場合は、使った Power を `deflectPayment` に指定できる。例えば `[{"domain":{"value":"calm"}},"flexible"]` は Calm と虹 Power を1ずつ使った記録。支払いの候補が複数あれば、ビューアで対象を選んだ後に内訳から選ぶ。`inspect` で入力例を確認できる。
+
 起動型能力は `observedAbilityUse` の `activation` に `seat`、`kind`（`activated` または `add`）、`source`、能力の番号 `ability`、宣言順の `targets` を指定できる。カードはプレイの入力と同じ形式で表す。`inspect` の `answerByCode` には、支払い、捨て札、コストで使う物体、対象の席など、その候補から記録できる項目も出る。推定した場合は `inferredAbilityUse` の `activation` と `evidence` に記録する。
 
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。

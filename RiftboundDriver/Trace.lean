@@ -205,6 +205,7 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
   | .thenRepeat pick _ _ => spellPickFields state c pick
   | .withVariablePower pick n =>
     spellPickFields state c pick ++ [("variablePower", toString n)]
+  | .withDeflectPayment pick _ => spellPickFields state c pick
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
@@ -351,8 +352,9 @@ def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (
     ("targetControllers", jarr controllers)]
 
 /-- Record targets beside the mode and destination for each execution of a repeated Spell. -/
-def spellExecutionFields (state : Option GameState) (card : ObjId) (pick : SpellPick)
+def spellExecutionFields (state : Option GameState) (card : ObjId) (declared : SpellPick)
     (targets : List ObjId) : List (String × String) :=
+  let pick := declared.withoutDeflectPayment
   if pick.hasExecutionChoices then
     [("repeatExecutions", jarr ((pick.executions targets).map (fun (choice, ts) =>
       jobj (spellTargetFields state ts ++ spellPickFields state card choice))))]
@@ -436,7 +438,8 @@ def moveFields (dest : MoveDest) (pay : Cost) : List (String × String) :=
 
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
-    (state : Option GameState := none) (events : List Event := []) : String :=
+    (state : Option GameState := none) (events : List Event := [])
+    (before : Option GameState := none) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
     | .chance => "chance"
@@ -449,7 +452,16 @@ def actionJson (a : Action) (frame : Option Frame := none)
           | .tournamentElimination .. => true
           | _ => false) then [("singleElimination", "true")] else []
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c pay ts flow discard pick =>
+    | .playCard c pay ts flow discard declared =>
+      let pick := declared.withoutDeflectPayment
+      let deflect := ((before <|> state).bind (fun s =>
+        match a.actor with
+        | .player p => s.spellDeflectSources p c ts pay declared
+        | _ => none)) <|> declared.deflectPayment
+      let deflectFields := deflect.toList.map (fun sources => ("deflectPayment",
+        jarr (sources.map (fun
+          | .domain domain => jstr (ctorName domain)
+          | .flexible => jstr "flexible"))))
       let played := (events.findSome? (fun
         | .moved before after _ => if before == c then some after else none
         | _ => none)).getD c
@@ -470,7 +482,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
-        xp ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
+        xp ++ deflectFields ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
     | .standardMove u d pay => [("unit", toString u.n)] ++ moveFields d pay
     | .startGroupMove d pay => moveFields d pay
     | .assignPick u => [("unit", toString u.n)]
@@ -836,7 +848,7 @@ def cardDisclosureFields (disclosures : List CardDisclosure) : List (String × S
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
     (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false)
     (bo1Initiative : Bool := false) (gameLoss : Option (List PlayerId) := none)
-    (extra : List (String × String) := []) :
+    (extra : List (String × String) := []) (before : Option GameState := none) :
     String × Std.HashSet Nat :=
   -- A concession can replace a Battlefield in place while its identifier stays the same.
   let seen := if a.any (fun action => action.kind == .concede) && !s.departures.seats.isEmpty then
@@ -845,7 +857,7 @@ def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
   let (st, seen') := stateJson s seen
   let penalty := (gameLoss.map (fun seats => ("gameLoss", jarr (seats.map (fun p => toString p.n))))).toList
   (jobj ([("i", toString i),
-    ("action", match a with | some a => actionJson a frame (some s) es | none => "null"),
+    ("action", match a with | some a => actionJson a frame (some s) es before | none => "null"),
     ("events", jarr (es.map eventJson)), ("state", st)] ++
     (if bo1Sideboard then [("bo1Sideboard", "true")] else []) ++
     (if bo1Initiative then [("bo1Initiative", "true")] else []) ++ penalty ++ extra), seen')
@@ -971,7 +983,7 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
 
 /-- Run the demo's decisions, collecting the selected data after each completed answer. -/
 def playDemoWith {α : Type} (turns : Nat) (cap : Option Nat) (judge : Bool)
-    (collect : Nat → Action → List Event → GameState → Option Frame → α → α) :
+    (collect : Nat → Action → List Event → GameState → GameState → α → α) :
     Nat → Nat → Rng → GameState → α → Except RuleError α
   | 0, _, _, _, acc => .ok acc
   | n + 1, i, r, s, acc =>
@@ -983,7 +995,7 @@ def playDemoWith {α : Type} (turns : Nat) (cap : Option Nat) (judge : Bool)
       match step 100 s a with
       | .error e => .error e
       | .ok (s', es) =>
-        let acc' := collect i a es s' s.pending.head? acc
+        let acc' := collect i a es s' s acc
         let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
         if a.kind == .pass && atPriority && turns ≤ s.turn then .ok acc'
         else playDemoWith turns cap judge collect n (i + 1) r' s' acc'
@@ -994,7 +1006,7 @@ def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false)
     (n i : Nat) (r : Rng) (s : GameState) (seen : Std.HashSet Nat) (steps : List String) :
     Except RuleError (List String) :=
   let collect i a es next before (acc : Std.HashSet Nat × List String) :=
-    let (j, seen') := stepJson i (some a) es next acc.1 before
+    let (j, seen') := stepJson i (some a) es next acc.1 before.pending.head? (before := some before)
     (seen', j :: acc.2)
   (playDemoWith turns cap judge collect n i r s (seen, steps)).map Prod.snd
 

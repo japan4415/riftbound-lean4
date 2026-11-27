@@ -2,8 +2,8 @@ module
 
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
-import RiftboundDriver.ReplayObservation
-meta import RiftboundDriver.ReplayObservation
+import RiftboundDriver.Replay
+meta import RiftboundDriver.Replay
 import RiftboundTest.CardLab
 meta import RiftboundTest.CardLab
 
@@ -28,6 +28,30 @@ open Riftbound RiftboundDriver
     damaged.pending.head? == some (.priority p) && next.pending.head? == some (.priority p) &&
     next.countIn p .trash "OGN-051" == 1 && (cleanupStep next).isNone &&
     inTrash != victim && events.contains (.died inTrash p) && observed == (next, events) : Option Bool).getD false
+
+-- A coded play records the specific Deflect sources and keeps an omitted choice ambiguous.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, spell) ← put s p "VEN-127" .hand
+  let (s, target) ← put s s.you "VEN-064" .base
+  let s := (s.noRunes p).setPool p { energy := 2, order := 1, fury := 1, any := 1 }
+  let play (pick : SpellPick) : Action := ⟨.player p,
+    .playCard spell ⟨2, [.order]⟩ [target] none none pick⟩
+  let canonical := play .plain
+  let explicit := play (.withDeflectPayment .plain [.flexible])
+  let canonicalCode ← ReplayCardPlay.fromAction? s canonical
+  let explicitCode ← ReplayCardPlay.fromAction? s explicit
+  let encode (play : ReplayCardPlay) : ReplayAnswer := .observedCardPlay play
+  let (next, events) ← (step 100 s explicit).toOption
+  let json := actionJson explicit s.pending.head? (some next) events (some s)
+  return canonicalCode.deflectPayment? == some [.domain .fury] &&
+    explicitCode.deflectPayment? == some [.flexible] &&
+    ((encode canonicalCode).resolveAt s 1).toOption == some (canonical, true) &&
+    ((encode explicitCode).resolveAt s 1).toOption == some (explicit, true) &&
+    ((encode { explicitCode with deflectPayment? := none }).resolveAt s 1).toOption.any (!·.2) &&
+    ((encode { explicitCode with deflectPayment? := some [.domain .order] }).resolveAt s 1).isOk == false &&
+    json.contains "\"deflectPayment\":[\"flexible\"]" : Option Bool).getD false
 
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=

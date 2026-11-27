@@ -1578,7 +1578,8 @@ theorem applyDeclaredAction_priorityPass {s : GameState} {p : PlayerId} {rest : 
   simp only [pending]
   let next := ({ s with pending := .phase .ending :: .beginTurn :: rest }).setPool p (s.poolOf p)
   have events : s.actionTransitionEvents next ⟨.player p, .pass⟩ = [] := priorityPass_observations wf database pending
-  simp [extraEvents, GameState.paySurcharge, GameState.deflectInPayment, Action.targetsOf, Action.spellSource,
+  simp [extraEvents, GameState.paySurcharge, GameState.paidDeflectPool, GameState.deflectInPayment,
+    Action.targetsOf, Action.spellSource,
     GameState.deflectCost, RunePool.takeN, GameState.poolOf]
   change next.withTriggers (s.actionTransitionEvents next ⟨.player p, .pass⟩) = next
   rw [events, withTriggers_nil]

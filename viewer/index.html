@@ -813,8 +813,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const accelerate = typeof a.accelerated === 'boolean'
         ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
       const showOff = showOffLabel(a, a.card);
+      const deflect = a.deflectPayment?.length ? '（Deflect ' +
+        a.deflectPayment.map(source => source === 'flexible' ? '虹' : source).join(' + ') + ' Power）' : '';
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
+        deflect + discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
         (objectCost ? '（' + objectCost + '）' : '') +
         (namedPayment.length ? '（' + namedPayment.join('、') + '）' : '');
       if (def && def.types.includes('spell')) {

@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Rules.Pay
+public import Riftbound.Rules.Deflect
 
 /-!
 # Canonical flexible payments (CR 356-357)
@@ -104,6 +104,34 @@ theorem totalPower_takePowers {pool remaining : RunePool} {domains : List Domain
       omega
 
 end RunePool
+
+/-- The legal alternatives for a separate Spell surcharge are exactly the ordered and affordable
+source allocations that spend the declared amount and leave a different Pool from the default. -/
+theorem GameState.mem_explicitSpellDeflectPicks (s : GameState) (p : PlayerId) (card : ObjId)
+    (targets : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) (sources : List PowerBucket)
+    (plain : pick.deflectPayment = none) :
+    let amount := s.separateSpellDeflectCost p card targets
+    .withDeflectPayment pick sources ∈ s.spellDeflectPicks p card targets pay pick ↔
+      amount ≠ 0 ∧ ∃ pool, s.spendFor p false pay (spell := true) = some pool ∧
+        (sources.length = amount ∧
+          PowerBagWithin (PowerBucket.all.map (fun source => (source, pool.powerIn source))) sources ∧
+          (∀ source, sources.count source ≤ pool.powerIn source)) ∧
+        pool.takeBuckets sources ≠ some (pool.takeN amount) := by
+  have different : SpellPick.withDeflectPayment pick sources ≠ pick := by
+    intro alias
+    have same : some sources = pick.deflectPayment := congrArg SpellPick.deflectPayment alias
+    rw [plain] at same
+    cases same
+  dsimp only
+  unfold spellDeflectPicks
+  by_cases empty : s.separateSpellDeflectCost p card targets = 0
+  · simp [empty, different]
+  · cases s.spendFor p false pay (spell := true) with
+    | none => simp [empty, different]
+    | some remaining =>
+      simp [empty, different, RunePool.mem_allocatedPowerPayments_iff, and_assoc]
+      exact ⟨fun ⟨_, length, within, afford, debit, rfl⟩ => ⟨length, within, afford, debit⟩,
+        fun ⟨length, within, afford, debit⟩ => ⟨sources, length, within, afford, debit, rfl⟩⟩
 
 /-- A flexible payment is offered exactly when its canonical domain bag is payable. The
 aggregate budget check in the enumeration rules out no payable answer. -/

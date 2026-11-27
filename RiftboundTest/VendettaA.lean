@@ -1316,6 +1316,31 @@ where
     runeEvents.contains (.chosenBySpell p gear) && runeEvents.contains (.played p runeItem) &&
     runeEvents.any (fun | .moved old _ (.player owner .runeDeck) => old == runeId && owner == p | _ => false)
 
+-- A direct Lacerate names its exact Deflect source after paying the printed Order symbol.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "VEN-127" .hand
+  let (s, target) ← put s s.you "VEN-064" .base
+  let pool : RunePool := { energy := 2, order := 1, fury := 1, calm := 1, any := 1 }
+  let s := (s.noRunes p).setPool p pool
+  let answer (pick : SpellPick) : Action := ⟨.player p, .playCard spell ⟨2, [.order]⟩ [target]
+    none none pick⟩
+  let plain := answer .plain
+  let debit (sources : List PowerBucket) := answer (.withDeflectPayment .plain sources)
+  let flexible := debit [.flexible]
+  let calm := debit [.domain .calm]
+  let actions := legalFrameActions s
+  let (canonical, _) ← (step 100 s plain).toOption
+  let (fromFlexible, _) ← (step 100 s flexible).toOption
+  let (fromCalm, _) ← (step 100 s calm).toOption
+  return (actions.filter (fun action => action == plain || action == flexible || action == calm)).length == 3 &&
+    !(actions.contains (debit [.domain .fury])) &&
+    (step 100 s (debit [.domain .order])).toOption.isNone &&
+    (step 100 s (debit [.flexible, .domain .calm])).toOption.isNone &&
+    (canonical.poolOf p) == { pool with energy := 0, order := 0, fury := 0, spent := 1 } &&
+    (fromFlexible.poolOf p) == { pool with energy := 0, order := 0, any := 0, spent := 1 } &&
+    (fromCalm.poolOf p) == { pool with energy := 0, order := 0, calm := 0, spent := 1 }
+
 -- Lacerate needs both sources when Fizz plays it against Plaza Guardian: one
 -- Order Power for the Spell and one extra Power for Deflect.
 #guard vendettaCase fun s => do

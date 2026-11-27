@@ -36,7 +36,8 @@ theorem applyDeclaredAction_chainPass {s : GameState} {p : PlayerId} {passes : N
   simp only [pending]
   by_cases h : passes + 1 < s.participatingCount <;>
     simp [h, extraEvents, GameState.actionTransitionEvents, pending, withTriggers_nil,
-      GameState.paySurcharge, GameState.deflectInPayment, Action.targetsOf, Action.spellSource,
+      GameState.paySurcharge, GameState.paidDeflectPool, GameState.deflectInPayment,
+      Action.targetsOf, Action.spellSource,
       GameState.deflectCost, RunePool.takeN, GameState.poolOf]
 
 /-- A non-final pass leaves the Chain intact and stops at the next player's priority without

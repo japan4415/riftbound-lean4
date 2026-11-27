@@ -208,6 +208,8 @@ structure ReplayCardPlay where
   choice? : Option ReplayPlayChoice := none
   /-- The player selected by the declaration, if recorded. -/
   playerTarget? : Option PlayerId := none
+  /-- The actual Power sources used for a separate Deflect surcharge, if observed. -/
+  deflectPayment? : Option (List PowerBucket) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Which kind of activation the player declared. -/
@@ -426,7 +428,8 @@ private def ReplayPlayDiscard.matches (s : GameState) : ReplayPlayDiscard → Op
   | .card ref, some id => ref.matches s id
   | _, _ => false
 
-private def ReplayPlayChoice.ofPick? (s : GameState) (pick : SpellPick) : Option ReplayPlayChoice :=
+private def ReplayPlayChoice.ofPick? (s : GameState) (declared : SpellPick) : Option ReplayPlayChoice :=
+  let pick := declared.withoutDeflectPayment
   let place (field : Option ObjId) := replayMoveDestination s (field.elim .base .battlefield)
   match pick.effectChoice with
   | .plain => some .plain
@@ -444,7 +447,8 @@ def ReplayCardPlay.fromAction? (s : GameState) (action : Action) : Option Replay
   return {
     seat, source, targets, payment? := some payment, flowCost?
     discard? := ReplayPlayDiscard.ofObject? s discard, choice? := ReplayPlayChoice.ofPick? s pick
-    playerTarget? := pick.playerTarget }
+    playerTarget? := pick.withoutDeflectPayment.playerTarget
+    deflectPayment? := s.spellDeflectSources seat id action.targetsOf payment pick }
 
 private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
     Except String (Action × Bool) := do
@@ -455,7 +459,8 @@ private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
         play.payment?.all (· == payment) && play.flowCost?.all (some · == flowCost) &&
         play.discard?.all (fun declared => declared.matches s discard) &&
         play.choice?.all (fun declared => some declared == ReplayPlayChoice.ofPick? s pick) &&
-        play.playerTarget?.all (some · == pick.playerTarget)
+        play.playerTarget?.all (some · == pick.withoutDeflectPayment.playerTarget) &&
+        play.deflectPayment?.all (some · == s.spellDeflectSources play.seat id targets payment pick)
     | _ => false
   let some action := matching.head?
     | throw s!"seat {play.seat.n} has no legal play of {play.source.card.code} with the recorded declaration"

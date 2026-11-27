@@ -211,6 +211,7 @@ def LiveGame.applyReplay (g : LiveGame) (answer : ReplayAnswer) :
   let priorSeen := if answer.rewinds then {} else g.seen
   let (j, seen') := stepJson g.i action es position.state priorSeen g.s.pending.head? (answer == .bo1Sideboard)
     initiative answer.penalizedSeats (answer.correctionJson ++ cardDisclosureFields position.disclosures)
+    (some g.s)
   return ({ g with
     s := position.state, seen := seen', i := g.i + 1,
     answersRev := if g.input.isSome then answer :: g.answersRev else g.answersRev,

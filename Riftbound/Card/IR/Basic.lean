@@ -70,7 +70,19 @@ inductive SpellPick where
   /-- The object used to pay a Kill cost and its base costs at payment (CR 359.3.e.13).
   Recorded by the engine after paying the cost. -/
   | withPaidKill (pick : SpellPick) (object : ObjId) (energy power : Nat)
+  /-- Pay the direct spell's Deflect surcharge from the named sources. -/
+  | withDeflectPayment (pick : SpellPick) (sources : List PowerBucket)
 deriving DecidableEq, Repr, Hashable
+
+/-- Remove the separate Deflect payment before applying the rest of the finalization. -/
+def SpellPick.withoutDeflectPayment : SpellPick → SpellPick
+  | .withDeflectPayment pick _ => pick
+  | pick => pick
+
+/-- The declared sources for the spell's separate Deflect payment. -/
+def SpellPick.deflectPayment : SpellPick → Option (List PowerBucket)
+  | .withDeflectPayment _ sources => some sources
+  | _ => none
 
 /-- The source and base costs recorded when the Spell paid its Kill cost. -/
 def SpellPick.paidKill : SpellPick → Option (ObjId × Nat × Nat)
@@ -154,7 +166,8 @@ def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
   | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
       .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
-      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. => pick.showOffObject
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. |
+      .withDeflectPayment pick _ => pick.showOffObject
   | _ => none
 
 /-- The declared amount of a variable Power cost for this play. -/

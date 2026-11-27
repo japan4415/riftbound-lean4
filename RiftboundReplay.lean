@@ -121,7 +121,7 @@ private def gameTrace (input : GameInputs) (config : GameConfig) (fuel : Nat) :
     let priorSeen := if answer.rewinds then {} else acc.2
     let (row, seen) := stepJson index action events next.state priorSeen state.pending.head? sideboard
       (input.isBo1Initiative state action) answer.penalizedSeats
-      (answer.correctionJson ++ cardDisclosureFields next.disclosures)
+      (answer.correctionJson ++ cardDisclosureFields next.disclosures) (some state)
     (row :: acc.1, seen)
   let (steps, _) ← collectGame input config fuel initial collect
   return jobj [("players", toString config.mode.players), ("steps", jarr steps.reverse)]
