@@ -2673,20 +2673,23 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   return energyNow s3 s.me dragon == (energyPrinted s2 dragon).map (· - 2) &&
     energyNow s3 s.me other == energyPrinted s2 other
 
--- more on cost changes: only another card counts for Legion (not the opponent's, not itself played
--- earlier and returned to the hand), and a card cannot be played for its printed cost when it costs
--- less
+-- Legion uses another physical card finalized by this player. A fresh object ID for the
+-- same returned card does not count, while a distinct copy with the same printed name counts.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-012" .hand
-  let (s2, x) ← put s1 s.you "OGN-136" .hand
-  let theirs := s2.modObj x (fun o => { o with playedTurn := some s2.turn })
-  let (t1, y) ← put s1 s.me "OGN-136" .hand
-  let mine := t1.modObj y (fun o => { o with playedTurn := some t1.turn })
-  let own := s1.modObj c (fun o => { o with playedTurn := some s1.turn })
-  return energyNow theirs s.me c == energyPrinted s1 c &&
-    energyNow mine s.me c == (energyPrinted s1 c).map (· - 2) &&
-    energyNow own s.me c == energyPrinted s1 c &&
-    (cast (s1.rich s.me) s.me c ⟨(energyPrinted s1 c).getD 0 - 2, []⟩).isNone
+  let p := s.me
+  let q := s.you
+  let (s1, card) ← put s p "OGN-012" .hand
+  let (s2, other) ← put s1 q "OGN-136" .base
+  let theirs := s2.recordTurnEvents [.played q other]
+  let first ← play s1 p card
+  let entered ← first.firstOf p .base "OGN-012"
+  let (returned, same) ← moveObj first entered (.player p .hand)
+  let (two, copy) ← put returned p "OGN-012" .hand
+  return same != entered && energyNow theirs p card == some 4 &&
+    energyNow two p same == some 4 && energyNow two p copy == some 2 &&
+    (cast (two.rich p) p same ⟨2, []⟩).isNone &&
+    (cast (two.rich p) p copy ⟨4, []⟩).isNone &&
+    (cast (two.rich p) p copy ⟨2, []⟩).isSome
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-195" .hand
   let trash (x : GameState) (n : Nat) : Option GameState :=
@@ -2851,7 +2854,7 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s2, other) ← put s1 s.me "OGN-136" .base
   let (s3, a) ← put s2 s.me "OGN-136" .hand
   let (s4, b) ← put s3 s.me "OGN-136" .hand
-  let played := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let played := s4.recordTurnEvents [.played s.me other]
   let on ← activate played s.me g 0
   let first ← play on s.me a
   let second ← play first s.me b
@@ -2914,7 +2917,7 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s2, other) ← put s1 s.me "OGN-136" .base
   let (s3, again) ← put s2 s.me "OGN-136" .hand
   let (s4, b) ← put s3 s.me "OGN-136" .hand
-  let marked := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let marked := s4.recordTurnEvents [.played s.me other]
   let old := marked.modObj again
     (fun o => { o with playedTurn := some s4.turn, playedStamp := some 0 })
   let on ← activate old s.me g 0
@@ -3484,7 +3487,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
 #guard t fun s => do
   let (s1, g) ← put s s.me "OGN-253" .base
   let (s2, other) ← put s1 s.me "OGN-136" .base
-  let played := s2.modObj other (fun o => { o with playedTurn := some s2.turn })
+  let played := s2.recordTurnEvents [.played s.me other]
   let pool0 := (s2.poolOf s.me).energy
   let use (x : GameState) : Option GameState :=
     match step 100 x ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩ with
@@ -3492,9 +3495,9 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     | .error _ => none
   let on ← use played
   let again := use on
-  let old := s2.modObj other (fun o => { o with playedTurn := some (s2.turn + 1) })
+  let old := { played with turn := played.turn + 1 }
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let theirs := s3.modObj f (fun o => { o with playedTurn := some s3.turn })
+  let theirs := s3.recordTurnEvents [.played s.you f]
   let (s4, c) ← put s2 s.me "OGN-136" .hand
   let real ← play s4 s.me c
   return (on.poolOf s.me).energy == pool0 + 1 && on.tired g == some true && (use s2).isNone &&
@@ -3571,7 +3574,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s3, w) ← put s2 s.you "OGN-001" .base
   let (s4, other) ← put s3 s.me "OGN-136" .base
   let marked ← play s4 s.me c [u]
-  let legion ← play (s4.modObj other (fun o => { o with playedTurn := some s4.turn })) s.me c [u]
+  let legion ← play (s4.recordTurnEvents [.played s.me other]) s.me c [u]
   return (marked.obj? u).isSome && ((dealObj 1 marked u).1.obj? u).isNone &&
     ((dealObj 1 marked w).1.obj? w).map (·.damage) == some 1 && (legion.obj? u).isNone &&
     ((dealObj 0 marked u).1.obj? u).isSome

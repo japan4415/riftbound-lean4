@@ -59,9 +59,9 @@ theorem CardDef.paysFor_total {d : CardDef} {cost : Cost} {pay : RunePool.Paymen
   obtain ⟨c, hc, hp⟩ := h
   exact ⟨c, hc, Cost.total_of_paidBy hp⟩
 
-/-- The player has played a card in the turn that is going on, Legion (CR 812). -/
+/-- The player finalized at least one card during the current turn (CR 420.4). -/
 def GameState.playedBefore (s : GameState) (p : PlayerId) : Bool :=
-  s.objects.toList.any (fun (_, o) => o.owner == p && o.playedTurn == some s.turn)
+  s.finalizedCount p > 0
 
 /-- Whether the card `c` is one of the objects the selector of a passive ability of `src`, which
 the player `p` controls, stands for, as a cost change reads it (the card is not in play): the card
@@ -117,10 +117,7 @@ def GameState.costCuts (s : GameState) (p : PlayerId) (c : ObjId) : List (Nat ×
         | Ability.passive cond mods =>
           let who := if src == c then p else o.controller
           let holds := match cond with
-            | .legion =>
-              -- another card of the player was played this turn, not the card itself
-              some (s.objects.toList.any (fun (k, x) =>
-                x.owner == p && x.playedTurn == some s.turn && k != c.n))
+            | .legion => some (s.playedOther who src)
             | k => k.eval s who src {}
           if holds == some true then
             mods.filterMap (fun m =>
@@ -1720,7 +1717,7 @@ def GameState.playMark (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePoo
       match costOf d with
       | some cost => s.extraPaidAt p c d cost ts pay pick
       | none => 0)) Prod.snd,
-    legion := s.playedBefore p,
+    legion := s.playedOther p c,
     turn := s.turn, stamp := s.nextTimestamp, energy := pay.energy,
     buff := (s.cardDef? c).any (·.hasType .unit) && (s.fxOf p).any
       (fun k => k == .unitsBuffed || k == .nextUnitBuffed || k == .nextUnitAnywhereBuffed),

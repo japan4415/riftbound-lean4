@@ -87,6 +87,7 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
   return fullPrice.cost.energy == 4 && cheaper.cost.energy == 1 &&
     (again.obj? itemAgain).any (fun o => o.owner == q && o.controller == p) &&
     recorded.mightNow ours == some (5 : Int) && recorded.mightNow theirs == some (1 : Int) &&
+    recorded.playedOther p ours && !(recorded.playedOther q theirs) &&
     again.mightNow ours == some (5 : Int) && again.mightNow theirs == some (1 : Int) &&
     (again.playLog.filter (fun play => play.types.contains .spell)).map (·.energyPaid) == [1, 4]
 

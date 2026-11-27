@@ -271,9 +271,15 @@ def GameState.playedSince (s : GameState) (p : PlayerId) (t : CardType) (stamp :
     o.owner == p && (o.playedStamp.any (fun x => decide (stamp ≤ x))) &&
       (s.cardDef? ⟨k⟩).any (·.hasType t))
 
-/-- The player has played a card this turn other than the object `self`. -/
+/-- The player finalized a different physical card this turn, even if that card has since moved
+or been countered. A new object identifier does not make the same card count (CR 812.1.c). -/
 def GameState.playedOther (s : GameState) (p : PlayerId) (self : ObjId) : Bool :=
-  s.objects.toList.any (fun (k, o) => o.owner == p && o.playedTurn == some s.turn && k != self.n)
+  let physical := (s.obj? self).bind (·.kind.phys?)
+  let source := physical <|> s.playLog.findSome? (fun play =>
+    if play.object == self then play.physical else none)
+  s.playLog.any (fun play =>
+    play.who == p && play.turn == s.turn && play.moment == .finalized &&
+      play.physical.any (fun other => some other != source))
 
 /-- This turn's plays of a type at a given moment, newest first. -/
 def GameState.playsOfType (s : GameState) (moment : PlayMoment) (kind : CardType) : List CardPlay :=

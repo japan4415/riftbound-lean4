@@ -1013,8 +1013,9 @@ theorem insertTriggers_contrib (pend : List PendTrigger) (q : PlayerId) (contrib
 
 /-- Add a play to the current turn's history, with the types and player fixed at that moment. -/
 def addCardPlay (turn : Nat) (plays : List CardPlay) (p : PlayerId) (obj : ObjId)
-    (d : CardDef) (moment : PlayMoment) (energyPaid : Nat := 0) : List CardPlay :=
-  âŸ¨p, obj, d.types, turn, moment, energyPaidâŸ© ::
+    (d : CardDef) (moment : PlayMoment) (energyPaid : Nat := 0)
+    (physical : Option PhysId := none) : List CardPlay :=
+  { who := p, object := obj, types := d.types, turn, moment, energyPaid, physical } ::
     (if plays.head?.map (Â·.turn) == some turn then plays else [])
 
 /-- Whether the hidden card is already recorded as finalized in its original zone. -/
@@ -1033,7 +1034,8 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event â†
         let original := if o.fromHidden then o.formerId.getD id else id
         let noted := if (o.fromHidden || o.hiddenAt.isSome) &&
             hiddenFinalized plays s.turn p original then plays
-          else addCardPlay s.turn plays p id d .finalized (if d.hasType .spell then o.energyPaid else 0)
+          else addCardPlay s.turn plays p id d .finalized
+            (if d.hasType .spell then o.energyPaid else 0) o.kind.phys?
         if d.hasType .spell then noted else addCardPlay s.turn noted p id d .resolved
       else plays
     | _, _ => plays
@@ -1047,7 +1049,8 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event â†
       match d.fullAbilities[idx]? with
       | some (.activated costs _ _ _) =>
         if o.kind.phys?.isSome && costs.contains .fromHidden &&
-            !hiddenFinalized plays s.turn p id then addCardPlay s.turn plays p id d .finalized
+            !hiddenFinalized plays s.turn p id then
+          addCardPlay s.turn plays p id d .finalized (physical := o.kind.phys?)
         else plays
       | _ => plays
     | _, _ => plays

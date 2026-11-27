@@ -74,9 +74,11 @@ structure CardPlay where
   moment : PlayMoment
   /-- The Energy spent on this Spell finalization. Other entries record zero. -/
   energyPaid : Nat := 0
+  /-- Physical identity at finalization, which survives any later move to a new object. -/
+  physical : Option PhysId := none
 deriving DecidableEq
 
-/-- Preserve the archived state representation for historical entries without payment evidence. -/
+/-- Preserve the original state representation when supplemental play evidence is absent. -/
 instance : Repr CardPlay where
   reprPrec play _ :=
     let field (name : String) (value : Std.Format) :=
@@ -87,6 +89,8 @@ instance : Repr CardPlay where
       field "moment" (repr play.moment)]
     let fields := if play.energyPaid == 0 then fields
       else fields ++ [field "energyPaid" (repr play.energyPaid)]
+    let fields := if play.physical.isNone then fields
+      else fields ++ [field "physical" (repr play.physical)]
     Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Withdrawn seats and the regular turn positions already skipped because of a withdrawal. -/
