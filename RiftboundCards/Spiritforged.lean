@@ -2501,7 +2501,7 @@ def SFD_085 : CardDef :=
 
     abilities := [.passive .always
       [.mightPlus .self (.count (Selector.all .friendly .anywhere [.ofType .gear]))]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-086
 /--
@@ -2988,7 +2988,7 @@ def SFD_102.meta : CardDef :=
 def SFD_102 : CardDef :=
   { SFD_102.meta with
     grants := [.passive .always [.keyword .self { keyword := .deflect }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-103
 /--
@@ -4659,9 +4659,9 @@ def SFD_159 : CardDef :=
   { SFD_159.meta with
 
     abilities := [.passive
-      (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .at_ .self]))
+      (.exists (Selector.all .you .anywhere [.ofType .unit, .notSelf, .at_ .self]))
       [.mightPlus .self (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-160
 /--
@@ -4896,7 +4896,7 @@ def SFD_167 : CardDef :=
 
     abilities := [.triggered { event := .die, condition := .diedWith .mightyUnitDied }
       (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-168
 /--

@@ -1501,6 +1501,17 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     t2.mightNow q == (t1.mightNow q).map (· + 1) && t1.mightNow q == s1.mightNow r &&
     t3.mightNow q == t2.mightNow q
 
+-- The Ramhound's company must be a Unit controlled by the Ramhound's controller.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, hound) ← putAt s p "SFD-159" field
+  let (s, _) ← putAt s ally "OGN-051" field
+  let (withCompany, _) ← putAt s p "OGN-051" field
+  return s.mightNow hound == some 2 && withCompany.mightNow hound == some 3
+
 -- Blood Money (SFD-162): kill a unit at a battlefield with 2 Might or less; 1 Gold if it was an
 -- enemy's, 2 if it was a friendly one
 #guard tsf fun s => do
@@ -1712,6 +1723,19 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s3, _) ← put s2 s.me "SFD-030" .base
   let (s4, _) ← put s3 s.you "SFD-030" .base
   return s3.mightNow o == (s1.mightNow o).map (· + 2) && s4.mightNow o == s3.mightNow o
+
+-- Ornn has Deflect 2 and may move the controller's already attached Gear with Weaponmaster.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, ornn) ← put s p "SFD-085" .hand
+  let (s, bearer) ← put s p "OGN-051" .base
+  let (s, gear) ← put s p "SFD-042" .base
+  let attached := (attachTo bearer s gear).1
+  let equipped ← play attached p ornn
+  let declined ← play attached p ornn [] { yes := false }
+  let entered ← equipped.firstOf p .base "SFD-085"
+  return equipped.deflectOf entered == 2 && (equipped.obj? gear).any (·.attached == some entered) &&
+    (declined.obj? gear).any (·.attached == some bearer)
 
 -- Fae Porter chooses and pays during finalization. Flash moves the source, while its ability
 -- still moves the chosen Unit to the original destination.

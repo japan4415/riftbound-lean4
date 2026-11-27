@@ -2437,6 +2437,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Deflect と Accelerate で払った Power は、そのターンの支払いに含める。Main Phase の開始で Rune Pool を空にするときは、それまでに支払った量を席ごとに引き継ぐ。Sivir, Mercenary は同じターンに自身の支配者が払った量を参照する。リプレイでは支払いの合計を照合できる。[公式総合ルール 167、316.3、809](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Viktor, Leader は味方の Unit が同時に死亡すれば1体ずつ数え、自身も同じ処理で死亡した場合は誘発しない。Rhasa the Sunderer は自身のプレイヤーの Trash で値引きを算出する。Darius, Trifarian と Ancient Warmonger はそれぞれ同じ Battlefield の味方と敵を確認する。Yasuo, Windrider、Fiora, Victorious、Gearhead、Fae Dragon を含む9枚を確認し、全1,103枚中758枚を `full` とした。[公式総合ルール 383.2.c.2](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Deathknell の Recycle と支配者ごとの効果
+
+- Ekko, Recurrent は Deathknell の確定時に自身を Recycle し、解決時に能力の支配者の Rune を Ready にする。確定前に Ekko が Trash を離れた場合、Recycle の費用は払えない。[公式総合ルール 204.1.c、383.3.b、417](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Herald of Scales の値引きと Trusty Ramhound の Might は、そのカードの支配者に対応する。Deflect と Weaponmaster の Ornn, Forge God、Hexdrinker、Unsung Hero、Hand of Noxus を含む7枚を確認し、全1,103枚中765枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

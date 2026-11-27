@@ -2964,10 +2964,9 @@ def OGN_110.meta : CardDef :=
 /-- Ekko, Recurrent. -/
 def OGN_110 : CardDef :=
   { OGN_110.meta with
-    abilities := [.triggered (.onSelf .die)
-      (.of [] (.seqOf [.prim (.recycle .self),
-        .forEach (Selector.all .friendly .atBase [.ofType .rune]) (.prim (.ready .it))])) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .die, cost := .recycleSelfFromTrash }
+      (.of [] (.forEach (Selector.all .you .atBase [.ofType .rune]) (.prim (.ready .it)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-111
 /--
@@ -3777,8 +3776,8 @@ def OGN_140.meta : CardDef :=
 def OGN_140 : CardDef :=
   { OGN_140.meta with
     abilities := [.passive .always
-      [.costMinusMin (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Dragon"⟩]) (.const 2) 1]],
-    status := .drafted }
+      [.costMinusMin (Selector.all .you .anywhere [.ofType .unit, .tag ⟨"Dragon"⟩]) (.const 2) 1]],
+    status := .full }
 
 -- BEGIN GENERATED OGN-141
 /--
@@ -6876,7 +6875,7 @@ def OGN_253 : CardDef :=
   { OGN_253.meta with
     abilities := [.activated [.exhaustSelf] .reaction
       (.of [] (.ifThen .playedAnother (.prim (.addEnergy .you (.const 1) none)) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-254
 /--

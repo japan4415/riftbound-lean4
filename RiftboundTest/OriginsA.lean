@@ -2725,6 +2725,34 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.tired r1 == some false && a.countIn s.me .trash "OGN-110" == 0 &&
     (a.zone (.player s.me .mainDeck)).length == (s2.zone (.player s.me .mainDeck)).length + 1
 
+-- Ekko is recycled while his Deathknell is finalized, before players can respond (CR 204.1.c).
+-- The controller's Runes ready only when it resolves. Paying is impossible if Ekko left the Trash.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, ekko) ← put s p "OGN-110" .base
+  let (s, own) ← put s p "R1" .base
+  let (s, teammate) ← put s ally "R1" .base
+  let (afterDeath, events) := killObj (s.tire own |>.tire teammate) ekko
+  let dead ← afterDeath.firstOf p .trash "OGN-110"
+  let (queued, _) ← (advance 100 (afterDeath.withTriggers events) []).toOption
+  let finalize : Action := ⟨.player p, .putTrigger 0 []⟩
+  let (paid, paidEvents) ← (step 100 queued finalize).toOption
+  let ordinary := settleChain {} 12 paid
+  let (removed, _) ← moveObj queued dead (.player p .banishment)
+  let afterResponse := settleChain {} 12 removed
+  return queued.countIn p .trash "OGN-110" == 1 && paid.countIn p .trash "OGN-110" == 0 &&
+    paid.countIn p .mainDeck "OGN-110" == 1 && paid.tired own == some true &&
+    paidEvents.contains (.recycled p) && ordinary.tired own == some false &&
+    ordinary.tired teammate == some true &&
+    ordinary.countIn p .mainDeck "OGN-110" == 1 &&
+    afterResponse.tired own == some true && afterResponse.tired teammate == some true &&
+    afterResponse.countIn p .banishment "OGN-110" == 1
+
 -- more edges of the cards of this batch: Sai Scout (Vision when played to a battlefield), Deadbloom
 -- Predator (where it goes, and not to a battlefield with only my units), Sona (exactly 4 runes,
 -- only in my turn), Mushroom Pouch (only my hidden cards, only my Beginning Phase), Ekko (only my
@@ -3015,6 +3043,17 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s3, _) ← put s2 s.me "OGN-140" .base
   return energyNow s3 s.me dragon == (energyPrinted s2 dragon).map (· - 2) &&
     energyNow s3 s.me other == energyPrinted s2 other
+
+-- The Herald discounts its controller's Dragons. A teammate pays the original price.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, own) ← put s p "OGN-001" .hand
+  let (s, partner) ← put s ally "OGN-001" .hand
+  let (ready, _) ← put s p "OGN-140" .base
+  return energyNow ready p own == (energyPrinted s own).map (fun n => max (n - 2) 1) &&
+    energyNow ready ally partner == energyPrinted s partner
 
 -- Legion uses another physical card finalized by this player. A fresh object ID for the
 -- same returned card does not count, while a distinct copy with the same printed name counts.

@@ -744,6 +744,8 @@ inductive TriggerCost where
   | spendBuff
   /-- Kill exactly this many permanents the player personally controls (CR 740.1). -/
   | killControlled (count : Nat) (filters : FilterList)
+  /-- Recycle the dead source from its owner's Trash during finalization (CR 204.1.c, 417). -/
+  | recycleSelfFromTrash
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

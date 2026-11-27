@@ -1387,6 +1387,24 @@ def triggerKillOptions (s : GameState) (t : PendTrigger) (n : Nat)
   let candidates := (s.pickCandidates t.controller t.source env side .anywhere fs false).getD []
   (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
 
+/-- Pay a Deathknell's Recycle cost. A card that already left the Trash cannot pay it. -/
+def recycleTriggerSource (s : GameState) (t : PendTrigger) : Option (GameState × List Event) := do
+  let some (.player owner .trash) := s.locate t.source | none
+  let deck := Zone.player owner (recycleKind s t.source)
+  let (next, moved) ← moveObj s t.source deck .bottom
+  return (next, [.moved t.source moved deck, .recycled t.controller])
+
+/-- Recycling a Deathknell source as a cost preserves the state invariants. -/
+theorem recycleTriggerSource_safe {s : GameState} {t : PendTrigger} {r : GameState × List Event}
+    (h : recycleTriggerSource s t = some r) : Safe s r.1 := by
+  unfold recycleTriggerSource at h
+  split at h
+  · simp only [bind, Option.bind_eq_some_iff] at h
+    obtain ⟨⟨next, id⟩, moved, equal⟩ := h
+    cases equal
+    exact Safe.moveObj moved
+  · contradiction
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
@@ -1409,6 +1427,7 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
   | .spendBuff => (triggerBuffOptions s t).map (fun id => [id])
   | .killFriendly n fs => triggerKillOptions s t n .friendly fs
   | .killControlled n fs => triggerKillOptions s t n .you fs
+  | .recycleSelfFromTrash => if (recycleTriggerSource s t).isSome then [[]] else []
 
 /-- The affected Units each choose how to replace their Kill. Compute the combinations against
 the same board, before paying any part of the simultaneous cost (CR 372, 373). -/
@@ -1711,6 +1730,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
     match ids with
     | [id] => if (triggerBuffOptions s t).contains id then some (unbuffObj s id) else none
     | _ => none
+  | .recycleSelfFromTrash => recycleTriggerSource s t
 
 /-- Dismiss a declined or unpayable trigger, or pay for it and finalize it (CR 355, 383.3). -/
 def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
@@ -1841,6 +1861,7 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
       · cases h; exact unbuffObj_safe _ _
       · contradiction
     · contradiction
+  · exact recycleTriggerSource_safe h
 
 /-- Putting the picked ability on the Chain is a safe change. -/
 theorem finalizePick_safe (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
