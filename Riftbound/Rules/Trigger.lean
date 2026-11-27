@@ -229,6 +229,11 @@ def GameState.chosenAnyTriggers (s : GameState) (p : PlayerId) (target : ObjId) 
       watchersOf s target p .chosenAny
   else []
 
+/-- Whether two notices are for the same instance of one watching ability. -/
+def PendTrigger.sameWatchingAbility (a b : PendTrigger) : Bool :=
+  a.source == b.source && a.card == b.card && a.idx == b.idx &&
+    a.copyStamp == b.copyStamp && a.controller == b.controller
+
 /-- A grouped death fires once per watching ability. Its source may be one of the dead objects. -/
 def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTrigger :=
   let deaths := es.filterMap (fun
@@ -238,9 +243,19 @@ def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTr
     (s.passiveSources.flatMap (fun src => watchersAt s object controller .die .deathGroup src)) ++
       (deaths.flatMap (fun (src, owner) =>
         watchersAt s object controller .die .deathGroup src (some owner))))
-  found.eraseDupsBy (fun a b =>
-    a.source == b.source && a.card == b.card && a.idx == b.idx &&
-      a.copyStamp == b.copyStamp && a.controller == b.controller)
+  found.eraseDupsBy PendTrigger.sameWatchingAbility
+
+/-- One Stun instruction can emit one notice per Unit. A watching ability that says
+"one or more" fires only once for the responsible seat in that event batch (CR 370, 412.4). -/
+def GameState.stunGroupWatchers (s : GameState) (events : List Event) : List PendTrigger :=
+  let stuns := events.filterMap (fun
+    | .stunnedBy unit actor => some (unit, actor)
+    | _ => none)
+  let found := stuns.flatMap (fun (unit, actor) =>
+    (s.obj? unit).toList.flatMap (fun obj =>
+      (s.passiveSources.flatMap (watchersAt s unit obj.controller .stunByYou .stunGroup ·)).filter
+        (·.controller == actor)))
+  found.eraseDupsBy PendTrigger.sameWatchingAbility
 
 /-- This dead Unit is the first recorded for its controller here this turn. -/
 def GameState.firstUnitDeathHere (s : GameState) (id : ObjId) (p : PlayerId) : Bool :=
@@ -904,8 +919,8 @@ def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger
     (beforeFacts : Option (List TurnFx) := none) :
     List PendTrigger :=
   let choices := s.firstSpellFieldTriggers (beforeFacts.getD s.turnFx) es
-  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ choices ++ extra).filter
-    (fun t => !s.departures.seats.contains t.controller))
+  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++
+    s.stunGroupWatchers es ++ choices ++ extra).filter (fun t => !s.departures.seats.contains t.controller))
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
     if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
@@ -1911,7 +1926,7 @@ theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   dsimp only
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
-      GameState.trimLimits, GameState.firstCardTriggers, GameState.firstSpellFieldTriggers,
+      GameState.stunGroupWatchers, GameState.trimLimits, GameState.firstCardTriggers, GameState.firstSpellFieldTriggers,
       GameState.delayedPlayTriggers, empty]
   · simp [GameState.recordTurnEvents]
 

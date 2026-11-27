@@ -288,10 +288,10 @@ private theorem trimLimits_mem {s : GameState} {queue : List PendTrigger} {t : P
 
 private theorem detect_mem {s : GameState} {events : List Event} {t : PendTrigger}
     (member : t ∈ s.detect events) :
-    t ∈ events.flatMap (detectOne s) ++ s.deathGroupWatchers events ++
+    t ∈ events.flatMap (detectOne s) ++ s.deathGroupWatchers events ++ s.stunGroupWatchers events ++
       s.firstSpellFieldTriggers s.turnFx events := by
   let candidates : List PendTrigger := (events.flatMap (detectOne s) ++ s.deathGroupWatchers events ++
-    s.firstSpellFieldTriggers s.turnFx events ++ []).filter
+    s.stunGroupWatchers events ++ s.firstSpellFieldTriggers s.turnFx events ++ []).filter
     (fun t => !s.departures.seats.contains t.controller)
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
@@ -323,6 +323,19 @@ private theorem awakenNotices_noDeathGroups (s : GameState) {events : List Event
     intro e member
     cases notices e member <;> rfl
   unfold GameState.deathGroupWatchers
+  dsimp only
+  rw (config := { transparency := .all }) [empty]
+  rfl
+
+private theorem awakenNotices_noStunGroups (s : GameState) {events : List Event}
+    (notices : ∀ e ∈ events, AwakenNotice e) : s.stunGroupWatchers events = [] := by
+  have empty : events.filterMap (fun
+      | .stunnedBy unit actor => some (unit, actor)
+      | _ => none) = [] := by
+    apply List.filterMap_eq_nil_iff.mpr
+    intro e member
+    cases notices e member <;> rfl
+  unfold GameState.stunGroupWatchers
   dsimp only
   rw (config := { transparency := .all }) [empty]
   rfl
@@ -362,8 +375,8 @@ theorem detect_mightyEvents_noImmediateAdd {before after : GameState} {t : PendT
   have notices : ∀ e ∈ before.mightyEvents after, AwakenNotice e :=
     fun _ h => AwakenNotice.of_mightyEvents h
   have candidate := detect_mem member
-  simp only [awakenNotices_noDeathGroups after notices, awakenNotices_noSpellChoices after notices,
-    List.append_nil] at candidate
+  simp only [awakenNotices_noDeathGroups after notices, awakenNotices_noStunGroups after notices,
+    awakenNotices_noSpellChoices after notices, List.append_nil] at candidate
   obtain ⟨event, found, queued⟩ := List.mem_flatMap.mp candidate
   apply queuedEvent_immediate_none (select := TriggerEvent.isMightThreshold) database
   rcases mightyEvents_cases found with ⟨_, rfl⟩ | ⟨_, _, rfl⟩ <;> exact mightTriggers_queued rfl queued
@@ -413,8 +426,8 @@ theorem detect_awakenNotices_noImmediateAdd {s : GameState} {events : List Event
     (notices : ∀ e ∈ events, AwakenNotice e) (member : t ∈ s.detect events) :
     t.immediateAddFrame s = none := by
   have candidate := detect_mem member
-  simp only [awakenNotices_noDeathGroups _ notices, awakenNotices_noSpellChoices _ notices,
-    List.append_nil] at candidate
+  simp only [awakenNotices_noDeathGroups _ notices, awakenNotices_noStunGroups _ notices,
+    awakenNotices_noSpellChoices _ notices, List.append_nil] at candidate
   obtain ⟨event, found, queued⟩ := List.mem_flatMap.mp candidate
   cases notices event found with
   | phaseStarted p =>

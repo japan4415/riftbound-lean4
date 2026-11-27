@@ -375,7 +375,7 @@ theorem withTriggers_skipped (s : GameState) (source : ObjId) :
   rw [noFacts, noScore]
   dsimp only
   split
-  · simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits,
+  · simp [GameState.detect, GameState.deathGroupWatchers, GameState.stunGroupWatchers, GameState.trimLimits,
       GameState.firstCardTriggers, GameState.firstSpellFieldTriggers, detectOne, empty, noDelay]
   · rfl
 

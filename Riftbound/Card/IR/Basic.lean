@@ -633,6 +633,8 @@ inductive Occurrence where
   | every
   /-- Once when one or more subjects die together. -/
   | deathGroup
+  /-- Once when the controller Stuns one or more subjects in one instruction (CR 370, 412.4). -/
+  | stunGroup
   /-- On the `n`-th time only. -/
   | nth (n : Nat)
   /-- On the next `n` times, then no more. -/

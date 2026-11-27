@@ -6074,7 +6074,7 @@ def OGN_225 : CardDef :=
       (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
         (.ifThen (.matches (.slot 0) .stunned) (.prim (.kill (.slot 0))) (.prim (.stun (.slot 0)))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-226
 /--
@@ -7104,9 +7104,10 @@ def OGN_261.meta : CardDef :=
 def OGN_261 : CardDef :=
   { OGN_261.meta with
     abilities := [.triggered
-      { event := .stun, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+      { event := .stunByYou, occurrence := .stunGroup,
+        subject := Selector.all .enemy .anywhere [.ofType .unit] }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]] (.prim (.buff (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-262
 /--

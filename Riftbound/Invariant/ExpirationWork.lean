@@ -1079,7 +1079,7 @@ private theorem linkedCleanup_withTriggers_pending (s : GameState) :
   have detect : recorded.detect [.linkedDamageCleanupDone] [] (some s.turnFx) = [] := by
     have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
       List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
-    simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits,
+    simp [GameState.detect, GameState.deathGroupWatchers, GameState.stunGroupWatchers, GameState.trimLimits,
       GameState.firstSpellFieldTriggers, detectOne, empty]
   unfold GameState.withTriggers
   rw [noScore]

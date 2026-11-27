@@ -1042,6 +1042,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.stunned) == some true && a.countIn s.you .trash "OGN-001" == 0 &&
     (b.obj? e2).isNone && b.countIn s.you .trash "OGN-001" == 1
 
+-- Solari Chief's declared target can belong to either enemy seat, or be absent entirely.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, turn := 3, active := some p
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, chief) ← put s p "OGN-225" .hand
+  let (s, ours) ← put s p "OGN-001" .base
+  let (s, guest) ← put s ally "OGN-001" .base
+  let empty ← play s p chief
+  let (s, enemy) ← put s q "OGN-001" .base
+  let (s, second) ← put s r "OGN-001" .base
+  let waiting ← castStop s p chief
+  let legal := legalFrameActions waiting
+  let pick (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id]⟩
+  return empty.countIn p .base "OGN-225" == 1 && !(empty.obj? ours).any (·.stunned) &&
+    !(empty.obj? guest).any (·.stunned) && legal.contains (pick enemy) &&
+    legal.contains (pick second) && !legal.contains (pick ours) && !legal.contains (pick guest)
+
 -- Last Breath (OGN-260), Challenge (OGN-128), Carnivorous Snapvine (OGN-149): damage by Might
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-260" .hand
@@ -1161,14 +1184,43 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.mightNow j == (s5.mightNow j).map (· + 1) && b.mightNow j == s5.mightNow j &&
     b.tired j == some true
 
--- Radiant Dawn: only my units can be buffed (the opponent's unit is not offered)
+-- Radiant Dawn: friendly Units can be buffed after its controller Stuns an enemy.
 #guard t fun s => do
   let (s1, _) ← put s s.me "OGN-261" .legendZone
   let (s2, e) ← put s1 s.you "OGN-001" .base
   let (s3, f) ← put s2 s.me "OGN-136" .base
   let (s4, g) ← put s3 s.me "OGN-001" .base
-  let picks ← firePicks s4 [.stunned e]
+  let picks ← firePicks s4 [.stunnedBy e s.me]
   return picks.contains f && picks.contains g && !picks.contains e
+
+-- One Stun instruction fires Radiant Dawn once, even across both opposing seats.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, turn := 3, active := some p
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, legend) ← put s p "OGN-261" .legendZone
+  let (s, friendly) ← put s ally "OGN-001" .base
+  let (s, first) ← put s q "OGN-001" .base
+  let (s, second) ← put s r "OGN-001" .base
+  let notice (state : GameState) (actor : PlayerId) (units : List ObjId) :=
+    applyPrim state actor legend { slots := units.map Value.obj } (.stun (.slotsFrom 0))
+  let (group, both) ← notice s p [first, second]
+  let (teammate, byTeammate) ← notice s ally [first, second]
+  let (closed, repeated) ← notice group p [first, second]
+  let (once, one) ← notice s p [first]
+  let (again, two) ← notice once p [second]
+  let triggers (g : GameState) (events : List Event) :=
+    (g.detect events).filter (·.source == legend)
+  let stopped ← fire group both { pick := fun ids => ids == [friendly] }
+  return both == [.stunnedBy first p, .stunnedBy second p] &&
+    (triggers group both).length == 1 && (triggers teammate byTeammate).isEmpty &&
+    (triggers closed repeated).isEmpty && (triggers once one).length == 1 &&
+    (triggers again two).length == 1 && (stopped.obj? friendly).any (·.buffed)
 
 -- Wielder of Water (OGN-055): +2 Might only while it attacks or defends alone
 #guard t fun s => do
