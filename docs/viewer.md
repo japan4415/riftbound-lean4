@@ -127,6 +127,8 @@ Basic Rune は `kind` を `runeExhaust` または `runeRecycle` として、使�
 
 起動型能力は `observedAbilityUse` の `activation` に `seat`、`kind`（`activated` または `add`）、`source`、能力の番号 `ability`、宣言順の `targets` を指定できる。カードはプレイの入力と同じ形式で表す。`inspect` の `answerByCode` には、支払い、捨て札、コストで使う物体、対象の席など、その候補から記録できる項目も出る。推定した場合は `inferredAbilityUse` の `activation` と `evidence` に記録する。
 
+誘発型能力は `observedTriggerUse` の `trigger` に、席 `seat`、宣言の段階 `stage`（`prepare`、`finalize`、`decline`）、誘発元のカードコード `source`、宣言順の対象 `targets` を記録できる。誘発元がすでに場を離れていても、そのコードを `source` に指定できる。分かる場合は能力番号 `ability`、誘発のきっかけになったカード `subject`、宣言した `mode`、`playerTarget`、`costObjects` も指定できる。`inspect` の `answerByCode` に入力例が出る。複数の合法な宣言が一致すれば `exact: false` になる。推定した宣言は `inferredTriggerUse` の `trigger` と `evidence` に記録する。
+
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 
 Sealed や Draft のサイドボードを照合する場合は、`limitedPools` に各席が受け取ったカードの ID を、同じカードの枚数も含めて登録する。ゲームごとに選んだデッキを `games[].decks.limited.decks` に記録する。Basic Rune はプール外から持ち込める。ブランクの Battlefield は `{"code":"TKN-LimitedBlank"}` で表す。

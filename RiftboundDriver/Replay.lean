@@ -246,6 +246,50 @@ structure ReplayAbilityUse where
   deflectPayment? : Option (List PowerBucket) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- An observable step in declaring a triggered ability. -/
+inductive ReplayTriggerStage where
+  /-- Lock the declarations before using Add abilities to prepare the payment. -/
+  | prepare
+  /-- Pay any remaining costs and put the ability on the Chain. -/
+  | finalize
+  /-- Decline to put an optional trigger on the Chain. -/
+  | decline
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A choice between death replacements while paying a trigger's cost. -/
+structure ReplayTriggerBanish where
+  /-- The card or token used as a cost. -/
+  card : ReplayCardReference
+  /-- The controller of the selected replacement. -/
+  controller : PlayerId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A triggered-ability declaration expressed without a queue index or object IDs. -/
+structure ReplayTriggerUse where
+  /-- The controller who makes the declaration. -/
+  seat : PlayerId
+  /-- Which step of declaring the ability was observed. -/
+  stage : ReplayTriggerStage
+  /-- The printed code of the ability's source, even when the source no longer exists. -/
+  source : CardId
+  /-- The ability index on that source, if observed. -/
+  ability? : Option Nat := none
+  /-- The source object and its visible status, if it still exists and is recorded. -/
+  sourceObject? : Option ReplayCardReference := none
+  /-- The object that caused the trigger, when recorded separately from its targets. -/
+  subject? : Option ReplayCardReference := none
+  /-- The object targets, in declaration order. -/
+  targets : List ReplayCardReference := []
+  /-- The selected mode, if recorded. -/
+  mode? : Option Nat := none
+  /-- The targeted player, if recorded. -/
+  playerTarget? : Option PlayerId := none
+  /-- The objects used as costs in declaration order, if recorded. -/
+  costObjects? : Option (List ReplayCardReference) := none
+  /-- The chosen Banish replacements for those costs, if recorded. -/
+  costBanishers? : Option (List ReplayTriggerBanish) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -272,6 +316,10 @@ inductive ReplayAnswer where
   | observedAbilityUse (activation : ReplayAbilityUse)
   /-- The activation was reconstructed from incomplete observations. -/
   | inferredAbilityUse (activation : ReplayAbilityUse) (evidence : String)
+  /-- The triggered ability and its declaration were observed. -/
+  | observedTriggerUse (trigger : ReplayTriggerUse)
+  /-- The triggered ability's declaration was reconstructed from incomplete observations. -/
+  | inferredTriggerUse (trigger : ReplayTriggerUse) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -313,6 +361,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     throw s!"answer {index}: a play by card code needs the current game state"
   | .observedAbilityUse _ | .inferredAbilityUse _ _ =>
     throw s!"answer {index}: an ability by card code needs the current game state"
+  | .observedTriggerUse _ | .inferredTriggerUse _ _ =>
+    throw s!"answer {index}: a triggered ability by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
@@ -514,6 +564,67 @@ private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameSt
     | throw s!"seat {activation.seat.n} has no legal ability {activation.ability} on {activation.source.card.code} with the recorded declaration"
   return (action, matching.length == 1)
 
+private def replayTriggerDeclaration (s : GameState) (action : Action) :
+    Option (PendTrigger × ReplayTriggerStage × List ObjId × TriggerPayment) := do
+  let .triggerOrder _ first rest _ _ :: _ := s.pending | none
+  let (index, stage, targets, payment) ← match action.kind with
+    | .prepareTrigger index targets payment => some (index, .prepare, targets, payment)
+    | .putTrigger index targets payment =>
+      some (index, if payment == .skip then .decline else .finalize, targets, payment)
+    | _ => none
+  let trigger ← (first :: rest)[index]?
+  return (trigger, stage, targets, payment)
+
+/-- Describe the declaration of a triggered ability by the source code and observed objects. -/
+def ReplayTriggerUse.fromAction? (s : GameState) (action : Action) : Option ReplayTriggerUse := do
+  let .player seat := action.actor | none
+  let (trigger, stage, targets, payment) ← replayTriggerDeclaration s action
+  let reference := ReplayCardReference.ofObject? s
+  let targets ← targets.mapM reference
+  let choice : ReplayTriggerUse := {
+    seat, stage, source := trigger.card, ability? := some trigger.idx
+    sourceObject? := reference trigger.source, subject? := trigger.subject.bind reference, targets }
+  match payment with
+  | .skip => return choice
+  | .pay objects mode player replacements =>
+    let costs ← objects.mapM reference
+    let banishers ← replacements.mapM fun (id, controller) => do
+      let card ← reference id
+      return ({ card, controller } : ReplayTriggerBanish)
+    return { choice with
+      mode? := mode
+      playerTarget? := player
+      costObjects? := some costs
+      costBanishers? := some banishers }
+
+private def ReplayTriggerUse.matchesPayment (choice : ReplayTriggerUse) (s : GameState) :
+    TriggerPayment → Bool
+  | .skip =>
+    choice.mode?.isNone && choice.playerTarget?.isNone &&
+      choice.costObjects?.all List.isEmpty && choice.costBanishers?.all List.isEmpty
+  | .pay objects mode player replacements =>
+    choice.mode?.all (some · == mode) && choice.playerTarget?.all (some · == player) &&
+      choice.costObjects?.all (fun declared => ReplayCardReference.matchesOrdered s declared objects) &&
+      choice.costBanishers?.all (fun declared => declared.length == replacements.length &&
+        (declared.zip replacements).all fun (banish, id, controller) =>
+          banish.controller == controller && banish.card.matches s id)
+
+private def ReplayTriggerUse.resolve (choice : ReplayTriggerUse) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player choice.seat && match replayTriggerDeclaration s action with
+    | some (trigger, stage, targets, payment) =>
+      trigger.card == choice.source && stage == choice.stage &&
+        choice.ability?.all (· == trigger.idx) &&
+        choice.sourceObject?.all (fun ref => ref.matches s trigger.source) &&
+        choice.subject?.all (fun ref => trigger.subject.any (ref.matches s)) &&
+        ReplayCardReference.matchesOrdered s choice.targets targets &&
+        choice.matchesPayment s payment
+    | none => false
+  let some action := matching.head?
+    | throw s!"seat {choice.seat.n} has no legal {repr choice.stage} declaration for the trigger from {choice.source.code}"
+  return (action, matching.length == 1)
+
 /-- Data needed to transcribe the currently pending random decision. -/
 inductive ReplayChanceDecision where
   /-- A permutation of these objects. -/
@@ -570,6 +681,8 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     (play.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolveAbility (activation : ReplayAbilityUse) :=
     (activation.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveTrigger (trigger : ReplayTriggerUse) :=
+    (trigger.resolve s).mapError (fun error => s!"answer {index}: {error}")
   match answer with
   | .observedChance outcome => resolveChance outcome
   | .inferredChance outcome evidence =>
@@ -591,6 +704,10 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
   | .inferredAbilityUse activation evidence =>
     checkInference index evidence
     return ((← resolveAbility activation).1, false)
+  | .observedTriggerUse trigger => resolveTrigger trigger
+  | .inferredTriggerUse trigger evidence =>
+    checkInference index evidence
+    return ((← resolveTrigger trigger).1, false)
   | _ =>
     return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 

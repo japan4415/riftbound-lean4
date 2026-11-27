@@ -84,6 +84,40 @@ open Riftbound RiftboundDriver
     !(resolve { selected with deflectPayment? := some [.domain .mind] }).isOk &&
     json.contains "\"deflectPayment\":[\"flexible\"]" : Option Bool).getD false
 
+-- A coded trigger preserves both the declaration before funding and the final choice.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, mother) ← put s p "VEN-094" .hand
+  let (s, ally) ← put s p "VEN-014" .base
+  let (s, _) ← putAt (s.control p s.bf0) p "VEN-014" s.bf0
+  let (s, sage) ← put (s.fund p 0) p "UNL-093" .base
+  let s := s.modObj sage (fun o => { o with exhausted := false })
+  let awaiting := { s with pending := [.discard p 1] }
+  let (offered, _) ← (step 100 awaiting ⟨.player p, .discardPick mother⟩).toOption
+  let prepare : Action := ⟨.player p, .prepareTrigger 0 [ally] (.pay [])⟩
+  let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (locked, _) ← (step 100 offered prepare).toOption
+  let (funded, _) ← (step 100 locked ⟨.player p, .triggerAdd (.ability sage 0 0 [])⟩).toOption
+  let finalize : Action := ⟨.player p, .putTrigger 0 [ally]⟩
+  let namedPrepare ← ReplayTriggerUse.fromAction? offered prepare
+  let namedDecline ← ReplayTriggerUse.fromAction? offered decline
+  let namedFinalize ← ReplayTriggerUse.fromAction? funded finalize
+  let answer (trigger : ReplayTriggerUse) := ReplayAnswer.observedTriggerUse trigger
+  let (resolved, _) ← (step 100 funded finalize).toOption
+  let undecided := { namedPrepare with targets := [{ card := cid "VEN-014" }] }
+  let decoded ← (Lean.fromJson? (Lean.toJson (answer namedFinalize)) : Except String ReplayAnswer).toOption
+  return namedPrepare.stage == .prepare && namedPrepare.source == cid "VEN-094" &&
+    namedDecline.stage == .decline && namedFinalize.stage == .finalize &&
+    ((answer namedPrepare).resolveAt offered 1).toOption == some (prepare, true) &&
+    ((answer namedDecline).resolveAt offered 1).toOption == some (decline, true) &&
+    (decoded.resolveAt funded 3).toOption == some (finalize, true) &&
+    ((answer undecided).resolveAt offered 1).toOption.any (!·.2) &&
+    !((answer { namedFinalize with source := cid "VEN-014" }).resolveAt funded 3).isOk &&
+    ((ReplayAnswer.inferredTriggerUse namedFinalize "ability seen after payment").resolveAt funded 3).toOption ==
+      some (finalize, false) &&
+    (settleChain {} 12 resolved).mightNow ally == some 4 : Option Bool).getD false
+
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=
   match demoTrace seed turns with | .ok j => j | .error e => "ERROR " ++ e
