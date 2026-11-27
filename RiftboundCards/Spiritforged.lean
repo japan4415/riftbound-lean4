@@ -987,7 +987,7 @@ def SFD_033.meta : CardDef :=
 def SFD_033 : CardDef :=
   { SFD_033.meta with
     grants := [.passive .always [.keyword .self { keyword := .tank }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-034
 /--
@@ -2018,7 +2018,7 @@ def SFD_069 : CardDef :=
     abilities := [.triggered (.onSelf .conquer)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-070
 /--
@@ -3650,7 +3650,7 @@ def SFD_124 : CardDef :=
         (.of []
         (.seqOf [.prim (.discard .you (.const 1)),
           .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-125
 /--
@@ -3900,7 +3900,7 @@ def SFD_133.meta : CardDef :=
 def SFD_133 : CardDef :=
   { SFD_133.meta with
     grants := [.passive .always [.keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-134
 /--
@@ -3932,7 +3932,7 @@ def SFD_134 : CardDef :=
     grants := [.triggered (.onSelf .conquer)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-135
 /--

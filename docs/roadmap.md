@@ -2369,6 +2369,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Simian Ancestor は自身を支配する席が Buff したときに誘発する。Mistfall は自身を支配する席が味方の Unit を Buff したとき、Body の Power を払い Gear を Exhaust する選択を誘発の確定時に出す。リプレイでは Buff を行った席も照合できる。2枚を `full` とし、全1,103枚中694枚を実装済みとした。[公式総合ルール 412.4、702.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Spiritforged の装備と Conquer
+
+- Doran's Shield を装備した Unit は最初に戦闘ダメージを割り当てられる。Boots of Swiftness は Battlefield 間の通常移動を許し、移動後に Unit は Exhaust する。Plundering Poro と Cull は装備先や自身の Conquer で Exhaust 済みの Gold を出し、Doran's Ring は捨て札の回答後に引く。5枚を `full` とし、全1,103枚中699枚を実装済みとした。
+- Hexdrinker は付いている間だけ Deflect を与え、敵の Spell の支払いに Power を一つ加える。複数ドメインの Power がある場合、エンジンが消費するドメインを固定順で選ぶ。支払い元を選べるようにするまで `drafted` とする。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

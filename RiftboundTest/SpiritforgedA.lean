@@ -5146,4 +5146,97 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (a.zone (.player s.me .base)).contains weak && (cleanupStep a).isNone &&
     !(b.zone (.player s.me .base)).contains w2 && alone.dmg weak == some 9
 
+-- Doran's Shield gives Tank only while attached, changing the first legal damage assignment.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, host) ← putAt (s.control p field) p "OGN-136" field
+  let (s, other) ← putAt s p "OGN-136" field
+  let (s, card) ← put s p "SFD-033" .hand
+  let played ← play s p card
+  let gear ← played.firstOf p .base "SFD-033"
+  let equipped ← activate played p gear 0 [host] ⟨0, [.calm]⟩
+  let detached := (detachObj equipped gear).1
+  let pick (unit : ObjId) : Action := ⟨.player q, .assignPick unit⟩
+  return !played.hasKw host .tank && equipped.mightNow host == (played.mightNow host).map (· + 1) &&
+    equipped.hasKw host .tank && legalAssigns equipped field q [] == [pick host] &&
+    legalAssigns equipped field q [host] == [pick other] &&
+    (legalAssigns detached field q []).contains (pick other) &&
+    (activate played p gear 0 [host] ⟨0, [.body]⟩).isNone
+
+-- Hexdrinker taxes a Spell targeting its bearer, while the same friendly target needs no Power.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, rival) ← put s q "OGN-136" .base
+  let (s, gear) ← put s q "SFD-102" .base
+  let (s, threat) ← put s p "OGN-058" .hand
+  let (s, protection) ← put s q "OGN-058" .hand
+  let priority (board : GameState) (seat : PlayerId) :=
+    { board with active := some seat, pending := [.priority seat] }
+  let equipped ← activate (priority s q) q gear 0 [rival] ⟨0, [.body]⟩
+  let bare := (priority equipped p).fund p 2
+  let friendly := (priority equipped q).fund q 2
+  let opposed ← cast (bare.fund p 2 (fury := 1)) p threat ⟨2, []⟩ [rival]
+  let accepted ← cast friendly q protection ⟨2, []⟩ [rival]
+  return equipped.deflectOf rival == 1 &&
+    (cast bare p threat ⟨2, []⟩ [rival]).isNone && (opposed.poolOf p).fury == 0 &&
+    opposed.mightNow rival == (equipped.mightNow rival).map (· + 2) &&
+    accepted.mightNow rival == (equipped.mightNow rival).map (· + 2) &&
+    (detachObj equipped gear).1.deflectOf rival == 0
+
+-- Boots grant movement between Battlefields to their bearer and still apply normal exhaustion.
+#guard tsf fun s => do
+  let p := s.me
+  let origin := s.bf0
+  let (s, dest) ← putBf s s.you "OGN-276"
+  let (s, unit) ← putAt (s.control p origin) p "OGN-136" origin
+  let (s, gear) ← put s p "SFD-133" .base
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let moved := Action.mk (.player p) (.standardMove unit (.battlefield dest))
+  let (next, _) ← (step 100 equipped moved).toOption
+  return !(step 100 s moved).isOk && !(step 100 (detachObj equipped gear).1 moved).isOk &&
+    (next.obj? unit).any (fun o => o.loc == some dest && o.exhausted) &&
+    (next.obj? gear).any (·.attached == some unit)
+
+-- Plundering Poro and Cull each give one exhausted Gold for Conquer at their own Battlefield.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, other) ← putBf s s.you "OGN-276"
+  let (s, unit) ← putAt (s.control p field) p "SFD-069" field
+  let (s, _) ← put s p "SFD-069" .base
+  let (s, gear) ← put s p "SFD-134" .base
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let alone ← fire s [.scored p field true]
+  let ordered := insertTriggers (equipped.detect [.scored p field true]) []
+  let (together, _) ← (advance 100 { equipped with pending := ordered } []).toOption
+  let resolved := settleChain {} 12 together
+  let hold ← fire equipped [.scored p field false]
+  let away ← fire equipped [.scored p other true]
+  let gold := (resolved.zone (.player p .base)).filter (fun id => (resolved.cardDef? id).any (·.name == "Gold"))
+  return alone.countNamed p .base "Gold" == 1 && gold.length == 2 &&
+    gold.all (fun id => resolved.tired id == some true) &&
+    hold.countNamed p .base "Gold" == 0 && away.countNamed p .base "Gold" == 0
+
+-- Doran's Ring waits for an actual discard before drawing during its Conquer trigger.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, unit) ← putAt (s.control p field) p "OGN-136" field
+  let (s, gear) ← put s p "SFD-124" .base
+  let (s, discard) ← put s p "SFD-087" .hand
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let events := [Event.scored p field true]
+  let ordered := insertTriggers (equipped.detect events) []
+  let (queued, _) ← (advance 100 { equipped with pending := ordered } []).toOption
+  let waiting := settleChain {} 2 queued
+  let answer := Action.mk (.player p) (.discardPick discard)
+  let (resolved, _) ← (step 100 waiting answer).toOption
+  return waiting.deckN p == equipped.deckN p && (legalFrameActions waiting).contains answer &&
+    resolved.deckN p + 1 == waiting.deckN p && resolved.handN p == waiting.handN p &&
+    resolved.countIn p .trash "SFD-087" == 1 &&
+    ((detachObj equipped gear).1.detect events).isEmpty
+
 end RiftboundTest
