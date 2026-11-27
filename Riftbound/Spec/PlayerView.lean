@@ -204,13 +204,16 @@ theorem handView_length (faces : List (Option CardId)) :
     List.length_replicate]
   exact Nat.add_sub_of_le (List.length_filterMap_le _ _)
 
+/-- Every face already appears in its owner's hand view, regardless of pending disclosures. -/
+theorem GameState.zoneView_ownHand_faces (s : GameState) (p : PlayerId) :
+    s.zoneView p (.player p .hand) =
+      some (handView ((s.zone (.player p .hand)).map (fun id => (s.obj? id).bind (·.kind.cardId?)))) := by
+  simp [GameState.zoneView, GameState.resolutionZoneCardFaces_ownHand]
+
 /-- The acting seat's hand view has one position for each card. -/
 theorem GameState.zoneView_ownHand_length (s : GameState) (p : PlayerId) :
     (s.zoneView p (.player p .hand)).map List.length = some (s.zone (.player p .hand)).length := by
-  have length := s.resolutionZoneCardFaces_ownHand_length p
-  cases faces : s.resolutionZoneCardFaces p (.player p .hand) with
-  | none => simp [faces] at length
-  | some visible => simpa [GameState.zoneView, faces, handView_length] using length
+  simp [s.zoneView_ownHand_faces p, handView_length]
 
 end Riftbound
 

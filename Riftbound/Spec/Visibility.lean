@@ -148,19 +148,45 @@ theorem GameState.resolutionZoneCardFaces_of_disjoint (s : GameState) (viewer : 
           simp [hidden id (List.of_mem_zip member).1]
         _ = faces := List.map_snd_zip (Nat.le_of_eq (s.zoneCardFaces_length h))
 
+private theorem ownHandFacesWithDisclosure (ids shown : List ObjId) (face : ObjId → Option CardId) :
+    (ids.zip (ids.map face)).map (fun (id, known) =>
+      if shown.contains id then face id else known) = ids.map face := by
+  induction ids with
+  | nil => rfl
+  | cons id rest ih => simp only [List.map_cons, List.zip_cons_cons, ite_self, ih]
+
+/-- Existing access to every face in a seat's own hand subsumes temporary disclosures. -/
+theorem GameState.resolutionZoneCardFaces_ownHand (s : GameState) (p : PlayerId) :
+    s.resolutionZoneCardFaces p (.player p .hand) =
+      some ((s.zone (.player p .hand)).map (fun id => (s.obj? id).bind (·.kind.cardId?))) := by
+  unfold GameState.resolutionZoneCardFaces
+  dsimp only
+  split <;> simp only [GameState.zoneCardFaces, beq_self_eq_true, ite_true, Option.map_some]
+  exact congrArg some (ownHandFacesWithDisclosure _ _ (fun id => (s.obj? id).bind (·.kind.cardId?)))
+
 /-- Disclosures preserve the number of slots in the viewing player's hand. -/
 theorem GameState.resolutionZoneCardFaces_ownHand_length (s : GameState) (p : PlayerId) :
     (s.resolutionZoneCardFaces p (.player p .hand)).map List.length =
       some (s.zone (.player p .hand)).length := by
-  unfold GameState.resolutionZoneCardFaces
-  dsimp only
-  split <;> simp [GameState.zoneCardFaces]
+  simp [s.resolutionZoneCardFaces_ownHand p]
 
 /-- Only the predicting player sees the faces from the Predict decision (CR 437.1). -/
 theorem Frame.disclosedFaces_predict_other {viewer p : PlayerId} (h : viewer ≠ p)
     (deck : List ObjId) (n : Nat) (first : ObjId) (more top bottom : List ObjId) :
     (Frame.predict p n first more top bottom).disclosedFaces viewer deck = [] := by
   simp [Frame.disclosedFaces, h]
+
+/-- The seat making a Predict choice see the face of every remaining candidate (CR 437.1). -/
+theorem GameState.mem_resolutionDisclosedFaces_predict {s : GameState} {p : PlayerId}
+    {count : Nat} {first candidate : ObjId} {more top bottom : List ObjId} {tail : List Frame}
+    (pending : s.pending = .predict p count first more top bottom :: tail)
+    (member : candidate ∈ first :: more) : candidate ∈ s.resolutionDisclosedFaces p := by
+  simp only [GameState.resolutionDisclosedFaces, pending, List.flatMap_cons, Frame.disclosedFaces,
+    beq_self_eq_true, ite_true]
+  rcases List.mem_cons.mp member with equal | later
+  · simp [equal]
+  · have inPeek := List.mem_append_left bottom (List.mem_append_left top later)
+    exact List.mem_append_left _ (List.mem_cons_of_mem _ inPeek)
 
 /-- The same privacy applies to the cards awaiting the random order of recycling (CR 417.5). -/
 theorem Frame.disclosedFaces_chancePredict_other {viewer p : PlayerId} (h : viewer ≠ p)

@@ -3,7 +3,7 @@ module
 public import Riftbound.Engine.Step
 public import Riftbound.Spec.PlayerView
 
-/-! # Privacy of hand-only decisions (I10) -/
+/-! # Privacy of hand and Predict decisions (I10) -/
 
 @[expose] public section
 
@@ -70,6 +70,85 @@ theorem legalFrameActions_discard_view_length {s t : GameState} {p : PlayerId} {
     simp [← List.length_eq_zero_iff, size]
   by_cases picks : t.zone (.player p .hand) = [] ∨ count = 0 <;>
     simp [legalFrameActions, hs, ht, empty, picks, size]
+
+/-- The legal hand picks expressed as visible cards, retaining duplicate copies. A final
+`none` marks an available finish answer. Unrelated actions have no hand-choice view. -/
+def GameState.handActionView (s : GameState) (actions : List Action) : List (Option ViewCard) :=
+  let faces := actions.filterMap (fun action =>
+    match action.kind with
+    | .mulliganPick id | .discardPick id => some ((s.obj? id).bind (·.kind.cardId?))
+    | _ => none)
+  let finishes := actions.countP (fun action =>
+    match action.kind with
+    | .mulliganDone | .discardDone => true
+    | _ => false)
+  (handView faces).map some ++ List.replicate finishes none
+
+/-- At the same mulligan pick count, equal views yield equal choices by visible card,
+including equal numbers of each duplicate and whether the player can finish. -/
+theorem legalFrameActions_mulligan_view {s t : GameState} {p : PlayerId} {count : Nat}
+    {tailS tailT : List Frame}
+    (hs : s.pending = .mulligan p count :: tailS) (ht : t.pending = .mulligan p count :: tailT)
+    (view : s.zoneView p (.player p .hand) = t.zoneView p (.player p .hand)) :
+    s.handActionView (legalFrameActions s) = t.handActionView (legalFrameActions t) := by
+  have faces := Option.some.inj (by
+    simpa only [GameState.zoneView_ownHand_faces] using view)
+  by_cases picks : count < 2
+  · simpa [legalFrameActions, hs, ht, picks, GameState.handActionView, List.filterMap_map,
+      Function.comp_def] using congrArg (List.map some) faces
+  · simp [legalFrameActions, hs, ht, picks, GameState.handActionView]
+
+/-- At the same discard count, equal views yield equal choices by visible card or the
+same mandatory finish when there is nothing to discard. -/
+theorem legalFrameActions_discard_view {s t : GameState} {p : PlayerId} {count : Nat}
+    {tailS tailT : List Frame}
+    (hs : s.pending = .discard p count :: tailS) (ht : t.pending = .discard p count :: tailT)
+    (view : s.zoneView p (.player p .hand) = t.zoneView p (.player p .hand)) :
+    s.handActionView (legalFrameActions s) = t.handActionView (legalFrameActions t) := by
+  have faces := Option.some.inj (by
+    simpa only [GameState.zoneView_ownHand_faces] using view)
+  have size := sameOwnHandSize view
+  have empty : s.zone (.player p .hand) = [] ↔ t.zone (.player p .hand) = [] := by
+    simp [← List.length_eq_zero_iff, size]
+  by_cases picks : t.zone (.player p .hand) = [] ∨ count = 0
+  · simp [legalFrameActions, hs, ht, empty, picks, GameState.handActionView]
+  · simpa [legalFrameActions, hs, ht, empty, picks, GameState.handActionView, List.filterMap_map,
+      Function.comp_def] using congrArg (List.map some) faces
+
+/-- Translate a Predict answer when the remaining candidates have different engine identifiers. -/
+def Action.renamePredictPick (rename : ObjId → ObjId) (action : Action) : Action :=
+  match action.kind with
+  | .predictPick id recycle => { action with kind := .predictPick (rename id) recycle }
+  | _ => action
+
+/-- Predict offers top and recycle answers for the same candidates after renaming. Other
+cards in the deck, and the orders in the earlier picks, do not enter this decision. -/
+theorem legalFrameActions_predict_rename {s t : GameState} {p : PlayerId}
+    {nS nT : Nat} {firstS firstT : ObjId} {moreS moreT topS topT bottomS bottomT : List ObjId}
+    {tailS tailT : List Frame} (rename : ObjId → ObjId)
+    (hs : s.pending = .predict p nS firstS moreS topS bottomS :: tailS)
+    (ht : t.pending = .predict p nT firstT moreT topT bottomT :: tailT)
+    (candidates : (firstT :: moreT).Perm ((firstS :: moreS).map rename)) :
+    (legalFrameActions t).Perm ((legalFrameActions s).map (Action.renamePredictPick rename)) := by
+  let picks (id : ObjId) := [Action.mk (.player p) (.predictPick id false),
+    Action.mk (.player p) (.predictPick id true)]
+  simpa [legalFrameActions, hs, ht, List.flatMap_map, List.map_flatMap, Function.comp_def,
+    picks, Action.renamePredictPick] using candidates.flatMap_right picks
+
+/-- The acting player receives no Predict answers referring to an undisclosed candidate. -/
+theorem legalFrameActions_predict_disclosed {s : GameState} {p : PlayerId} {count : Nat}
+    {first : ObjId} {more top bottom : List ObjId} {tail : List Frame} {answer : Action}
+    (pending : s.pending = .predict p count first more top bottom :: tail)
+    (legal : answer ∈ legalFrameActions s) :
+    ∃ id recycle, answer = ⟨.player p, .predictPick id recycle⟩ ∧
+      id ∈ s.resolutionDisclosedFaces p := by
+  rw [legalFrameActions, pending] at legal
+  obtain ⟨id, candidate, chosen⟩ := List.mem_flatMap.mp legal
+  have disclosed := s.mem_resolutionDisclosedFaces_predict pending candidate
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at chosen
+  rcases chosen with first | second
+  · exact ⟨id, false, first, disclosed⟩
+  · exact ⟨id, true, second, disclosed⟩
 
 end Riftbound
 
