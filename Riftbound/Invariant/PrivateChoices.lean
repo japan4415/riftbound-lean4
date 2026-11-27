@@ -533,6 +533,41 @@ theorem legalFrameActions_groupMove_rename {s t : GameState} {p : PlayerId}
       Action.renameOfferedChoice] using
         (remaining.cons (Action.mk (.player p) (.decide true))).cons (Action.mk (.player p) (.decide false))
 
+/-- Rename the publicly visible Rune referenced by one of its abilities. -/
+def Action.renameRuneChoice (rename : ObjId → ObjId) (a : Action) : Action :=
+  match a.kind with
+  | .runeAbility id ability => { a with kind := .runeAbility (rename id) ability }
+  | _ => a
+
+private def visibleRuneUsable (p : PlayerId) (ability : RuneAbility) : ViewCard → Bool
+  | .board _ details =>
+    details.owner == p && details.rune.isSome && (ability == .recycle || !details.exhausted)
+  | _ => false
+
+private theorem visibleRuneUsable_eq (s : GameState) (p : PlayerId) (id : ObjId)
+    (face : CardId) (ability : RuneAbility) :
+    visibleRuneUsable p ability (viewObject s (.player p .base) id (some face)) =
+      runeUsable s p id ability := by
+  cases obj : s.obj? id <;> simp [viewObject, runeUsable, obj, visibleRuneUsable, boardDetails]
+
+/-- Basic Rune choices depend on the public Base and its visible Rune attributes. Translating
+the Base's object identifiers translates the listed actions independently of other zones. -/
+theorem legalRunes_publicBase_rename {s t : GameState} {p : PlayerId} (rename : ObjId → ObjId)
+    (base : t.zone (.player p .base) = (s.zone (.player p .base)).map rename)
+    (visible : ∀ id ∈ s.zone (.player p .base), ∃ face,
+      viewObject t (.player p .base) (rename id) (some face) =
+        viewObject s (.player p .base) id (some face)) :
+    legalRunes t p = (legalRunes s p).map (Action.renameRuneChoice rename) := by
+  simp only [legalRunes, base, List.flatMap_map, List.map_flatMap]
+  simp only [List.flatMap_def]
+  apply congrArg List.flatten
+  apply List.map_congr_left
+  intro id present
+  obtain ⟨face, same⟩ := visible id present
+  have usable (ability : RuneAbility) : runeUsable t p (rename id) ability = runeUsable s p id ability := by
+    rw [← visibleRuneUsable_eq t p (rename id) face, ← visibleRuneUsable_eq s p id face, same]
+  simp [usable, List.map_map, Function.comp_def, Action.renameRuneChoice]
+
 end Riftbound
 
 end

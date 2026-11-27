@@ -326,6 +326,26 @@ theorem detectExactForcedLoop_sound {fuel : Nat} {current : GameState}
       some current :=
   isExactForcedLoop_repeats (findExactForcedLoop_sound found) rounds
 
+/-- Ordinary priority cannot be part of a forced loop while a Basic Rune can be used. -/
+theorem forcedAnswer_priority_none_of_rune {s : GameState} {p : PlayerId} {rune : ObjId}
+    {ability : RuneAbility} {rest : List Frame} (pending : s.pending = .priority p :: rest)
+    (board : rune ∈ s.zone (.player p .base)) (usable : runeUsable s p rune ability = true) :
+    forcedAnswer s = none := by
+  let use : Action := ⟨.player p, .runeAbility rune ability⟩
+  have offered : use ∈ legalRunes s p := by
+    apply List.mem_flatMap.mpr
+    refine ⟨rune, board, List.mem_map.mpr ⟨ability, ?_, rfl⟩⟩
+    apply List.mem_filter.mpr
+    exact ⟨by cases ability <;> simp, usable⟩
+  cases step : forcedAnswer s with
+  | none => rfl
+  | some answer =>
+    obtain ⟨_, _, _, unique⟩ := forcedAnswer_eq_some_iff.mp step
+    have pass := unique ⟨.player p, .pass⟩ (by simp [legalFrameActions, pending])
+    have rune := unique use (by simp [legalFrameActions, pending, offered])
+    have distinct : (⟨.player p, .pass⟩ : Action) ≠ use := by simp [use]
+    exact (distinct (pass.trans rune.symm)).elim
+
 end Riftbound
 
 end
