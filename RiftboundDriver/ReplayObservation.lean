@@ -125,6 +125,16 @@ private def ReplayPublicEvent.covers (actual expected : ReplayPublicEvent) : Boo
   | .playedCardCode p _, .playedCard q | .playedTokenCode p _, .playedToken q => p == q
   | _, _ => actual == expected
 
+/-- The seat with open priority, Chain priority or Focus at a visible Battlefield. -/
+inductive ReplayPriority where
+  /-- The turn player at neutral priority. -/
+  | neutral (seat : PlayerId)
+  /-- The seat that can respond to the top of the Chain. -/
+  | chain (seat : PlayerId) (passes : Option Nat := none)
+  /-- The seat with Focus during the Showdown. -/
+  | showdown (seat owner : PlayerId) (field : CardId) (passes : Option Nat := none)
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- Card faces recorded in a single reveal or private look during an answer. -/
 structure ReplayObservedDisclosure where
   /-- None for a public reveal, or the one seat that looked privately. -/
@@ -141,6 +151,8 @@ inductive ReplayObservationFact where
   | phase (phase : Phase)
   /-- The active seat, or none during setup. -/
   | active (seat : Option PlayerId)
+  /-- The visible priority or Showdown Focus and, when known, the consecutive passes. -/
+  | priority (window : ReplayPriority)
   /-- The points shown for a seat, including its shared score in team games. -/
   | score (seat : PlayerId) (points : Nat)
   /-- The publicly visible unspent XP of a seat. -/
@@ -257,6 +269,28 @@ private def observeBattlefield (s : GameState) (owner : PlayerId) (field : CardI
   let [id] := ids | throw s!"Battlefield {field.code} from seat {owner.n} must identify one active Battlefield"
   return id
 
+private def checkPriority (s : GameState) (expected : ReplayPriority) : Except String Unit := do
+  let checkPasses (count : Option Nat) (actual : Nat) :=
+    count.forM (fun passes => checkFactValue "consecutive passes" passes actual)
+  match expected, s.pending with
+  | .neutral seat, .priority actual :: _ =>
+    observeSeat s seat
+    checkFactValue "neutral priority seat" seat actual
+  | .chain seat passes, .chainPass actual actualPasses :: _ =>
+    observeSeat s seat
+    checkFactValue "Chain priority seat" seat actual
+    checkPasses passes actualPasses
+  | .showdown seat owner field passes, .showdown actualField actual actualPasses :: _ =>
+    observeSeat s seat
+    let battlefield ← observeBattlefield s owner field
+    unless actualField == battlefield do
+      throw s!"Showdown: expected Battlefield {field.code} from seat {owner.n}"
+    checkFactValue "Showdown Focus seat" seat actual
+    checkPasses passes actualPasses
+  | .neutral _, _ => throw "neutral priority is not open"
+  | .chain .., _ => throw "Chain priority is not open"
+  | .showdown .., _ => throw "Showdown Focus is not open"
+
 private def observeUnitsAt (s : GameState) (controller : PlayerId) (place : ReplayUnitPlace) :
     Except String (String × List ObjId) := do
   observeSeat s controller
@@ -296,6 +330,7 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
   | .turn number => checkFactValue "turn" number s.turn
   | .phase expectedPhase => checkFactValue "phase" expectedPhase s.phase
   | .active seat => checkFactValue "active seat" seat s.active
+  | .priority expected => checkPriority s expected
   | .score seat points =>
     observeSeat s seat
     checkFactValue s!"seat {seat.n} score" points (s.pointsOf seat)

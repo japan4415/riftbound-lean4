@@ -150,6 +150,8 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 `disclosuresInOrder` には、同じ手の途中で公開・閲覧されたカードを順番に指定する。各項目の `onlyFor` は全員への公開なら `null`、特定の席だけの閲覧なら `{"n": 0}` のように席番号を指定する。`cards` は確認できたカードコードを記録し、同じカードが複数枚見えた場合は見えた枚数分を並べる。公開した札がその手のうちに別のゾーンへ移っても照合できる。
 
+`priority` には、映像で確認した通常の優先権（`neutral`）、Chain の優先権（`chain`）、Showdown の Focus（`showdown`）と、その席（`seat`）を指定できる。Showdown では Battlefield の所有者（`owner`）とカードコード（`field`）も指定する。連続 Pass 数は `passes` に指定し、分からない場合は `null` を使う。
+
 手番号を範囲でしか特定できない場合は、最初の候補を `checkpoint`、最後の候補を `through` に入れる。両端を含む範囲で、同じチェックポイントですべての `facts` が一致すれば照合が通る。再生が途中の場合、範囲内でまだ一致していない観測は `inspect` の `pendingObservations` に残る。`exactPrefix` は手と初期順序の確かさを示す。
 
 ```json

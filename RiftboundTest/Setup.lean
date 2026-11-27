@@ -111,12 +111,20 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
   let (s, _) ← add s q spell .chain
   let (s, _) ← addObject s (abilityItem source 0 ⟨900⟩ p []) .chain
   let state := s.modObj facedown (fun o => { o with hiddenAt := some field })
+  let chain := { state with pending := [.chainPass q 1] }
+  let showdown := { state with pending := [.showdown field p 0] }
+  let neutral := { state with pending := [.priority p] }
   let ordered : List ReplayChainItem := [.ability p source, .spell q spell]
   let check (state : GameState) (facts : List ReplayObservationFact) :=
     (ReplayObservation.checkAt [{ checkpoint := 7, source? := some "broadcast", facts }] 7 state).isOk
   return check state [.chainOrder ordered, .hiddenAt p q battle 1, .hiddenAt q q battle 0] &&
     !(check state [.chainOrder ordered.reverse]) && !(check state [.hiddenAt p q battle 0]) &&
-    !(check state [.hiddenAt p p battle 1]) &&
+    check chain [.priority (.chain q), .priority (.chain q (some 1))] &&
+    !(check chain [.priority (.chain p)]) && !(check chain [.priority (.chain q (some 2))]) &&
+    check showdown [.priority (.showdown p q battle (some 0))] &&
+    !(check showdown [.priority (.showdown p p battle)]) &&
+    !(check showdown [.priority (.chain p)]) && check neutral [.priority (.neutral p)] &&
+    !(check state [.priority (.neutral p)]) && !(check state [.hiddenAt p p battle 1]) &&
     !(check (state.modObj facedown (fun o => { o with hiddenAt := none })) [.hiddenAt p q battle 1])
   : Option Bool).getD false
 
