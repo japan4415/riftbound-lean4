@@ -2225,19 +2225,51 @@ theorem clearDeathOrder_safe (s : GameState) (group : List ObjId) : Safe s (clea
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
+/-- Record whether each primary victim was alone immediately before a simultaneous group. Kills
+paid inside a selected replacement retain their own observation point. -/
+def deathGroupCompanyNotes (before after : GameState) (group : List ObjId) (events : List Event) :
+    List TurnFx :=
+  if group.length < 2 then after.turnFx else
+  events.foldl (fun notes event => match event with
+    | .moved old dead _ =>
+      if !group.contains old || !(before.cardDef? old).any (·.hasType .unit) then notes else
+      let controller := events.findSome? (fun
+        | .died id player => if id == dead then some player else none
+        | _ => none)
+      match controller with
+      | none => notes
+      | some who =>
+        let applies := fun note => note.appliesTo after.turn dead .diedAlone
+        let alone := before.unitIsAloneAt old
+        if alone == notes.any applies then notes
+        else if alone then
+          notes ++ [{
+            who, turn := after.turn, stamp := after.nextTimestamp
+            kind := .diedAlone, target := some dead }]
+        else notes.filter (fun note => !applies note)
+    | _ => notes) after.turnFx
+
 /-- Apply all of the chosen replacements and deaths in one group. -/
 def resolveDeathGroupWith (s : GameState) (group : List ObjId)
     (g : GameState → ObjId → GameState × List Event) : GameState × List Event :=
   let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
     none []).1
   let r := applyEach (applyGroupDeath group g) s entries
-  (clearDeathOrder r.1 group, r.2)
+  let corrected := { r.1 with turnFx := deathGroupCompanyNotes s r.1 group r.2 }
+  (clearDeathOrder corrected group, r.2)
 
 theorem resolveDeathGroupWith_safe (s : GameState) (group : List ObjId)
     {g : GameState → ObjId → GameState × List Event}
-    (h : ∀ t id, Safe t (g t id).1) : Safe s (resolveDeathGroupWith s group g).1 :=
-  (applyEach_safe (applyGroupDeath_safe group h) _ s).trans
-    (clearDeathOrder_safe _ group)
+    (h : ∀ t id, Safe t (g t id).1) : Safe s (resolveDeathGroupWith s group g).1 := by
+  let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
+    none []).1
+  let result := applyEach (applyGroupDeath group g) s entries
+  let corrected := { result.1 with turnFx := deathGroupCompanyNotes s result.1 group result.2 }
+  have notesSafe : Safe result.1 corrected :=
+    ⟨fun wf => wf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ owners => owners.congr rfl rfl, rfl⟩
+  exact (applyEach_safe (applyGroupDeath_safe group h) entries s).trans
+    (notesSafe.trans (clearDeathOrder_safe corrected group))
 
 /-- An effect of this turn prevents the next damage to the object. -/
 def GameState.shielded (s : GameState) (id : ObjId) : Bool :=

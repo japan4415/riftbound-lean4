@@ -196,8 +196,18 @@ def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
       | Ability.passive .always mods => mods.contains .banishOnDeath
       | _ => false)))
 
-/-- The note that a unit died alone (no other unit of its player was where it was), about the dead
-card. -/
+/-- The Unit has no other friendly Unit at its location. Together at a Battlefield includes a
+teammate's Units. At a Base, the other Unit must occupy the same physical Base. -/
+def GameState.unitIsAloneAt (s : GameState) (id : ObjId) : Bool :=
+  (s.cardDef? id).any (·.hasType .unit) && (s.obj? id).any (fun object =>
+    !s.inPlay.any (fun other => other != id && (s.cardDef? other).any (·.hasType .unit) &&
+      (s.obj? other).any (fun companion =>
+        s.config.mode.sameSide object.controller companion.controller &&
+          match object.loc with
+          | some field => companion.loc == some field
+          | none => s.locate other == s.locate id)))
+
+/-- The note that a Unit died with no other friendly Unit at its location. -/
 def noteAlone (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) : GameState :=
   match moved with
   | some n => noteIf alone (fun t => t.addTurnFxOn o.controller n .diedAlone) s
@@ -229,9 +239,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
           (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
           (s.banisherOf id))
         o (r.2.findSome? (fun e => match e with | .moved _ n _ => some n | _ => none))
-        ((s.cardDef? id).any (·.hasType .unit) &&
-          !(s.inPlay.any (fun u => u != id && (s.cardDef? u).any (·.hasType .unit) &&
-            (s.obj? u).any (fun x => x.controller == o.controller && x.loc == o.loc)))),
+        (s.unitIsAloneAt id),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))

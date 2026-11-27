@@ -545,7 +545,9 @@ theorem cleanupResolveDeathGroup_decreases {s : GameState} (wf : s.WF)
     exact List.mem_cons_of_mem _ m
   let afterFirst := (applyGroupDeath group cleanupResolveDeath s entry).1
   let afterAll := (applyEach (applyGroupDeath group cleanupResolveDeath) afterFirst rest).1
-  have resultBoard : result.1 = clearDeathOrder afterAll group := by
+  let batch := applyEach (applyGroupDeath group cleanupResolveDeath) s (entry :: rest)
+  let corrected := { afterAll with turnFx := deathGroupCompanyNotes s afterAll group batch.2 }
+  have resultBoard : result.1 = clearDeathOrder corrected group := by
     unfold cleanupResolveDeathGroup at resolved
     dsimp only at resolved
     split at resolved

@@ -2423,6 +2423,35 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let company ← die s3 x
   return alone.handN s.me == s1.handN s.me && company.handN s.me == s3.handN s.me + 1
 
+-- Friendly company for simultaneous spell and Cleanup deaths comes from the same starting board.
+#guard tun fun labState => do
+  let s := unleashedTeamMain labState
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, first) ← putAt (s.control p field) p "UNL-156" field
+  let (s, second) ← putAt s partner "SFD-036" field
+  let (s, isolated) ← put s enemy "UNL-156" .base
+  let (s, spell) ← put s p "UNL-180" .hand
+  let (s, _) ← put s p "OGN-001" .mainDeck
+  let (s, _) ← put s partner "OGN-001" .mainDeck
+  let (s, _) ← put s enemy "OGN-001" .mainDeck
+  let (afterSpell, events) ← applyPrim s p spell {} (.kill (Selector.all .any .anywhere [.ofType .unit]))
+  let dealt := [first, second, isolated].foldl
+    (fun st id => st.modObj id (fun o => { o with damage := 9 })) s
+  let (afterCleanup, _) ← cleanupResolveDeathGroup dealt
+  let alone (st : GameState) (owner : PlayerId) (code : String) : Option Bool := do
+    let id ← st.firstOf owner .trash code
+    return st.turnFx.any (fun note => note.appliesTo st.turn id .diedAlone)
+  let observes (st : GameState) : Bool :=
+    alone st p "UNL-156" == some false && alone st partner "SFD-036" == some false &&
+    alone st enemy "UNL-156" == some true
+  let settled ← fire afterSpell events
+  return !(s.unitIsAloneAt first) && !(s.unitIsAloneAt second) && observes afterSpell &&
+    observes afterCleanup && settled.handN p == s.handN p + 1 &&
+    settled.handN partner == s.handN partner && settled.handN enemy == s.handN enemy
+
 -- Heroic Charge (UNL-155): +1 Might to a friendly unit and stun an enemy at its location
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-155" .hand
