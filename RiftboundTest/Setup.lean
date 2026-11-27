@@ -86,6 +86,31 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
     | .error _ => false
   : Option Bool).getD false
 
+-- These public observations retain Chain order and Hidden location without requiring object IDs.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let battle := cid "B0"
+  let spell := cid "SP0"
+  let source := cid "V0"
+  let hidden := cid "V1"
+  let empty := GameState.empty cfg db
+  let add (s : GameState) (seat : PlayerId) (card : CardId) (z : Zone) :=
+    addObject s (newCard db s seat card) z
+  let (s, field) ← add empty q battle .battlefieldZone
+  let (s, facedown) ← add s p hidden (.player p .hidden)
+  let (s, _) ← add s q spell .chain
+  let (s, _) ← addObject s (abilityItem source 0 ⟨900⟩ p []) .chain
+  let state := s.modObj facedown (fun o => { o with hiddenAt := some field })
+  let ordered : List ReplayChainItem := [.ability p source, .spell q spell]
+  let check (state : GameState) (facts : List ReplayObservationFact) :=
+    (ReplayObservation.checkAt [⟨7, some "broadcast", facts⟩] 7 state).isOk
+  return check state [.chainOrder ordered, .hiddenAt p q battle 1, .hiddenAt q q battle 0] &&
+    !(check state [.chainOrder ordered.reverse]) && !(check state [.hiddenAt p q battle 0]) &&
+    !(check state [.hiddenAt p p battle 1]) &&
+    !(check (state.modObj facedown (fun o => { o with hiddenAt := none })) [.hiddenAt p q battle 1])
+  : Option Bool).getD false
+
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
 
 meta def finished (seed : Nat) : Option GameState :=

@@ -36,6 +36,14 @@ structure ReplayObservedUnitAttachments where
   attached : List CardId
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A publicly visible Chain item, without any engine object reference. -/
+inductive ReplayChainItem where
+  /-- A Spell and the seat that played it. -/
+  | spell (controller : PlayerId) (card : CardId)
+  /-- An ability and the card code of the rules text it uses. -/
+  | ability (controller : PlayerId) (source : CardId)
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- Public events that can be identified without card faces or engine object IDs. -/
 inductive ReplayPublicEvent where
   /-- The seat drew one card. -/
@@ -96,6 +104,10 @@ inductive ReplayObservationFact where
       (units : List ReplayObservedUnitAttachments)
   /-- The named seat could see these card faces in the zone at this checkpoint. -/
   | visibleZoneContains (viewer : PlayerId) (zone : Zone) (cards : List CardId)
+  /-- The publicly visible Chain, starting from its top. -/
+  | chainOrder (items : List ReplayChainItem)
+  /-- The number of facedown cards in the seat's Hidden zone at the named Battlefield. -/
+  | hiddenAt (seat owner : PlayerId) (field : CardId) (count : Nat)
   /-- These public events occurred in order during the answer that reached this checkpoint. -/
   | eventsInOrder (events : List ReplayPublicEvent)
 deriving DecidableEq, Repr, ToJson, FromJson
@@ -177,6 +189,12 @@ private def ReplayObservedUnitAttachments.sorted (group : ReplayObservedUnitAtta
     ReplayObservedUnitAttachments :=
   { group with attached := group.attached.mergeSort (fun a b => a.code ≤ b.code) }
 
+private def observeChainItem (s : GameState) (id : ObjId) : Except String ReplayChainItem := do
+  let some object := s.obj? id | throw "an item in the Chain could not be read"
+  return match object.kind with
+  | .card _ card | .token card => .spell object.controller card
+  | .chainAbility card _ _ => .ability object.controller card
+
 private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState) (events : List Event) :
     Except String Unit := do
   match fact with
@@ -221,6 +239,14 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     observeSeat s viewer
     let visible := (← observeZone s zone (some viewer)).filterMap id
     checkCardSet s!"{zoneLabel zone} faces visible to seat {viewer.n}" cards visible true
+  | .chainOrder items =>
+    checkFactValue "Chain top to bottom" items (← (s.zone .chain).mapM (observeChainItem s))
+  | .hiddenAt seat owner field expected =>
+    observeSeat s seat
+    let id ← observeBattlefield s owner field
+    let actual := (s.zone (.player seat .hidden)).countP (fun card =>
+      (s.obj? card).any (·.hiddenAt == some id))
+    checkFactValue s!"seat {seat.n} Hidden count at Battlefield {field.code} from seat {owner.n}" expected actual
   | .eventsInOrder expected =>
     let actual := events.filterMap ReplayPublicEvent.ofEngineEvent
     unless decide (expected.Sublist actual) do
