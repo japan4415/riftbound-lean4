@@ -399,7 +399,7 @@ def OGN_015 : CardDef :=
   { OGN_015.meta with
     abilities := [.passive .always
       [.keyword (Selector.all .friendly .here [.ofType .unit, .notSelf]) ⟨.assault, .amount 1⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-016
 /--
@@ -1757,7 +1757,7 @@ def OGN_065.meta : CardDef :=
 def OGN_065 : CardDef :=
   { OGN_065.meta with
     abilities := [.passive (.matches .self .buffed) [.mightPlus .self (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-066
 /--
@@ -2015,7 +2015,7 @@ def OGN_074 : CardDef :=
   { OGN_074.meta with
     abilities := [.passive .always
       [.keyword (Selector.all .friendly .here [.ofType .unit, .notSelf]) ⟨.shield, .amount 1⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-075
 /--
@@ -2433,7 +2433,7 @@ def OGN_090 : CardDef :=
   { OGN_090.meta with
     abilities := [.activated [.exhaustSelf] .normal
       (.of [.targetOf .one .any .anywhere [.ofType .unit]] (.grant (.slot 0) (.mightMinusMin .it (.const 1) 1) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-091
 /--
@@ -2510,7 +2510,7 @@ def OGN_093 : CardDef :=
   { OGN_093.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightMinusMin .it (.const 4) 1) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-094
 /--
@@ -2564,7 +2564,7 @@ def OGN_095 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.seqOf [.grant (.slot 0) (.mightMinusMin .it (.const 1) 1) .thisTurn,
         .prim (.draw .you (.const 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-096
 /--
@@ -3377,7 +3377,7 @@ def OGN_124 : CardDef :=
     abilities := [.activated [.exhaustSelf] .normal
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .exhausted]]
         (.prim (.buff (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-125
 /--
@@ -3401,7 +3401,7 @@ def OGN_125.meta : CardDef :=
 def OGN_125 : CardDef :=
   { OGN_125.meta with
     abilities := [.passive (.matches .self .buffed) [.keyword .self ⟨.ganking, .none⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-126
 /--
@@ -3756,7 +3756,7 @@ def OGN_139 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .you .anywhere [.ofType .unit, .notSelf] }
       (.of [] (.prim (.buff .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-140
 /--

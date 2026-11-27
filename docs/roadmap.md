@@ -2279,6 +2279,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Spirit Wheel と Blade Dancer は2対2でチームメイトの Unit を選んだときにも誘発する。任意の支払いと Exhaust は確定時に行い、Draw と Ready は解決時に処理する。Loyal Pup の合流も確定時に選ぶ。Ruin Runner と Cleave を含む5枚を `full` とし、全1,103枚中605枚が実装済みとなった。
 
+### Might と移動に関わる Origins のカード
+
+- Wizened Elder、Orb of Regret、Smoke Screen、Stupefy、Arena Bar、Bilgewater Bully、Cithria of Cloudfield、Taric, Protector、Captain Farron の9枚を `full` とした。Buff した Bilgewater Bully が Ready になると戦場から別の戦場へ移動できる。Taric と Captain Farron の効果は2対2で同じ戦場にいるチームメイトにも適用される。全1,103枚中614枚が実装済みとなった。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

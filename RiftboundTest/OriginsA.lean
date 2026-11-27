@@ -516,6 +516,19 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, u) ← put s s.me "OGN-125" .base
   return !s1.hasKw u .ganking && (s1.buff u).hasKw u .ganking
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s, bar) ← put s s.me "OGN-124" .base
+  let (s, bully) ← putAt s s.me "OGN-125" s.bf0
+  let s := s.modObj s.bf0 (fun field => { field with control := some s.me })
+  let dest : MoveDest := .battlefield bf1
+  let move : Action := ⟨.player s.me, .standardMove bully dest ⟨0, []⟩⟩
+  let exhausted := s.tire bully
+  let buffed ← activate exhausted s.me bar 0 [bully]
+  let ready := buffed.modObj bully (fun u => { u with exhausted := false })
+  let (moved, _) ← (step 100 ready move).toOption
+  return !(legalActions s).contains move && !(legalActions buffed).contains move &&
+    (legalActions ready).contains move && moved.hereOf bully == some bf1
 
 -- Taric (OGN-074): other friendly units here have Shield 1, not those elsewhere, not the enemy's
 #guard t fun s => do
@@ -532,6 +545,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
   let (s3, w) ← put s2 s.me "OGN-136" .base
   return s3.kwAmount v .assault == 1 && s3.kwAmount w .assault == 0 && s3.kwAmount t .assault == 0
+
+-- The continuous effects include teammates at the same Battlefield and read the Unit's position.
+#guard t fun s => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial s.cards config (List.replicate 4 goodDeck)
+  let game ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := game.me
+  let mate ← game.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let foe ← game.players.find? (fun q => !config.mode.sameSide p q)
+  let field := game.bf0
+  let (game, _) ← putAt game p "OGN-074" field
+  let (game, _) ← putAt game p "OGN-015" field
+  let (game, friendly) ← putAt game mate "OGN-136" field
+  let (game, opposing) ← putAt game foe "OGN-136" field
+  let (game, atBase) ← put game mate "OGN-136" .base
+  return game.kwAmount friendly .shield == 1 && game.kwAmount friendly .assault == 1 &&
+    game.kwAmount opposing .shield == 0 && game.kwAmount opposing .assault == 0 &&
+    game.kwAmount atBase .shield == 0 && game.kwAmount atBase .assault == 0
 
 -- the floor reads the Might the rules read: a passive bonus counts (Lee Sin gives +2 to a buffed
 -- unit here), and a unit already below the floor is not changed
