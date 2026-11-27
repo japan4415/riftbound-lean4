@@ -14,16 +14,17 @@ choosing a number for each domain without referring to the enumeration or to its
 namespace Riftbound
 
 /-- The bag uses each domain consecutively in the given order and within its stated limit. -/
-inductive PowerBagWithin : List (Domain × Nat) → List Domain → Prop where
+inductive PowerBagWithin {Source : Type} : List (Source × Nat) → List Source → Prop where
   /-- With no more domain limits there are no further choices. -/
   | empty : PowerBagWithin [] []
   /-- Choose the number used from the first domain before assigning the rest. -/
-  | extend {domain : Domain} {limit used : Nat} {caps : List (Domain × Nat)} {rest : List Domain}
+  | extend {source : Source} {limit used : Nat} {caps : List (Source × Nat)} {rest : List Source}
       (within : used ≤ limit) (remaining : PowerBagWithin caps rest) :
-      PowerBagWithin ((domain, limit) :: caps) (List.replicate used domain ++ rest)
+      PowerBagWithin ((source, limit) :: caps) (List.replicate used source ++ rest)
 
 /-- Enumeration offers all and only the canonical bags of the required size. -/
-theorem mem_powerBagsOf_iff {amount : Nat} {caps : List (Domain × Nat)} {bag : List Domain} :
+theorem mem_powerBagsOf_iff {Source : Type} {amount : Nat}
+    {caps : List (Source × Nat)} {bag : List Source} :
     bag ∈ powerBagsOf amount caps ↔ bag.length = amount ∧ PowerBagWithin caps bag := by
   induction caps generalizing amount bag with
   | nil =>
@@ -55,6 +56,16 @@ theorem mem_powerBagsOf_iff {amount : Nat} {caps : List (Domain × Nat)} {bag : 
       exact ⟨used, by omega, rest, ih.mpr ⟨by omega, remaining⟩, rfl⟩
 
 namespace RunePool
+
+/-- An explicit allocation is offered exactly when its canonical order, size, and source
+balances are valid. -/
+theorem mem_allocatedPowerPayments_iff {pool : RunePool} {amount : Nat} {sources : List PowerBucket} :
+    sources ∈ pool.allocatedPowerPayments amount ↔ sources.length = amount ∧
+      PowerBagWithin (PowerBucket.all.map (fun source => (source, pool.powerIn source))) sources ∧
+      ∀ source, sources.count source ≤ pool.powerIn source := by
+  simp only [allocatedPowerPayments, List.mem_filter, mem_powerBagsOf_iff, takeBuckets_isSome_iff,
+    and_assoc]
+
 
 private theorem totalPower_takePower {pool remaining : RunePool} {domain : Domain}
     (paid : pool.takePower domain = some remaining) : remaining.totalPower + 1 = pool.totalPower := by

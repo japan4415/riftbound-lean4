@@ -87,14 +87,19 @@ theorem Cost.mem_payments (own : List Domain) (c : Cost) (pay : RunePool.Payment
   · rintro ⟨rfl, h⟩
     exact ⟨ds, (mem_powerChoices own _ _).mpr h, rfl, rfl⟩
 
-/-- Enumerate a fixed-size bag of domains, visiting each eligible number of each domain once. -/
-def powerBagsOf : Nat → List (Domain × Nat) → List (List Domain)
+/-- Enumerate fixed-size bags of Power choices, with the given order and capacity of each source. -/
+def powerBagsOf {Source : Type} : Nat → List (Source × Nat) → List (List Source)
   | n, [] => if n == 0 then [[]] else []
-  | n, (domain, cap) :: more =>
+  | n, (source, cap) :: more =>
     let count := min cap n
     (List.range (count + 1)).reverse.flatMap (fun k =>
-      (powerBagsOf (n - k) more).map (fun powers => List.replicate k domain ++ powers))
+      (powerBagsOf (n - k) more).map (fun powers => List.replicate k source ++ powers))
 termination_by _ caps => caps.length
+
+/-- Offer the ordered allocations of the given size across the actual sources in the Pool. -/
+def RunePool.allocatedPowerPayments (pool : RunePool) (amount : Nat) : List (List PowerBucket) :=
+  (powerBagsOf amount (PowerBucket.all.map (fun source => (source, pool.powerIn source)))).filter
+    (fun sources => (pool.takeBuckets sources).isSome)
 
 /-- Flexible symbols need only one canonical order for each set of domain payments. Use the
 pool's domain limits before enumeration instead of generating all orders of all domains. -/
