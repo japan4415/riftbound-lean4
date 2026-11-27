@@ -2301,6 +2301,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Reaction などで Unit や Gear を出して Chain に応じた場合も、次の応答より前に Cleanup を行う。進行性の証明はこの Cleanup を経て決定点に戻る経路を含む。
 
+### 同じ効果で複数の Unit に与えるダメージ
+
+- Cannon Barrage と Anivia, Primal は対象の敵 Unit すべてにダメージを与え、Cleanup で撃破を処理する。2枚を `full` とし、全1,103枚中626枚が実装済みとなった。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

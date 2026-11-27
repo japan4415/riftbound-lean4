@@ -3446,8 +3446,8 @@ def OGN_127.meta : CardDef :=
 def OGN_127 : CardDef :=
   { OGN_127.meta with
     spellEffect := some (.of []
-      (.forEach (Selector.all .enemy .inCombat [.ofType .unit]) (.prim (.deal .it (.const 2))))),
-    status := .drafted }
+      (.prim (.deal (Selector.all .enemy .inCombat [.ofType .unit]) (.const 2)))),
+    status := .full }
 
 -- BEGIN GENERATED OGN-128
 /--
@@ -3991,8 +3991,8 @@ def OGN_148.meta : CardDef :=
 def OGN_148 : CardDef :=
   { OGN_148.meta with
     abilities := [.triggered (.onSelf .attack)
-      (.of [] (.forEach (Selector.all .enemy .here [.ofType .unit]) (.prim (.deal .it (.const 3))))) .unlimited],
-    status := .drafted }
+      (.of [] (.prim (.deal (Selector.all .enemy .here [.ofType .unit]) (.const 3)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-149
 /--

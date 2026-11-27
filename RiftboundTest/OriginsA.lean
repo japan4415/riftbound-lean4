@@ -1046,6 +1046,34 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (r.obj? e).map (·.damage) == some 2 && (r.obj? f).map (·.damage) == some 0 &&
     (r.obj? a).map (·.damage) == some 0 && (q.obj? e).map (·.damage) == some 0
 
+-- Cannon Barrage and Anivia each finish their damage before Cleanup can kill either enemy.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, first) ← putAt (s.control q bf) q "OGN-051" bf
+  let (s, other) ← putAt s q "OGN-051" bf
+  let resolve (initial : GameState) (amount : Nat) : Option Bool := do
+    let .chainPass incoming _ :: _ := initial.pending | none
+    let (passed, _) ← (step 100 initial ⟨.player incoming, .pass⟩).toOption
+    let .chainPass outgoing _ :: _ := passed.pending | none
+    let (after, events) ← (step 100 passed ⟨.player outgoing, .pass⟩).toOption
+    let death := events.findIdx (fun
+      | .moved before _ (.player owner .trash) => owner == q && (before == first || before == other)
+      | _ => false)
+    return after.locate first == none && after.locate other == none &&
+      death < events.length && events.idxOf (.damaged first amount) < death &&
+      events.idxOf (.damaged other amount) < death
+  let (s1, scare) ← put s p "OGN-001" .base
+  let (s1, barrage) ← put (s1.fund p 2 (body := 1)) p "OGN-127" .hand
+  let (combat, _) ← (step 100 s1 ⟨.player p, .standardMove scare (.battlefield bf)⟩).toOption
+  let (placed, _) ← (step 100 combat ⟨.player p, .playCard barrage ⟨2, [.body]⟩ []⟩).toOption
+  let batch ← resolve placed 2
+  let (s2, bird) ← put s p "OGN-148" .base
+  let (triggered, _) ← (step 100 s2 ⟨.player p, .standardMove bird (.battlefield bf)⟩).toOption
+  let attack ← resolve triggered 3
+  return batch && attack
+
 -- Kadregrin the Infernal (OGN-038): draw 1 for each of my Mighty units
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-038" .hand
