@@ -2287,6 +2287,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Unit や Gear を直接または効果でプレイするときに任意のディスカードを選んだ場合、手札を捨ててから盤面に出す。Zed, From the Shadows を手札と Void Rush の両方からプレイし、ディスカード、登場、Shadow Clone の誘発を確認する。Void Rush を `full` とし、全1,103枚中615枚が実装済みとなった。
 
+### Poro Herder の誘発条件と Iron Ballista の登場
+
+- Poro Herder は自分がコントロールする Poro を登場時に確認する。Retreat でその Poro を手札に戻しても、Chain に載った能力は解決する。Iron Ballista は登場時点で Exhaust している。Pit Crew、Ravenbloom Student、Fight or Flight、Bounty Hunter を含む6枚を `full` とし、全1,103枚中621枚が実装済みとなった。[公式総合ルール 383.2.a.1、359.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

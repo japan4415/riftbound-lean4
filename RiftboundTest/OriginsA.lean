@@ -756,12 +756,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-017" .hand
   let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let a ← play s1 s.me c
+  let (a, _) ← (step 100 (s1.rich s.me) ⟨.player s.me, .playCard c (payOf s1 c) []⟩).toOption
   let g ← a.firstOf s.me .base "OGN-017"
   let b := s3.rich s.me
   let (b1, g2) ← put b s.me "OGN-017" .base
   let x ← activate b1 s.me g2 1 [e]
-  return a.tired g == some true && (activate a s.me g 1 [e]).isNone &&
+  return a.tired g == some true && a.zone .chain == [] && a.pending == [.priority s.me] &&
     (x.obj? e).map (·.damage) == some 2 && x.tired g2 == some true &&
     (activate b1 s.me g2 1 [f]).isNone
 
@@ -840,6 +840,33 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let hb ← b.firstOf s.me .base "OGN-061"
   return (a.obj? ha).map (·.buffed) == some true && a.handN s.me == s2.handN s.me &&
     (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s1.handN s.me - 1
+
+-- The Poro is checked when Herder enters. Returning it in response leaves the ability on the Chain.
+#guard t fun s => do
+  let p := s.me
+  let (s, herder) ← put (s.fund p 4 (calm := 1)) p "OGN-061" .hand
+  let (s, poro) ← put s p "OGN-013" .base
+  let (s, retreat) ← put s p "OGN-104" .hand
+  let run (s : GameState) (kind : ActionKind) := (step 100 s ⟨.player p, kind⟩).toOption
+  let (confirmed, _) ← run s (.playCard herder ⟨3, [.calm]⟩ [])
+  let (responded, _) ← run confirmed (.playCard retreat ⟨1, []⟩ [poro])
+  let resolved := settleChain {} 12 responded
+  let played ← resolved.firstOf p .base "OGN-061"
+  return resolved.locate poro == none && resolved.countIn p .hand "OGN-013" == 1 &&
+    (resolved.obj? played).any (·.buffed) && resolved.handN p == confirmed.handN p + 1
+
+-- The Herder checks its controller's own Units in 2v2.
+#guard t fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let (s, herder) ← put (s.fund p 3 (calm := 1)) p "OGN-061" .hand
+  let (s, _) ← put s mate "OGN-013" .base
+  let (s, _) ← (step 100 s ⟨.player p, .playCard herder ⟨3, [.calm]⟩ []⟩).toOption
+  let unit ← s.firstOf p .base "OGN-061"
+  return s.pending == [.priority p] && (s.obj? unit).any (!·.buffed)
 
 -- Solari Chief (OGN-225): an enemy unit is stunned, or killed if it already is
 #guard t fun s => do

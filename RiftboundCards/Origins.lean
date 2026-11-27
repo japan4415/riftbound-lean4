@@ -450,11 +450,11 @@ def OGN_017.meta : CardDef :=
 def OGN_017 : CardDef :=
   { OGN_017.meta with
     abilities :=
-      [.triggered (.onSelf .play) (.of [] (.prim (.exhaust .self))) .unlimited,
+      [.passive .always [.entersExhausted],
        .activated [.exhaustSelf] .normal
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]] (.prim (.deal (.slot 0) (.const 2))))
         .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-018
 /--
@@ -1645,10 +1645,11 @@ def OGN_061.meta : CardDef :=
 /-- Poro Herder. -/
 def OGN_061 : CardDef :=
   { OGN_061.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.exists (Selector.all .friendly .anywhere [.ofType .unit, .tag ⟨"Poro"⟩]))
-        (.seqOf [.prim (.buff .self), .prim (.draw .you (.const 1))]) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .play
+        condition := .exists (Selector.all .you .anywhere [.ofType .unit, .tag ⟨"Poro"⟩]) }
+      (.of [] (.seqOf [.prim (.buff .self), .prim (.draw .you (.const 1))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-062
 /--
@@ -2459,7 +2460,7 @@ def OGN_091 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .you .anywhere [.ofType .gear] }
       (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-092
 /--
@@ -2773,7 +2774,7 @@ def OGN_103 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .you .anywhere [.ofType .spell] }
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-104
 /--
@@ -4563,7 +4564,7 @@ def OGN_168 : CardDef :=
   { OGN_168.meta with
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.prim (.move (.slot 0) .base))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-169
 /--
@@ -7280,7 +7281,7 @@ def OGN_267 : CardDef :=
     abilities := [.activated [.exhaustSelf] .normal
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.keyword .it ⟨.ganking, .none⟩) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-268
 /--
