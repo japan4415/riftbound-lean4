@@ -114,6 +114,16 @@ inductive ReplayCardPickKind where
   | predictRecycle
   /-- Name the next Unit to receive a Combat damage assignment. -/
   | assignDamage
+  /-- Choose one of the objects offered at a decision during play. -/
+  | chooseObject
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A recorded location used to tell two copies of an offered card apart. -/
+inductive ReplayCardLocation where
+  /-- A zone, including a particular seat's Base or hand. -/
+  | zone (zone : Zone)
+  /-- A Battlefield identified by its owner and card code. -/
+  | battlefield (owner : PlayerId) (field : CardId)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A card chosen by a recorded player, identified by its visible card code. -/
@@ -124,6 +134,8 @@ structure ReplayCardPick where
   kind : ReplayCardPickKind
   /-- The printed identity of the card selected. -/
   card : CardId
+  /-- An observed location that can distinguish otherwise identical codes. -/
+  location? : Option ReplayCardLocation := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A recorded answer, including how it was observed. -/
@@ -184,8 +196,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
 private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
   (s.obj? id).bind (·.kind.cardId?)
 
-/-- Describe a card or Unit pick in the full replay transcription. -/
-def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option ReplayCardPick := do
+private def ReplayCardPick.fromActionWithObject? (s : GameState) (action : Action) :
+    Option (ReplayCardPick × ObjId) := do
   let .player seat := action.actor | none
   let (kind, id) ← match action.kind with
     | .mulliganPick id => some (.mulligan, id)
@@ -193,14 +205,40 @@ def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option Replay
     | .predictPick id false => some (.predictTop, id)
     | .predictPick id true => some (.predictRecycle, id)
     | .assignPick id => some (.assignDamage, id)
+    | .choose id => some (.chooseObject, id)
     | _ => none
   let card ← replayCardCode s id
-  return ⟨seat, kind, card⟩
+  return ({ seat, kind, card }, id)
+
+/-- Describe a card or Unit pick in the full replay transcription. -/
+def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option ReplayCardPick :=
+  (fromActionWithObject? s action).map Prod.fst
+
+private def replayCardLocation (s : GameState) (id : ObjId) : Option ReplayCardLocation := do
+  let zone ← s.locate id
+  if zone != .battlefieldZone then return .zone zone
+  let battlefield ← s.hereOf id
+  let field ← s.obj? battlefield
+  let code ← field.kind.cardId?
+  return .battlefield field.owner code
+
+/-- Describe a pick with its observed zone or Battlefield when that location is known. -/
+def ReplayCardPick.fromActionAtLocation? (s : GameState) (action : Action) :
+    Option ReplayCardPick := do
+  let (pick, id) ← fromActionWithObject? s action
+  let location ← replayCardLocation s id
+  return { pick with location? := some location }
+
+private def ReplayCardLocation.matches (s : GameState) (id : ObjId) :
+    ReplayCardLocation → Bool
+  | .zone locationZone => s.locate id == some locationZone
+  | .battlefield owner field => replayCardLocation s id == some (.battlefield owner field)
 
 private def ReplayCardPick.resolve (choice : ReplayCardPick) (s : GameState) :
     Except String (Action × Bool) := do
   let matching := (legalFrameActions s).filter (fun action =>
-    ReplayCardPick.fromAction? s action == some choice)
+    (ReplayCardPick.fromActionWithObject? s action).any (fun (pick, id) =>
+      pick == { choice with location? := none } && choice.location?.all (·.matches s id)))
   let some action := matching.head?
     | throw s!"seat {choice.seat.n} has no legal {reprStr choice.kind} pick of {choice.card.code}"
   return (action, matching.length == 1)

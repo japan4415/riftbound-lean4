@@ -113,7 +113,9 @@ Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"
 現物まで特定できる場合は `observed` でIDを指定できる。
 `exact` は操作と2v2・War の初期手番順をどこまで特定できたかを示す。カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。`uncheckedCards` はゲームごとに、各席が登録した `full` 未満のカードを示す。
 
-マリガン、捨て札、Predict、戦闘ダメージの割り当ては `{"observedCardPick":{"choice":{"seat":{"n":0},"kind":"mulligan","card":{"code":"OGN-001"}}}}` のように、選択した席とカードのコードで記録できる。`kind` は `mulligan`、`discard`、`predictTop`、`predictRecycle`、`assignDamage` のいずれか。該当する合法手が1つならその手を適用する。同じコードのカードを複数選べる場合は列挙順の最初を採用し、`exact: false` になる。後から推定した選択は `inferredCardPick` の `choice` と `evidence` に記録する。これらの手は `inspect` の候補欄にも `answerByCode` として出る。
+マリガン、捨て札、Predict、戦闘ダメージの割り当て、効果の途中などで提示された対象の選択は `{"observedCardPick":{"choice":{"seat":{"n":0},"kind":"mulligan","card":{"code":"OGN-001"}}}}` のように、選択した席とカードのコードで記録できる。`kind` は `mulligan`、`discard`、`predictTop`、`predictRecycle`、`assignDamage`、`chooseObject` のいずれか。該当する合法手が1つならその手を適用する。同じコードのカードを複数選べる場合は列挙順の最初を採用し、`exact: false` になる。後から推定した選択は `inferredCardPick` の `choice` と `evidence` に記録する。これらの手は `inspect` の候補欄にも `answerByCode` として出る。
+
+同じコードのカードが別々の場所にある場合は、`choice` の `location` で区別できる。席1の Base は `{"zone":{"zone":{"player":{"p":{"n":1},"k":"base"}}}}`、席1の Battlefield は `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}` と指定する。場所まで含む候補は `inspect` の `answerByLocation` に出る。同じ場所にも複数の候補があれば、再生結果の `exact` は `false` になる。
 
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 

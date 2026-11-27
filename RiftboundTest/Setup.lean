@@ -62,24 +62,33 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
   let (s, _) ← add s a hand
   let (s, other) ← add s b hand
   let (s, peek) ← add s b deck
-  let (s, _) ← add s a deck
+  let (s, sameCode) ← add s a deck
   let state (frame : Frame) := { s with pending := [frame] }
+  let byCode (seat : PlayerId) (kind : ReplayCardPickKind) (card : CardId) : ReplayCardPick :=
+    { seat, kind, card }
   let check (frame : Frame) (kind : ReplayCardPickKind) (card : CardId)
       (expected : ActionKind) (exact : Bool) :=
-    match (ReplayAnswer.observedCardPick ⟨p, kind, card⟩).resolveAt (state frame) 1 with
+    match (ReplayAnswer.observedCardPick (byCode p kind card)).resolveAt (state frame) 1 with
     | .ok (action, unique) =>
       action == ⟨.player p, expected⟩ && unique == exact && decide (Legal (state frame) action)
     | .error _ => false
   let mulligan := state (.mulligan p 0)
-  let choice : ReplayCardPick := ⟨p, .mulligan, b⟩
+  let choice := byCode p .mulligan b
   let predict : Frame := .predict p 1 peek [] [] []
+  let offered := state (.pickDo p first {} first [sameCode] .nop .nil)
+  let located := { byCode p .chooseObject a with location? := some (.zone deck) }
+  let wrong := { located with location? := some (.zone (.player q .mainDeck)) }
+  let selectAt (pick : ReplayCardPick) := (ReplayAnswer.observedCardPick pick).resolveAt offered 2
   return check (.mulligan p 0) .mulligan a (.mulliganPick first) false &&
     check (.discard p 1) .discard b (.discardPick other) true &&
     check predict .predictTop b (.predictPick peek false) true &&
     check predict .predictRecycle b (.predictPick peek true) true &&
-    ((ReplayAnswer.observedCardPick ⟨q, .mulligan, b⟩).resolveAt mulligan 2).isOk == false &&
+    (selectAt located).toOption == some (⟨.player p, .choose sameCode⟩, true) &&
+    (selectAt (byCode p .chooseObject a)).toOption == some (⟨.player p, .choose first⟩, false) &&
+    !(selectAt wrong).isOk &&
+    ((ReplayAnswer.observedCardPick (byCode q .mulligan b)).resolveAt mulligan 2).isOk == false &&
     ((ReplayAnswer.observedCardPick choice).resolveAt (state (.mulligan p 2)) 2).isOk == false &&
-    ((ReplayAnswer.observedCardPick ⟨p, .predictTop, a⟩).resolveAt (state predict) 2).isOk == false &&
+    ((ReplayAnswer.observedCardPick (byCode p .predictTop a)).resolveAt (state predict) 2).isOk == false &&
     ((ReplayAnswer.inferredCardPick choice " ").resolveAt mulligan 2).isOk == false &&
     match (ReplayAnswer.inferredCardPick choice "later shown").resolveAt mulligan 2 with
     | .ok (action, exact) => action.kind == .mulliganPick other && !exact
@@ -124,7 +133,7 @@ meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.
   let (s, first) ← add s
   let (s, second) ← add s
   let decision (picked : List ObjId) := { s with pending := [.assign field p p picked []] }
-  let answer := ReplayAnswer.observedCardPick ⟨p, .assignDamage, cid "V0"⟩
+  let answer := ReplayAnswer.observedCardPick { seat := p, kind := .assignDamage, card := cid "V0" }
   let (a, exactA) ← (answer.resolveAt (decision []) 1).toOption
   let (b, exactB) ← (answer.resolveAt (decision [first]) 2).toOption
   return a == ⟨.player p, .assignPick first⟩ && !exactA &&
