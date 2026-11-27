@@ -198,7 +198,9 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 ### 3x. 通常移動、グループ移動、戦場の選択
 
-合法な通常移動とグループ移動の確定は、移動時のイベントを観測してから Cleanup を進める。Cleanup は通常の誘発を残したまま、調整や死亡処理を済ませ、誘発の判断、Showdown、通常の優先権、または試合終了まで進む。グループ移動の宣言、Unit の選択、取り消しと、複数の戦場で待つ Showdown の選択も証明した。グループ移動の確定は、移動を始めた優先権のように、後続が通常の決定か空である場合を扱う。[MovementWork.lean](../Riftbound/Invariant/MovementWork.lean)
+合法な通常移動とグループ移動の確定は、移動イベントを観測してから Cleanup を進める。調整と死亡処理を済ませ、誘発の入力、Showdown、通常の優先権、または空のスタックまで進む。グループ移動の宣言、Unit の選択、取り消し、複数の戦場で待つ Showdown の選択も、有限の fuel で実際の `step` が状態とイベント列を返すところまで示した。[MovementWork.lean](../Riftbound/Invariant/MovementWork.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
+
+通常の優先権に戻る場合は、後続のフレームに Combat の参加者を更新するものがないことを仮定する。通常の優先権一つに戻る場合はこの条件を満たす。取り消し時に盤面処理が残っていれば、優先権を返す準備で積んだ Cleanup も処理する。[ObservedCleanupWork.lean](../Riftbound/Invariant/ObservedCleanupWork.lean)
 
 `cleanupAnswerWorkSupported` は、死亡置換などの回答が積む Run と、それに続く Cleanup を検査する。検査を通る合法手は、選んだ処理を行い、Cleanup に戻って次の判断まで進む。通常の誘発が待っている場合も扱う。登録済みカード用の定理は、必要量以上の fuel で状態とイベント列が一致することを示す。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 

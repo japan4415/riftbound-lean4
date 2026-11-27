@@ -92,7 +92,8 @@ theorem advance_observed_runs_then (raw : GameState) (notices : List Event) {bod
 
 /-- Lift the observed work after a raw decision to the declared action. Surcharge
 payment preserves the card database and the pending frames. -/
-theorem advance_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
+private theorem advance_observed_frame_until {s raw : GameState} {a : Action} {notices : List Event}
+    (boundary : GameState → Prop)
     (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
     (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
     (reads : MightRead.database raw.cards)
@@ -100,9 +101,9 @@ theorem advance_observed_frame_to_decision {s raw : GameState} {a : Action} {not
       let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
       next.WF → MightRead.database next.cards → next.pending = raw.pending →
       ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
-        t.pending.head?.all (fun f => !f.isWork) = true) :
+        boundary t) :
     ∃ initial initialEvents t used events, applyDeclaredAction s a = some (initial, initialEvents) ∧
-      AdvancePrefix initial t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
+      AdvancePrefix initial t used events ∧ boundary t := by
   let next := s.paySurcharge a raw
   let events := notices ++ extraEvents a notices
   let observed := events ++ s.actionTransitionEvents next a
@@ -117,6 +118,21 @@ theorem advance_observed_frame_to_decision {s raw : GameState} {a : Action} {not
   obtain ⟨t, fuel, emitted, path, stopped⟩ :=
     run (surcharge.wf rawWF) (same ▸ reads) surcharge.pending_eq
   exact ⟨_, _, t, fuel, emitted, answer, path, stopped⟩
+
+/-- Lift the raw rule transition and its observations to the declared action. -/
+theorem advance_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
+    (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+    (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
+    (reads : MightRead.database raw.cards)
+    (run : let next := s.paySurcharge a raw
+      let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
+      next.WF → MightRead.database next.cards → next.pending = raw.pending →
+      ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
+        t.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ initial initialEvents t used events, applyDeclaredAction s a = some (initial, initialEvents) ∧
+      AdvancePrefix initial t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true :=
+  advance_observed_frame_until (fun t => t.pending.head?.all (fun f => !f.isWork) = true)
+    noCostChoice regular applied rawWF reads run
 
 /-- Lift the observed work after a raw decision to the actual legal action. Surcharge
 payment preserves the card database and the pending frames. -/
@@ -136,6 +152,30 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
   refine ⟨t, used, before ++ events, stopped, fun extra => ?_⟩
   simp only [step, ite_eq_left legal, declared]
   exact path extra before
+
+/-- A legal action succeeds with the fuel used by its observed work when the destination
+is already a prepared decision. The returned event list includes the action's own events. -/
+theorem step_observed_frame_to_preparedDecision {s raw : GameState} {a : Action} {notices : List Event}
+    (legal : Legal s a) (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+    (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
+    (reads : MightRead.database raw.cards)
+    (run : let next := s.paySurcharge a raw
+      let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
+      next.WF → MightRead.database next.cards → next.pending = raw.pending →
+      ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
+        t.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  obtain ⟨_, before, t, used, events, declared, path, ready⟩ :=
+    advance_observed_frame_until (fun t => t.preparePriority.pending.head?.all (fun f => !f.isWork) = true)
+      noCostChoice regular applied rawWF reads run
+  refine ⟨t, used, before ++ events, ready, ?_, ?_⟩
+  · intro extra
+    simp only [step, ite_eq_left legal, declared]
+    exact path extra before
+  · simp only [step, ite_eq_left legal, declared]
+    exact path.finish ready before
 
 /-- Run action observers and any ordinary trigger queue when the raw action is already
 waiting at a decision. -/

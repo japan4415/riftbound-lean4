@@ -777,47 +777,14 @@ private theorem CycleStack.ordinary {s : GameState} (triggers : List PendTrigger
     · exact ok.safe _ before
     · exact .queue _
 
-private def combatObservationFrame : Frame → Bool
-  | .showdown .. | .endShowdown .. | .combatResolve .. | .combatResult ..
-  | .combatControl .. | .combatFinish .. => true
-  | _ => false
-
 private theorem CycleStack.noCombat {stack : List Frame} (ok : CycleStack stack) :
-    ∀ f ∈ stack, combatObservationFrame f = false := by
+    ∀ f ∈ stack, Frame.observesCombat f = false := by
   intro f member
   have safe := ok.safe f member
   cases safe <;> rfl
 
-private theorem observeCombat_idle (s : GameState) (stack : List Frame)
-    (quiet : ∀ f ∈ stack, combatObservationFrame f = false) :
-    s.observeCombat stack = (s.combat, []) := by
-  unfold GameState.observeCombat
-  cases active : s.combat with
-  | some c =>
-    have none : stack.any (fun
-        | .showdown bf .. | .endShowdown bf | .combatResolve bf _ | .combatResult bf |
-          .combatControl bf | .combatFinish bf => bf == c.battlefield
-        | _ => false) = false := by
-      apply List.any_eq_false.mpr
-      intro f member
-      have silent := quiet f member
-      cases f <;> simp [combatObservationFrame] at silent ⊢
-    dsimp only
-    rw (config := { transparency := .all }) [none]
-    simp only [Bool.false_eq_true, ↓reduceIte]
-  | none =>
-    have none : stack.findSome? (fun
-      | .showdown bf p _ => some (bf, p)
-      | _ => none) = none := by
-      apply List.findSome?_eq_none_iff.mpr
-      intro f member
-      have silent := quiet f member
-      cases f <;> simp [combatObservationFrame] at silent ⊢
-    dsimp only
-    rw (config := { transparency := .all }) [none]
-
 private theorem fightingAt_idle (s : GameState) (stack : List Frame)
-    (quiet : ∀ f ∈ stack, combatObservationFrame f = false) (field : ObjId) :
+    (quiet : ∀ f ∈ stack, Frame.observesCombat f = false) (field : ObjId) :
     ({ s with pending := stack } : GameState).fightingAt field =
       s.combat.any (fun c => c.battlefield == field) := by
   have none : stack.any (fun
@@ -826,7 +793,7 @@ private theorem fightingAt_idle (s : GameState) (stack : List Frame)
     apply List.any_eq_false.mpr
     intro f member
     have silent := quiet f member
-    cases f <;> simp [combatObservationFrame] at silent ⊢
+    cases f <;> simp [Frame.observesCombat] at silent ⊢
   change (s.combat.any (fun c => c.battlefield == field) || stack.any (fun
       | .showdown bf .. | .endShowdown bf => bf == field
       | _ => false)) = s.combat.any (fun c => c.battlefield == field)
@@ -1050,10 +1017,10 @@ private theorem cleanup_cycle_routes (s : GameState) (rest : List Frame) (wf : s
             | nil => rfl
             | cons first _ =>
               have silent := suffix.noCombat first (by simp)
-              cases first <;> simp [combatObservationFrame, GameState.showdownOpeningEvents] at silent ⊢
+              cases first <;> simp [Frame.observesCombat, GameState.showdownOpeningEvents] at silent ⊢
           have idle : continueAfterCleanup s rest = ({ s with pending := rest }, []) := by
             unfold continueAfterCleanup
-            rw [observeCombat_idle s rest suffix.noCombat, noOpening]
+            rw [s.observeCombat_idle rest suffix.noCombat, noOpening]
             simp
           exact ⟨by simpa only [suffix.noPriority (s := s), idle] using suffix,
             Or.inr (Or.inr (by simp only [suffix.noPriority (s := s), idle]))⟩
