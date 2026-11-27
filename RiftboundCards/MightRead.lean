@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
 
@@ -118,6 +119,24 @@ theorem step_chainPass_last_checked {s : Riftbound.GameState} {p : Riftbound.Pla
       (t.pending.head?.all (fun f => !f.isWork) = true →
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
   Riftbound.step_chainPass_last_checked wf (mightReads_of_registered cards) ongoing pending last checked front decision
+
+/-- For registered cards, a last Chain Pass follows each supported Repeat execution using
+the definition and targets that are available when it starts. -/
+theorem step_chainPass_last_repeated {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} {item : Riftbound.ObjId}
+    {older : List Riftbound.ObjId} {object : Riftbound.Object} {definition : Riftbound.CardDef}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (chain : s.zone .chain = item :: older) (found : s.obj? item = some object)
+    (printed : s.cardDef? item = some definition) (repeated : object.spellPick.hasExecutionChoices = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ Riftbound.RepeatedSpellEnd t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
+  Riftbound.step_chainPass_last_repeated wf (mightReads_of_registered cards) ongoing pending last
+    chain found printed repeated front decision
 
 /-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
 cards, including the Battlefield entry used after a concession. -/

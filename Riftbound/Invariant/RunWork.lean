@@ -429,10 +429,10 @@ private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (eve
   · simp [noAttachments]
 
 private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {events : List Event} (outcome : applyPrim s p src env (.recycle .self) = some (t, events)) :
+    {sel : Selector} {events : List Event} (outcome : applyPrim s p src env (.recycle sel) = some (t, events)) :
     noAttachments events := by
   unfold applyPrim at outcome
-  cases selected : Selector.eval s p src env .self with
+  cases selected : Selector.eval s p src env sel with
   | none => simp [selected] at outcome
   | some ids =>
     simp only [selected, Option.map_some] at outcome
@@ -441,8 +441,9 @@ private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : Ob
     apply noAttachments.append
     · apply (recycleEach_noAttachments s ids).append
       split <;> simp [noAttachments]
-    · simp only [show (Selector.self == Selector.self) = true from rfl, ite_true]
-      exact spellCompletion_noAttachments s src _
+    · split
+      · exact spellCompletion_noAttachments s src _
+      · simp [noAttachments]
 
 private theorem attachments_empty (s : GameState) {events : List Event} (h : noAttachments events) :
     attachmentReplacementFrames s events = [] := by
@@ -452,33 +453,161 @@ private theorem attachments_empty (s : GameState) {events : List Event} (h : noA
   cases event <;> try rfl
   exact False.elim (h _ _ found)
 
-/-- A Limited Spell's recycle instruction creates no attachment-replacement work. -/
-theorem Effect.SingleRun.recycleSelf : (Effect.prim (.recycle .self)).SingleRun := by
+private theorem Effect.SingleRun.directRecycle (sel : Selector)
+    (direct : sel = .self ∨ ∃ i, sel = .slot i) : (Effect.prim (.recycle sel)).SingleRun := by
   intro s p src env more
-  simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
-    effectDamageBatch?, permanentPlayEffects]
-  have result : (match applyPrim s p src env (.recycle .self) with
-      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [Frame.run p src env more], r.2)
-      | none => (s, [Frame.run p src env more], [Event.skipped src])).2.1 = [Frame.run p src env more] := by
+  let result : GameState × List Frame × List Event :=
+    match applyPrim s p src env (.recycle sel) with
+    | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env more], r.2)
+    | none => (s, [.run p src env more], [Event.skipped src])
+  have dispatch : runEffect s p src env (.prim (.recycle sel)) more effectAddPolicy = result := by
+    rcases direct with rfl | ⟨i, rfl⟩ <;>
+      simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+        effectDamageBatch?, permanentPlayEffects] <;>
+      by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  have resumes : result.2.1 = [.run p src env more] := by
+    unfold result
     split
     · rename_i r applied
       dsimp only
       rw [attachments_empty _ (recycle_noAttachments applied), List.nil_append]
     · rfl
-  have packaged : ∃ board reported, (match applyPrim s p src env (.recycle .self) with
-      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [Frame.run p src env more], r.2)
-      | none => (s, [Frame.run p src env more], [Event.skipped src])) =
-      (board, [Frame.run p src env more], reported) :=
-    ⟨_, _, Prod.ext rfl (Prod.ext result rfl)⟩
-  by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
-    exact packaged
+  exact ⟨result.1, result.2.2, dispatch.trans (Prod.ext rfl (Prod.ext resumes rfl))⟩
+
+/-- A Limited Spell's recycle instruction creates no attachment-replacement work. -/
+theorem Effect.SingleRun.recycleSelf : (Effect.prim (.recycle .self)).SingleRun :=
+  .directRecycle .self (Or.inl rfl)
+
+/-- Recycle uses the previously chosen slot and leaves the remaining instructions. -/
+theorem Effect.SingleRun.recycleSlot (i : Nat) : (Effect.prim (.recycle (.slot i))).SingleRun :=
+  .directRecycle (.slot i) (Or.inr ⟨i, rfl⟩)
+
+private theorem retainTargetSetFrame_cases (p : PlayerId) (src : ObjId) (env : Env)
+    (groups : List (List ObjId)) (more : EffectList) :
+    (∃ newEnv, retainTargetSetFrame p src env groups more = .run p src newEnv more) ∨
+      (retainTargetSetFrame p src env groups more).isWork = false := by
+  unfold retainTargetSetFrame
+  dsimp only
+  split
+  · exact Or.inr rfl
+  · exact Or.inl ⟨_, rfl⟩
+
+/-- Target rechecking either keeps the final subset or asks which subset to keep. -/
+theorem Effect.ObservedFinite.retainTargetSet (groups : List (List ObjId)) :
+    (Effect.retainTargetSet groups).ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  let live := env.withMight s.mightTable
+  rcases retainTargetSetFrame_cases p src live groups more with ⟨retained, resumes⟩ | choice
+  · refine advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
+    change RunContinuation p src more keeps ([retainTargetSetFrame p src live groups more] ++ rest)
+    rw [resumes]
+    exact ⟨retained, rest, rfl, base⟩
+  · apply advance_run_decision wf reads pending
+    change (!(retainTargetSetFrame p src live groups more).isWork) = true
+    rw [choice]
+    rfl
+
+/-- Any instruction that rechecks a target group is finite if its unchanged body is finite. -/
+theorem EffectDef.recheckTargetGroup_observed (e : EffectDef) (s : GameState) (p : PlayerId)
+    (src : ObjId) (targets : List ObjId) {program : EffectList} (finite : program.ObservedFinite) :
+    (e.recheckTargetGroup s p src targets program).ObservedFinite := by
+  unfold EffectDef.recheckTargetGroup
+  split
+  · split <;> first
+      | exact finite
+      | exact .cons (Effect.ObservedFinite.retainTargetSet _) finite
+      | dsimp only
+        split
+        · exact finite
+        · exact .cons (Effect.ObservedFinite.retainTargetSet _) finite
+  · exact finite
+
+/-- A dispatcher instruction with a direct continuation or a choice is finite in either case. -/
+private theorem Effect.ObservedFinite.ofDecisionOrRun {effect : Effect}
+    (routes : ∀ s p src env more, let frames := (runEffect s p src env effect more effectAddPolicy).2.1
+      frames = [.run p src env more] ∨ ∃ f tail, frames = f :: tail ∧ f.isWork = false) :
+    effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  let live := env.withMight s.mightTable
+  rcases routes s p src live more with resumes | ⟨f, tail, choice, decision⟩
+  · refine advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
+    dsimp only
+    rw [resumes]
+    exact ⟨live, rest, rfl, base⟩
+  · apply advance_run_decision wf reads pending
+    dsimp only
+    rw [choice]
+    simp [decision]
+
+/-- Choosing an object either skips an unavailable choice or asks the player. -/
+theorem Effect.ObservedFinite.chooseObject (side : Side) (place : Place) (filters : FilterList)
+    (body : Effect) : (Effect.chooseObject side place filters body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofDecisionOrRun
+  intro s p src env more
+  let effect := Effect.chooseObject side place filters body
+  let selected := requiredPlayCandidates s p src env effect effectAddPolicy <|>
+    s.pickCandidates p src env side place filters (!effect.isLinkedCost)
+  let frames : List Frame := match selected with
+    | some [o] => [.pickDo p src env o [] effect.withPick more]
+    | some (o :: other :: rest) => [.pickDo p src env o (other :: rest) effect.withPick more]
+    | _ => [.run p src env more]
+  have same : (runEffect s p src env effect more effectAddPolicy).2.1 = frames := by
+    change (match selected with
+      | some [o] => (s, [Frame.pickDo p src env o [] effect.withPick more], [])
+      | some (o :: other :: rest) => (s, [.pickDo p src env o (other :: rest) effect.withPick more], [])
+      | _ => (s, [.run p src env more], [Event.skipped src])).2.1 = frames
+    unfold frames
+    cases selected with
+    | none => rfl
+    | some objects =>
+      cases objects with
+      | nil => rfl
+      | cons head rest => cases rest <;> rfl
+  dsimp only
+  rw [← show effect = Effect.chooseObject side place filters body from rfl, same]
+  unfold frames
+  cases selected with
+  | none => exact Or.inl rfl
+  | some objects =>
+    cases objects with
+    | nil => exact Or.inl rfl
+    | cons first rest =>
+      cases rest with
+      | nil => exact Or.inr ⟨.pickDo p src env first [] effect.withPick more, [], rfl, rfl⟩
+      | cons other tail => exact Or.inr ⟨.pickDo p src env first (other :: tail) effect.withPick more, [], rfl, rfl⟩
+
+/-- Discard either skips an invalid instruction or waits for the first selected player. -/
+theorem Effect.ObservedFinite.discard (who : PlayerSel) (amount : Amount) :
+    (Effect.prim (.discard who amount)).ObservedFinite := by
+  apply Effect.ObservedFinite.ofDecisionOrRun
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect]
+  cases selected : who.resolve s p env with
+  | none => exact Or.inl rfl
+  | some players =>
+    cases count : amount.evalS s p src env with
+    | none => exact Or.inl rfl
+    | some n =>
+      cases players with
+      | nil => exact Or.inl rfl
+      | cons first rest => exact Or.inr ⟨_, _, rfl, rfl⟩
+
+/-- An alternative with at least two branches yields before it executes a branch. -/
+theorem Effect.ObservedFinite.eitherChoice (first second : Effect) (rest : EffectList) :
+    (Effect.eitherOf (.cons first (.cons second rest))).ObservedFinite := by
+  intro s p src env more tail keeps wf reads pending _ _
+  apply advance_run_decision wf reads pending
+  cases rest <;> rfl
 
 mutual
 
 /-- Check the effect constructors for which the observed dispatcher has a termination proof. -/
 def Effect.observedWorkSupported : Effect → Bool
-  | .nop | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.recycle .self) | .may _ => true
-  | .seq program | .eitherOf program => program.observedWorkSupported
+  | .nop | .retainTargetSet _ | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.discard ..)
+  | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject .. => true
+  | .seq program => program.observedWorkSupported
+  | .eitherOf (.cons only .nil) => only.observedWorkSupported
+  | .eitherOf _ => true
   | .ifThen _ yes no => yes.observedWorkSupported && no.observedWorkSupported
   | .repeatN _ body | .bind _ _ body | .forEach _ body | .eachPlayer _ body => body.observedWorkSupported
   | .prim primitive => (Effect.prim primitive).isTriggerAdd
@@ -513,12 +642,20 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     cases pr <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
     case gainXP who amount => exact (Effect.SingleRun.gainXP who amount).observed
     case draw who amount => exact Effect.ObservedFinite.draw who amount
+    case discard who amount => exact Effect.ObservedFinite.discard who amount
     case recycle selector =>
       cases selector <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
-      exact Effect.SingleRun.recycleSelf.observed
+      · exact Effect.SingleRun.recycleSelf.observed
+      · exact (Effect.SingleRun.recycleSlot _).observed
     all_goals apply Effect.ObservedFinite.addPrimitive <;> exact supported
   case seq program => exact .seq (program.observedFinite_of_supported supported)
-  case eitherOf options => exact .eitherOf (options.observedFinite_of_supported supported)
+  case eitherOf options =>
+    cases options with
+    | nil => exact .eitherOf .nil
+    | cons first rest =>
+      cases rest with
+      | nil => exact .eitherOf (.cons (first.observedFinite_of_supported supported) .nil)
+      | cons second rest => exact .eitherChoice first second rest
   case ifThen test yes no =>
     obtain ⟨yesSupported, noSupported⟩ := Bool.and_eq_true_iff.mp supported
     exact .ifThen (yes.observedFinite_of_supported yesSupported) (no.observedFinite_of_supported noSupported)
@@ -527,6 +664,8 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case forEach target body => exact .forEach (body.observedFinite_of_supported supported)
   case eachPlayer who body => exact .eachPlayer (body.observedFinite_of_supported supported)
   case may body => exact .may body
+  case chooseObject side place filters body => exact .chooseObject side place filters body
+  case retainTargetSet groups => exact .retainTargetSet groups
 termination_by structural effect
 
 /-- A supported program is finite through the real observer. -/

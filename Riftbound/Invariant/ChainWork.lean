@@ -136,7 +136,8 @@ inductive ChainWorkEnd (s : GameState) : Prop where
   | limited (p : PlayerId) (card : ObjId) (rest : List Frame) :
       s.pending = .run p card {} (.cons (.finalizeLimitedSpell card) .nil) :: rest → ChainWorkEnd s
 
-private theorem finish_chain_reaches_boundary {s : GameState} {item : ObjId}
+/-- Finish an item above its decision continuation and any ordinary trigger queue. -/
+theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
     {rest original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .finishSpell item :: rest) (tracks : TriggerWorkTail original rest)
     (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
@@ -208,7 +209,7 @@ theorem advance_chain_resolution {s : GameState} {item : ObjId} {rest : List Fra
       advance_run_frames midWF (cards ▸ reads) tracks runs inserts
     · exact ⟨t, used + more, events ++ emitted, by omega, path.append resolved, .decision stop⟩
     · obtain ⟨u, elapsed, _, settled, stop⟩ :=
-        finish_chain_reaches_boundary tWF (tCards ▸ cards ▸ reads) finishStack seen front decision
+        advance_finish_chain_to_boundary tWF (tCards ▸ cards ▸ reads) finishStack seen front decision
       exact ⟨u, used + more + elapsed, _, by omega, (path.append resolved).append settled, stop⟩
   generalize stack : mid.pending = pendingFrames at route
   cases route with
