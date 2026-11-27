@@ -184,13 +184,19 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 検査を通った合法手は、回答とイベント観測を行い、選ばれた処理から次の決定点か試合終了に進む。配分やダメージ置換、死亡置換の回答を扱い、対象選択のイベントを含む実際のイベント列を保つ。登録カード用の定理は、4人戦の投了後を含め、fuel を増やしても結果が一致することを示す。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
+### 3v. 誘発の確定と保留された支払いの再開
+
+`step_prepareTrigger_to_decision`、`step_triggerAdd_to_decision`、`step_cancelTriggerFunding_to_decision` は、支払いの準備、Add の選択、取り消しが次の判断に進むことを示す。誘発の確定は、現在の選択を支払って Chain に置く場合、見送る場合、確定前に死亡置換を求める場合を扱う。継続が入力待ちか空なら、残る通常の誘発も有限回で処理する。[TriggerAnswerWork.lean](../Riftbound/Invariant/TriggerAnswerWork.lean)
+
+`triggerCostAnswerWorkSupported` は、置換への回答が積む命令列と保留された誘発の宣言を確認する。検査を通る合法手は回答を記録し、宣言を現在の状態でもう一度検査する。引き続き合法なら宣言を再開し、別の死亡置換が必要ならその入力に進む。合法でなくなった場合は元の誘発の選択へ戻る。回答時に生じた通常の誘発が先に入力を求める場合も扱う。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成、観測まで含めた即時 Add、直接・相互・振り分けダメージは証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Chain の対応する効果への回答、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。残る入力や効果と作業フレームの合成が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Chain の対応する効果への回答、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。誘発の支払いと対応する死亡置換の回答も証明済み。残る入力や効果と作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。

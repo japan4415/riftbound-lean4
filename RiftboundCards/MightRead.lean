@@ -2,7 +2,7 @@ module
 
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
-public import Riftbound.Invariant.ChainAnswerWork
+public import Riftbound.Invariant.TriggerAnswerWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
@@ -153,6 +153,30 @@ theorem step_chainAnswer_checked_to_decision {s : Riftbound.GameState} {a : Rift
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
   Riftbound.step_chainAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- Complete a trigger declaration in the registered database, including a replacement
+prompt and the remaining ordinary queue when the underlying stack is already at a decision. -/
+theorem step_putTrigger_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger}
+    {funding : Option Riftbound.TriggerFunding} {index : Nat}
+    {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others funding :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .putTrigger index targets payment⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ =
+        .ok (t, events) :=
+  Riftbound.step_putTrigger_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- A checked replacement answer can resume the locked trigger with the registered cards.
+Additional fuel preserves the state and log at the next decision. -/
+theorem step_triggerCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.triggerCostAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
+  Riftbound.step_triggerCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
 
 /-- For registered cards, check the top item's actual Run programs and follow the final
 Chain Pass through deferred limited Spell declarations to a decision. -/

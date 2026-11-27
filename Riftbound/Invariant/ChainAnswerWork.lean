@@ -46,16 +46,17 @@ theorem advance_observed_chain_runs_to_decision (raw : GameState) (notices : Lis
   | resume => exact run (stack.symm ▸ base)
   | queue q ne => exact run (stack.symm ▸ base.insert (fun f member => (finite f member).isResolution) insertFinish q ne)
 
-/-- Complete a legal effect answer whose raw action schedules checked Run frames followed
-by the current Chain item's finish. -/
-private theorem step_observed_chain_answer_to_decision {s raw : GameState} {a : Action} {notices : List Event}
-    {body tail original : List Frame} {item : ObjId} (legal : Legal s a)
-    (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+/-- Lift the observed work after a raw decision to the actual legal action. Surcharge
+payment preserves the card database and the pending frames. -/
+theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
+    (legal : Legal s a) (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
     (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
-    (reads : MightRead.database raw.cards) (pending : raw.pending = body ++ .finishSpell item :: tail)
-    (supported : body.all runFrameSupported = true) (tracked : TriggerWorkTail original tail)
-    (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
-    (decision : original.head?.all (fun f => !f.isWork) = true) :
+    (reads : MightRead.database raw.cards)
+    (run : let next := s.paySurcharge a raw
+      let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
+      next.WF → MightRead.database next.cards → next.pending = raw.pending →
+      ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
+        t.pending.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, step (used + extra) s a = .ok (t, events) := by
   let next := s.paySurcharge a raw
@@ -70,8 +71,7 @@ private theorem step_observed_chain_answer_to_decision {s raw : GameState} {a : 
     rw [noCostChoice]
     simp only [applyAction_of_ne regular, applyFrame, applied, Option.map_some, next, events, observed]
   obtain ⟨t, fuel, emitted, path, stopped⟩ :=
-    advance_observed_chain_runs_to_decision next observed (surcharge.wf rawWF) (same ▸ reads)
-      (surcharge.pending_eq.trans pending) supported tracked front decision
+    run (surcharge.wf rawWF) (same ▸ reads) surcharge.pending_eq
   have finished : step fuel s a = .ok (t, events ++ emitted) := by
     simp only [step, ite_eq_left legal, answer]
     exact path.finish stopped events
@@ -127,7 +127,8 @@ private theorem isOrdinaryDecisionTail_boundary {rest : List Frame} (ready : isO
     simp only [isOrdinaryDecisionTail, head, Option.all_some, Bool.and_eq_true_iff] at ready
     exact ready.1
 
-private theorem chainEffectAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
+/-- An effect answer replaces its decision frame directly and preserves the card database. -/
+theorem chainEffectAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
     (effect : isChainEffectAnswer s a = true) (applied : applyFrame0 s a = some (raw, events)) :
     s.actionDeathCostChoice a = none ∧ a.kind ≠ .concede ∧ raw.cards = s.cards := by
   cases stack : s.pending with
@@ -174,9 +175,11 @@ theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
         have rawWF := applyFrame_wf0 wf (legal.frame regular) applied
         have pending : raw.pending = raw.pending.takeWhile isRunFrame ++ .finishSpell item :: tail := by
           rw [← layout, List.takeWhile_append_dropWhile]
-        exact step_observed_chain_answer_to_decision legal noCost regular applied rawWF
-          (cards.symm ▸ reads) pending programs tracked
-          (isOrdinaryDecisionTail_front ready) (isOrdinaryDecisionTail_boundary ready)
+        apply step_observed_frame_to_decision legal noCost regular applied rawWF (cards.symm ▸ reads)
+        intro next observed safe checked stack
+        exact advance_observed_chain_runs_to_decision next observed safe checked
+          (stack.trans pending) programs tracked (isOrdinaryDecisionTail_front ready)
+          (isOrdinaryDecisionTail_boundary ready)
     · contradiction
 
 end Riftbound

@@ -67,6 +67,7 @@ public import Riftbound.Invariant.Turn
 public import Riftbound.Invariant.Priority
 public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.ChainAnswerWork
+public import Riftbound.Invariant.TriggerAnswerWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.Progress
