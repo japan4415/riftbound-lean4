@@ -374,7 +374,7 @@ inductive Effect where
   | recordNestedDeathDecision (root : ObjId) (used : List (ObjId × Bool))
       (unit : ObjId) (choice : DeathDecision) (groupScope : Option (List ObjId × List ObjId))
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
-  | endCombatDamage (excess : Nat)
+  | endCombatDamage (excess : Nat × Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)

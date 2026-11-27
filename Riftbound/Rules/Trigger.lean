@@ -58,10 +58,10 @@ def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
 def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef)
-    (eventBattlefields : Option (List ObjId) := none) :
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
     Bool :=
   let shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none
-  let env : Env := { passMight := s.mightTable, shownOff, eventBattlefields }
+  let env : Env := { passMight := s.mightTable, shownOff, eventBattlefields, eventAmount }
   t.subject == .self && condOkEnv s src who env t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
@@ -75,15 +75,16 @@ object `src` controlled by `p`, that fire on the event. -/
 def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
     (eventMatches : TriggerEvent → Bool) (d : CardDef)
     (lo hi : Nat) (copy : Option Timestamp := none)
-    (eventBattlefields : Option (List ObjId) := none) : List PendTrigger :=
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
+    List PendTrigger :=
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if eventMatches t.event && trigOk s src p t body eventBattlefields &&
+      if eventMatches t.event && trigOk s src p t body eventBattlefields eventAmount &&
           limitOk s src (lo + j) lim copy then
         some {
           source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy,
-          eventBattlefields,
+          eventBattlefields, eventAmount,
           shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none }
       else none
     | _ => none)
@@ -96,26 +97,26 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
 /-- The object's abilities whose event matches, including abilities it gains (CR 137, 479.3). -/
 def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
     (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none)
-    (eventBattlefields : Option (List ObjId) := none) :
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
     List PendTrigger :=
   let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? src
   let stamp := (lastCopy.map (·.stamp)) <|> s.copyStamp? src
   let last := eventMatches .leave || eventMatches .die || eventMatches .deathknell
   (match definition with
     | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length stamp
-        eventBattlefields
+        eventBattlefields eventAmount
     | none => []) ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
       if o.attached == some src then
         triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
-          (eventBattlefields := eventBattlefields)
+          (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
       else []
     | _, _ => []) ++
   (s.attachmentTextDefs src last).flatMap (fun (d, stamp) =>
     triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)
-      eventBattlefields) ++
+      eventBattlefields eventAmount) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
@@ -126,15 +127,25 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
         match s.cards.find? ⟨c⟩ with
         | some d =>
           triggersAmongMatching s src (if u == src then p else f.who) eventMatches d i (i + 1)
-            (eventBattlefields := eventBattlefields)
+            (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
         | none => []
       else []
     | _, _ => [])
 
 /-- The triggered abilities of the object that fire on exactly this event. -/
 def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent)
-    (eventBattlefields : Option (List ObjId) := none) : List PendTrigger :=
-  triggersOfMatching s src p (· == ev) (eventBattlefields := eventBattlefields)
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
+    List PendTrigger :=
+  triggersOfMatching s src p (· == ev) (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
+
+/-- Excess damage belongs to the Combat whose Control step produced this Conquer. -/
+def GameState.conquestExcess (s : GameState) (p : PlayerId) (bf : ObjId) : Option Nat :=
+  if s.combat.any (·.battlefield == bf) &&
+      s.pending.any (fun | .combatFinish field => field == bf | _ => false) then
+    s.turnFx.findSome? (fun fx => match fx.kind with
+      | .excessDamage n => if fx.who == p && fx.turn == s.turn && fx.target == some bf then some n else none
+      | _ => none)
+  else none
 
 /-- The definition of a queued trigger, including a keyword assembled from several sources. -/
 def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
@@ -701,7 +712,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
-    let atField (src : ObjId) (event : TriggerEvent) := triggersOf s src p event (some [bf])
+    let excess := if conquer then s.conquestExcess p bf else none
+    let atField (src : ObjId) (event : TriggerEvent) := triggersOf s src p event (some [bf]) excess
     let event := if conquer then TriggerEvent.conquer else .hold
     let watched := (watchersOf s bf p event).map (fun t => { t with eventBattlefields := some [bf] })
     let (own, others) := watched.partition (fun t => t.controller == p)

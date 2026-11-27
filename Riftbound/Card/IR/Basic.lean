@@ -451,8 +451,7 @@ inductive TurnEffect where
   | hideFree
   /-- The object has been paid one unit for ("pay any amount"): one note for each unit paid. -/
   | unitPaid
-  /-- The player assigned `n` excess damage (damage beyond what is lethal) to enemy Units in the
-  Combat Damage of this turn's last Combat. -/
+  /-- The player assigned `n` excess damage to enemy Units in the Combat at the noted Battlefield. -/
   | excessDamage (n : Nat)
   /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
   | modeUsed (n : Nat)

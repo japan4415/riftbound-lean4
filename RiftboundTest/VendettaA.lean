@@ -1126,7 +1126,7 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (s, defender) ← putAt s q "VEN-128" field
   let s := (s.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some 4 })
   let s := s.modObj defender (fun o => { o with baseMightThisTurn := some 8 })
-  let s := (noteExcess s p 9).addTurnFxOn p defender .killOnDamage
+  let s := s.addTurnFxOn p defender .killOnDamage
   let s := (s.addTurnFxOn p defender .banishInstead).addTurnFxOn q defender (.preventDamage 1)
   let s := s.addTurnFxOn p attacker .damagePrevented
   let act (t : GameState) (who : PlayerId) (kind : ActionKind) :=
@@ -1137,13 +1137,23 @@ meta def passToChoice : Nat → GameState → Option GameState
   let (counter, _) ← act second q (.assignPick attacker)
   let (choosing, before) ← act counter q .assignDone
   let .eitherDo controller _ _ (.chooseDeathBanisher unit _) _ _ :: .run .. :: _ := choosing.pending | none
+  let seeded := choosing.addTurnFxOn p field (.excessDamage 9)
+  let (resuming, _) ← applyDeclaredAction seeded ⟨.player q, .decide false⟩
+  let rec beforeCleanup : Nat → GameState → Option GameState
+    | 0, _ => none
+    | n + 1, g => match g.pending with
+      | .cleanup :: .combatResolve .. :: _ => some g
+      | _ => (workStep g).bind fun (next, _) => beforeCleanup n next
+  let recorded ← beforeCleanup 24 resuming
   let (done, events) ← act choosing q (.decide false)
   let banished ← done.firstOf q .banishment "VEN-128"
-  let excess := (done.fxOf p).filterMap (fun | .excessDamage n => some n | _ => none)
+  let excess (g : GameState) (seat : PlayerId) :=
+    (g.fxOf seat).filterMap (fun | .excessDamage n => some n | _ => none)
   return controller == q && unit == defender && before.isEmpty &&
     events.contains (.damaged defender 3) && events.contains (.banished q q banished) &&
     !(events.any (fun | .died .. => true | _ => false)) && done.preventValue defender == 0 &&
-    !done.shielded attacker && (done.obj? attacker).isSome && excess == [0]
+    !done.shielded attacker && (done.obj? attacker).isSome &&
+    excess recorded p == [0] && excess recorded q == [0] && excess done p == [] && excess done q == []
 
 -- Escaped Grayback locks in which player's Banish replaces its Kill cost (CR 357.2.a, 372).
 #guard vendettaCase fun s => do

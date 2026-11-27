@@ -2513,25 +2513,35 @@ theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
-def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
-  { s with turnFx := s.turnFx.filter (fun f =>
-      !(f.who == att && (match f.kind with | .excessDamage _ => true | _ => false))) ++
-    [{ who := att, turn := s.turn, stamp := s.nextTimestamp, kind := .excessDamage k }] }
+/-- Excess assignments are needed only while the Combat at `bf` is being resolved. -/
+def clearCombatExcess (s : GameState) (bf : ObjId) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun fx => match fx.kind with
+      | .excessDamage _ => fx.target != some bf
+      | _ => true) }
 
-/-- Noting the excess damage is a safe change. -/
-theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (noteExcess s att k) :=
+/-- Forgetting the excess assignments changes no structural properties. -/
+theorem clearCombatExcess_safe (s : GameState) (bf : ObjId) : Safe s (clearCombatExcess s bf) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Finish recording a Combat's damage once it has been applied. -/
-def recordCombatDamage (s : GameState) (att : PlayerId) (excess : Nat) : GameState :=
-  noteExcess (clearDamageOrder s) att excess
+/-- Finish recording each side's excess damage once the Combat damage has been applied. -/
+def recordCombatDamage (s : GameState) (bf : ObjId) (excess : Nat × Nat) : GameState :=
+  let next := clearCombatExcess (clearDamageOrder s) bf
+  match s.combat.filter (·.battlefield == bf) with
+  | some c => (next.addTurnFxOn c.attacker bf (.excessDamage excess.1)).addTurnFxOn
+      c.defender bf (.excessDamage excess.2)
+  | none => next
 
 /-- Finishing the damage bookkeeping preserves the game invariants. -/
-theorem recordCombatDamage_safe (s : GameState) (p : PlayerId) (excess : Nat) :
-    Safe s (recordCombatDamage s p excess) :=
-  (clearDamageOrder_safe s).trans (noteExcess_safe _ p excess)
+theorem recordCombatDamage_safe (s : GameState) (bf : ObjId) (excess : Nat × Nat) :
+    Safe s (recordCombatDamage s bf excess) := by
+  let next := clearCombatExcess (clearDamageOrder s) bf
+  refine ((clearDamageOrder_safe s).trans (clearCombatExcess_safe _ bf)).trans ?_
+  unfold recordCombatDamage
+  split
+  · rename_i c _
+    exact (addTurnFxOn_safe next c.attacker bf _).trans (addTurnFxOn_safe _ c.defender bf _)
+  · exact Safe.refl next
 
 /-- Continue the damage instruction without applying its events until replacement ordering is
 complete. A nonpositive result after prevention does not emit a damage event (CR 438.4). -/
@@ -6747,7 +6757,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .recordNestedDeathDecision root used unit choice groupScope =>
     (s.addTurnFxOn p unit (.nestedDeathDecision root used choice groupScope), [.run p src env es], [])
   | .endCombatDamage excess =>
-    (recordCombatDamage s p excess, [.run p src env es], [])
+    (recordCombatDamage s src excess, [.run p src env es], [])
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
   | .killThenForController slot body =>
     killEffectStep s p src env (.slot slot) none es (some ⟨slot, body, .forController⟩)
@@ -6781,7 +6791,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact finishUnitTokenPlay_safe (by assumption)
     | exact moveEffectStep_safe s p src env _ _ es funding _
     | exact fundMoveFeeStep_safe s p src env _ _ _ _ es funding
-    | exact recordCombatDamage_safe s p _
+    | exact recordCombatDamage_safe s src _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
     | exact linkedAction_safe s p src env _

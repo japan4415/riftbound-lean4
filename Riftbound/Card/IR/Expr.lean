@@ -71,7 +71,7 @@ inductive Amount where
   | gearsPlayed
   /-- How many Equipment the player has played this turn. -/
   | equipmentPlayed
-  /-- The excess damage the player assigned to enemy Units in this turn's last Combat. -/
+  /-- The excess damage the player assigned to enemy Units in the Combat that led to this Conquer. -/
   | excess
   /-- How many points the player scored this turn by holding (one for each Battlefield held). -/
   | heldPoints
@@ -349,7 +349,7 @@ inductive Condition where
   | marked (e : TurnEffect)
   /-- The object came into play from Hidden. -/
   | fromHidden
-  /-- The player assigned at least `n` excess damage to enemy Units in the last Combat this turn. -/
+  /-- The player assigned at least `n` excess damage to enemy Units in the Combat of this Conquer. -/
   | excessAtLeast (n : Nat)
   /-- The player has the effect noted this turn. -/
   | noted (e : TurnEffect)

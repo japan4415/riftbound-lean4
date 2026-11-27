@@ -87,9 +87,10 @@ theorem advance_combat_finish {s : GameState} {bf : ObjId} {rest : List Frame}
     (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
     AdvanceTo s keeps := by
   let units := ((s.combat.filter (·.battlefield == bf)).map (·.units)).getD []
-  let raw := { s.mapObjects endShowdownObj with combat := none, pending := .cleanup :: rest }
+  let cleared := clearCombatExcess (s.mapObjects endShowdownObj) bf
+  let raw := { cleared with combat := none, pending := .cleanup :: rest }
   have rule : microStep0 s = some (raw, [.combatEnded bf units]) := by
-    simp only [microStep0, pending, units, raw]
+    simp only [microStep0, pending, units, raw, cleared]
   exact observed_cleanup_step wf reads pending rfl rule rfl rfl base inserted
 
 /-- Resolve the optional draw for establishing control and the following Cleanup. -/
@@ -475,9 +476,9 @@ theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : Pla
   simp only [step, ite_eq_left (show Legal s action from legal), declaration]
   exact path.finish stop result.2
 
-private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat) :
+private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat × Nat) :
     (Effect.endCombatDamage excess).ObservedFinite :=
-  Effect.SingleRun.observed (fun s p _ _ _ => ⟨recordCombatDamage s p excess, [], rfl⟩)
+  Effect.SingleRun.observed (fun s _ src _ _ => ⟨recordCombatDamage s src excess, [], rfl⟩)
 
 private theorem assignDoneStep_work_cases (s : GameState) (bf : ObjId) (att side : PlayerId)
     (acc : List ObjId) (done : List (ObjId × Nat)) (rest : List Frame) :

@@ -592,10 +592,9 @@ def UNL_018.meta : CardDef :=
 /-- Yeti Brawler. -/
 def UNL_018 : CardDef :=
   { UNL_018.meta with
-    abilities := [.triggered (.onSelf .conquer)
-      (.of [] (.ifThen (.excessAtLeast 3) (.prim (.create "Gold" (.const 2) .atBase false)) .nop))
-        .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .conquer, condition := .excessAtLeast 3 }
+      (.of [] (.prim (.create "Gold" (.const 2) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-019
 /--
@@ -5407,13 +5406,15 @@ def UNL_187.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Piltover Enforcer. -/
+/-- Piltover Enforcer chooses the Unit and pays Exhaust during trigger finalization. -/
 def UNL_187 : CardDef :=
   { UNL_187.meta with
-    abilities := [.triggered { event := .youConquer, condition := .excessAtLeast 3 }
-      (.of [] (.ifThen .legendReady (.may (.seqOf [.prim (.exhaust .self),
-        .prim (.ready (Selector.one .any .anywhere [.ofType .unit]))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .youConquer, condition := .excessAtLeast 3, optional := true, cost := .exhaustSelf }
+      { choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.ready (.slot 0)) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-188
 /--
@@ -6243,8 +6244,8 @@ def UNL_217.meta : CardDef :=
 def UNL_217 : CardDef :=
   { UNL_217.meta with
     abilities := [.triggered { event := .youConquer, condition := .excessAtLeast 3 }
-      (.of [] (.prim (.create "Bird" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+      (.of [] (.prim (.playUnitToken "Bird"))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-218
 /--

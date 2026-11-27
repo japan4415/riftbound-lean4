@@ -323,7 +323,8 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ r.1 with pending := r.2.1 ++ .cleanup :: rest }, r.2.2)
   | .combatFinish bf :: rest =>
     let units := ((s.combat.filter (·.battlefield == bf)).map (·.units)).getD []
-    some ({ s.mapObjects endShowdownObj with combat := none, pending := .cleanup :: rest },
+    let cleared := clearCombatExcess (s.mapObjects endShowdownObj) bf
+    some ({ cleared with combat := none, pending := .cleanup :: rest },
       [Event.combatEnded bf units])
   | .triggers pend :: rest =>
     some ({ (triggersStep s pend rest).1 with pending := (triggersStep s pend rest).2 ++ rest }, [])

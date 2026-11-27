@@ -1211,11 +1211,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
     some (match s.obj? self with
       | some o => if o.movesTurn == some s.turn then o.moves else 0
       | none => 0)
-  | .excess =>
-    some ((s.turnFx.filterMap (fun f =>
-      match f.kind with
-      | .excessDamage k => if f.turn == s.turn && f.who == p then some k else none
-      | _ => none)).foldl Nat.max 0)
+  | .excess => some (env.eventAmount.getD 0)
   | .heldPoints =>
     some ((s.zone .battlefieldZone).countP (fun b => (s.obj? b).any (·.held.contains p)))
   | .spellsChoseEnemy =>
@@ -1372,9 +1368,7 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .friendlyNoted e =>
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == e &&
       s.config.mode.sameSide p f.who))
-  | .excessAtLeast n =>
-    some (s.turnFx.any (fun f => f.turn == s.turn && f.who == p &&
-      (match f.kind with | .excessDamage k => decide (n ≤ k) | _ => false)))
+  | .excessAtLeast n => some (env.eventAmount.any (fun k => decide (n ≤ k)))
   | .marked e =>
     let kind := e.forCopy env.abilityCopyStamp
     some (s.turnFx.any (fun f => f.turn == s.turn && f.kind == kind && f.who == p &&

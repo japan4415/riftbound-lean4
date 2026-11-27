@@ -2141,6 +2141,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Flurry of Feathers のモードと対象は Spell の宣言時に選ぶ。Walking Roost は相手1席を対象にし、その席が Bird のプレイ先を選ぶ。Carrion Dredger の Deathknell では指定された Base に Bird を出す（CR 184.2、355.2、355.3、355.9）。
 - Unleashed は225枚中57枚、全体では1,103枚中537枚が `full`。[カード実装状況](coverage.md)
 
+### Conquer を生んだ戦闘の余剰ダメージ
+
+- 攻撃側と防御側が敵 Unit に割り当てた致死量を超えるダメージを、それぞれ戦闘中の Battlefield に記録する。戦闘の Control Step で Conquer が起きたとき、誘発能力は割り当てた値を保持する。別の Battlefield の戦闘や無人の Battlefield の Conquer では、その値を参照しない（CR 467.2、468.5、383.4.c）。
+- Piltover Enforcer は対象を選び、自身を消耗させて誘発能力を確定する。Sivir, Ambitious も対象を確定時に選び、解決時に記録された量のダメージを与える。[Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- Trapping Grounds、Yeti Brawler、Piltover Enforcer、Tryndamere, Barbarian、Sivir, Ambitious の5枚を `full` とし、全1,103枚中542枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

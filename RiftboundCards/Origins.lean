@@ -910,9 +910,9 @@ def OGN_034.meta : CardDef :=
 def OGN_034 : CardDef :=
   { OGN_034.meta with
     abilities := [.triggered
-      { event := .conquer, subject := .self, condition := .excessAtLeast 5 }
+      { event := .conquer, condition := .and (.matches .self .attacker) (.excessAtLeast 5) }
       (.of [] (.prim (.score .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-035
 /--

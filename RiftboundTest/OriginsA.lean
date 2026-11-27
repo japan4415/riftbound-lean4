@@ -4305,7 +4305,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
 
 -- Tryndamere, Barbarian (OGN-034): when he conquers, if I assigned 5 or more excess damage to
 -- enemy units, I score 1 point (the damage beyond what is lethal, counted for the enemy units of
--- the Combat only; the note of the last Combat of the turn stands)
+-- that Combat only).
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-294"
   let (s2, _) ← putAt s1 s.me "OGN-034" bf
@@ -4315,11 +4315,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let ex := excessOf s4 s.me [(foe, need + 5), (mine, 99)]
   let few := excessOf s4 s.me [(foe, need + 4)]
   let under := excessOf s4 s.me [(foe, need - 1)]
-  let hit ← fire (noteExcess s4 s.me 5) [.scored s.me bf true]
-  let miss ← fire (noteExcess s4 s.me 4) [.scored s.me bf true]
-  let old ← fire (noteExcess (noteExcess s4 s.me 5) s.me 1) [.scored s.me bf true]
-  let theirs ← fire (noteExcess s4 s.you 5) [.scored s.me bf true]
-  let hold ← fire (noteExcess s4 s.me 5) [.scored s.me bf false]
+  let combat (field : ObjId) (attackerExcess defenderExcess : Nat) : GameState :=
+    let g := (s4.addTurnFxOn s.me field (.excessDamage attackerExcess)).addTurnFxOn
+      s.you field (.excessDamage defenderExcess)
+    { g with
+      combat := some { battlefield := field, attacker := s.me, defender := s.you, units := [] }
+      pending := [.combatFinish field] }
+  let hit ← fire (combat bf 5 0) [.scored s.me bf true]
+  let miss ← fire (combat bf 4 0) [.scored s.me bf true]
+  let otherBattlefield ← fire (combat s.bf0 5 0) [.scored s.me bf true]
+  let theirs ← fire (combat bf 0 5) [.scored s.me bf true]
+  let hold ← fire (combat bf 5 0) [.scored s.me bf false]
+  let defender := combat bf 5 0
+  let defender := { defender with combat := defender.combat.map fun c =>
+    { c with attacker := s.you, defender := s.me } }
+  let defended ← fire defender [.scored s.me bf true]
   -- a damaged enemy needs less (more is excess); with two enemies only the last has an excess
   let (s5, foe2) ← putAt s4 s.you "OGN-136" s.bf0
   let hurt := s5.modObj foe (fun o => { o with damage := 3 })
@@ -4328,7 +4338,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let pts (x : GameState) := x.pointsOf s.me
   return ex == 5 && few == 4 && under == 0 && damaged == 2 && two == 1 &&
     pts hit == pts s4 + 1 && pts miss == pts s4 &&
-    pts old == pts s4 && pts theirs == pts s4 && pts hold == pts s4
+    pts otherBattlefield == pts s4 && pts theirs == pts s4 && pts hold == pts s4 && pts defended == pts s4
 
 -- Volibear, Furious (OGN-041): when he attacks, deal 5 damage split among any number of enemy units
 -- here (five single damages, each to a unit I choose)

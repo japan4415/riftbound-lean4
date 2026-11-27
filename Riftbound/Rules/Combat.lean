@@ -587,10 +587,10 @@ theorem startCombat_play (s : GameState) (bf : ObjId) (att : PlayerId) {f : Fram
         simp [ha, hd] at hf
         rcases hf with rfl | rfl <;> rfl
 
-/-- The damage assigned to Units of other players than `att` beyond what is lethal to them (the
+/-- The damage assigned to enemy Units beyond what is lethal to them (the
 last Unit of an order gets what is left). -/
-def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
-  (done.filter (fun e => (s.obj? e.1).any (fun o => o.controller != att))).foldl
+def excessOf (s : GameState) (p : PlayerId) (done : List (ObjId × Nat)) : Nat :=
+  (done.filter (fun e => (s.obj? e.1).any (fun o => !s.config.mode.sameSide o.controller p))).foldl
     (fun acc (unit, raw) =>
       if (s.activeMods unit).contains .noDamage then acc
       else
@@ -608,14 +608,14 @@ def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : Lis
   | some f => ({ s with pending := combatAssignmentChoices s bf defender ++ f :: rest }, [])
   | none =>
     let batch := combatDamageBatch s done'
-    let excess := excessOf s att done'
+    let excess := (excessOf s att done', excessOf s defender done')
     let next := Frame.cleanup :: .combatResolve bf att :: rest
     if batch.resolved.any (fun hit => (damageDeathChoice s hit).isSome) then
       let damage := EffectList.ofList [.resolveEffectDamage batch none, .endCombatDamage excess]
       ({ s with pending := .run att bf {} damage :: next }, [])
     else
       let r := commitEffectDamage s batch
-      ({ recordCombatDamage r.1 att excess with pending := next }, r.2)
+      ({ recordCombatDamage r.1 bf excess with pending := next }, r.2)
 
 /-- What `assignDoneStep` does, in the cases the invariants look at. -/
 theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)

@@ -3231,20 +3231,29 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     pw s3 == some 3 && pw (held s3 a s.me) == some 2 &&
     pw (held (held s3 a s.me) b s.me) == some 1 && pw (held s3 a s.you) == some 3
 
--- Sivir, Ambitious (SFD-120): when I conquer, if I assigned 5 or more excess damage, I may deal
--- that much to an enemy unit
+-- Sivir chooses the enemy Unit before resolution and uses the amount from the Conquer.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, _) ← putAt s1 s.me "SFD-120" bf
   let (s3, foe) ← putAt s2 s.you "OGN-088" s.bf0
-  let five := s3.addTurnFx s.me (.excessDamage 7)
-  let four := s3.addTurnFx s.me (.excessDamage 4)
-  let a ← fire five [.scored s.me bf true]
+  let combat (attackerExcess : Nat) : GameState :=
+    { s3.addTurnFxOn s.me bf (.excessDamage attackerExcess) with
+      combat := some { battlefield := bf, attacker := s.me, defender := s.you, units := [] },
+      pending := [.combatFinish bf] }
+  let five := combat 7
+  let four := combat 4
+  let events := [Event.scored s.me bf true]
+  let (choosing, _) ← (advance 100 (five.withTriggers events) []).toOption
+  let accept : Action := ⟨.player s.me, .putTrigger 0 [foe]⟩
+  let (waiting, _) ← (step 100 choosing accept).toOption
+  let item ← (waiting.zone .chain).head?
+  let a := settleChain {} 12 (clearCombatExcess waiting bf)
   let b ← fire four [.scored s.me bf true]
   let c ← fire five [.scored s.me bf true] { yes := false }
   let d ← fire five [.scored s.me bf false]
-  return a.dmg foe == some 7 && b.dmg foe == some 0 && c.dmg foe == some 0 &&
-    d.dmg foe == some 0
+  return (waiting.obj? item).any (fun o => o.targets == [foe] && o.eventAmount == some 7) &&
+    waiting.dmg foe == some 0 && a.dmg foe == some 7 && b.dmg foe == some 0 &&
+    c.dmg foe == some 0 && d.dmg foe == some 0
 
 -- (the held mark comes from holding, not from conquering; and it is gone the next turn)
 #guard tsf fun s => do

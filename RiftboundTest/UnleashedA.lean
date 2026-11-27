@@ -1315,6 +1315,60 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     done.mightNow bird == some 1 &&
     done.deflectOf bird == 1 && done.tired bird == some true && done.where? bird == some (.player q .base)
 
+-- Trapping Grounds and Yeti Brawler require three excess damage in the Combat of the Conquer.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let other := s.bf0
+  let (s, trapping) ← putBf s q "UNL-217"
+  let (s, mover) ← put s p "OGN-010" .base
+  let fight (field : ObjId) (might : Nat) := do
+    let (g, attacker) ← putAt s p "UNL-018" field
+    let (g, defender) ← putAt g q "OGN-013" field
+    let g := (g.control q field).modObj attacker (fun o => { o with baseMightThisTurn := some might })
+    let (g, _) ← (advance 100 (g.inCombatAt field p) []).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignPick defender⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignDone⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player q, .assignPick attacker⟩).toOption
+    let (g, events) ← (step 100 g ⟨.player q, .assignDone⟩).toOption
+    return (settleChain {} 16 g, events)
+  let (three, hit) ← fight trapping 5
+  let (two, miss) ← fight trapping 4
+  let (previous, _) ← fight other 7
+  let (g, _) ← (step 100 previous ⟨.player p, .standardMove mover (.battlefield trapping)⟩).toOption
+  let (g, _) ← (step 100 g ⟨.player p, .pass⟩).toOption
+  let (g, openConquest) ← (step 100 g ⟨.player q, .pass⟩).toOption
+  let after := settleChain {} 16 g
+  let cards (x : GameState) := (x.countIn p .base "UNL-T02", x.countNamed p .base "Gold")
+  let bird ← three.firstOf p .base "UNL-T02"
+  return hit.contains (.scored p trapping true) && miss.contains (.scored p trapping true) &&
+    openConquest.contains (.scored p trapping true) && cards three == (1, 2) && cards two == (0, 0) &&
+    cards previous == (0, 2) && cards after == (0, 2) && three.deflectOf bird == 1 &&
+    three.tired bird == some true && three.mightNow bird == some 1
+
+-- Piltover Enforcer can be declined. Acceptance exhausts the Legend during finalization.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, legend) ← put s p "UNL-187" .legendZone
+  let (s, unit) ← put s p "OGN-010" .base
+  let s := (s.tire unit).addTurnFxOn p field (.excessDamage 3)
+  let combat : CombatParticipation := { battlefield := field, attacker := p, defender := s.you, units := [] }
+  let ready := { s with combat := some combat, pending := [.combatFinish field] }
+  let (choosing, _) ← (advance 100 (ready.withTriggers [.scored p field true]) []).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [unit]⟩
+  let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (waiting, _) ← (step 100 choosing accept).toOption
+  let (declined, _) ← (step 100 choosing decline).toOption
+  let item ← (waiting.zone .chain).head?
+  let countered := settleChain {} 12 (counterObj waiting item).1
+  let resolved := settleChain {} 12 waiting
+  return (legalFrameActions choosing).contains accept && !(step 100 (choosing.tire legend) accept).isOk &&
+    (waiting.obj? item).any (·.targets == [unit]) && waiting.tired legend == some true &&
+    waiting.tired unit == some true && resolved.tired unit == some false &&
+    declined.tired legend == some false && declined.tired unit == some true &&
+    countered.tired legend == some true && countered.tired unit == some true
+
 -- Back Off (UNL-042): played from the hand, it draws 1
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-042" .hand

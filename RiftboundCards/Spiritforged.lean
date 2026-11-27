@@ -3540,11 +3540,13 @@ def SFD_120.meta : CardDef :=
 /-- Sivir, Ambitious. -/
 def SFD_120 : CardDef :=
   { SFD_120.meta with
-
-    abilities := [.triggered { event := .conquer, condition := .excessAtLeast 5 }
-      (.of [] (.may (.prim (.deal (Selector.one .enemy .anywhere [.ofType .unit]) .excess))))
+    abilities := [.triggered
+      { event := .conquer, optional := true, condition := .and (.matches .self .attacker) (.excessAtLeast 5) }
+      { choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.deal (.slot 0) .excess) }
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-121
 /--
