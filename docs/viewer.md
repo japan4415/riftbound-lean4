@@ -156,6 +156,8 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - 公開ゾーンにあるカードを全て確認できたときは `zoneCards`、映像に一部だけ映ったときは `zoneContains` を使う。どちらも `zone` と `cards`（`[{"code":"RAD-094"}]` など）を指定する。並び順を問わず、同じコードの枚数を数える。手札・山札・伏せ札は `zoneCount` で枚数を照合できる。
 - `battlefieldControl` は Battlefield の支配者、`battlefieldUnits` はその Battlefield にいる指定プレイヤーの Unit を照合する。どちらも Battlefield を持ち込んだ席を `owner`、現在のカードコードを `field`、確認する席を `controller` に入れる。`battlefieldUnits` では `cards` に全 Unit のコードを入れる。`battlefieldControl` の `controller: null` は支配者なしを表す。
 
+- `unitStates` は Unit のカードコード、Exhaust の有無、与えられたダメージを照合する。`controller` に席、`place` に `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"RAD-157"}}}` を指定する。`units` にはその席がその場所でコントロールする全 Unit を `{"card":{"code":"RAD-026"},"exhausted":true,"damage":2}` の形で入れる。同名の Unit はそれぞれ記録し、並び順は問わない。
+
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
 
 #### カード定義を更新した後に再照合する

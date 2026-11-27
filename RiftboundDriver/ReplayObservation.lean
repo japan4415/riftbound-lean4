@@ -10,6 +10,24 @@ namespace RiftboundDriver
 
 open Lean Riftbound
 
+/-- The public place where a group of Units was observed. -/
+inductive ReplayUnitPlace where
+  /-- The Base of the controller named in the observation. -/
+  | base
+  /-- A Battlefield identified by its owner and printed card code. -/
+  | battlefield (owner : PlayerId) (field : CardId)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A Unit's visible condition, keyed by card code rather than internal object ID. -/
+structure ReplayObservedUnit where
+  /-- The visible card or token code. -/
+  card : CardId
+  /-- Whether the Unit is Exhausted. -/
+  exhausted : Bool
+  /-- The amount of damage currently marked on the Unit. -/
+  damage : Nat
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A fact observed at a game checkpoint, expressed without engine-generated object IDs. -/
 inductive ReplayObservationFact where
   /-- The turn number. -/
@@ -31,6 +49,8 @@ inductive ReplayObservationFact where
   /-- The Units of one controller at the indicated Battlefield, in any order. -/
   | battlefieldUnits (owner : PlayerId) (field : CardId) (controller : PlayerId)
       (cards : List CardId)
+  /-- All Units of the controller at the given public place, with exhaustion and marked damage. -/
+  | unitStates (controller : PlayerId) (place : ReplayUnitPlace) (units : List ReplayObservedUnit)
   /-- Whether time has been called. -/
   | clockCalled (called : Bool)
   /-- The observed game result, or none while the game was ongoing. -/
@@ -114,6 +134,22 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     let id ← observeBattlefield s owner field
     let units := (s.unitsOf controller id).filterMap (fun unit => (s.obj? unit).bind (·.kind.cardId?))
     checkCardSet s!"seat {controller.n} Units at Battlefield {field.code} from seat {owner.n}" cards units
+  | .unitStates controller place expected =>
+    observeSeat s controller
+    let (label, ids) ← match place with
+      | .base =>
+        let ids := (s.zone (.player controller .base)).filter
+          (fun id => s.isUnit id && s.isControlledBy controller id)
+        pure (s!"seat {controller.n} Units at Base", ids)
+      | .battlefield owner field => do
+        let id ← observeBattlefield s owner field
+        pure (s!"seat {controller.n} Units at Battlefield {field.code} from seat {owner.n}", s.unitsOf controller id)
+    let actual : List ReplayObservedUnit := ids.filterMap fun id => do
+      let o ← s.obj? id
+      let card ← o.kind.cardId?
+      return ⟨card, o.exhausted, o.damage⟩
+    unless decide (expected.Perm actual) do
+      checkFactValue label expected actual
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
     match expected, s.result with

@@ -295,20 +295,31 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     inputs = json.loads(source.read_bytes())
     cards = {obj: info for row in steps[:index + 1] for obj, info in row["state"]["new"].items()}
     field_owner = {"n": cards[str(field)]["owner"]}
-    unit_cards = [{"code": cards[str(unit)]["card"]} for unit, at in after["at"]
-                  if at == field and cards[str(unit)]["owner"] == 2]
-    assert unit_cards
+    unit_ids = [unit for unit, at in after["at"] if at == field and cards[str(unit)]["owner"] == 2]
+    unit_cards = [{"code": cards[str(unit)]["card"]} for unit in unit_ids]
+    marked = dict(after["damaged"])
+    unit_states = [{"card": card, "exhausted": unit in after["exhausted"], "damage": marked.get(unit, 0)}
+                   for unit, card in zip(unit_ids, unit_cards)]
+    assert unit_states
     field_ref = {"owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"},
                  "controller": {"n": 2}}
     inputs["game"]["observations"] = [{"checkpoint": index, "source": "after the concession",
                                       "facts": [
         {"battlefieldControl": field_ref},
         {"battlefieldUnits": {**field_ref, "cards": unit_cards}},
+        {"unitStates": {"controller": {"n": 2}, "place": {"battlefield": {
+            "owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"}}},
+            "units": list(reversed(unit_states))}},
         {"score": {"seat": {"n": 2}, "points": 1}},
     ]}]
     observation_source.write_text(json.dumps(inputs), encoding="utf-8")
     assert json.loads(command("record-ffa", observation_source, observation_archive)) == summary
     assert json.loads(command("verify-ffa", observation_archive)) == summary
+    unit_states[0]["damage"] += 1
+    observation_source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record-ffa", observation_source, observation_archive,
+            error=f"seat 2 Units at Battlefield TKN-ConcessionBattlefield from seat {field_owner['n']}")
+    unit_states[0]["damage"] -= 1
     field_ref["controller"] = {"n": 0}
     observation_source.write_text(json.dumps(inputs), encoding="utf-8")
     command("record-ffa", observation_source, observation_archive,
