@@ -576,8 +576,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
         (by simp [Frame.isSetup])
   · rename_i p n rest c pay ts flow discard pick hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass p 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass p 0]) step (by simp [Frame.isSetup])
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
@@ -724,8 +727,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i bf q n rest c pay ts flow discard pick hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass q 0, Frame.showdown bf q 0]) step (by simp [Frame.isSetup])
   · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
@@ -801,8 +807,11 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
   · rename_i guest rest c pay ts flow discard pick hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
-    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass guest 0]) hpend (by simp [Frame.isSetup])
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass guest 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass guest 0]) step (by simp [Frame.isSetup])
   · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])

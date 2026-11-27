@@ -1531,7 +1531,7 @@ def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
     (pick : SpellPick := .plain) (discard : Option ObjId := none) : Option (GameState × List Event) :=
   if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick discard
   else (playPermanent s p c pay ts pick discard).map
-    (fun r => ({ r.1 with pending := new }, r.2))
+    (fun r => ({ r.1 with pending := .cleanup :: new }, r.2))
 
 /-- What answering with a card does. -/
 theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1539,7 +1539,7 @@ theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
     (h : reactStep s p c pay ts new flow pick discard = some (s', es)) :
     (∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
       s' = { (castPay s p c ts discard (s2, es2)).1 with pending := new }) ∨
-    (∃ s2 es2, playPermanent s p c pay ts pick discard = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
+    (∃ s2 es2, playPermanent s p c pay ts pick discard = some (s2, es2) ∧ s' = { s2 with pending := .cleanup :: new }) := by
   unfold reactStep at h
   split at h
   · exact Or.inl (castStep_cases h)
@@ -1573,19 +1573,19 @@ theorem reactStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : R
   · exact ((playPermanent_safe hm).own hwf hown).congr rfl rfl
 
 /-- Answering the Chain changes nothing of the turn order, the phase, the result, the rules or the
-cards; the stack is `new`. -/
+cards. A permanent schedules Cleanup before returning to the Chain. -/
 theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
     {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
     (h : reactStep s p c pay ts new flow pick discard = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
+      s'.result = s.result ∧ s'.cards = s.cards ∧ (s'.pending = new ∨ s'.pending = .cleanup :: new) := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
     have hs := (castPay_safe s p c ts discard (s2, es2)).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
-      (congrArg GameState.cards hs).trans h6, rfl⟩
+      (congrArg GameState.cards hs).trans h6, Or.inl rfl⟩
   · have hs := (playPermanent_safe hm).same
-    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, rfl⟩
+    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, Or.inr rfl⟩
 
 /-- A card from a permitted zone can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -1601,7 +1601,7 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
     · exact absurd h hk
     · obtain ⟨r, applied⟩ := playPermanent_isSome (ts := ts) (pick := pick) (discard := discard) hwf
         (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
-      exact ⟨({ r.1 with pending := new }, r.2), by rw [applied]; rfl⟩
+      exact ⟨({ r.1 with pending := .cleanup :: new }, r.2), by rw [applied]; rfl⟩
 
 /-! ### I9: the Chain is last in, first out (CR 340.1) -/
 

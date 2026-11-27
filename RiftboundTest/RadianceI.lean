@@ -142,6 +142,29 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
         | .moved before _ (.player owner .trash) => before == ally && owner == p
         | _ => false)) : Option Bool).getD false
 
+-- Give Cruel Patron Reaction in this fixture to exercise the Cleanup while a Spell is on the Chain.
+#guard match lab with
+  | none => false
+  | some start => ((do
+    let p := start.me
+    let field := start.bf0
+    let defs := start.cards.cards.map (fun d =>
+      if d.id.code == "OGN-208" then { d with keywords := d.keywords ++ [{ keyword := .reaction }] }
+      else d)
+    let s := { start.control p field with cards := ⟨defs⟩ }
+    let (s, lee) ← putAt s p "OGN-151" field
+    let (s, ally) ← putAt s p "OGN-136" field
+    let (s, patron) ← put (s.fund p 4) p "OGN-208" .hand
+    let (s, spell) ← onChain s p "OGN-004"
+    let stack := [Frame.chainPass p 0, .priority p]
+    let ready := { (dealObj 4 (s.buff ally) ally).1 with pending := stack }
+    let (after, events) ← (step 100 ready ⟨.player p, .playCard patron ⟨4, []⟩ [lee]⟩).toOption
+    return (cleanupStep ready).isNone && after.pending == stack && after.zone .chain == [spell] &&
+      (cleanupStep after).isNone && after.locate ally == none &&
+      events.any (fun
+        | .moved before _ (.player owner .trash) => before == ally && owner == p
+        | _ => false)) : Option Bool).getD false
+
 -- A limited play pays the same Kill cost before it decides how Cruel Patron enters.
 #guard radianceCase fun s => do
   let p := s.me

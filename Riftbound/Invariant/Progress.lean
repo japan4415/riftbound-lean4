@@ -200,8 +200,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
-    rw [hpend]
-    exact hb.swap rfl [Frame.chainPass p 0]
+    rcases hpend with step | step
+    · rw [step]; exact hb.swap rfl [Frame.chainPass p 0]
+    · rw [step]; exact hb.swap rfl [Frame.cleanup, Frame.chainPass p 0]
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
@@ -365,8 +366,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
-    rw [hpend]
-    exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
+    rcases hpend with step | step
+    · rw [step]; exact hb.swap rfl [Frame.chainPass q 0, Frame.showdown bf q 0]
+    · rw [step]; exact hb.swap rfl [Frame.cleanup, Frame.chainPass q 0, Frame.showdown bf q 0]
   · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
@@ -438,8 +440,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨-, -, -, hres, -, hpend⟩ := reactStep_meta h
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
-    rw [hpend]
-    exact hb.swap rfl [Frame.chainPass guest 0]
+    rcases hpend with step | step
+    · rw [step]; exact hb.swap rfl [Frame.chainPass guest 0]
+    · rw [step]; exact hb.swap rfl [Frame.cleanup, Frame.chainPass guest 0]
   · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨-, -, -, hres, -, hpend⟩ := activateStep_meta h
     refine hinv.of_next hres (fun hb => ?_)

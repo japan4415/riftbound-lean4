@@ -2299,6 +2299,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - 通常の優先権で Unit や Gear をプレイした後、優先権を返す前に Cleanup を行う。Cruel Patron のコストで Lee Sin を Kill すると、Might が下がって致死ダメージに達した味方の Unit もこの時点で撃破される。Lee Sin, Centered の Accelerate と Buff 済みの味方への効果を確認して `full` とし、全1,103枚中624枚が実装済みとなった。[公式総合ルール 322–323](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+- Reaction などで Unit や Gear を出して Chain に応じた場合も、次の応答より前に Cleanup を行う。進行性の証明はこの Cleanup を経て決定点に戻る経路を含む。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

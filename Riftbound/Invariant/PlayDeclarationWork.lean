@@ -53,7 +53,9 @@ private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : L
       · exact ⟨cards, Or.inr ⟨[], _, h, by simp, rfl⟩⟩
     case cons.chainPass.playCard | cons.showdown.playCard | cons.teamInvitation.playCard =>
       obtain ⟨_, _, _, _, cards, stack⟩ := reactStep_meta rawStep
-      exact ⟨cards, Or.inr ⟨[], _, stack, by simp, rfl⟩⟩
+      rcases stack with resumed | cleanup
+      · exact ⟨cards, Or.inr ⟨[], _, resumed, by simp, rfl⟩⟩
+      · exact ⟨cards, Or.inl ⟨_, cleanup, rfl⟩⟩
     all_goals
       obtain ⟨_, _, _, _, cards, stack⟩ := activateStep_meta rawStep
       exact ⟨cards, Or.inr ⟨_, _, stack, activationRecycleFrames_finite _ _ _ _ _, rfl⟩⟩

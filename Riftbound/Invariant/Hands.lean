@@ -362,10 +362,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb
         simp [hm]
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
-    · rw [hpend] at hm
-      simp only [List.mem_cons] at hm
+    · have member : Frame.setupHands ∈ Frame.chainPass p 0 :: rest := by
+        rcases hpend with pending | pending
+        · simpa only [pending] using hm
+        · rw [pending] at hm
+          rcases List.mem_cons.mp hm with impossible | valid
+          · cases impossible
+          · exact valid
+      simp only [List.mem_cons] at member
       rw [hp]
-      rcases hm with h1 | h1
+      rcases member with h1 | h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
@@ -666,10 +672,16 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0
         simp [hm]
     refine hinv.of_play (by simpa only [hphase] using hturn) hto hcfg (fun hm => ?_)
-    · rw [hpend] at hm
-      simp only [List.mem_cons] at hm
+    · have member : Frame.setupHands ∈ Frame.chainPass q 0 :: .showdown bf q 0 :: rest := by
+        rcases hpend with pending | pending
+        · simpa only [pending] using hm
+        · rw [pending] at hm
+          rcases List.mem_cons.mp hm with impossible | valid
+          · cases impossible
+          · exact valid
+      simp only [List.mem_cons] at member
       rw [hp]
-      rcases hm with h1 | h1 | h1
+      rcases member with h1 | h1 | h1
       · cases h1
       · cases h1
       · exact List.mem_cons_of_mem _ h1
@@ -787,9 +799,15 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
     have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
-    rw [hpend] at hm
+    have member : Frame.setupHands ∈ Frame.chainPass guest 0 :: rest := by
+      rcases hpend with pending | pending
+      · simpa only [pending] using hm
+      · rw [pending] at hm
+        rcases List.mem_cons.mp hm with impossible | valid
+        · cases impossible
+        · exact valid
     rw [hp]
-    simpa only [List.mem_cons, reduceCtorEq, false_or] using hm
+    simpa only [List.mem_cons, reduceCtorEq, false_or] using member
   · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := activateStep_meta h
     have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
