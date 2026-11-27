@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.ChainAnswerWork
+import Riftbound.Invariant.Sound
 
 /-! # Decisions that hand play to another seat or keep an assignment open (I12) -/
 
@@ -65,6 +66,27 @@ theorem step_assignPick_to_decision {s : GameState} {field unit : ObjId} {attack
   have applied : applyFrame0 s a = some (raw, []) := by simp only [applyFrame0, pending, a, raw]
   have noCost : s.actionDeathCostChoice a = none := by simp only [GameState.actionDeathCostChoice, pending]
   exact step_observed_action_waits legal (by intro eq; cases eq) noCost applied (wf.congr rfl rfl rfl rfl) reads rfl
+
+/-- Setting aside a legal opening card returns to the same player's Mulligan decision. -/
+theorem step_mulliganPick_to_decision {s : GameState} {p : PlayerId} {card : ObjId}
+    {count : Nat} {rest : List Frame} (wf : s.WF) (owners : s.OwnerOk)
+    (reads : MightRead.database s.cards) (pending : s.pending = .mulligan p count :: rest)
+    (legal : Legal s ⟨.player p, .mulliganPick card⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.player p, .mulliganPick card⟩ = advance extra t events := by
+  let a : Action := ⟨.player p, .mulliganPick card⟩
+  have ordinary : a.kind ≠ .concede := by intro equal; cases equal
+  obtain ⟨result, applied⟩ := applyFrame_isSome0 wf owners (Legal.frame (a := a) legal ordinary)
+  have rawResult := applied
+  simp only [applyFrame0, pending, a, Option.map_eq_some_iff] at rawResult
+  obtain ⟨⟨moved, id⟩, transfer, rfl⟩ := rawResult
+  obtain ⟨_, _, movedSpec⟩ := moveObj_spec transfer
+  have finalWF : ({ moved with pending := .mulligan p (count + 1) :: rest }).WF :=
+    (moveObj_wf wf transfer).congr rfl rfl rfl rfl
+  have finalReads := movedSpec.other.cards ▸ reads
+  have noCost : s.actionDeathCostChoice a = none := by
+    simp only [GameState.actionDeathCostChoice, pending]
+  exact step_observed_action_waits legal ordinary noCost applied finalWF finalReads rfl
 
 end Riftbound
 

@@ -220,6 +220,10 @@ Predict は、カードを残すか Recycle するかを選ぶ入力と、必要
 
 Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招待はチームメイトに判断を渡し、辞退は待っていた判断へ戻る。Combat の割り当てで Unit を選んだ場合は、同じ席で割り当ての入力を続ける。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean)
 
+### 3ab. マリガンの選択と引き直し
+
+合法な手札を脇に置くと、同じ席のマリガンの入力に進む。1枚以上を脇に置いて確定すると、引き直す枚数に1を足した作業ステップ以内に、Recycle の順序を決めるか、デッキが尽きた場合の Burn Out の決定点に着く。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean) [SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

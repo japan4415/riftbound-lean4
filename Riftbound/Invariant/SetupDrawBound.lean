@@ -122,6 +122,39 @@ theorem advance_setupHands_bound {s : GameState} {events : List Event} {rest : L
     · exact ⟨p, frames, Or.inr h⟩
     · exact ⟨first, tail, Or.inl (h.trans firstMulligan)⟩
 
+/-- After confirming at least one opening card, redraws reach the recycle order or Burn Out
+within one work step per requested card and one to finish drawing. -/
+theorem step_mulliganDone_redraw_bound {s : GameState} {p : PlayerId} {count : Nat}
+    {rest : List Frame} (phase : s.phase = .setup)
+    (pending : s.pending = .mulligan p (count + 1) :: rest)
+    (legal : Legal s ⟨.player p, .mulliganDone⟩) :
+    ∃ result, step (count + 2) s ⟨.player p, .mulliganDone⟩ = .ok result ∧
+      (result.1.pending = .chanceRecycle p :: rest ∨
+        ∃ seat frames, result.1.pending = .chanceBurnOut seat :: frames) := by
+  let a : Action := ⟨.player p, .mulliganDone⟩
+  let raw := { s with pending := .draw p (count + 1) :: .chanceRecycle p :: rest }
+  let paid := s.paySurcharge a raw
+  have phaseAfter : paid.phase = .setup := by
+    rcases s.paySurcharge_cases a raw with equal | ⟨seat, pool, equal⟩ <;>
+      rw [show paid = _ from equal] <;> exact phase
+  have paidPending : paid.pending = .draw p (count + 1) :: .chanceRecycle p :: rest :=
+    (s.paySurcharge_poolStep a raw).pending_eq
+  have declared : applyDeclaredAction s a = some (paid, []) := by
+    have noCost : s.actionDeathCostChoice a = none := by
+      simp only [GameState.actionDeathCostChoice, pending]
+    have applied : applyFrame0 s a = some (raw, []) := by
+      simp only [applyFrame0, pending, a, raw]
+    unfold applyDeclaredAction
+    rw [noCost, applyAction_of_ne (by intro equal; cases equal)]
+    simp only [applyFrame, applied, Option.map_some, extraEvents, a, List.nil_append]
+    rw [setup_noTriggers (s := paid) phaseAfter]
+  obtain ⟨result, drawn, stopped⟩ :=
+    advance_setupDraw_then (count + 1) 0 paid [] p none _ phaseAfter paidPending
+      (fun t ev setup atRecycle =>
+        ⟨(t, ev), advance_onDecision 0 setup (by rw [atRecycle]; rfl), .inr atRecycle⟩)
+  exact ⟨result, by simpa only [step, ite_eq_left legal, declared, Nat.add_zero, a] using drawn,
+    stopped.symm⟩
+
 end Riftbound
 
 end
