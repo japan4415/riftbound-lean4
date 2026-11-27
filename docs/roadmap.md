@@ -2187,6 +2187,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Emperor’s Dais で Conquer した席は、能力を確定するときに Energy 1 を支払い、その Battlefield で自分が支配する Unit 1体をオーナーの手札に戻す。能力が解決すると、その Battlefield に Sand Soldier を Exhausted で出す。場所の異なる Unit、支払いの辞退、能力が打ち消された場合を確認した（CR 383.3、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
 - リプレイの操作履歴には、支払った Energy と、コストとして手札に戻した Unit が表示される。Emperor’s Dais を `full` とし、全1,103枚中561枚を実装済みにした。[カード実装状況](coverage.md)
 
+### 追加コストを支払って Battlefield に出す
+
+- Battlefield を指定する手では、配置先と追加コストに使うカードを別々に選ぶ。Cruel Patron は必須の Kill を支払い、Skystrike Squadron は Gear の返却を選んだときに減額される。配置先や追加コストのオブジェクトは、呪文による対象選択として記録しない（CR 355、356、357）。
+- Stalking Wolf は、自分の最後の Unit が支払いに使うペットである Battlefield に Ambush できる。Chain への Reaction、Base へのプレイ、効果によるプレイを確認した。Stalking Wolf を `full` とし、全1,103枚中562枚を実装済みにした（CR 822）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/) · [カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

@@ -61,6 +61,10 @@ TEXT_ERRATA = {
         "tokens here. They become copies of me.":
             "tokens here. Then do this: They become copies of me.",
     },
+    "UNL-166": {
+        "You may play me to its battlefield (even if you don't have other units there).":
+            "You may [Ambush] me to its battlefield, even if you don't have other units there.",
+    },
     "UNL-199": {
         "token there. It becomes a copy": "token there. Then do this: It becomes a copy",
     },

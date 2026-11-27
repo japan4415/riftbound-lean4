@@ -57,7 +57,7 @@ inductive SpellPick where
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
-  /-- A permanent used to pay an additional Spell cost. It is not a target of the Spell. -/
+  /-- A permanent used to pay an additional play cost, separate from targets and destination. -/
   | withExtraObject (pick : SpellPick) (object : ObjId)
   /-- The amount of a variable additional Power cost declared for this play. -/
   | withVariablePower (pick : SpellPick) (amount : Nat)
@@ -105,7 +105,8 @@ def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
-  | .withShowOff pick _ | .withGearDiscounts pick _ | .withXP pick => pick.permanentCosts
+  | .withShowOff pick _ | .withGearDiscounts pick _ | .withExtraObject pick _ |
+      .withXP pick => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
@@ -165,7 +166,7 @@ def SpellPick.addVariablePower (pick : SpellPick) (amount : Option Nat) : SpellP
 /-- Passive sources whose optional Gear discount was elected. -/
 def SpellPick.gearDiscounts : SpellPick → List ObjId
   | .withGearDiscounts _ sources => sources
-  | .withXP pick => pick.gearDiscounts
+  | .withExtraObject pick _ | .withXP pick => pick.gearDiscounts
   | _ => []
 
 /-- Remove the Gear discount declaration before inspecting other costs. -/
@@ -173,7 +174,7 @@ def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
   | .withGearDiscounts pick _ => pick
   | pick => pick
 
-/-- The permanent selected to pay the cost for this Spell play. -/
+/-- The permanent selected separately to pay this play's cost. -/
 def SpellPick.extraObject : SpellPick → Option ObjId
   | .withExtraObject _ object => some object
   | .withPaidKill _ object .. => some object

@@ -536,6 +536,17 @@ def GameState.playXPCost (s : GameState) (p : PlayerId) (d : CardDef) : Option N
   | some (.spendXP n, _) | some (.spendXPOver n _, _) => if n ≤ s.xpOf p then some n else none
   | _ => none
 
+/-- A legal permanent cost is unpaid when optional, elected as XP, or paid by the named object. -/
+def GameState.extraOk (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)
+    (pick : SpellPick := .plain) : Bool :=
+  match (s.cardDef? c).bind (·.playExtra) with
+  | none => ts.isEmpty
+  | some (k, mandatory) =>
+    match ts with
+    | [] => !mandatory || (pick.paysXP && (s.cardDef? c).any (fun d => (s.playXPCost p d).isSome))
+    | [t] => s.extraTarget p k t && !((s.cardDef? c).any (·.hasType .spell))
+    | _ => false
+
 /-- Apply the target restrictions belonging to the recorded payment (CR 355, 359.3.e.13). -/
 def CardDef.spellBranchForPick (d : CardDef) (e : EffectDef) (pick : SpellPick) : Option EffectDef :=
   (e.forPick pick).map (fun branch =>
@@ -764,7 +775,9 @@ def GameState.cutOptionsOf (s : GameState) (p : PlayerId) (c : ObjId) (cost : Co
       else if destination then [d.xpPlayDiscount cost] else []
     | none => []
   else
-    match s.extraCutOf p c ts with
+    let paymentObjects := if (s.cardDef? c).any (·.hasType .spell) then ts
+      else pick.extraObject.elim ts (fun object => [object])
+    match s.extraCutOf p c paymentObjects with
     | some (e, w) => [(cost.lessEnergy e).lessPower w]
     | none => cost.cutOptions (s.chooseCut p c ts) (s.cutFloor p c)
 
@@ -876,7 +889,7 @@ def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
   let adjusted (total : Cost) (elected : List Nat) :=
     (s.targetCostOptions p c ts (total.withVariablePower (pick.variablePower.getD 0)) cut).map
       (fun cost => (cost.lessEnergy (s.spellExhaustDiscount p pick), elected.length))
-  match pick.withoutXP.withoutGearDiscounts.withoutShowOff with
+  match pick.withoutExtraObject.withoutXP.withoutGearDiscounts.withoutShowOff with
   | .payForBattlefield sources own =>
     (s.battlefieldFeeTotals p d sources).flatMap (fun fee =>
       plans.flatMap (fun (total, elected) =>
@@ -889,7 +902,7 @@ def GameState.targetCosts (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDe
 set, or the card has both a printed cost and Accelerate (CR 355.1.a, 356.4.f.1). -/
 def GameState.permanentCostsOk (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
     (cost : Cost) (ts : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) : Bool :=
-  match pick.withoutXP.withoutGearDiscounts.withoutShowOff with
+  match pick.withoutExtraObject.withoutXP.withoutGearDiscounts.withoutShowOff with
   | .payForBattlefield .. => true
   | _ =>
     let count := (s.extrasRaw p c d).length
@@ -1120,7 +1133,8 @@ and can choose among the conflicting requirements those fees impose (CR 355.17.a
 def GameState.playBfPicks (s : GameState) (p : PlayerId) (c : ObjId) : SpellPick → List ObjId
   | .plain | .withPermanentCosts .. => s.playBfOptions p c
   | .payForBattlefield sources _ => sources
-  | .withShowOff pick _ | .withGearDiscounts pick _ | .withXP pick => s.playBfPicks p c pick
+  | .withShowOff pick _ | .withGearDiscounts pick _ | .withExtraObject pick _ |
+      .withXP pick => s.playBfPicks p c pick
   | _ => []
 
 /-- A Show Off choice is a matching card from hand or another matching friendly Board object.
@@ -1177,6 +1191,16 @@ def GameState.xpPlayPicks (s : GameState) (p : PlayerId) (d : CardDef)
     (picks : List SpellPick) : List SpellPick :=
   if (s.playXPCost p d).isSome then picks.map .withXP else []
 
+/-- Combine a permanent's Battlefield destination with its separately declared object cost. -/
+def GameState.permanentObjectPicks (s : GameState) (p : PlayerId) (d : CardDef)
+    (picks : List SpellPick) : List SpellPick :=
+  if !d.hasType .spell && d.canPlayAtBattlefield then
+    match d.playExtra with
+    | some (.spendXP _, _) | some (.spendXPOver .., _) | none => []
+    | some (cost, _) =>
+      (s.extraCandidates p cost).flatMap (fun object => picks.map (.withExtraObject · object))
+  else []
+
 /-- Which optional costs of the Unit can be elected alongside a Battlefield's fee. -/
 def GameState.battlefieldPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
     List SpellPick :=
@@ -1186,7 +1210,7 @@ def GameState.battlefieldPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : C
       let pick := SpellPick.payForBattlefield sources costs
       pick :: options.map (.withShowOff pick)))
   let all := picks ++ s.gearDiscountPicks p d picks
-  all ++ s.xpPlayPicks p d all
+  all ++ s.xpPlayPicks p d all ++ s.permanentObjectPicks p d all
 
 /-- A Unit or Gear may elect its own optional costs when no Battlefield fee was elected. -/
 def GameState.permanentCostPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef) :
@@ -1197,7 +1221,7 @@ def GameState.permanentCostPicks (s : GameState) (p : PlayerId) (c : ObjId) (d :
     let options := s.showOffOptions p c d
     let ordinary := costs ++ (.plain :: costs).flatMap (fun pick => options.map (.withShowOff pick))
     let all := ordinary ++ s.gearDiscountPicks p d (.plain :: ordinary)
-    all ++ s.xpPlayPicks p d (.plain :: all)
+    all ++ s.xpPlayPicks p d (.plain :: all) ++ s.permanentObjectPicks p d (.plain :: all)
   else []
 
 /-- The player can play the object with the payment: it is the player's card, a Unit or a Gear, in
@@ -1216,7 +1240,7 @@ def playable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
           | none => false) &&
         (s.spendFor p (d.hasType .gear) pay (d.hasType .unit) (permanent := true)).isSome &&
         (match dest with
-          | none => !d.playsOnlyToBattlefield &&
+          | none => !d.playsOnlyToBattlefield && pick.extraObject.isNone &&
               (pick == .plain || (s.permanentCostPicks p c d).contains pick)
           | some b => (s.playBfPicks p c pick).contains b &&
               (pick == .plain ||
@@ -1234,7 +1258,8 @@ theorem playable_not_hidden {s : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
 def bfPlayOk (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (targets : List ObjId) (pick : SpellPick := .plain) : Bool :=
   match s.bfPick targets with
-  | some b => playable s p c pay (some b) targets pick
+  | some b => playable s p c pay (some b) targets pick &&
+      s.extraOk p c pick.extraObject.toList pick
   | none => false
 
 /-- Check a Unit's move destination, including the restrictions on entering Combat and moving to a
@@ -1710,18 +1735,6 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
         s.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
-/-- The objects chosen are a legal pick for the additional cost of the card to play it: none if it
-has none (or may be left out), or the one object it is done to. -/
-def GameState.extraOk (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)
-    (pick : SpellPick := .plain) : Bool :=
-  match (s.cardDef? c).bind (·.playExtra) with
-  | none => ts.isEmpty
-  | some (k, mandatory) =>
-    match ts with
-    | [] => !mandatory || (pick.paysXP && (s.cardDef? c).any (fun d => (s.playXPCost p d).isSome))
-    | [t] => s.extraTarget p k t && !((s.cardDef? c).any (·.hasType .spell))
-    | _ => false
-
 /-- Do the additional cost of the kind to the object. -/
 def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     Option (GameState × List Event) :=
@@ -1927,10 +1940,12 @@ theorem payExtra0_safe {s : GameState} {c : ObjId} {ts : List ObjId} {xpPayer : 
 /-- The object declared as a Kill cost is the same for a regular or a limited play. -/
 def GameState.playDeathCost (s : GameState) (card : ObjId) (targets : List ObjId)
     (pick : SpellPick) : Option ObjId := do
-  let (cost, _) ← (s.cardDef? card).bind (·.playExtra)
+  let d ← s.cardDef? card
+  let (cost, _) ← d.playExtra
   if !cost.kills then none
-  else if cost.separateSpellObject then pick.extraObject
-  else targets.head?
+  else if d.hasType .spell then
+    if cost.separateSpellObject then pick.extraObject else targets.head?
+  else if (s.bfPick targets).isSome then pick.extraObject else targets.head?
 
 /-- A Spell has been cast (`r`, from `s`): the additional cost is done, as it is cast. The object it
 is done to is the first object the Spell chooses (the card's first choice names it); the Spell on
@@ -2161,18 +2176,22 @@ theorem placeAtBf_safe (s : GameState) (ts : List ObjId) (r : GameState × List 
 played to a Battlefield is put there, the additional cost is done, if it was chosen, and the card
 remembers that it was paid. -/
 def payExtra (s : GameState) (c : ObjId) (ts : List ObjId)
-    (r : GameState × List Event) (xpPayer : Option PlayerId := none) : Option (GameState × List Event) :=
-  payExtra0 s c ts (placeAtBf s ts (gearSpent s c r)) xpPayer
+    (r : GameState × List Event) (xpPayer : Option PlayerId := none)
+    (object : Option ObjId := none) : Option (GameState × List Event) :=
+  let costObjects := if (s.bfPick ts).isSome then object.toList else ts
+  payExtra0 s c costObjects (placeAtBf s ts (gearSpent s c r)) xpPayer
 
 /-- Paying the additional cost of a card that was played always gives a state. -/
 theorem payExtra_isSome (s : GameState) (c : ObjId) (ts : List ObjId)
-    (r : GameState × List Event) (xpPayer : Option PlayerId := none) :
-    ∃ r', payExtra s c ts r xpPayer = some r' :=
-  payExtra0_isSome s c ts _ xpPayer
+    (r : GameState × List Event) (xpPayer : Option PlayerId := none)
+    (object : Option ObjId := none) :
+    ∃ r', payExtra s c ts r xpPayer object = some r' :=
+  payExtra0_isSome s c _ _ xpPayer
 
 /-- Paying the additional cost of a card that was played is a safe change. -/
 theorem payExtra_safe {s : GameState} {c : ObjId} {ts : List ObjId} {xpPayer : Option PlayerId}
-    {r r' : GameState × List Event} (h : payExtra s c ts r xpPayer = some r') : Safe r.1 r'.1 :=
+    {object : Option ObjId} {r r' : GameState × List Event}
+    (h : payExtra s c ts r xpPayer object = some r') : Safe r.1 r'.1 :=
   ((gearSpent_safe s c r).trans (placeAtBf_safe s ts _)).trans (payExtra0_safe h)
 
 /-- The player who spends XP on a direct play, when that cost was elected. -/
@@ -2297,7 +2316,8 @@ theorem bfPlayOk_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool
   | none => rw [hpk] at h; simp at h
   | some b =>
     rw [hpk] at h
-    refine ⟨b, ?_, h⟩
+    simp only [Bool.and_eq_true] at h
+    refine ⟨b, ?_, h.1⟩
     unfold GameState.bfPick at hpk
     split at hpk
     · split at hpk
@@ -2968,7 +2988,7 @@ def applyPlayCard (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Pay
       (fun r =>
         let r' := castPay s c targets r
         ({ r'.1 with pending := .chainPass p 0 :: .priority p :: rest }, r'.2))
-  else (applyPlay s p c pay pick).bind (fun r => payExtra s c targets r (pick.xpPayer p))
+  else (applyPlay s p c pay pick).bind (fun r => payExtra s c targets r (pick.xpPayer p) pick.extraObject)
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -3065,12 +3085,12 @@ theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : R
   · simp only [hcast]
     rcases hp with ⟨-, h, -⟩ | h | ⟨h, -⟩
     · obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p)
+      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p) pick.extraObject
       exact ⟨r', by simp [hr, hr']⟩
     · exact absurd h hcast
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
       obtain ⟨r, hr⟩ := applyPlay_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
-      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p)
+      obtain ⟨r', hr'⟩ := payExtra_isSome s c targets r (pick.xpPayer p) pick.extraObject
       exact ⟨r', by simp [hr, hr']⟩
 
 end Riftbound

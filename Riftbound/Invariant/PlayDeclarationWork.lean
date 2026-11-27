@@ -75,7 +75,7 @@ private theorem playDeclaration_isSome {s : GameState} {a : Action}
           ∃ d xs choice, Riftbound.playable s p c pay d xs choice = true := by
         rcases reactable_spec.mp legal.2.2.1 with ⟨(h | h) | h, -⟩ | ⟨h, -⟩
         · exact Or.inl h
-        · exact Or.inr ⟨none, ts, pick, h.2.2.2⟩
+        · exact Or.inr ⟨none, ts, pick, h.2.2⟩
         · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
           exact Or.inr ⟨some b, ts, pick, hb⟩
         · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2

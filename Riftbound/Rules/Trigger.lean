@@ -34,7 +34,9 @@ def playedOf (p : PlayerId) (c : ObjId) (es : List Event) : List Event :=
 /-- The events a step has besides those of the rules it ran: playing a card (CR 349). -/
 def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
-  | .playCard c _ ts _ _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
+  | .playCard c _ ts _ _ _, .player p =>
+    let cast := es.any (fun | .moved old _ .chain => old == c | _ => false)
+    playedOf p c es ++ (if cast then ts.map (Event.chosenBySpell p) else [])
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
   | .activate src _ _ ts _ _ _ _, .player p =>
     if es.any (fun | .moved old _ .chain => old == src | _ => false) then []

@@ -350,7 +350,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
         exact hm
-      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2.2
+      · obtain ⟨-, -, -, -, hm, -⟩ := playable_spec h0.2.2
         simp [hm]
       · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h0.2
         obtain ⟨-, -, -, -, hm, -⟩ := playable_spec hb

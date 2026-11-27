@@ -68,7 +68,15 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let ordinary ← cast (s.fund p 5) p card ⟨5, []⟩
   let discounted ← cast cheap p card ⟨3, []⟩ [returning]
   let squadron ← discounted.firstOf p .base "RAD-075"
-  return (cast cheap p card ⟨3, []⟩).isNone &&
+  let field := s.bf0
+  let controlled := cheap.control p field
+  let placement : Action :=
+    ⟨.player p, .playCard card ⟨3, []⟩ [field] none none (.withExtraObject .plain returning)⟩
+  let (placed, _) ← (step 100 controlled placement).toOption
+  return (legalFrameActions controlled).contains placement &&
+    (placed.unitsAtOf field p).any (fun id => (placed.cardDef? id).any (·.id.code == "RAD-075")) &&
+    placed.countIn p .hand "SFD-117" == 1 &&
+    (cast cheap p card ⟨3, []⟩).isNone &&
     (cast cheap p card ⟨3, []⟩ [theirGear]).isNone && (cast cheap p card ⟨3, []⟩ [unit]).isNone &&
     ordinary.inPlay.contains returning && discounted.countIn p .hand "SFD-117" == 1 &&
     discounted.deflectOf squadron == 1

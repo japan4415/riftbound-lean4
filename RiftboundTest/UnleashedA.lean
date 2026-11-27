@@ -944,6 +944,69 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let (s3, other) ← put s2 s.me "UNL-111" .base
   return s3.extraOk s.me w [bird] && !s3.extraOk s.me w [other] && !s3.extraOk s.me w []
 
+private meta def killedForPlay (events : List Event) (owner : PlayerId) (before : ObjId) : Bool :=
+  events.any fun
+    | .moved old after (.player dest .trash) =>
+      old == before && dest == owner && events.contains (.died after owner)
+    | _ => false
+
+-- A Battlefield destination and the pet payment are separate choices. A Wolf can Ambush to
+-- the field where its only Unit is the pet it pays, including while another item is on the Chain.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let otherField := s.bf0
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, wolf) ← put s p "UNL-166" .hand
+  let (s, pet) ← putAt s p "OGN-013" field
+  let (s, otherPet) ← put s p "OGN-013" .base
+  let (s, invalid) ← put s q "OGN-013" .base
+  let s := s.fund p 4 (order := 1)
+  let payment : RunePool.Payment := ⟨4, [.order]⟩
+  let deploy (dest : ObjId) (cost : ObjId) : Action :=
+    ⟨.player p, .playCard wolf payment [dest] none none (.withExtraObject .plain cost)⟩
+  let ambush := deploy field pet
+  let noCost : Action := ⟨.player p, .playCard wolf payment [field]⟩
+  let toBase : Action := ⟨.player p, .playCard wolf payment [otherPet]⟩
+  let (base, _) ← (step 100 s toBase).toOption
+  let (closed, item) ← onChain s q "OGN-095"
+  let closed := { closed with pending := [.chainPass p 0, .priority p] }
+  let (played, events) ← (step 100 closed ambush).toOption
+  let arrived ← (played.unitsAtOf field p).head?
+  let plan ← (permanentPlayOptions s p wolf { price := .reduceEnergy 1 }).find? (fun choice =>
+    choice.battlefield == some field && choice.extraObject == some pet)
+  let (byEffect, fromEffect, effectEvents) ← applyReducedPermanent s p wolf plan
+  return (s.unitsAtOf field p) == [pet] &&
+    (legalFrameActions closed).contains ambush && !(step 100 closed noCost).isOk &&
+    !(step 100 closed (deploy field invalid)).isOk &&
+    !(step 100 closed (deploy otherField pet)).isOk &&
+    !(step 100 closed toBase).isOk && (base.firstOf p .base "UNL-166").isSome &&
+    (base.obj? otherPet).isNone && (base.obj? pet).isSome &&
+    (played.cardDef? arrived).any (·.id.code == "UNL-166") &&
+    (played.unitsAtOf field p) == [arrived] && played.tired arrived == some true &&
+    (played.obj? arrived).any (·.paid) && (played.zone .chain).contains item &&
+    killedForPlay events p pet && events.contains (.played p arrived) &&
+    !(events.contains (.chosenBySpell p field)) &&
+    (byEffect.unitsAtOf field p) == [fromEffect] && killedForPlay effectEvents p pet
+
+-- A controlled Battlefield still requires Cruel Patron's cost, and another Unit at the
+-- destination may stay in play when the chosen sacrifice is at the Base.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, patron) ← put (s.control p field) p "OGN-208" .hand
+  let (s, stays) ← putAt s p "OGN-013" field
+  let (s, costs) ← put s p "OGN-051" .base
+  let funded := s.fund p 4
+  let pay : RunePool.Payment := ⟨4, []⟩
+  let missing : Action := ⟨.player p, .playCard patron pay [field]⟩
+  let declared : Action :=
+    ⟨.player p, .playCard patron pay [field] none none (.withExtraObject .plain costs)⟩
+  let (played, events) ← (step 100 funded declared).toOption
+  return (legalFrameActions funded).contains declared && !(step 100 funded missing).isOk &&
+    killedForPlay events p costs && (played.obj? stays).isSome &&
+    (played.unitsAtOf field p).any (fun id => (played.cardDef? id).any (·.id.code == "OGN-208"))
+
 -- Blighted Battleaxe (UNL-019): at the end of its turn, the unit that did not conquer is dealt 4
 -- and the Equipment is unattached
 #guard tun fun s => do

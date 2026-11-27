@@ -4761,8 +4761,8 @@ def UNL_165 : CardDef :=
 Printings: UNL-166/219
 
 > [Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)
-> As an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may play me
-> to its battlefield (even if you don't have other units there).
+> As an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may [Ambush]
+> me to its battlefield, even if you don't have other units there.
 -/
 def UNL_166.meta : CardDef :=
   { id := ⟨"UNL-166"⟩,
@@ -4780,7 +4780,7 @@ def UNL_166.meta : CardDef :=
 def UNL_166 : CardDef :=
   { UNL_166.meta with
     playExtra := some (.killPet, true),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-167
 /--
