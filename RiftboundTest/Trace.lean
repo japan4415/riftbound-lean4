@@ -75,6 +75,20 @@ meta def traceOf (seed turns : Nat) : String :=
     !check [.poolResource s.me (.domainPower .fury) 4] &&
     !check [.poolResource ⟨s.playerCount⟩ .energy 0] : Option Bool).getD false
 
+-- A played card still has its recorded code if it moved again within the same answer.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, original) ← put s p "OGN-051" .base
+  let dest := Zone.player p .trash
+  let (s, moved) ← moveObj s original dest
+  let events : List Event := [.played p original, .moved original moved dest, .drew s.you]
+  let check (sequence : List ReplayPublicEvent) :=
+    (ReplayObservation.checkAt [{ checkpoint := 1, facts := [.eventsInOrder sequence] }] 1 s events).isOk
+  return check [.playedCard p, .drew s.you] && check [.playedCardCode p (cid "OGN-051"), .drew s.you] &&
+    !check [.playedCardCode p (cid "OGN-001")] && !check [.drew s.you, .playedCard p] &&
+    !check [.playedCard p, .playedCardCode p (cid "OGN-051")] : Option Bool).getD false
+
 -- XP is seat-specific, and marker observations retain all copies of a matching Unit.
 #guard (do
   let s ← lab

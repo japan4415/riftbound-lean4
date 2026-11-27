@@ -87,8 +87,12 @@ inductive ReplayPublicEvent where
   | recycled (seat : PlayerId)
   /-- The seat finalized playing a card. -/
   | playedCard (seat : PlayerId)
+  /-- The seat finalized playing the card with this printed code. -/
+  | playedCardCode (seat : PlayerId) (card : CardId)
   /-- The seat played one token. -/
   | playedToken (seat : PlayerId)
+  /-- The seat played the token with this printed code. -/
+  | playedTokenCode (seat : PlayerId) (card : CardId)
   /-- This seat added a Buff to a Unit. -/
   | buffedUnit (seat : PlayerId)
   /-- This seat Stunned a Unit. -/
@@ -99,17 +103,27 @@ inductive ReplayPublicEvent where
   | pointsGained (seat : PlayerId) (points : Nat)
 deriving DecidableEq, Repr, ToJson, FromJson
 
-private def ReplayPublicEvent.ofEngineEvent : Event → Option ReplayPublicEvent
+private def replayEventCard (s : GameState) (moves : List (ObjId × ObjId)) (id : ObjId) : Option CardId :=
+  let current := moves.foldl (fun id (old, new) => if id == old then new else id) id
+  (s.obj? current).bind (·.kind.cardId?)
+
+private def ReplayPublicEvent.ofEngineEvent (s : GameState) (moves : List (ObjId × ObjId)) :
+    Event → Option ReplayPublicEvent
   | .drew p => some (.drew p)
   | .discarded p .. => some (.discarded p)
   | .recycled p => some (.recycled p)
-  | .played p _ => some (.playedCard p)
-  | .tokenPlayed p _ => some (.playedToken p)
+  | .played p id => some ((replayEventCard s moves id).elim (.playedCard p) (.playedCardCode p))
+  | .tokenPlayed p id => some ((replayEventCard s moves id).elim (.playedToken p) (.playedTokenCode p))
   | .buffedBy _ p => some (.buffedUnit p)
   | .stunnedBy _ p => some (.stunnedUnit p)
   | .burnedOut p => some (.burnedOut p)
   | .pointsGained p n => some (.pointsGained p n)
   | _ => none
+
+private def ReplayPublicEvent.covers (actual expected : ReplayPublicEvent) : Bool :=
+  match actual, expected with
+  | .playedCardCode p _, .playedCard q | .playedTokenCode p _, .playedToken q => p == q
+  | _, _ => actual == expected
 
 /-- A fact observed at a game checkpoint, expressed without engine-generated object IDs. -/
 inductive ReplayObservationFact where
@@ -315,8 +329,12 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
       (s.obj? card).any (·.hiddenAt == some id))
     checkFactValue s!"seat {seat.n} Hidden count at Battlefield {field.code} from seat {owner.n}" expected actual
   | .eventsInOrder expected =>
-    let actual := events.filterMap ReplayPublicEvent.ofEngineEvent
-    unless decide (expected.Sublist actual) do
+    let moves := events.filterMap (fun | .moved old new _ => some (old, new) | _ => none)
+    let actual := events.filterMap (ReplayPublicEvent.ofEngineEvent s moves)
+    let unmatched := actual.foldl (fun remaining event => match remaining with
+      | next :: rest => if event.covers next then rest else remaining
+      | [] => []) expected
+    unless unmatched.isEmpty do
       throw s!"public events: expected in order {(toJson expected).compress}, replayed {(toJson actual).compress}"
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
