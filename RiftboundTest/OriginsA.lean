@@ -2150,24 +2150,37 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.handN s.me == s2.handN s.me + 1 && runes a == runes s2 &&
     b.handN s.me == s2.handN s.me && runes b + 1 == runes s2 && c.handN s.me == s2.handN s.me
 
--- Charm (OGN-043): move an enemy unit, to its base or to a battlefield I choose
+-- Charm (OGN-043) declares an enemy Unit and its destination before anyone responds.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-043" .hand
-  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s2, e) ← putAt (s1.control s.you s.bf0) s.you "OGN-136" s.bf0
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
-  let toBase ← play s3 s.me c [e]
-  let toBf ← play s3 s.me c [f] { yes := false, obj := fun o => o == other }
+  let other ← s.battlefields.find? (· != s.bf0)
+  let funded := s3.rich s.me
+  let pay := payOf s3 c
+  let move (unit : ObjId) (destination : Option ObjId) : Action :=
+    ⟨.player s.me, .playCard c pay [unit] none none (.destination destination)⟩
+  let (queued, _) ← (step 100 funded (move e none)).toOption
+  let toBase := settleChain {} 12 queued
+  let toBf ← cast funded s.me c pay [f] {} (.destination (some other))
   return (toBase.obj? e).bind (·.loc) == none && (toBase.zone (.player s.you .base)).contains e &&
-    (toBf.obj? f).bind (·.loc) == some other
+    (toBf.obj? f).bind (·.loc) == some other &&
+    (queued.obj? e).any (·.loc == some s.bf0) && (queued.zone .chain).length == 1 &&
+    !(legalFrameActions funded).contains (move e (some s.bf0)) &&
+    !(legalFrameActions funded).contains (move f none)
 
 -- Ride the Wind (OGN-173): move a friendly unit and ready it
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-173" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let tiredU := s2.tire u
-  let a ← play tiredU s.me c [u] { yes := false, obj := fun o => o == s.bf0 }
-  return (a.obj? u).bind (·.loc) == some s.bf0 && a.tired u == some false
+  let a ← cast (tiredU.rich s.me) s.me c (payOf tiredU c) [u] {} (.destination (some s.bf0))
+  let (s3, lair) ← putBf s2 s.me "OGN-295"
+  let (s4, trapped) ← putAt (s3.control s.me lair) s.me "OGN-136" lair
+  let before := (s4.tire trapped).rich s.me
+  let readied ← cast before s.me c (payOf before c) [trapped] {} (.destination none)
+  return (a.obj? u).bind (·.loc) == some s.bf0 && a.tired u == some false &&
+    (readied.obj? trapped).any (·.loc == some lair) && (readied.tired trapped) == some false
 
 -- Unforgiven (OGN-259), a Legend: for 2 Energy and exhausting it, move a friendly unit to or from
 -- my base
@@ -2207,7 +2220,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-043" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
-  return (play s2 s.me c [u]).isNone
+  return (cast (s2.rich s.me) s.me c (payOf s2 c) [u] {} (.destination (some s.bf0))).isNone
 
 -- Singularity (OGN-105): 6 damage to each of up to two distinct declared targets.
 #guard t fun s => do
@@ -3475,6 +3488,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let refused2 := play pricey s.you defy [← (pricey.zone .chain).head?]
   return a.countIn s.me .trash "OGN-129" == 1 && a.turnFx.isEmpty && refused.isNone &&
     refused2.isNone && refused3.isNone
+
+-- Defy reads the printed cost: the exact limit is legal and a discount cannot change it.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, defy) ← put s q "OGN-045" .hand
+  let (s, sky) ← put s p "OGN-014" .hand
+  let (s, scorched) ← put s p "RAD-006" .hand
+  let (s, _) ← put s p "OGN-116" .base
+  let (s, enemy) ← putAt (s.control q s.bf0) q "OGN-001" s.bf0
+  let expensive ← passBy (← castOpen s p sky [enemy]) p
+  let boundary ← passBy (← castOpen s p scorched [enemy]) p
+  let expensiveTarget ← (expensive.zone .chain).head?
+  let boundaryTarget ← (boundary.zone .chain).head?
+  let countered ← play boundary q defy [boundaryTarget]
+  return energyNow s p sky == some 1 && (play expensive q defy [expensiveTarget]).isNone &&
+    (countered.obj? enemy).any (·.damage == 0) && countered.countIn p .trash "RAD-006" == 1
 
 -- Stormbringer, Volibear (OGN-250): damage equal to my unit's Might to the enemy units at a
 -- battlefield, then my unit moves there

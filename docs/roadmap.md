@@ -2457,6 +2457,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Imperial Decree で撃破した席に Immortal Phoenix が反応することを確認した。リプレイではダメージ、Chain、撃破の帰属を照合できる。[公式 Vendetta FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
 - Noxian Guillotine の Power は Fury または Order で払う。Find Your Center と Leona, Zealot は FFA で全対戦相手の得点を個別に確認する。Seal of Rage の Reaction Add を含む5枚を確認し、774枚を `full` とした。
 
+### 移動先の宣言と誘発のリプレイ
+
+- Charm と Ride the Wind の移動先を、Spell の確定時に宣言する。Gravity Field の費用は移動を実行する席が解決中に払い、Vilemaw's Lair で移動できなくても Ride the Wind は Unit を Ready にする。[公式総合ルール 355.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf) [公式 Vendetta FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Defy の対象判定に印刷コストを使うことを確認した。3枚を追加で確認し、777枚を `full` とした。[公式 Spiritforged FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 誘発元、誘発のきっかけ、確定時の対象・費用をカードコードで記録できる。任意の誘発や取り消し可能な Add を強制手と判定しないことを Lean で証明した。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

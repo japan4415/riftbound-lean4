@@ -1160,11 +1160,11 @@ def OGN_043.meta : CardDef :=
 /-- Charm. -/
 def OGN_043 : CardDef :=
   { OGN_043.meta with
-    spellEffect := some (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
-      (.eitherOf (.cons (.prim (.move (.slot 0) .base))
-            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
-              .nil)))),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil .nop },
+    status := .full }
 
 -- BEGIN GENERATED OGN-044
 /--
@@ -1216,7 +1216,7 @@ def OGN_045 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .onChain
         [.ofType .spell, .cost .le (.const 4), .powerCost .le (.const 1)]]
       (.prim (.counter (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-046
 /--
@@ -4677,12 +4677,11 @@ def OGN_173.meta : CardDef :=
 /-- Ride the Wind. -/
 def OGN_173 : CardDef :=
   { OGN_173.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-      (.seqOf [.eitherOf (.cons (.prim (.move (.slot 0) .base))
-            (.cons (.prim (.move (.slot 0) (.at_ (Selector.one .any .anywhere [.ofType .battlefield]))))
-              .nil)),
-        .prim (.ready (.slot 0))])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      body := .moveChoosing 0 true .nil (.prim (.ready (.slot 0))) true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-174
 /--
