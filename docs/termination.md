@@ -224,6 +224,8 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 合法な手札を脇に置くと、同じ席のマリガンの入力に進む。1枚以上を脇に置いて確定すると、引き直す枚数に1を足した作業ステップ以内に、Recycle の順序を決めるか、デッキが尽きた場合の Burn Out の決定点に着く。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean) [SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean)
 
+手札を変えずに確定する場合と、脇に置いたカードを戻す順序を決める場合は、次の席の入力へ進む。最後の席では最初のターンを始め、Awaken から Main まで既存の停止性の証明を使って、次の入力に続く状態か試合終了まで追える。通常の優先権を提示する直前に Cleanup が必要なら、残りの fuel で処理する。登録カードと、セットアップ中の投了で戦場トークンが追加されたカード定義のどちらにも適用できる。[SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
+
 ### 3ac. セットアップのシャッフル、戦場、手番順
 
 セットアップの合法なシャッフルと戦場の抽選は、残っているセットアップ入力へ作業ステップなしで進む。参加者が残っている状態で合法な手番順を確定すると、参加席数を `n` として `5n + 1` 作業ステップ以内に、最初のマリガンか、山札が尽きた場合の Burn Out の入力に着く。4席が参加していれば上限は21で、離脱した席のドローは数えない。いずれも実際の `step` に対する定理である。[SetupDrawBound.lean](../Riftbound/Invariant/SetupDrawBound.lean)

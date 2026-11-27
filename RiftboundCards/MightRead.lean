@@ -6,6 +6,7 @@ public import Riftbound.Invariant.PlayDeclarationWork
 public import Riftbound.Invariant.ResourceDecisionWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.ConcessionWork
+public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
@@ -50,6 +51,32 @@ private theorem ordinaryAwaken_of_registered {cards : Riftbound.CardDB}
   rcases registered with h | h
   · exact h ▸ db_awakenTriggersAreOrdinary
   · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
+
+/-- Finishing the Mulligan with the registered cards reaches the following decision
+continuation, including after an opening concession. -/
+theorem step_emptyMulligan_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} (wf : s.WF) (phase : s.phase = .setup)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .mulligan p 0 :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .mulliganDone⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .mulliganDone⟩ =
+        Riftbound.advance extra t events :=
+  Riftbound.step_emptyMulligan_to_decision wf phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- The registered cards support the same continuation after returning the Mulligan cards. -/
+theorem step_mulliganRecycle_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} {order : List Riftbound.ObjId} (wf : s.WF) (owners : s.OwnerOk)
+    (phase : s.phase = .setup) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chanceRecycle p :: rest) (legal : Riftbound.Legal s ⟨.chance, .arrange order⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.chance, .arrange order⟩ =
+        Riftbound.advance extra t events :=
+  Riftbound.step_mulliganRecycle_to_decision wf owners phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
 
 /-- A checked War concession with the registered cards reaches a decision or ends the game. -/
 theorem step_freeForAllConcede_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}

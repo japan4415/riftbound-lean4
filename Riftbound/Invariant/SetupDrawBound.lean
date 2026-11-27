@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Engine.Step
 public import Riftbound.Invariant.Setup
+public import Riftbound.Invariant.ExpirationWork
 
 /-!
 # Termination of the opening draws (I12)
@@ -244,6 +245,82 @@ theorem step_mulliganDone_redraw_bound {s : GameState} {p : PlayerId} {count : N
         ⟨(t, ev), advance_onDecision 0 setup (by rw [atRecycle]; rfl), .inr atRecycle⟩)
   exact ⟨result, by simpa only [step, ite_eq_left legal, declared, Nat.add_zero, a] using drawn,
     stopped.symm⟩
+
+private theorem step_setupCompletion {s raw : GameState} {a : Action} {rest : List Frame}
+    (legal : Legal s a) (ordinary : a.kind ≠ .concede) (noCost : s.actionDeathCostChoice a = none)
+    (applied : applyFrame0 s a = some (raw, [])) (silent : extraEvents a [] = [])
+    (phase : raw.phase = .setup) (wf : raw.WF) (cards : raw.cards = s.cards)
+    (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary) (pending : raw.pending = rest)
+    (continuation : rest.head?.all (fun frame => !frame.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = advance extra t events := by
+  let paid := s.paySurcharge a raw
+  have surcharge : GameState.PoolStep raw paid := s.paySurcharge_poolStep a raw
+  have paidPhase : paid.phase = .setup := by
+    rcases surcharge with equal | ⟨p, pool, equal⟩ <;> rw [equal] <;> exact phase
+  have paidCards : paid.cards = s.cards := by
+    rcases surcharge with equal | ⟨p, pool, equal⟩ <;> rw [equal] <;> exact cards
+  have paidPending : paid.pending = rest := surcharge.pending_eq.trans pending
+  have declared : applyDeclaredAction s a = some (paid, []) := by
+    simp only [applyDeclaredAction, noCost, applyAction_of_ne ordinary, applyFrame, applied,
+      Option.map_some, silent, List.nil_append]
+    rw [setup_noTriggers paidPhase]
+  rcases continuation with waiting | begin
+  · refine ⟨paid, 0, [], paidPending ▸ waiting, ?_⟩
+    intro extra
+    simp only [step, legal, ite_true, declared, Nat.zero_add]
+  · obtain ⟨t, used, events, path, done⟩ :=
+      advance_beginTurn_to_decision (surcharge.wf wf) (paidCards ▸ database)
+        (paidCards ▸ ordinaryMight) (paidCards ▸ ordinaryAwaken) (paidPending.trans begin)
+    refine ⟨t, used, events, done, ?_⟩
+    intro extra
+    simpa only [step, legal, ite_true, declared, List.nil_append] using path extra []
+
+/-- Confirming an unchanged opening hand either waits for another input immediately or enters
+the first turn and reaches a decision continuation in finite work. -/
+theorem step_emptyMulligan_to_decision {s : GameState} {p : PlayerId} {rest : List Frame}
+    (wf : s.WF) (phase : s.phase = .setup) (database : MightRead.database s.cards)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)
+    (pending : s.pending = .mulligan p 0 :: rest) (legal : Legal s ⟨.player p, .mulliganDone⟩)
+    (continuation : rest.head?.all (fun frame => !frame.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.player p, .mulliganDone⟩ = advance extra t events := by
+  let a : Action := ⟨.player p, .mulliganDone⟩
+  let raw := { s with pending := rest }
+  have noCost : s.actionDeathCostChoice a = none := by
+    simp only [GameState.actionDeathCostChoice, pending]
+  have applied : applyFrame0 s a = some (raw, []) := by
+    simp only [applyFrame0, pending, a, raw]
+  have rawPhase : raw.phase = .setup := phase
+  exact step_setupCompletion legal (by intro equal; cases equal) noCost applied rfl rawPhase
+    (wf.congr rfl rfl rfl rfl) rfl database ordinaryMight ordinaryAwaken rfl continuation
+
+/-- Giving the return order after a Mulligan redraw uses the same waiting or first-turn
+continuation as confirming an unchanged opening hand. -/
+theorem step_mulliganRecycle_to_decision {s : GameState} {p : PlayerId} {rest : List Frame}
+    {order : List ObjId} (wf : s.WF) (owners : s.OwnerOk) (phase : s.phase = .setup)
+    (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary) (pending : s.pending = .chanceRecycle p :: rest)
+    (legal : Legal s ⟨.chance, .arrange order⟩)
+    (continuation : rest.head?.all (fun frame => !frame.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.chance, .arrange order⟩ = advance extra t events := by
+  let a : Action := ⟨.chance, .arrange order⟩
+  have ordinary : a.kind ≠ .concede := by intro equal; cases equal
+  obtain ⟨result, applied⟩ := applyFrame_isSome0 wf owners (Legal.frame (a := a) legal ordinary)
+  have recycle := applied
+  simp only [applyFrame0, pending, a, Option.map_eq_some_iff] at recycle
+  obtain ⟨board, moved, rfl⟩ := recycle
+  let raw := { board with pending := rest }
+  have sameMeta := recycleAll_meta p order moved
+  have rawPhase : raw.phase = .setup := sameMeta.phase.trans phase
+  have rawCards : raw.cards = s.cards := sameMeta.cards
+  have rawWF : raw.WF := (recycleAll_wf p order wf moved).congr rfl rfl rfl rfl
+  have noCost : s.actionDeathCostChoice a = none := by
+    simp only [GameState.actionDeathCostChoice, pending]
+  exact step_setupCompletion legal ordinary noCost applied rfl rawPhase rawWF rawCards database
+    ordinaryMight ordinaryAwaken rfl continuation
 
 end Riftbound
 
