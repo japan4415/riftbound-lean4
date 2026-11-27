@@ -20,6 +20,66 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Honeyfruit enters exhausted. At 6 XP, the two Add abilities are separate choices and
+-- share the card's Exhaust cost. The Level ability adds both resources together.
+#guard tun fun s => do
+  let p := s.me
+  let (s, hand) ← put (s.fund p 2) p "UNL-049" .hand
+  let (played, _) ← (step 100 s ⟨.player p, .playCard hand ⟨2, []⟩ []⟩).toOption
+  let fruit ← played.firstOf p .base "UNL-049"
+  let ordinary : Action := ⟨.player p, .manaAbility fruit 1 ⟨0, []⟩⟩
+  let level : Action := ⟨.player p, .manaAbility fruit 2 ⟨0, []⟩⟩
+  let chained : Action := ⟨.player p, .activate fruit 2 ⟨0, []⟩ []⟩
+  let ready := (readyEffect played fruit).1
+  let below := ready.setXP p 5
+  let atLevel := ready.setXP p 6
+  let (plain, _) ← (step 1 below ordinary).toOption
+  let (both, events) ← (step 1 atLevel level).toOption
+  return played.tired fruit == some true && !(step 100 (played.setXP p 6) level).isOk &&
+    !(legalFrameActions below).contains level && !(step 100 below level).isOk &&
+    (legalFrameActions atLevel).contains ordinary && (legalFrameActions atLevel).contains level &&
+    !(legalFrameActions atLevel).contains chained && !(step 100 atLevel chained).isOk &&
+    plain.poolOf p == { any := 1 } && both.poolOf p == { energy := 1, any := 1 } &&
+    both.tired fruit == some true && both.xpOf p == 6 &&
+    !(step 100 both ordinary).isOk && !(step 100 both level).isOk &&
+    both.pending == atLevel.pending && (both.zone .chain).isEmpty &&
+    events == [.activated p fruit 2 (some 0)]
+
+-- The Level Add can fund a payment that needs both resources. It also resolves during the
+-- Chain and Showdown without putting an item on the Chain or passing priority or Focus.
+#guard tun fun s => do
+  let p := s.me
+  let (s, fruit) ← put s p "UNL-049" .base
+  let (s, spell) ← put s p "UNL-103" .hand
+  let (s, mover) ← put s p "V0" .base
+  let s := (readyEffect (s.fund p 0) fruit).1.setXP p 6
+  let payment : RunePool.Payment := ⟨1, [.calm]⟩
+  let canPay (state : GameState) := ((state.poolOf p).spend payment).isSome
+  let funding : EffectAdd := .ability fruit 2 0 [] none
+  let add : Action := ⟨.player p, .manaAbility fruit 2 ⟨0, []⟩⟩
+  let (funded, receipts) ← (applyEffectAdds s p [funding])
+  let (chain, _) ← (step 100 (s.fund p 2)
+    ⟨.player p, .playCard spell ⟨2, []⟩ [] none none (.mode 1)⟩).toOption
+  let (showdown, _) ← (step 100 s ⟨.player p, .standardMove mover (.battlefield s.bf0)⟩).toOption
+  let works (waiting : GameState) : Bool := (step 0 waiting add).toOption.any fun (done, events) =>
+    done.pending == waiting.pending && done.zone .chain == waiting.zone .chain &&
+    done.poolOf p == { energy := 1, any := 1 } &&
+    events == [.activated p fruit 2 (some 0)]
+  return effectAddChoices s p canPay == [funding] && effectAddPowerBudget s p == 6 &&
+    canPay funded && receipts == [.activated p fruit 2 (some 0)] &&
+    funded.tired fruit == some true && works chain && works showdown
+
+-- Only sequences of fixed unrestricted gains have the new immediate timing.
+#guard
+  let energy := Effect.prim (.addEnergy .you (.const 2) none)
+  let power := Effect.prim (.addPower .you (.const 1) (some .body) none)
+  let gains := Effect.seqOf [power, .seqOf [energy, power]]
+  let modal : EffectDef := { body := gains, modes := [⟨"Draw", [], .prim (.draw .you (.const 1)), none⟩] }
+  (manaKind (.of [] gains)).any (fun kind =>
+    kind.add {} ⟨0, []⟩ == { energy := 2, body := 2 }) &&
+    (manaKind (.of [] (.seqOf [energy, .prim (.draw .you (.const 1))]))).isNone &&
+    (manaKind modal).isNone
+
 -- Fresh Beans asks on finalization for a Unit or Unit token played during a Showdown.
 #guard tun fun s => do
   let (s, beans) ← put s s.me "UNL-011" .base

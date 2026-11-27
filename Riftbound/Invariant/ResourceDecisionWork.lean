@@ -13,6 +13,21 @@ Add at ordinary priority also runs Cleanup before returning to a decision.
 
 namespace Riftbound
 
+/-- Resource gains add their full total to the balance left after payment. A sequence of
+fixed gains contributes the sum of its parts. -/
+theorem ManaKind.total_add (kind : ManaKind) (pool : RunePool) (payment : RunePool.Payment) :
+    (kind.add pool payment).total = pool.total + (kind.add {} payment).total := by
+  induction kind generalizing pool with
+  | combined first second firstTotal secondTotal =>
+    simp only [ManaKind.add]
+    rw [secondTotal (first.add pool payment), secondTotal (first.add {} payment), firstTotal, Nat.add_assoc]
+  | power domain amount =>
+    cases domain <;> simp [ManaKind.add, RunePool.total, RunePool.totalPower, RunePool.addPower] <;> omega
+  | energy amount | unitEnergy amount | spellEnergy amount | any amount | gear amount |
+      permanent | powerToEnergy | energyToPower =>
+    simp [ManaKind.add, RunePool.total, RunePool.totalPower, RunePool.addEnergy, RunePool.addAny,
+      RunePool.addUnitEnergy, RunePool.addSpellEnergy] <;> omega
+
 /-- Basic Rune and immediate Add activations. Legality determines which windows permit them. -/
 def ActionKind.isResourceActivation : ActionKind → Bool
   | .runeAbility .. | .manaAbility .. => true

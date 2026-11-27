@@ -1469,7 +1469,7 @@ def UNL_049.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Honeyfruit. -/
+/-- Honeyfruit adds both resources immediately when its controller chooses the Level 6 ability. -/
 def UNL_049 : CardDef :=
   { UNL_049.meta with
     abilities := [.passive .always [.entersExhausted],
@@ -1478,7 +1478,7 @@ def UNL_049 : CardDef :=
         (.of [] (.ifThen (.cmp .ge .xp (.const 6))
           (.seqOf [.prim (.addEnergy .you (.const 1) none), .prim (.addPower .you (.const 1) none none)])
           .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-050
 /--

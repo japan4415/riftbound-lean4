@@ -660,6 +660,8 @@ inductive ManaKind where
   | gear (n : Nat)
   /-- Flexible Power that may only be spent playing a Unit or Gear. -/
   | permanent
+  /-- Two fixed resource gains belonging to the same Add. -/
+  | combined (first second : ManaKind)
   /-- Pay any amount of Power, to add that much Energy (Hextech Anomaly): the payment is chosen. -/
   | powerToEnergy
   /-- Pay any amount of Energy, to add that much Power of any domain (Ancient Henge). -/
@@ -675,34 +677,54 @@ def ManaKind.add : ManaKind → RunePool → RunePool.Payment → RunePool
   | .any n, p, _ => p.addAny n
   | .gear n, p, _ => p.addAny n
   | .permanent, p, _ => p.addAny 1
+  | .combined a b, p, payment => b.add (a.add p payment) payment
   | .powerToEnergy, p, payment => p.addEnergy payment.power.length
   | .energyToPower, p, payment => p.addAny payment.energy
 
+mutual
+
+/-- Read a fixed, unrestricted resource gain or a sequence of such gains. -/
+def Effect.fixedManaKind : Effect → Option ManaKind
+  | .prim (.addEnergy .you (.const n) none) => some (.energy n)
+  | .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
+  | .prim (.addPower .you (.const n) none none) => some (.any n)
+  | .seq effects => effects.fixedManaKind
+  | _ => none
+termination_by structural effect => effect
+
+/-- Read every gain in a sequence. An empty sequence grants no resources. -/
+def EffectList.fixedManaKind : EffectList → Option ManaKind
+  | .nil => none
+  | .cons effect .nil => effect.fixedManaKind
+  | .cons effect rest => do
+    let first ← effect.fixedManaKind
+    let next ← rest.fixedManaKind
+    return .combined first next
+termination_by structural effects => effects
+
+end
+
 /-- The resource effect an Add ability resolves immediately (CR 430.2). -/
-def manaKind (body : EffectDef) : Option ManaKind :=
-  match body.choices, body.body with
-  | [], .prim (.addEnergy .you (.const n) none) => some (.energy n)
-  | [], .prim (.addUnitEnergy .you (.const n)) => some (.unitEnergy n)
-  | [], .prim (.addSpellEnergy .you (.const n)) => some (.spellEnergy n)
-  | [], .prim (.addPower .you (.const n) (some d) none) => some (.power d n)
-  | [], .prim (.addPower .you (.const n) none none) => some (.any n)
+def manaKind (body : EffectDef) : Option ManaKind := do
+  guard (body.choices.isEmpty && body.showOffChoices.isEmpty && body.modes.isEmpty &&
+    body.moveChoice.isNone && body.playerTarget.isNone)
+  match body.body with
+  | .prim (.addUnitEnergy .you (.const n)) => some (.unitEnergy n)
+  | .prim (.addSpellEnergy .you (.const n)) => some (.spellEnergy n)
   -- the Power of Fire Below the Mountain: it pays only for Gear
-  | [], .seq (.cons (.prim (.addPower .you (.const n) none none))
+  | .seq (.cons (.prim (.addPower .you (.const n) none none))
       (.cons (.prim (.turnEffect .gearMana)) .nil)) => some (.gear n)
-  | [], .seq (.cons (.prim (.addPower .you (.const 1) none none))
+  | .seq (.cons (.prim (.addPower .you (.const 1) none none))
       (.cons (.prim (.turnEffect .permanentMana)) .nil)) => some .permanent
-  -- an Add that works only while a condition holds: it is used only then (`guardOk`)
-  | [], .ifThen _ (.prim (.addEnergy .you (.const n) none)) .nop => some (.energy n)
-  | [], .ifThen _ (.prim (.addPower .you (.const n) (some d) none)) .nop => some (.power d n)
-  | [], .ifThen _ (.prim (.addPower .you (.const n) none none)) .nop => some (.any n)
-  -- "pay any amount of Power to add that much Energy", and the other way round
-  | [], e =>
-    if e == payAny ⟨0, [.any]⟩ (.prim (.addEnergy .you (.notes .unitPaid) none)) then
-      some .powerToEnergy
-    else if e == payAny ⟨1, []⟩ (.prim (.addPower .you (.notes .unitPaid) none none)) then
-      some .energyToPower
-    else none
-  | _, _ => none
+  -- The ability's guard is checked by guardOk before the player can use it.
+  | .ifThen _ effect .nop => effect.fixedManaKind
+  | effect =>
+    effect.fixedManaKind <|>
+      if effect == payAny ⟨0, [.any]⟩ (.prim (.addEnergy .you (.notes .unitPaid) none)) then
+        some .powerToEnergy
+      else if effect == payAny ⟨1, []⟩ (.prim (.addPower .you (.notes .unitPaid) none none)) then
+        some .energyToPower
+      else none
 
 /-- Unit-only Energy pays for the Unit's activated abilities and its play. The internal Hide
 activation is a discretionary action (CR 811.1.c). -/

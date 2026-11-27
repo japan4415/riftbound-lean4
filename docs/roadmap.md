@@ -2150,6 +2150,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Dragonsoul Sage と Energy Conduit は通常の優先権でプレイできる。盤面からの Add は Chain、Showdown、2対2の招待でも即時に解決し、起動した席だけに Energy を追加する。
 - Divining Shells は起動時に消耗と Kill を支払う。対象の Might は解決時に上がり、ターン終了時に戻る。Vision の閲覧と Recycle の選択を含め、以上3枚を `full` とした。[PrintedAbilitySpeed.lean](../RiftboundTest/PrintedAbilitySpeed.lean)
 
+### Honeyfruit の Level 6 と複数の資源を加える Add
+
+- 固定量の Energy や Power を複数加える起動型能力を、ひとつの即時 Add として解決する。途中にドローなどの別の指示がある効果は通常の解決を使う。効果中の支払い候補にも、Add で増える資源の合計を反映する（CR 430.2）。[公式パッチノート](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-core-rules-patch-notes/)
+- Honeyfruit は 6 XP 以上のとき、消耗して Power を1つ加える通常の能力か、消耗して Energy と Power を1つずつ加える Level 6 の能力を選べる。Chain と Showdown での即時 Add、両方の資源を要求する支払い、5 XP での起動拒否を確認し、`full` にした。[UnleashedA.lean](../RiftboundTest/UnleashedA.lean)
+
 ### 誘発能力の確定と2v2での味方判定（2026-11-27）
 
 - 誘発の冒頭で選べる消耗コストは、能力を確定して Chain に載せるときに払う（CR 383.3.a, 383.3.b.1, 740.4.a.2）。Altar of Memories、Chemtech Cask、Battle Mistress、Grand Duelist、Relentless Storm、Fresh Beans をこの方式で実装し、各シナリオを検証して `full` にした。
@@ -2401,7 +2406,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   2. **Showdown の中の Action / Reaction**（A）: Shadow は、能力が丸ごと使えない。Action と Reaction の呪文も、Showdown の中では唱えられない（roadmap L1336）。
   3. **死ぬ代わりに**（A）: Tactical Retreat、Altar of Blood は、死んでから戻る（「死んだとき」の誘発と、Deathknell が余分に働き、トークンが消える）。`ReplaceEvent.die` を置換として解釈する必要がある。
   4. 呪文のプレイを選ぶ・相手の手札から選ぶ（Bone Skewer、Call to Battle ほか）、Battlefield を選んで出す（Thrill of the Hunt）、手札へ離れるときの元の Battlefield（Ripper's Bay）。
-  5. 条件が、誘発した呪文を見ない（`spentOnSpell`：Revna、Virtuoso、Forgotten Library）、`excessAtLeast` が、その Conquer を生んだ戦闘に結びつかない（Piltover Enforcer、Hextech Gauntlets、Trapping Grounds）、`Filter.hasKeyword` が、与えられたキーワードを読まない（Petal Pixie、Smoke and Mirrors、Bashful Bloom、Black Flame Altar）、Level の条件つきの能力を `blocksChoice` が読まない（Master Yi, Unstoppable の Level 16）、Honeyfruit の Level 6 の Add が、Chain に載る。
+  5. 条件が、誘発した呪文を見ない（`spentOnSpell`：Revna、Virtuoso、Forgotten Library）、`excessAtLeast` が、その Conquer を生んだ戦闘に結びつかない（Piltover Enforcer、Hextech Gauntlets、Trapping Grounds）、`Filter.hasKeyword` が、与えられたキーワードを読まない（Petal Pixie、Smoke and Mirrors、Bashful Bloom、Black Flame Altar）、Level の条件つきの能力を `blocksChoice` が読まない（Master Yi, Unstoppable の Level 16）。
 - **近似として、残してよいもの（C）**: 解決のときに選ぶ対象（Deflect の支払いが働かない）、手札を見せない、Dancing Grenade、Death from Below、Scorn of the Moon、Star Spring、Zilean、Gardens of Becoming、Curtain Call と Square Up の Repeat、`returnToHand` が「引く」の誘発を起こさない、など。
 
 ### M9 の追加の費用（2026-11-25）: 遊ぶときに払う
