@@ -5041,10 +5041,11 @@ def SFD_172.meta : CardDef :=
 /-- Sacred Shears. -/
 def SFD_172 : CardDef :=
   { SFD_172.meta with
-    grants := [.triggered (.onSelf .die)
-        (.of []
-        (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    grants := [
+      .passive .always [.keyword .self { keyword := .deathknell }],
+      .triggered (.onSelf .deathknell)
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-173
 /--

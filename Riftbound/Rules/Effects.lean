@@ -2225,9 +2225,9 @@ theorem clearDeathOrder_safe (s : GameState) (group : List ObjId) : Safe s (clea
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Record whether each primary victim was alone immediately before a simultaneous group. Kills
-paid inside a selected replacement retain their own observation point. -/
-def deathGroupCompanyNotes (before after : GameState) (group : List ObjId) (events : List Event) :
+/-- Record the shared observation point for each primary victim in a simultaneous group.
+Kills paid inside a selected replacement retain their own observation point. -/
+def deathGroupContextNotes (before after : GameState) (group : List ObjId) (events : List Event) :
     List TurnFx :=
   if group.length < 2 then after.turnFx else
   events.foldl (fun notes event => match event with
@@ -2243,8 +2243,10 @@ def deathGroupCompanyNotes (before after : GameState) (group : List ObjId) (even
           | .deathCompany _ => note.target != some dead || note.turn != after.turn
           | _ => true)
         let recorded := retained.any (·.appliesTo after.turn dead .diedAlone)
-        recordDeathCompany retained who dead after.turn after.nextTimestamp recorded
+        let company := recordDeathCompany retained who dead after.turn after.nextTimestamp recorded
           (before.unitIsAloneAt old)
+        recordDeathEquipmentGrants company who dead after.turn after.nextTimestamp
+          (before.deathEquipmentGrants old)
     | _ => notes) after.turnFx
 
 /-- Apply all of the chosen replacements and deaths in one group. -/
@@ -2253,7 +2255,7 @@ def resolveDeathGroupWith (s : GameState) (group : List ObjId)
   let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
     none []).1
   let r := applyEach (applyGroupDeath group g) s entries
-  let corrected := { r.1 with turnFx := deathGroupCompanyNotes s r.1 group r.2 }
+  let corrected := { r.1 with turnFx := deathGroupContextNotes s r.1 group r.2 }
   (clearDeathOrder corrected group, r.2)
 
 theorem resolveDeathGroupWith_safe (s : GameState) (group : List ObjId)
@@ -2262,7 +2264,7 @@ theorem resolveDeathGroupWith_safe (s : GameState) (group : List ObjId)
   let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
     none []).1
   let result := applyEach (applyGroupDeath group g) s entries
-  let corrected := { result.1 with turnFx := deathGroupCompanyNotes s result.1 group result.2 }
+  let corrected := { result.1 with turnFx := deathGroupContextNotes s result.1 group result.2 }
   have notesSafe : Safe result.1 corrected :=
     ⟨fun wf => wf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
       fun _ owners => owners.congr rfl rfl, rfl⟩

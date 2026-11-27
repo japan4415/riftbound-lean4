@@ -735,6 +735,30 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return s4.mightNow m == (s3.mightNow m).map (· + 1) && s4.mightNow e == s3.mightNow e &&
     r.countNamed s.me .base "Mech" == 1
 
+-- The Deathknell belongs to the Unit carrying Sacred Shears. Killing the Gear grants no draw.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, shears) ← put s p "SFD-172" .base
+  let (s, holder) ← put s p "OGN-051" .base
+  let attached ← activate s p shears 0 [holder] ⟨0, [.order]⟩
+  let (dead, events) := killObj attached holder
+  let (gearDead, gearEvents) := killObj attached shears
+  let (banished, banishEvents) := killObj (attached.addTurnFxOn q holder .banishInstead) holder
+  let (together, bothEvents) := resolveDeathGroupWith attached [shears, holder] killObj
+  let wounded := attached.modObj holder (fun object => { object with damage := 9 })
+  let (cleanup, cleanupEvents) := cleanupFrame wounded attached.pending
+  let draw ← fire dead events
+  let simultaneous ← fire together bothEvents
+  let afterCleanup ← fire cleanup cleanupEvents
+  let broke ← fire gearDead gearEvents
+  let banish ← fire banished banishEvents
+  return (attached.obj? shears).any (·.attached == some holder) &&
+    attached.hasKw holder .deathknell && attached.mightNow holder == (s.mightNow holder).map (· + 1) &&
+    draw.handN p == s.handN p + 1 && draw.handN q == s.handN q &&
+    broke.handN p == s.handN p && banish.handN p == s.handN p &&
+    simultaneous.handN p == s.handN p + 1 && afterCleanup.handN p == s.handN p + 1
+
 -- Buhru Captain (SFD-091): when played, the player may draw 1 or buff it
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-091" .hand

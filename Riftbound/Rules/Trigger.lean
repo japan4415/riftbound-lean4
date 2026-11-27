@@ -123,6 +123,13 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
+    | .deathEquipmentGrant card index, some dead =>
+      if last && dead == src && f.turn == s.turn then
+        match s.cards.find? card with
+        | some definition => triggersAmongMatching s src p eventMatches definition index (index + 1)
+            (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
+        | none => []
+      else []
     | .grantsAbility c i, some u =>
       -- the object, or the card it became when it died (its new identifier in the Trash)
       if (u == src || (s.obj? src).any (fun o => o.leftBoard && o.formerId == some u)) &&

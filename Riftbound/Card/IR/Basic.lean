@@ -491,6 +491,8 @@ inductive TurnEffect where
   | diedAlone
   /-- The actual company at death when it differs from the historical replay note. -/
   | deathCompany (alone : Bool)
+  /-- An Equipment ability granted to the object immediately before it died. -/
+  | deathEquipmentGrant (card : CardId) (index : Nat)
   /-- A stunned unit died: the note is about the dead card. -/
   | stunnedUnitDied
   /-- A Mighty unit died (its Might was 5 or more as it died): the note is about the dead card. -/

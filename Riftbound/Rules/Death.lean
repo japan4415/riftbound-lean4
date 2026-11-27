@@ -202,18 +202,40 @@ def recordDeathCompany (notes : List TurnFx) (who : PlayerId) (dead : ObjId)
   if recorded == alone then notes else
     notes ++ [{ who, turn, stamp, kind := .deathCompany alone, target := some dead }]
 
-/-- Record whether a Unit died alone and preserve the historical checkpoint representation. -/
-def noteAlone (s : GameState) (o : Object) (moved : Option ObjId)
-    (recorded alone : Bool) : GameState :=
+/-- Record the Equipment death triggers the unit has at the observation point (CR 429.1.a). -/
+def GameState.deathEquipmentGrants (s : GameState) (unit : ObjId) : List (CardId × Nat) :=
+  s.inPlay.flatMap (fun id =>
+    if !(s.obj? id).any (·.attached == some unit) then [] else
+    ((s.cardDef? id).map (fun card =>
+      (card.grants.zipIdx card.fullAbilities.length).filterMap (fun
+        | (.triggered trigger _ _, index) =>
+          if trigger.event == .die || trigger.event == .deathknell then some (card.id, index)
+          else none
+        | _ => none))).getD [])
+
+/-- Replace the Equipment grant notes for this death with the observed set. -/
+def recordDeathEquipmentGrants (notes : List TurnFx) (who : PlayerId) (dead : ObjId)
+    (turn stamp : Nat) (grants : List (CardId × Nat)) : List TurnFx :=
+  let retained := notes.filter (fun note => match note.kind with
+    | .deathEquipmentGrant .. => note.target != some dead || note.turn != turn
+    | _ => true)
+  retained ++ grants.map (fun (card, index) =>
+    { who, turn, stamp, kind := .deathEquipmentGrant card index, target := some dead })
+
+/-- Record the dying object's company and the abilities its Equipment granted. -/
+def noteDeathContext (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (grants : List (CardId × Nat)) : GameState :=
   match moved with
   | none => s
   | some id =>
     let notes := if recorded then (s.addTurnFxOn o.controller id .diedAlone).turnFx else s.turnFx
-    { s with turnFx := recordDeathCompany notes o.controller id s.turn s.nextTimestamp recorded alone }
+    let company := recordDeathCompany notes o.controller id s.turn s.nextTimestamp recorded alone
+    { s with turnFx := recordDeathEquipmentGrants company o.controller id s.turn s.nextTimestamp grants }
 
-/-- Noting that a unit died alone is a safe change. -/
-theorem noteAlone_safe (s : GameState) (o : Object) (moved : Option ObjId) (recorded alone : Bool) :
-    Safe s (noteAlone s o moved recorded alone) := by
+/-- Recording death context is a safe change. -/
+theorem noteDeathContext_safe (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (grants : List (CardId × Nat)) :
+    Safe s (noteDeathContext s o moved recorded alone grants) := by
   cases moved with
   | none => exact Safe.refl s
   | some id =>
@@ -230,7 +252,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
       (r.1, r.2 ++ (s.banishOnDeathBy id).toList.flatMap (fun p => banishCardEvents p s id r.2))
     else
     -- the death of a unit is noted for the turn (its controller, as it died)
-    (noteAlone
+    (noteDeathContext
         (noteDeath r.1 o ((s.cardDef? id).any (·.hasType .unit))
           (s.turnFx.any (fun f => f.kind == .recallOnDeath && f.target == some id &&
             f.turn == s.turn))
@@ -242,7 +264,7 @@ def killObj (s : GameState) (id : ObjId) : GameState × List Event :=
           !s.inPlay.any (fun u => u != id && (s.cardDef? u).any (·.hasType .unit) &&
             (s.obj? u).any (fun companion => companion.controller == o.controller &&
               companion.loc == o.loc)))
-        (s.unitIsAloneAt id),
+        (s.unitIsAloneAt id) (s.deathEquipmentGrants id),
       r.2 ++ r.2.filterMap (fun e => match e with
       | .moved _ n _ => some (Event.died n o.controller)
       | _ => none))
@@ -257,7 +279,7 @@ theorem killObj_safe (s : GameState) (id : ObjId) : Safe s (killObj s id).1 := b
     split
     · exact sendObj_safe dest s id
     · exact ((sendObj_safe dest s id).trans (noteDeath_safe _ _ _ _ _ _ _)).trans
-        (noteAlone_safe _ _ _ _ _)
+        (noteDeathContext_safe _ _ _ _ _ _)
   · exact sendObj_safe dest s id
 
 /-- What the zone of an object in a well-formed game says: no other zone holds it. -/
@@ -269,9 +291,10 @@ theorem ne_of_mem_other_zone {s : GameState} (hwf : s.WF) {z x : Zone} {id y : O
   have h2 := GameState.locate_eq hwf (GameState.zone_valid_of_mem hwf hy) hy
   exact hxz (Option.some.inj (h2.symm.trans h1))
 
-/-- Noting that a unit died alone leaves the zones as they are. -/
-theorem noteAlone_zone (s : GameState) (o : Object) (moved : Option ObjId)
-    (recorded alone : Bool) (z : Zone) : (noteAlone s o moved recorded alone).zone z = s.zone z := by
+/-- Recording death context leaves the zones as they are. -/
+theorem noteDeathContext_zone (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (grants : List (CardId × Nat)) (z : Zone) :
+    (noteDeathContext s o moved recorded alone grants).zone z = s.zone z := by
   cases moved <;> rfl
 
 /-- Noting a death leaves the zones as they are. -/
@@ -321,7 +344,7 @@ theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone
     dsimp only
     split
     · rfl
-    · rw [noteAlone_zone, noteDeath_zone]
+    · rw [noteDeathContext_zone, noteDeath_zone]
   | some r =>
     obtain ⟨s', id'⟩ := r
     obtain ⟨src, d, hs, o2, ho2, hdd⟩ := moveObj_spec_dst hm
@@ -337,7 +360,7 @@ theorem killObj_zone_other {s : GameState} (hwf : s.WF) {u : ObjId} {z0 z : Zone
     simp only
     split
     · exact hzone
-    · simpa only [noteAlone_zone, noteDeath_zone] using hzone
+    · simpa only [noteDeathContext_zone, noteDeath_zone] using hzone
 
 /-- Make an object ready or exhausted (CR 415, 416). -/
 def setExhausted (b : Bool) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -914,9 +937,10 @@ theorem noteDeath_retains {s : GameState} {z : Zone} {c : ObjId} (hc : c ∈ s.z
       (RetainsCard.modOther hne recalled.member _) recalled.member
     exact first.trans (buffs.trans (stun.trans (big.trans (recalled.trans banish))))
 
-private theorem retains_noteAlone {s t : GameState} {z : Zone} {c : ObjId}
-    (keep : RetainsCard s t z c) (o : Object) (moved : Option ObjId) (recorded alone : Bool) :
-    RetainsCard s (noteAlone t o moved recorded alone) z c := by
+private theorem retains_noteDeathContext {s t : GameState} {z : Zone} {c : ObjId}
+    (keep : RetainsCard s t z c) (o : Object) (moved : Option ObjId) (recorded alone : Bool)
+    (grants : List (CardId × Nat)) :
+    RetainsCard s (noteDeathContext t o moved recorded alone grants) z c := by
   cases moved <;> exact ⟨keep.member, keep.object, keep.pools⟩
 
 /-- Killing another object keeps the card in its zone, including when the victim goes to that zone. -/
@@ -935,7 +959,7 @@ theorem killObj_retains {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}
       split
       · exact RetainsCard.refl hc
       · dsimp only
-        apply retains_noteAlone
+        apply retains_noteDeathContext
         exact noteDeath_retains hc o _ _ _ none _ (by simp)
     | some result =>
       obtain ⟨paid, new⟩ := result
@@ -947,7 +971,7 @@ theorem killObj_retains {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}
       split
       · exact kept
       · dsimp only
-        apply retains_noteAlone
+        apply retains_noteDeathContext
         refine kept.trans (noteDeath_retains kept.member o _ _ _ _ _ ?_)
         simp [Object.ownerMoveEvents, Ne.symm hne]
 

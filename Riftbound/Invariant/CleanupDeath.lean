@@ -198,8 +198,9 @@ private theorem noteDeath_nextId (s : GameState) (o : Object) (isUnit marked mig
   all_goals
     repeat (rw [noteIf_nextId] <;> first | rfl | exact count | exact fun _ => rfl | skip)
 
-private theorem noteAlone_nextId (s : GameState) (o : Object) (moved : Option ObjId)
-    (recorded alone : Bool) : (noteAlone s o moved recorded alone).nextId = s.nextId := by
+private theorem noteDeathContext_nextId (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (grants : List (CardId × Nat)) :
+    (noteDeathContext s o moved recorded alone grants).nextId = s.nextId := by
   cases moved <;> rfl
 
 private theorem killObj_send_positions (s : GameState) (id : ObjId) :
@@ -214,8 +215,8 @@ private theorem killObj_send_positions (s : GameState) (id : ObjId) :
     dsimp only
     split
     · exact ⟨rfl, rfl⟩
-    · exact ⟨by funext z; rw [noteAlone_zone, noteDeath_zone],
-        by rw [noteAlone_nextId, noteDeath_nextId]⟩
+    · exact ⟨by funext z; rw [noteDeathContext_zone, noteDeath_zone],
+        by rw [noteDeathContext_nextId, noteDeath_nextId]⟩
 
 private theorem inPlay_zone_isBoard {s : GameState} {z : Zone}
     (mem : z ∈ s.inPlayZones) : z.isBoard = true := by

@@ -212,6 +212,12 @@ private theorem triggersOfMatching_queued {s : GameState} {src : ObjId} {p : Pla
           exact triggersAmongMatching_queued (declared_of_find found) matchesSelected fromGrant
         · simp at fromGrant
       · simp at fromGrant
+    · split at fromGrant
+      · split at fromGrant
+        · rename_i d found
+          exact triggersAmongMatching_queued (declared_of_find found) matchesSelected fromGrant
+        · simp at fromGrant
+      · simp at fromGrant
     · simp at fromGrant
 
 private theorem watchersAt_queued {s : GameState} {src subj : ObjId} {who : PlayerId}

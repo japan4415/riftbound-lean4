@@ -78,7 +78,7 @@ private theorem killObj_eq_of_samePot {s : GameState} (wf : s.WF) {id : ObjId}
         rw [Zone.normalize_owner] at norm
         subst dst
         exact False.elim (invalid (Zone.lt_of_valid_player spec.dst_mem))
-    simp [killObj, sendObj, found, noMove, noteDeath, noteAlone, noteIf]
+    simp [killObj, sendObj, found, noMove, noteDeath, noteDeathContext, noteIf]
     split <;> rfl
 
 private theorem recall_keeps_offBoard_zones {s : GameState} (wf : s.WF) {id : ObjId}
@@ -546,7 +546,7 @@ theorem cleanupResolveDeathGroup_decreases {s : GameState} (wf : s.WF)
   let afterFirst := (applyGroupDeath group cleanupResolveDeath s entry).1
   let afterAll := (applyEach (applyGroupDeath group cleanupResolveDeath) afterFirst rest).1
   let batch := applyEach (applyGroupDeath group cleanupResolveDeath) s (entry :: rest)
-  let corrected := { afterAll with turnFx := deathGroupCompanyNotes s afterAll group batch.2 }
+  let corrected := { afterAll with turnFx := deathGroupContextNotes s afterAll group batch.2 }
   have resultBoard : result.1 = clearDeathOrder corrected group := by
     unfold cleanupResolveDeathGroup at resolved
     dsimp only at resolved
