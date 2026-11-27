@@ -206,7 +206,7 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 ### 3y. 基本 Rune と即時 Add の起動
 
-`step_resourceActivation_to_decision` は、どの合法な入力でも基本 Rune と即時 Add の起動が次の判断に着くことを示す。Chain、Showdown、チーム招待、効果の解決中の任意の支払いでは、起動後も元の選択を追う。通常の優先権での即時 Add は盤面を変えられるため、イベントを観測し、Cleanup を終えてから次の判断に進む。追加の fuel でも結果とイベント列は一致する。[ResourceDecisionWork.lean](../Riftbound/Invariant/ResourceDecisionWork.lean)
+`step_resourceActivation_to_preparedDecision` は、基本 Rune と即時 Add の合法な起動について、実際の `step` が有限の fuel で次の入力か空のスタックに着くことを示す。Chain、Showdown、チーム招待、効果の解決中の任意の支払いも対象に含む。通常の優先権での即時 Add は、イベントを観測してから Cleanup を終える。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[ResourceDecisionWork.lean](../Riftbound/Invariant/ResourceDecisionWork.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
 
 Add が資源を増やす量は、支払い後の残高に空のプールから計算した加算量を足す形で表せる。Energy と Power をまとめて加える場合も、各指示が増やす量を合計する。[ResourceDecisionWork.lean](../Riftbound/Invariant/ResourceDecisionWork.lean)
 

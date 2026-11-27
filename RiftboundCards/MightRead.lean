@@ -276,6 +276,16 @@ theorem step_resourceActivation_to_decision {s : Riftbound.GameState} {a : Riftb
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_resourceActivation_to_decision wf (mightReads_of_registered cards) legal resource
 
+/-- An immediate resource activation with the registered cards succeeds in finite fuel. -/
+theorem step_resourceActivation_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (resource : a.kind.isResourceActivation = true)
+    (quiet : ∀ p rest, s.pending = .priority p :: rest → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_resourceActivation_to_preparedDecision wf (mightReads_of_registered cards) legal resource quiet
+
 /-- A registered Standard Move reaches a decision, including through Cleanup and its observers. -/
 theorem step_standardMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {u : Riftbound.ObjId}
     {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}

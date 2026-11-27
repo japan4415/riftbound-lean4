@@ -107,6 +107,75 @@ theorem stepWithDisclosures_erase (fuel : Nat) (s : GameState) (a : Action) :
         advanceWithDisclosures_erase fuel next events (CardDisclosure.capture s next 0 events)
   · simp [stepWithDisclosures, step, legal] <;> rfl
 
+/-- A successful run captures the same disclosures when the caller offers more fuel. -/
+theorem advanceWithDisclosures_ok_add_fuel {fuel : Nat} {s : GameState} {events : List Event}
+    {seen : List CardDisclosure} {result : (GameState × List Event) × List CardDisclosure}
+    (done : advanceWithDisclosures fuel s events seen = .ok result) (extra : Nat) :
+    advanceWithDisclosures (fuel + extra) s events seen = .ok result := by
+  induction fuel generalizing s events seen with
+  | zero =>
+    cases stack : s.preparePriority.pending with
+    | nil => cases extra <;> simpa [advanceWithDisclosures, stack] using done
+    | cons frame rest =>
+      by_cases work : frame.isWork
+      · simp [advanceWithDisclosures, stack, work] at done
+      · cases extra <;> simpa [advanceWithDisclosures, stack, work] using done
+  | succ fuel ih =>
+    rw [show fuel + 1 + extra = (fuel + extra) + 1 by omega]
+    cases stack : s.preparePriority.pending with
+    | nil => simpa [advanceWithDisclosures, stack] using done
+    | cons frame rest =>
+      by_cases work : frame.isWork
+      · cases workStepEq : workStep s.preparePriority with
+        | none => simp [advanceWithDisclosures, stack, work, workStepEq] at done
+        | some transition =>
+          obtain ⟨next, emitted⟩ := transition
+          have short := (show advanceWithDisclosures fuel next (events ++ emitted)
+              (seen ++ CardDisclosure.capture s.preparePriority next events.length emitted) = .ok result by
+            simpa [advanceWithDisclosures, stack, work, workStepEq] using done)
+          simpa [advanceWithDisclosures, stack, work, workStepEq] using ih short
+      · simpa [advanceWithDisclosures, stack, work] using done
+
+/-- More fuel preserves the state, event list and card disclosures of a successful answer. -/
+theorem stepWithDisclosures_ok_add_fuel {fuel : Nat} {s : GameState} {a : Action}
+    {result : (GameState × List Event) × List CardDisclosure}
+    (done : stepWithDisclosures fuel s a = .ok result) (extra : Nat) :
+    stepWithDisclosures (fuel + extra) s a = .ok result := by
+  by_cases legal : Legal s a
+  · cases applied : applyDeclaredAction s a with
+    | none => simp [stepWithDisclosures, legal, applied] at done
+    | some transition =>
+      obtain ⟨next, events⟩ := transition
+      have short := (show advanceWithDisclosures fuel next events
+          (CardDisclosure.capture s next 0 events) = .ok result by
+        simpa [stepWithDisclosures, legal, applied] using done)
+      simpa [stepWithDisclosures, legal, applied] using advanceWithDisclosures_ok_add_fuel short extra
+  · simp [stepWithDisclosures, legal] at done
+
+/-- If the ordinary engine reaches its next input, the observing engine reaches the same
+state with the same events and returns the card disclosures, for all additional fuel. -/
+theorem stepWithDisclosures_of_step_ok {fuel : Nat} {s : GameState} {a : Action}
+    {t : GameState} {events : List Event} (done : step fuel s a = .ok (t, events)) :
+    ∃ disclosures, ∀ extra,
+      stepWithDisclosures (fuel + extra) s a = .ok ((t, events), disclosures) := by
+  rw [← stepWithDisclosures_erase fuel s a] at done
+  cases observed : stepWithDisclosures fuel s a with
+  | error e => simp [observed, Except.map] at done
+  | ok result =>
+    obtain ⟨stateAndEvents, disclosures⟩ := result
+    have agrees : stateAndEvents = (t, events) := by
+      simpa [observed, Except.map] using done
+    rw [agrees] at observed
+    exact ⟨disclosures, stepWithDisclosures_ok_add_fuel observed⟩
+
+/-- More fuel preserves an ordinary answer's successful state and event list. -/
+theorem step_ok_add_fuel {fuel : Nat} {s : GameState} {a : Action}
+    {t : GameState} {events : List Event} (done : step fuel s a = .ok (t, events)) (extra : Nat) :
+    step (fuel + extra) s a = .ok (t, events) := by
+  obtain ⟨disclosures, stable⟩ := stepWithDisclosures_of_step_ok done
+  rw [← stepWithDisclosures_erase, stable extra]
+  rfl
+
 end Riftbound
 
 end

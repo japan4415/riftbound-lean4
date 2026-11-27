@@ -228,6 +228,8 @@ uv run --no-project python -B scripts/audit_atlas_replay.py riftatlas-replay.jso
 
 Lean の `ReplayObservation.checkAt_removed_matched` は、照合待ちから外れた観測の全項目が、指定された手番号の範囲内にある同じ地点で一致したことを示す。
 
+同じ入力とカード定義で記録や照合に成功した後、一手あたりの自動処理の上限を増やしても、チェックポイントと最終結果は一致する。公開されたカードの情報も、各手で同じ順に記録される。[Replay.lean](../RiftboundDriver/Replay.lean)
+
 #### カード定義を更新した後に再照合する
 
 ```sh

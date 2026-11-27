@@ -1134,6 +1134,77 @@ def JudgeShuffle.apply (shuffle : JudgeShuffle) (s : GameState) : Except String 
   let changes := shuffle.positions.zip shuffle.order
   return s.reorder zone (previous.zipIdx.map (fun (card, i) => (changes.lookup i).getD card))
 
+private def GameInputs.answerTransition (input : GameInputs) (s : GameState) (action : Action)
+    (fuel : Nat) (observeFaces : Bool) :
+    Except RuleError ((GameState × List Event) × List CardDisclosure) :=
+  if input.isBo1Initiative s (some action) then
+    if Legal s action then
+      match applyFrame0 s action with
+      | some (next, events) => .ok ((next, events),
+          if observeFaces then CardDisclosure.capture s next 0 events else [])
+      | none => .error (.internal "applyFrame0")
+    else .error .illegal
+  else if observeFaces then stepWithDisclosures fuel s action
+  else (step fuel s action).map (·, [])
+
+private theorem GameInputs.answerTransition_ok_add_fuel {input : GameInputs} {s : GameState}
+    {action : Action} {fuel : Nat} {observeFaces : Bool}
+    {result : (GameState × List Event) × List CardDisclosure}
+    (done : input.answerTransition s action fuel observeFaces = .ok result) (extra : Nat) :
+    input.answerTransition s action (fuel + extra) observeFaces = .ok result := by
+  by_cases initiative : input.isBo1Initiative s (some action) = true
+  · simpa only [GameInputs.answerTransition, initiative, ↓reduceIte] using done
+  · simp only [GameInputs.answerTransition, ite_eq_right initiative] at done ⊢
+    cases observeFaces
+    · simp only [Bool.false_eq_true, ↓reduceIte] at done ⊢
+      cases stepEq : step fuel s action with
+      | error error => simp [stepEq, Except.map] at done
+      | ok transition =>
+        obtain ⟨next, events⟩ := transition
+        rw [step_ok_add_fuel stepEq extra]
+        simpa only [stepEq] using done
+    · simp only [↓reduceIte] at done ⊢
+      exact stepWithDisclosures_ok_add_fuel done extra
+
+private def GameInputs.applyEngineAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) (observeFaces : Bool) :
+    Except String (Option Action × (GameState × List Event) × List CardDisclosure × Bool) := do
+  let (action, exact) ← answer.resolveAt s index
+  if input.awaitsBo1Sideboard s && action.kind != .concede && action.kind != .declareDraw then
+    throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
+  let (result, disclosures) ← (input.answerTransition s action fuel observeFaces).mapError
+    (fun error => s!"answer {index}: {repr error}")
+  return (some action, result, disclosures, exact)
+
+private theorem GameInputs.applyEngineAnswerWith_ok_add_fuel {input : GameInputs} {s : GameState}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {result : Option Action × (GameState × List Event) × List CardDisclosure × Bool}
+    (done : input.applyEngineAnswerWith s answer index fuel observeFaces = .ok result) (extra : Nat) :
+    input.applyEngineAnswerWith s answer index (fuel + extra) observeFaces = .ok result := by
+  unfold GameInputs.applyEngineAnswerWith at done ⊢
+  cases resolution : answer.resolveAt s index with
+  | error error =>
+    rw [resolution] at done
+    change Except.error error = .ok result at done
+    cases done
+  | ok pair =>
+    obtain ⟨action, exactAnswer⟩ := pair
+    simp only [resolution, bind, Except.bind] at done ⊢
+    by_cases cannotProceed :
+        (input.awaitsBo1Sideboard s && action.kind != .concede && action.kind != .declareDraw) = true
+    · simp only [cannotProceed, ↓reduceIte] at done
+      change Except.error _ = .ok result at done
+      cases done
+    · simp only [ite_eq_right cannotProceed] at done ⊢
+      cases observed : input.answerTransition s action fuel observeFaces with
+      | error error =>
+        rw [observed] at done
+        change Except.error _ = .ok result at done
+        cases done
+      | ok answer =>
+        rw [GameInputs.answerTransition_ok_add_fuel observed extra]
+        simpa only [observed] using done
+
 private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
     (index fuel : Nat) (observeFaces : Bool) :
     Except String (Option Action × (GameState × List Event) × List CardDisclosure × Bool) := do
@@ -1157,20 +1228,15 @@ private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (ans
       next := built
     let shuffles := (startFrames s.playerCount).filter (fun | .chanceShuffle _ => true | _ => false)
     return (none, ({ next with pending := shuffles ++ [.setupHands] }, []), [], true)
-  let (action, exact) ← answer.resolveAt s index
-  if awaitingSideboard && action.kind != .concede && action.kind != .declareDraw then
-    throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
-  let transition := if input.isBo1Initiative s (some action) then
-    if Legal s action then
-      match applyFrame0 s action with
-      | some (next, events) => .ok ((next, events),
-          if observeFaces then CardDisclosure.capture s next 0 events else [])
-      | none => .error (.internal "applyFrame0")
-    else .error .illegal
-  else if observeFaces then stepWithDisclosures fuel s action
-  else (step fuel s action).map (·, [])
-  let (result, disclosures) ← transition.mapError (fun error => s!"answer {index}: {repr error}")
-  return (some action, result, disclosures, exact)
+  input.applyEngineAnswerWith s answer index fuel observeFaces
+
+private theorem GameInputs.applyAnswerWith_ok_add_fuel {input : GameInputs} {s : GameState}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {result : Option Action × (GameState × List Event) × List CardDisclosure × Bool}
+    (done : input.applyAnswerWith s answer index fuel observeFaces = .ok result) (extra : Nat) :
+    input.applyAnswerWith s answer index (fuel + extra) observeFaces = .ok result := by
+  cases answer <;> simp only [GameInputs.applyAnswerWith] at done ⊢ <;>
+    first | exact done | exact GameInputs.applyEngineAnswerWith_ok_add_fuel done extra
 
 /-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
 def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
@@ -1755,26 +1821,30 @@ private def timelineRewind (history : List ReplayPosition) (before : GameState)
     (rewind.unshuffledDecks?.getD [])
   return { restored with state := { restored.state with clock } }
 
+private def rewindAnswer? (history : List ReplayPosition) (prior : ReplayPosition)
+    (answer : ReplayAnswer) (index : Nat) : Option (Nat × Except String ReplayPosition) :=
+  match answer with
+  | .judgeRewind target => some (target, do
+    let (undone, pos) ← simpleRewind history target index
+    applyRewindRemedies pos undone (rewindChronology history target index) [] [] [])
+  | .judgePrivateRewind rewind => some (rewind.target, do
+    let (undone, pos) ← simpleRewind history rewind.target index
+    let shuffles := rewind.shuffles?.getD []
+    let unshuffled := rewind.unshuffledDecks?.getD []
+    if rewind.returns.isEmpty && shuffles.isEmpty && unshuffled.isEmpty then
+      throw "a private rewind needs a draw return or a recorded shuffle decision"
+    applyRewindRemedies pos undone (rewindChronology history rewind.target index)
+      rewind.returns shuffles unshuffled)
+  | .judgeTimelineRewind rewind =>
+    some (rewind.target, timelineRewind history prior.state rewind index)
+  | _ => none
+
 /-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
 def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
     (answer : ReplayAnswer) (index fuel : Nat) (observeFaces : Bool := false) :
     Except String (Option Action × ReplayPosition × List Event) := do
   let some prior := history.head? | throw "the initial checkpoint is missing"
-  let correction : Option (Nat × Except String ReplayPosition) := match answer with
-    | .judgeRewind target => some (target, do
-      let (undone, pos) ← simpleRewind history target index
-      applyRewindRemedies pos undone (rewindChronology history target index) [] [] [])
-    | .judgePrivateRewind rewind => some (rewind.target, do
-      let (undone, pos) ← simpleRewind history rewind.target index
-      let shuffles := rewind.shuffles?.getD []
-      let unshuffled := rewind.unshuffledDecks?.getD []
-      if rewind.returns.isEmpty && shuffles.isEmpty && unshuffled.isEmpty then
-        throw "a private rewind needs a draw return or a recorded shuffle decision"
-      applyRewindRemedies pos undone (rewindChronology history rewind.target index)
-        rewind.returns shuffles unshuffled)
-    | .judgeTimelineRewind rewind =>
-      some (rewind.target, timelineRewind history prior.state rewind index)
-    | _ => none
+  let correction := rewindAnswer? history prior answer index
   if let some (target, result) := correction then
     let pos ← result.mapError (fun error => s!"answer {index}: {error}")
     let restored := { pos with
@@ -1812,6 +1882,32 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
   let position := { state, fields, boundary, events, disclosures, answerExact, draws, deckObservations,
                     knownCards := trackedInPrivateZones state known, knownDeckCards }
   return (action, position, events)
+
+/-- A successful replay checkpoint is unchanged when more automatic work is allowed. This
+includes recorded disclosures, the exactness flag, and the verifier's deck observations. -/
+theorem GameInputs.advance_ok_add_fuel {input : GameInputs} {history : List ReplayPosition}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {checkpoint : Option Action × ReplayPosition × List Event}
+    (done : input.advance history answer index fuel observeFaces = .ok checkpoint) (extra : Nat) :
+    input.advance history answer index (fuel + extra) observeFaces = .ok checkpoint := by
+  cases initial : history.head? with
+  | none => simpa only [GameInputs.advance, initial] using done
+  | some prior =>
+    simp only [GameInputs.advance, initial] at done ⊢
+    cases correction : rewindAnswer? history prior answer index with
+    | some redirected =>
+      obtain ⟨target, result⟩ := redirected
+      simpa only [correction] using done
+    | none =>
+      simp only [correction] at done ⊢
+      cases applied : input.applyAnswerWith prior.state answer index fuel observeFaces with
+      | error error =>
+        rw [applied] at done
+        change Except.error error = .ok checkpoint at done
+        cases done
+      | ok output =>
+        rw [GameInputs.applyAnswerWith_ok_add_fuel applied extra]
+        simpa only [applied] using done
 
 /-- A replay answer that could be applied but was not uniquely observed. -/
 structure ReplayUncertainAnswer where
@@ -1976,47 +2072,123 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     if witness.spentBeforeMain?.any (fun spent => actual.spentBeforeMain?.getD [] != spent) then
       throw s!"checkpoint {index}: Power spending before Main differs"
 
-private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
-    (fuel : Nat) (expected : Option (Array ReplayCheckpoint))
-    (upgradePermanentChoices : Bool := false) : Except String RecordedGame := do
+private structure RecordingProgress where
+  pending : List ReplayObservation
+  history : List ReplayPosition
+  checkpoints : Array ReplayCheckpoint
+  exact : Bool
+
+private def startRecording (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (expected : Option (Array ReplayCheckpoint)) : Except String RecordingProgress := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
   let s ← input.initial db config
   let schedule ← input.observationSchedule
-  let mut pending ← ReplayObservation.checkAt schedule 0 s []
+  let pending ← ReplayObservation.checkAt schedule 0 s []
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
-  let mut checkpoints := #[initial]
-  let mut history := [ReplayPosition.fromState s]
-  let mut exact := input.openingOrderEvidence?.isNone
-  for (answer, index) in input.answers.toList.zipIdx do
-    let (action, next, events) ← input.advance history answer (index + 1) fuel
-      (ReplayObservation.wantsDisclosures pending (index + 1))
-    pending ← ReplayObservation.checkAt pending (index + 1) next.state events next.disclosures
-      (history.head?.map (·.state))
-    exact := exact && next.answerExact
-    let witness := ReplayCheckpoint.capture next.state events
-    let legacyPlays := if upgradePermanentChoices then
-        action.toList ++ ((history.head?.map (·.state.pending)).getD []).filterMap
-          (fun | .resumeCost saved => some saved | _ => none)
-      else []
-    checkCheckpoint expected (index + 1) witness legacyPlays
-    checkpoints := checkpoints.push witness
-    history := next :: history
-  if let some observation := pending.head? then
+  return ⟨pending, [ReplayPosition.fromState s], #[initial], input.openingOrderEvidence?.isNone⟩
+
+private def recordAnswer (input : GameInputs) (expected : Option (Array ReplayCheckpoint))
+    (upgradePermanentChoices : Bool) (fuel : Nat) (progress : RecordingProgress)
+    (indexed : ReplayAnswer × Nat) : Except String RecordingProgress := do
+  let (answer, index) := indexed
+  let (action, next, events) ← input.advance progress.history answer (index + 1) fuel
+    (ReplayObservation.wantsDisclosures progress.pending (index + 1))
+  let pending ← ReplayObservation.checkAt progress.pending (index + 1) next.state events next.disclosures
+    (progress.history.head?.map (·.state))
+  let witness := ReplayCheckpoint.capture next.state events
+  let legacyPlays := if upgradePermanentChoices then
+      action.toList ++ ((progress.history.head?.map (·.state.pending)).getD []).filterMap
+        (fun | .resumeCost saved => some saved | _ => none)
+    else []
+  checkCheckpoint expected (index + 1) witness legacyPlays
+  return ⟨pending, next :: progress.history, progress.checkpoints.push witness, progress.exact && next.answerExact⟩
+
+private theorem recordAnswer_ok_add_fuel {input : GameInputs} {expected : Option (Array ReplayCheckpoint)}
+    {upgrade : Bool} {fuel : Nat} {progress : RecordingProgress} {indexed : ReplayAnswer × Nat}
+    {next : RecordingProgress} (done : recordAnswer input expected upgrade fuel progress indexed = .ok next)
+    (extra : Nat) : recordAnswer input expected upgrade (fuel + extra) progress indexed = .ok next := by
+  obtain ⟨answer, index⟩ := indexed
+  unfold recordAnswer at done ⊢
+  dsimp only at done ⊢
+  cases applied : input.advance progress.history answer (index + 1) fuel
+      (ReplayObservation.wantsDisclosures progress.pending (index + 1)) with
+  | error error =>
+    rw [applied] at done
+    change Except.error error = .ok next at done
+    cases done
+  | ok after =>
+    rw [GameInputs.advance_ok_add_fuel applied extra]
+    simpa only [applied] using done
+
+private theorem recordAnswers_ok_add_fuel {input : GameInputs} {expected : Option (Array ReplayCheckpoint)}
+    {upgrade : Bool} {fuel : Nat} {progress next : RecordingProgress} {answers : List (ReplayAnswer × Nat)}
+    (done : answers.foldlM (recordAnswer input expected upgrade fuel) progress = .ok next) (extra : Nat) :
+    answers.foldlM (recordAnswer input expected upgrade (fuel + extra)) progress = .ok next := by
+  induction answers generalizing progress with
+  | nil => exact done
+  | cons first rest ih =>
+    simp only [List.foldlM_cons] at done ⊢
+    cases recorded : recordAnswer input expected upgrade fuel progress first with
+    | error error =>
+      rw [recorded] at done
+      change Except.error error = .ok next at done
+      cases done
+    | ok after =>
+      rw [recordAnswer_ok_add_fuel recorded extra]
+      exact ih (by simpa only [recorded, bind, Except.bind] using done)
+
+private def finishRecording (input : GameInputs) (config : GameConfig) (progress : RecordingProgress) :
+    Except String RecordedGame := do
+  if let some observation := progress.pending.head? then
     if observation.checkpoint > input.answers.size then
       throw s!"checkpoint {observation.checkpoint}: observation is beyond the last answer ({input.answers.size})"
     else
       throw s!"checkpoint {observation.checkpoint}: observation window had no match before the last answer ({input.answers.size})"
-  let some final := history.head? | throw "the final checkpoint is missing"
+  let some final := progress.history.head? | throw "the final checkpoint is missing"
   return {
-    input, eliminationConfig? := replayEliminationConfig config, checkpoints,
-    summary := ReplayGameResult.fromState final.state input.decks final.fields.reverse exact }
+    input, eliminationConfig? := replayEliminationConfig config, checkpoints := progress.checkpoints,
+    summary := ReplayGameResult.fromState final.state input.decks final.fields.reverse progress.exact }
+
+private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (fuel : Nat) (expected : Option (Array ReplayCheckpoint))
+    (upgradePermanentChoices : Bool := false) : Except String RecordedGame := do
+  let start ← startRecording input db config expected
+  let progress ← input.answers.toList.zipIdx.foldlM
+    (recordAnswer input expected upgradePermanentChoices fuel) start
+  finishRecording input config progress
+
+private theorem runGame_ok_add_fuel {input : GameInputs} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {expected : Option (Array ReplayCheckpoint)} {upgrade : Bool} {game : RecordedGame}
+    (done : runGame input db config fuel expected upgrade = .ok game) (extra : Nat) :
+    runGame input db config (fuel + extra) expected upgrade = .ok game := by
+  unfold runGame at done ⊢
+  cases began : startRecording input db config expected with
+  | error error =>
+    rw [began] at done
+    change Except.error error = .ok game at done
+    cases done
+  | ok start =>
+    simp only [began, bind, Except.bind] at done ⊢
+    cases recorded : input.answers.toList.zipIdx.foldlM (recordAnswer input expected upgrade fuel) start with
+    | error error =>
+      rw [recorded] at done
+      cases done
+    | ok progress =>
+      rw [recordAnswers_ok_add_fuel recorded extra]
+      simpa only [recorded] using done
 
 /-- Play recorded answers with the engine, retaining the exact input, checkpoints and outcome. -/
 def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String RecordedGame :=
   runGame input db config fuel none
+
+/-- Replaying the same inputs with more fuel returns the identical completed game archive. -/
+theorem GameInputs.record_ok_add_fuel {input : GameInputs} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {game : RecordedGame} (done : input.record db config fuel = .ok game) (extra : Nat) :
+    input.record db config (fuel + extra) = .ok game :=
+  runGame_ok_add_fuel done extra
 
 /-- Replay one game against its saved evidence, recomputing coverage when the card table changes. -/
 def RecordedGame.checkEvidence (saved : RecordedGame) (db : CardDB) (config : GameConfig)
@@ -2031,10 +2203,39 @@ def RecordedGame.checkEvidence (saved : RecordedGame) (db : CardDB) (config : Ga
   if summary != actual.summary then throw "the final game outcome differs"
   return actual
 
+/-- A successful evidence check returns the same archive with more fuel. -/
+theorem RecordedGame.checkEvidence_ok_add_fuel {saved : RecordedGame} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {refresh upgrade : Bool} {game : RecordedGame}
+    (done : saved.checkEvidence db config fuel refresh upgrade = .ok game) (extra : Nat) :
+    saved.checkEvidence db config (fuel + extra) refresh upgrade = .ok game := by
+  by_cases clock : (saved.eliminationConfig? != replayEliminationConfig config) = true
+  · simp only [RecordedGame.checkEvidence, clock, ↓reduceIte] at done
+    change Except.error _ = .ok game at done
+    cases done
+  · simp only [RecordedGame.checkEvidence, ite_eq_right clock, bind, Except.bind] at done ⊢
+    cases replayed : runGame saved.input db config fuel (some saved.checkpoints) upgrade with
+    | error error =>
+      rw [replayed] at done
+      cases done
+    | ok actual =>
+      rw [runGame_ok_add_fuel replayed extra]
+      simpa only [replayed] using done
+
 /-- Replay one game and report the first recorded checkpoint that disagrees. -/
 def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayGameResult :=
   (saved.checkEvidence db config fuel).map (·.summary)
+
+/-- The verifier returns the identical successful summary at any larger work limit. -/
+theorem RecordedGame.verify_ok_add_fuel {saved : RecordedGame} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {summary : ReplayGameResult} (done : saved.verify db config fuel = .ok summary) (extra : Nat) :
+    saved.verify db config (fuel + extra) = .ok summary := by
+  unfold RecordedGame.verify at done ⊢
+  cases checked : saved.checkEvidence db config fuel with
+  | error error => simp [checked, Except.map] at done
+  | ok game =>
+    rw [RecordedGame.checkEvidence_ok_add_fuel checked extra]
+    simpa only [checked] using done
 
 /-- The recorded inputs to one free-for-all game under the Core Rules. -/
 structure FreeForAllInputs where
