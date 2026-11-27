@@ -177,6 +177,32 @@ def referenceRanking (support : List Nat) :
 
 namespace OrderedReferenceBijection
 
+/-- Reverse an ordered correspondence. -/
+def symm {left right : List Nat} (rename : OrderedReferenceBijection left right) :
+    OrderedReferenceBijection right left where
+  forward := rename.backward
+  backward := rename.forward
+  forward_mem := rename.backward_mem
+  backward_mem := rename.forward_mem
+  backward_forward := rename.forward_backward
+  forward_backward := rename.backward_forward
+  order {x y} hx hy := by
+    have original := rename.order (rename.backward_mem x hx) (rename.backward_mem y hy)
+    simpa only [rename.forward_backward x hx, rename.forward_backward y hy] using original.symm
+
+/-- Compose matching ordered correspondences. -/
+def trans {left middle right : List Nat} (first : OrderedReferenceBijection left middle)
+    (second : OrderedReferenceBijection middle right) : OrderedReferenceBijection left right where
+  forward x := second.forward (first.forward x)
+  backward y := first.backward (second.backward y)
+  forward_mem x hx := second.forward_mem _ (first.forward_mem x hx)
+  backward_mem y hy := first.backward_mem _ (second.backward_mem y hy)
+  backward_forward x hx := by
+    rw [second.backward_forward _ (first.forward_mem x hx), first.backward_forward x hx]
+  forward_backward y hy := by
+    rw [first.forward_backward _ (second.backward_mem y hy), second.forward_backward y hy]
+  order hx hy := (second.order (first.forward_mem _ hx) (first.forward_mem _ hy)).trans (first.order hx hy)
+
 /-- A reference retains its rank when the correspondence preserves relative order. -/
 theorem rank_preserved {left right : List Nat} (rename : OrderedReferenceBijection left right)
     {reference : Nat} (member : reference ∈ left) :
@@ -499,6 +525,77 @@ theorem GameState.rankedZoneReferences_eq {s t : GameState} (players : s.playerC
   have same := (rename.map_ranks known).symm
   rw [sameZones zone valid] at same
   exact congrArg (fun ids => (zone, ids)) same
+
+private theorem GameState.rankedZoneReferences_flatMap (s : GameState) :
+    s.rankedZoneReferences.flatMap Prod.snd =
+      (s.zoneIds.map ObjId.n).map (referenceRank (s.zoneIds.map ObjId.n)) := by
+  simp [GameState.rankedZoneReferences, GameState.zoneIds, List.flatMap_map, List.map_flatMap,
+    Function.comp_def]
+
+private theorem mem_rankedReferences {support : List Nat} {rank : Nat} :
+    rank ∈ support.map (referenceRank support) ↔ rank ∈ List.range support.eraseDups.length := by
+  constructor
+  · intro member
+    obtain ⟨_, present, rfl⟩ := List.mem_map.mp member
+    exact List.mem_range.mpr (referenceRank_bounded present)
+  · intro member
+    obtain ⟨_, present, same⟩ := everyReferenceRank (List.mem_range.mp member)
+    exact List.mem_map.mpr ⟨_, present, same⟩
+
+/-- A matching ranked zone projection also supplies an ordered correspondence between
+the original references, preserving the precise order within each zone. -/
+theorem GameState.rankedZoneReferences_iff {s t : GameState} (players : s.playerCount = t.playerCount) :
+    s.rankedZoneReferences = t.rankedZoneReferences ↔
+      ∃ rename : OrderedReferenceBijection (s.zoneIds.map ObjId.n) (t.zoneIds.map ObjId.n),
+        ∀ z ∈ allZones s.playerCount,
+          ((s.zone z).map ObjId.n).map rename.forward = (t.zone z).map ObjId.n := by
+  refine ⟨?_, fun ⟨rename, zones⟩ => GameState.rankedZoneReferences_eq players rename zones⟩
+  intro normalized
+  let left := s.zoneIds.map ObjId.n
+  let right := t.zoneIds.map ObjId.n
+  have allRanks : left.map (referenceRank left) = right.map (referenceRank right) := by
+    simpa only [GameState.rankedZoneReferences_flatMap] using
+      congrArg (List.flatMap Prod.snd) normalized
+  have sameRange (rank : Nat) :
+      rank ∈ List.range left.eraseDups.length ↔ rank ∈ List.range right.eraseDups.length := by
+    rw [← mem_rankedReferences, ← mem_rankedReferences, allRanks]
+  have size : left.eraseDups.length = right.eraseDups.length := by
+    apply Nat.le_antisymm
+    · apply Nat.le_of_not_gt
+      intro less
+      have impossible := (sameRange _).mp (List.mem_range.mpr less)
+      exact (Nat.lt_irrefl _) (List.mem_range.mp impossible)
+    · apply Nat.le_of_not_gt
+      intro less
+      have impossible := (sameRange _).mpr (List.mem_range.mpr less)
+      exact (Nat.lt_irrefl _) (List.mem_range.mp impossible)
+  let leftRanking : OrderedReferenceBijection left (List.range right.eraseDups.length) :=
+    (referenceRanking left).congrSupport (fun _ => Iff.rfl) (fun _ => by rw [size])
+  let rightRanking := referenceRanking right
+  let rename := leftRanking.trans rightRanking.symm
+  refine ⟨rename, ?_⟩
+  intro zone valid
+  unfold GameState.rankedZoneReferences at normalized
+  rw [← players] at normalized
+  have sameRanks : ((s.zone zone).map ObjId.n).map (referenceRank left) =
+      ((t.zone zone).map ObjId.n).map (referenceRank right) := by
+    exact congrArg Prod.snd (List.map_inj_left.mp normalized zone valid)
+  have known (id : Nat) (present : id ∈ (t.zone zone).map ObjId.n) : id ∈ right := by
+    obtain ⟨object, found, rfl⟩ := List.mem_map.mp present
+    exact List.mem_map.mpr ⟨object, GameState.mem_zoneIds (players ▸ valid) found, rfl⟩
+  calc
+    _ = (((s.zone zone).map ObjId.n).map (referenceRank left)).map rightRanking.backward := by
+      simp only [List.map_map, Function.comp_def, rename, leftRanking,
+        OrderedReferenceBijection.trans, OrderedReferenceBijection.symm,
+        OrderedReferenceBijection.congrSupport, referenceRanking]
+    _ = (((t.zone zone).map ObjId.n).map (referenceRank right)).map rightRanking.backward := by
+      rw [sameRanks]
+    _ = ((t.zone zone).map ObjId.n).map id := by
+      rw [List.map_map]
+      apply List.map_congr_left
+      intro id present
+      exact rightRanking.backward_forward id (known id present)
+    _ = _ := List.map_id _
 
 end Riftbound
 
