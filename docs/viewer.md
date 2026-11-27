@@ -152,6 +152,17 @@ uv run --no-project python -B scripts/audit_atlas_replay.py riftatlas-replay.jso
 
 リストの文字列や結果欄の有無、山札にカードコードがあることは、登録リストや並び順の完全性を保証しない。元ファイルのフレーム番号は Lean の手番号と別なので、操作と観測を転記してから照合する。対象は `nodes` と `root` を持つ [RiftAtlas 本体の書き出し](https://riftatlas.com/changelog/2026/week/43) で、同じ形式名を持つ [拡張機能のパッチ記録](https://github.com/EagleVee/riftatlas-replay/blob/main/docs/replay-format.md) は読み込まない。
 
+席と手番号の対応が分かっている場合は、同じコマンドに `--observations ALIGNMENT.json` を付けて、照合に使える観測を出力できる。
+
+```json
+{
+  "seats": [{"source": 0, "target": 1}, {"source": 1, "target": 0}],
+  "frames": [{"frame": 42, "checkpoint": 18, "through": 20}]
+}
+```
+
+`source` はRiftAtlasの席番号、`target` はLean側の席番号。手番号を特定できるときは `through` を省略する。出力された `observations` を対象ゲームの観測に追記できる。2席の得点と、コードと識別子が各要素に入っている手札・山札の枚数を抽出する。空配列や伏せ札を含む列からは枚数を確定しない。操作やシャッフル順は別に転記する。
+
 ```sh
 .lake/build/bin/riftbound-replay inspect INPUT.json 2 next.json
 ```

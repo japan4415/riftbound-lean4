@@ -3,6 +3,7 @@
 import argparse
 import json
 import subprocess
+import sys
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
@@ -1399,6 +1400,49 @@ def check_deck_order_observations(folder: Path, command: Callable[..., str], sav
     inspect_game(folder, command, inputs, 1, error="requires a Main Deck or Rune Deck")
 
 
+def check_atlas_observations(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
+    steps = view["games"][0]["steps"]
+    scored = next(row for row in steps if any(row["state"]["points"]))
+    checkpoint, state = scored["i"], scored["state"]
+    known = {obj: value["card"] for row in steps[:checkpoint + 1]
+             for obj, value in row["state"]["new"].items()}
+    original = []
+    for seat, points in enumerate(state["points"]):
+        hand = [{"id": str(obj), "cardCode": known[str(obj)]}
+                for obj in state["zones"].get(f"p{seat}.hand", [])]
+        original.append({"seat": 1 - seat, "board": {"score": points, "hand": hand}})
+    raw = {"format": "riftatlas-replay", "root": {"r": 0},
+           "nodes": [["o", [["frames", [None, {"state": {"players": original}}]]]]]}
+    atlas = folder / "atlas-synthetic.json"
+    alignment = folder / "atlas-alignment.json"
+    alignment.write_text(json.dumps({
+        "seats": [{"source": 1, "target": 0}, {"source": 0, "target": 1}],
+        "frames": [{"frame": 1, "checkpoint": checkpoint}],
+    }), encoding="utf-8")
+    source, archive = folder / "atlas-input.json", folder / "atlas-archive.json"
+    inputs = deepcopy(saved["input"])
+
+    def write_input() -> None:
+        atlas.write_text(json.dumps(raw), encoding="utf-8")
+        imported = json.loads(subprocess.check_output(
+            [sys.executable, "-B", ROOT / "scripts/audit_atlas_replay.py",
+             atlas, "--observations", alignment]))
+        inputs["games"][0].update(imported)
+        source.write_text(json.dumps(inputs), encoding="utf-8")
+
+    write_input()
+    assert json.loads(command("record", source, archive)) == saved["summary"]
+    assert json.loads(command("verify", archive)) == saved["summary"]
+    assert json.loads(archive.read_bytes())["games"][0]["checkpoints"] == saved["games"][0]["checkpoints"]
+
+    original[0]["board"]["score"] += 1
+    write_input()
+    failed = inspect_game(folder, command, inputs, 1, explain=True)
+    assert failed["failure"]["kind"] == "observation"
+    assert 'observation ("RiftAtlas frame 1"): seat 0 score' in failed["failure"]["message"]
+    assert failed["checkpoint"] == checkpoint - 1
+
+
 def check_duel_observations(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
     inputs = deepcopy(saved["input"])
     game = inputs["games"][0]
@@ -1567,6 +1611,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     check_duel_inspection(folder, command, saved, view)
     check_duel_observations(folder, command, saved, view)
     check_deck_order_observations(folder, command, saved, view)
+    check_atlas_observations(folder, command, saved, view)
     check_public_events(folder, command, saved, view)
 
     group_archive = folder / "group-move-archive.json"

@@ -1,4 +1,4 @@
-"""Report what a local RiftAtlas History & Replays JSON exposes about its opening."""
+"""Inspect a local RiftAtlas replay or extract observations at aligned checkpoints."""
 
 from __future__ import annotations
 
@@ -60,6 +60,12 @@ class ReplayGraph:
         result = self.resolve(value)
         return result if isinstance(result, list) else None
 
+    def frames(self) -> list:
+        frames = self.array(self.root.get("frames"))
+        if not frames:
+            raise ValueError("the replay has no source frames")
+        return frames
+
 
 def has_list_text(player: dict, graph: ReplayGraph) -> bool:
     deck_lists = [player.get("decklistRaw")]
@@ -68,19 +74,28 @@ def has_list_text(player: dict, graph: ReplayGraph) -> bool:
     return any(isinstance(value, str) and value.strip() for value in deck_lists)
 
 
-def zone_summary(graph: ReplayGraph, zone: object) -> dict | None:
+def zone_entries(graph: ReplayGraph, zone: object) -> list | None:
     value = graph.resolve(zone)
     if isinstance(value, dict) and "id" in value:
-        value = [value]
-    if not isinstance(value, list):
+        return [value]
+    return value if isinstance(value, list) else None
+
+
+def has_card_code(card: dict) -> bool:
+    code = card.get("cardCode")
+    return isinstance(code, str) and CARD_CODE.fullmatch(code) is not None
+
+
+def zone_summary(graph: ReplayGraph, zone: object) -> dict | None:
+    entries = zone_entries(graph, zone)
+    if entries is None:
         return None
-    coded = 0
-    for entry in value:
-        card = graph.object(entry) or {}
-        code = card.get("cardCode")
-        if isinstance(code, str) and CARD_CODE.fullmatch(code):
-            coded += 1
-    return {"entries": len(value), "withCardCode": coded}
+    coded = sum(has_card_code(graph.object(entry) or {}) for entry in entries)
+    return {"entries": len(entries), "withCardCode": coded}
+
+
+def natural(value: object) -> bool:
+    return type(value) is int and value >= 0
 
 
 def seat_players(graph: ReplayGraph, state: dict) -> dict[int, dict]:
@@ -88,7 +103,7 @@ def seat_players(graph: ReplayGraph, state: dict) -> dict[int, dict]:
     for entry in graph.array(state.get("players")) or []:
         player = graph.object(entry) or {}
         seat = player.get("seat")
-        if type(seat) is not int or seat < 0 or seat in result:
+        if not natural(seat) or seat in result:
             raise ValueError("an inspected state has missing or duplicate seat numbers")
         result[seat] = player
     return result
@@ -96,9 +111,7 @@ def seat_players(graph: ReplayGraph, state: dict) -> dict[int, dict]:
 
 def audit(raw: object) -> dict:
     graph = ReplayGraph(raw)
-    frames = graph.array(graph.root.get("frames"))
-    if not frames:
-        raise ValueError("the replay has no source frames")
+    frames = graph.frames()
     opening = None
     first_play = None
     final = None
@@ -141,12 +154,111 @@ def audit(raw: object) -> dict:
     }
 
 
+def known_zone_count(graph: ReplayGraph, zone: object) -> int | None:
+    """Empty and masked values are ambiguous in external snapshots."""
+    entries = zone_entries(graph, zone)
+    if not entries:
+        return None
+    seen = set()
+    for entry in entries:
+        card = graph.object(entry) or {}
+        identity = card.get("id")
+        if (not isinstance(identity, str) or not identity or identity.startswith("__")
+                or identity in seen or not has_card_code(card)):
+            return None
+        seen.add(identity)
+    return len(seen)
+
+
+def source_seats(anchors: dict) -> dict[int, int]:
+    entries = anchors.get("seats")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("the alignment needs at least one seat mapping")
+    result = {}
+    targets = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("seat mappings need source and target seat numbers")
+        source, target = entry.get("source"), entry.get("target")
+        if not natural(source) or not natural(target):
+            raise ValueError("seat mappings need nonnegative source and target seat numbers")
+        if source in result or target in targets:
+            raise ValueError("the seat mapping must be one-to-one")
+        result[source] = target
+        targets.add(target)
+    return result
+
+
+def frame_facts(graph: ReplayGraph, state: dict, seats: dict[int, int]) -> list[dict]:
+    players = seat_players(graph, state)
+    if seats.keys() - players.keys():
+        raise ValueError("a mapped source seat is absent from the selected state")
+    facts = []
+    for source, target in seats.items():
+        board = graph.object(players[source].get("board")) or {}
+        seat = {"n": target}
+        score = board.get("score")
+        if len(players) == len(seats) == 2 and natural(score):
+            facts.append({"score": {"seat": seat, "points": score}})
+        for name, key in OPENING_ZONES.items():
+            count = known_zone_count(graph, board.get(key))
+            if count is not None:
+                facts.append({"zoneCount": {"zone": {"player": {"p": seat, "k": name}}, "count": count}})
+    return facts
+
+
+def extract_observations(raw: object, anchors: object) -> dict:
+    graph = ReplayGraph(raw)
+    frames = graph.frames()
+    if not isinstance(anchors, dict):
+        raise ValueError("the alignment must be a JSON object")
+    seats = source_seats(anchors)
+    pairs = anchors.get("frames")
+    if not isinstance(pairs, list) or not pairs:
+        raise ValueError("the alignment needs at least one source frame")
+    observations = []
+    used_frames = set()
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            raise ValueError("frame mappings need a frame and a checkpoint")
+        index, checkpoint, through = pair.get("frame"), pair.get("checkpoint"), pair.get("through")
+        if not natural(index) or index >= len(frames):
+            raise ValueError("a source frame number is outside the replay")
+        if not natural(checkpoint) or (through is not None and (not natural(through) or through < checkpoint)):
+            raise ValueError(f"source frame {index} needs a valid checkpoint or checkpoint range")
+        if index in used_frames:
+            raise ValueError(f"source frame {index} was mapped more than once")
+        used_frames.add(index)
+        frame = graph.object(frames[index]) or {}
+        state = graph.object(frame.get("state"))
+        if state is None:
+            raise ValueError(f"source frame {index} has no state")
+        try:
+            facts = frame_facts(graph, state, seats)
+        except ValueError as error:
+            raise ValueError(f"source frame {index}: {error}") from error
+        if not facts:
+            raise ValueError(f"source frame {index} has no supported observations for the mapped seats")
+        observation = {"checkpoint": checkpoint, "source": f"RiftAtlas frame {index}", "facts": facts}
+        if through is not None:
+            observation["through"] = through
+        observations.append(observation)
+    return {"observations": observations}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="local History & Replays JSON file")
+    parser.add_argument("--observations", type=Path, metavar="ALIGNMENT.json",
+                        help="extract observations using the given seat and checkpoint mapping")
     args = parser.parse_args()
     try:
-        report = audit(json.loads(args.input.read_text(encoding="utf-8")))
+        raw = json.loads(args.input.read_text(encoding="utf-8"))
+        if args.observations is None:
+            report = audit(raw)
+        else:
+            anchors = json.loads(args.observations.read_text(encoding="utf-8"))
+            report = extract_observations(raw, anchors)
     except (OSError, ValueError, RecursionError) as error:
         parser.exit(1, f"{error}\n")
     print(json.dumps(report, indent=2))

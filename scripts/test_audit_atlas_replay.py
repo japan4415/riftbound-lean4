@@ -1,6 +1,6 @@
 import unittest
 
-from audit_atlas_replay import audit
+from audit_atlas_replay import audit, extract_observations
 
 
 class AtlasReplayAuditTest(unittest.TestCase):
@@ -84,6 +84,43 @@ class AtlasReplayAuditTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "no source frames with state"):
             audit(replay)
+
+    def test_observations_keep_explicit_alignment_and_skip_uncertain_counts(self):
+        card = {"id": "seat-private-id", "cardCode": "TEST-101"}
+        replay = {
+            "format": "riftatlas-replay",
+            "nodes": [["o", [["frames", [
+                None,
+                {"state": {"players": [
+                    {"seat": 4, "board": {"score": 0, "hand": [card, {**card, "id": "second-id"}],
+                                          "deck": [card, card], "runeDeck": []}},
+                    {"seat": 7, "board": {"score": 2, "hand": [card, "__hidden_zone__"]}},
+                ]}},
+            ]]]]],
+            "root": {"r": 0},
+        }
+        anchors = {
+            "seats": [{"source": 4, "target": 1}, {"source": 7, "target": 0}],
+            "frames": [{"frame": 1, "checkpoint": 9, "through": 12}],
+        }
+        self.assertEqual(extract_observations(replay, anchors), {"observations": [{
+            "checkpoint": 9,
+            "through": 12,
+            "source": "RiftAtlas frame 1",
+            "facts": [
+                {"score": {"seat": {"n": 1}, "points": 0}},
+                {"zoneCount": {"zone": {"player": {"p": {"n": 1}, "k": "hand"}}, "count": 2}},
+                {"score": {"seat": {"n": 0}, "points": 2}},
+            ],
+        }]})
+        for bad, diagnostic in [
+            ({**anchors, "frames": [{"frame": 0, "checkpoint": 9}]}, "frame 0 has no state"),
+            ({**anchors, "frames": [{"frame": 1, "checkpoint": 9, "through": 8}]}, "valid checkpoint"),
+            ({**anchors, "seats": [{"source": 4, "target": 0}, {"source": 7, "target": 0}]}, "one-to-one"),
+            ({**anchors, "seats": [{"source": 9, "target": 0}]}, "mapped source seat is absent"),
+        ]:
+            with self.subTest(diagnostic=diagnostic), self.assertRaisesRegex(ValueError, diagnostic):
+                extract_observations(replay, bad)
 
 
 if __name__ == "__main__":
