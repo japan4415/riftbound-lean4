@@ -3548,7 +3548,7 @@ def OGN_131 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [] (.ifThen (.exists (Selector.all .enemy .here [.ofType .unit, .ready]))
         (.grant .self (.mightPlus .it (.const 2)) .thisTurn) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-132
 /--
@@ -4316,7 +4316,7 @@ def OGN_159 : CardDef :=
       .triggered (.onSelf .attack)
         (.of []
         (.prim (.kill (Selector.all .enemy .here [.ofType .unit, .damaged])))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-160
 /--
@@ -5859,7 +5859,7 @@ def OGN_217 : CardDef :=
     abilities := [.triggered { Trigger.onSelf .play with condition := .legion }
         (.of []
         (.prim (.buff .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-218
 /--

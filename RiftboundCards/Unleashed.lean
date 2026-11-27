@@ -1978,7 +1978,7 @@ def UNL_066 : CardDef :=
   { UNL_066.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightMinus .it (.const 10)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-067
 /--
@@ -4517,7 +4517,7 @@ def UNL_156 : CardDef :=
   { UNL_156.meta with
     abilities := [.triggered (.onSelf .die)
       (.of [] (.ifThen (.not (.marked .diedAlone)) (.prim (.draw .you (.const 1))) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-157
 /--

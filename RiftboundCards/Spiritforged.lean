@@ -1317,7 +1317,7 @@ def SFD_045 : CardDef :=
 
     spellEffect := some { EffectDef.of [.targetOf .one .enemy .onChainAll [.choosesFriendly]]
       (.prim (.counter (.slot 0))) with recheckTargets := true },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-046
 /--
@@ -4811,7 +4811,7 @@ def SFD_164 : CardDef :=
       [.costMinus .self (.const 2)]],
     spellEffect := some { EffectDef.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.prim (.kill (.slot 0))) with recheckTargets := true },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-165
 /--

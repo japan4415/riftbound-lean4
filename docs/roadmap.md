@@ -2396,6 +2396,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - En Garde は味方を選べ、追加の +1 Might には術者自身がその場で支配する唯一の Unit を選ぶ必要がある。Kinkou Monk は二体までの対象を誘発の確定時にまとめて選ぶ。Clash of Giants は二体の Unit が互いに同時にダメージを与える。The Ruination は全席の Unit を同時にキルし、死亡置換を適用する。Block、Blastcone Fae、Ember Monk、Kog'Maw, Caustic と合わせて8枚を確認し、全1,103枚中717枚を `full` とした。[公式総合ルール 355、370、418.6.b.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - 可変 Power の支払いでは、残高と指定された記号を満たすドメインの組み合わせが、ドメイン順で列挙されることを証明した。通常のグループ移動では、候補、費用の可否、宣言済みグループを確定できるかが対応していれば、オブジェクトの ID を付け替えても提示される回答が対応する。[可変 Power の証明](../Riftbound/Invariant/FlexiblePaymentChoices.lean) [移動の選択の証明](../Riftbound/Invariant/PrivateChoices.lean)
 
+### Chain の対象と同時に死亡した Unit
+
+- Not So Fast は味方の Unit や Gear を選んだ敵の Chain 項目を打ち消す。Drag Under は解決時に対象が Battlefield にいることを再確認する。Moonlight Affliction で Might が0以下になった Unit も、ダメージが付いていれば Cleanup でキルされる。Dune Drake、Warwick, Hunter、Trifarian Gloryseeker、Loyal Poro を合わせて7枚を確認し、全1,103枚中724枚を `full` とした。[公式総合ルール 142.4.b、359.3.e、418.6.b.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- 同時に死亡した各 Unit について、死亡の処理を始める直前に同じ場所に味方がいたかを記録する。この記録を、Loyal Poro と Lonely Poro の Deathknell が使う。Battlefield の味方にはチームメイトの Unit も含まれる。
+- 映像の観測には手番号の範囲を指定できる。Basic Rune の操作はコードと Exhaust の有無で照合できる。Power の処理では、指定された一つの残高から引いた量と、他の残高が変わらないことを証明した。[リプレイの入力形式](viewer.md) [Power の証明](../Riftbound/State/Pool.lean)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
