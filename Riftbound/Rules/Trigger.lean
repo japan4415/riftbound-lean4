@@ -1264,7 +1264,7 @@ def trigCost (s : GameState) (t : PendTrigger) : TriggerCost :=
 /-- The Energy and Power required by the trigger's printed cost. -/
 def TriggerCost.resources : TriggerCost → Cost
   | .energy n => ⟨n, []⟩
-  | .pay cost _ => cost
+  | .pay cost _ | .payAndReturnUnitHere cost => cost
   | _ => ⟨0, []⟩
 
 /-- A Burn cost must be payable in full. Burn Out on a short deck is for instructions
@@ -1285,6 +1285,11 @@ def triggerBuffOptions (s : GameState) (t : PendTrigger) : List ObjId :=
   (s.pickCandidates t.controller t.source {} .you .anywhere
     (.ofList [.ofType .unit, .buffed]) false).getD []
 
+/-- Units the trigger's controller can return here as a cost. Costs do not choose targets. -/
+def triggerReturnUnitHereOptions (s : GameState) (t : PendTrigger) : List ObjId :=
+  (s.pickCandidates t.controller t.source {} .you .here (.ofList [.ofType .unit])
+    false).getD []
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
@@ -1295,6 +1300,10 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
   | .pay cost exhaustSelf =>
     if (!exhaustSelf || canExhaustTriggerSource s t) &&
         (!checkPool || (payByRunes s t.controller t.source cost).isSome) then [[]] else []
+  | .payAndReturnUnitHere cost =>
+    if !checkPool || (payByRunes s t.controller t.source cost).isSome then
+      (triggerReturnUnitHereOptions s t).map (fun id => [id])
+    else []
   | .exhaustSelf => if canExhaustTriggerSource s t then [[]] else []
   | .burn n => if canPayBurn s t.controller n then [[]] else []
   | .discard n => triggerDiscardOptions s t.controller n
@@ -1578,6 +1587,16 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
       let (exhausted, costEvents) := setExhausted true paid t.source
       some (exhausted, events ++ costEvents)
     else none
+  | .payAndReturnUnitHere cost =>
+    match ids with
+    | [id] =>
+      if (triggerReturnUnitHereOptions s t).contains id then
+        let payment := if resourcesPaid then some (s, []) else payByRunes s t.controller t.source cost
+        payment.map fun (paid, events) =>
+          let (returned, moves) := sendObj .hand paid id
+          (returned, events ++ moves)
+      else none
+    | _ => none
   | .exhaustSelf =>
     if canExhaustTriggerSource s t then some (setExhausted true s t.source) else none
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
@@ -1686,6 +1705,18 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
     · split at hfinish
       · cases hfinish; exact hsafe.trans (setExhausted_safe true paid t.source)
       · simp at hfinish
+  · split at h
+    · split at h
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨paid, events⟩, hpay, hfinish⟩ := h
+        have hsafe : Safe s paid := by
+          split at hpay
+          · cases hpay; exact Safe.refl s
+          · exact payByRunes_safe hpay
+        cases hfinish
+        exact hsafe.trans (sendObj_safe .hand paid _)
+      · contradiction
+    · contradiction
   · split at h
     · cases h; exact setExhausted_safe true s t.source
     · simp at h

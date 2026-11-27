@@ -50,6 +50,9 @@ TEXT_ERRATA = {
         "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
             "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",
     },
+    "SFD-207": {
+        "to its owner's hand. If you do, play a 2": "to its owner's hand to play a 2",
+    },
     "UNL-079": {
         "When a showdown begins here, you may pay :rb_energy_1:. If you do, [Predict]":
             "When a showdown begins here, you may pay :rb_energy_1: to [Predict]",

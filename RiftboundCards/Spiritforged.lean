@@ -6075,7 +6075,7 @@ def SFD_206 : CardDef :=
 Printings: SFD-207/221
 
 > When you conquer here, you may pay :rb_energy_1: and return a unit you control here to its
-> owner's hand. If you do, play a 2 :rb_might: Sand Soldier unit token here.
+> owner's hand to play a 2 :rb_might: Sand Soldier unit token here.
 -/
 def SFD_207.meta : CardDef :=
   { id := ⟨"SFD-207"⟩,
@@ -6087,14 +6087,10 @@ def SFD_207.meta : CardDef :=
 /-- Emperor's Dais. -/
 def SFD_207 : CardDef :=
   { SFD_207.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
-          (.exists (Selector.all .friendly .here [.ofType .unit])))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .prim (.returnToHand (Selector.one .friendly .here [.ofType .unit])),
-          .prim (.create "Sand Soldier" (.const 1) .here false)])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { Trigger.onSelf .youConquer with optional := true, cost := .payAndReturnUnitHere ⟨1, []⟩ }
+      (.of [] (.prim (.create "Sand Soldier" (.const 1) .here false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-208
 /--

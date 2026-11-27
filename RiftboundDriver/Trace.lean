@@ -499,13 +499,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (match payment with
        | .skip => [("decline", "true")]
        | .pay ids mode player banishers =>
+         let triggerCost := (state.bind (fun s => trigger.map (trigCost s))).getD .free
          let costs := match state, trigger with
            | some s, some t =>
              if mode.isNone && player.isNone && ts.isEmpty && !trigOptional s t &&
                  (!trigTargetOk s t mode ts || !(trigPlayerOptions s t).contains none) then
                [("unavailable", "true")]
-             else match trigCost s t with
+             else match triggerCost with
                | .energy n => [("energy", toString n)]
+               | .payAndReturnUnitHere cost => [("energy", toString cost.energy)]
                | .spendXP n => [("xpCost", toString n)]
                | .burn n => [("burn", toString n)]
                | .exhaustSelf => [("exhaustSource", "true")]
@@ -515,10 +517,13 @@ def actionJson (a : Action) (frame : Option Frame := none)
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
          let replacements := triggerCostBanishes state ids banishers events
+         let objectCostField := match triggerCost with
+           | .payAndReturnUnitHere _ => "returnToHandCost"
+           | _ => "sacrifices"
          mode.toList.flatMap (modeFields definition) ++ costs ++
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if replacements.isEmpty then [] else [("costBanishes", jarr replacements)]) ++
-           (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
+           (if ids.isEmpty then [] else [(objectCostField, jarr (ids.map (fun id => toString id.n)))]))
     | .triggerAdd add =>
       [("playAdd", effectAddJson add)] ++
         (match frame with

@@ -754,6 +754,39 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     (a.zone .battlefieldZone).any (fun o => (a.cardDef? o).any (·.name == "Sand Soldier")) &&
     (b.obj? u).isSome && c.countIn s.me .hand "OGN-051" == s2.countIn s.me .hand "OGN-051"
 
+-- Both parts of the cost are paid before the ability can be countered. The returned Unit need
+-- only be controlled by the payer, and goes to its owner's hand.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf (s.fund p 1) p "SFD-207"
+  let (s, unit) ← putAt s q "OGN-051" field
+  let (s, other) ← put s p "OGN-001" .base
+  let s := s.modObj unit (fun o => { o with controller := p })
+  let offer (state : GameState) :=
+    let pending := insertTriggers (state.detect [.scored p field true]) state.pending
+    (advance 100 { state with pending } []).toOption
+  let (waiting, _) ← offer s
+  let (unfunded, _) ← offer (s.fund p 0)
+  let pay : Action := ⟨.player p, .putTrigger 0 [] (.pay [unit])⟩
+  let offsite : Action := ⟨.player p, .putTrigger 0 [] (.pay [other])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (chain, _) ← (step 100 waiting pay).toOption
+  let (skipped, _) ← (step 100 waiting skip).toOption
+  let item ← (chain.zone .chain).head?
+  let resolved := settleChain {} 12 chain
+  let countered := settleChain {} 12 (counterObj chain item).1
+  let soldier (state : GameState) :=
+    (state.unitsAtOf field p).find? (fun id => (state.cardDef? id).any (·.name == "Sand Soldier"))
+  return (legalFrameActions waiting).contains pay && !(step 100 waiting offsite).isOk &&
+    !(step 100 unfunded pay).isOk &&
+    (skipped.poolOf p).energy == 1 && (skipped.obj? unit).isSome &&
+    (chain.poolOf p).energy == 0 && (chain.obj? unit).isNone &&
+    chain.countIn q .hand "OGN-051" == s.countIn q .hand "OGN-051" + 1 &&
+    (soldier chain).isNone && (soldier resolved).bind resolved.tired == some true &&
+    (soldier countered).isNone && (countered.poolOf p).energy == 0 &&
+    countered.countIn q .hand "OGN-051" == chain.countIn q .hand "OGN-051"
+
 -- Minefield (SFD-212): when its player conquers here, the top 2 cards of their Main Deck go to
 -- the Trash
 #guard tsf fun s => do

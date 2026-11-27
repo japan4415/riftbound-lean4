@@ -710,6 +710,8 @@ inductive TriggerCost where
   | spendXP (amount : Nat)
   /-- Pay Energy or Power, and optionally exhaust the source, during finalization (CR 383.3.b). -/
   | pay (cost : Cost) (exhaustSelf : Bool := false)
+  /-- Pay resources and return one Unit the controller controls here to its owner's hand. -/
+  | payAndReturnUnitHere (cost : Cost)
   /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
   | exhaustSelf
   /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/

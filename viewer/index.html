@@ -739,12 +739,13 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const targets = (a.targets || []).map(cardName);
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const replacements = new Map((a.costBanishes || []).map(({unit, player}) => [unit, player]));
-      const sacrifices = (a.sacrifices || []).map((id) => {
+      const objectCosts = (a.sacrifices || []).map((id) => {
         const card = cardName(id);
         if (a.discardCost) return card + ' を捨てる';
         return replacements.has(id) ? 'P' + replacements.get(id) + ' の効果で ' + card + ' を Banish' :
           card + ' を Kill';
-      }).join('、');
+      }).concat((a.returnToHandCost || []).map((id) =>
+        cardName(id) + ' をオーナーの手札に戻す')).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
       const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
@@ -752,7 +753,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const deflect = a.triggerDeflect ? '（Deflect ' + a.triggerDeflect + ' Power）' : '';
       const targetText = targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）';
       const choices = mode + energy + deflect + exhaust + burn +
-        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') + targetText;
+        (objectCosts ? '（コストとして ' + objectCosts + '）' : '') + targetText;
       if (a.kind === 'prepareTrigger') {
         return [who + ': ' + ability + 'の支払いを選ぶ' + choices, 'Add や Rune を選ぶ'];
       }
@@ -760,7 +761,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + ability + 'を確定' + choices, '支払い ' + a.triggerPreparedAdds.map(addLabel).join('、')];
       }
       return [who + ': ' + ability + 'を確定' + choices,
-        sacrifices ? 'コストを払ってから能力を Chain に載せる' :
+        objectCosts ? 'コストを払ってから能力を Chain に載せる' :
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
     }

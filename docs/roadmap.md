@@ -2182,6 +2182,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Draven, Vanquisher の攻撃・防御時の誘発は、Vendetta の訂正に従い、Chain を確定するときに Fury 1 を支払う。能力が解決した場合はそのターンの Might が2増える。攻撃側、防御側、支払いを辞退した場合、打ち消された場合を確認した（CR 383.3.b、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
 - Draven, Vanquisher を `full` とし、全1,103枚中560枚を実装済みにした。[カード実装状況](coverage.md)
 
+### ユニットを手札に戻して誘発を確定する Emperor’s Dais
+
+- Emperor’s Dais で Conquer した席は、能力を確定するときに Energy 1 を支払い、その Battlefield で自分が支配する Unit 1体をオーナーの手札に戻す。能力が解決すると、その Battlefield に Sand Soldier を Exhausted で出す。場所の異なる Unit、支払いの辞退、能力が打ち消された場合を確認した（CR 383.3、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- リプレイの操作履歴には、支払った Energy と、コストとして手札に戻した Unit が表示される。Emperor’s Dais を `full` とし、全1,103枚中561枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
