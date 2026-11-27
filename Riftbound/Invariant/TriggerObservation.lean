@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Engine.Step
+public import Riftbound.Invariant.TriggerFinalization
 
 /-!
 # Observing the automatic finalization of ordinary triggers (I12)
@@ -144,6 +145,32 @@ theorem mightyEvents_cases {s t : GameState} {event : Event}
   | mighty id => exact Or.inl ⟨id, rfl⟩
   | reached id threshold => exact Or.inr ⟨id, threshold, rfl⟩
 
+/-- Keeping the Might of the existing Board objects cannot create a threshold crossing. -/
+theorem mightyEvents_eq_nil_of_mightNow {s t : GameState}
+    (same : ∀ id ∈ s.inPlay, s.mightNow id = t.mightNow id) : s.mightyEvents t = [] := by
+  unfold GameState.mightyEvents
+  dsimp only
+  split
+  · rfl
+  apply List.flatMap_eq_nil_iff.mpr
+  intro id _
+  split
+  · rename_i onBoard
+    simp only [Bool.and_eq_true] at onBoard
+    rw [same id (List.contains_iff_mem.mp onBoard.1)]
+    cases might : t.mightNow id with
+    | none => rfl
+    | some amount =>
+      apply List.filterMap_eq_nil_iff.mpr
+      rintro ⟨n, event⟩ _
+      dsimp only
+      simp only [Bool.and_eq_true, decide_eq_true_eq]
+      split
+      · rename_i crossing
+        omega
+      · rfl
+  · rfl
+
 private theorem foldl_mightNotices {α : Type} (update : α → Event → α)
     (inert : ∀ a e, MightNotice e → update a e = a) (start : α)
     (events : List Event) (notices : ∀ e ∈ events, MightNotice e) :
@@ -214,6 +241,18 @@ theorem withMightyEvents (before after : GameState) :
       then { after with pending := insertDetectedTriggers after detected after.pending } else after :=
   withMightNotices after _ (fun _ h => mightyEvents_notice h)
 
+private theorem triggersStep_transitionEvents (s : GameState) (wf : s.WF)
+    (queue : List PendTrigger) (rest : List Frame) (pending : s.pending = .triggers queue :: rest) :
+    let outcome := triggersStep s queue rest
+    let next := { outcome.1 with pending := outcome.2 ++ rest }
+    s.workTransitionEvents next = s.mightyEvents next := by
+  intro outcome next
+  unfold GameState.workTransitionEvents
+  rw [pending]
+  change s.exhaustionEvents next none ++ s.mightyEvents next ++ [] ++ [] = _
+  have empty : s.exhaustionEvents next none = [] := triggersStep_noExhaustion s wf queue rest
+  simp only [empty, List.nil_append, List.append_nil]
+
 /-- An ordinary trigger step can cause new trigger work only through observed Might crossings.
 The resulting batch comes from the real detector. These observations neither alter the turn's
 history nor award points, and the work step itself emits no events. -/
@@ -229,14 +268,38 @@ theorem workStep_triggers_observed (s : GameState) (wf : s.WF) (queue : List Pen
   let next := { outcome.1 with pending := outcome.2 ++ rest }
   have raw : microStep0 s = some (next, []) := by
     simp only [microStep0, pending, next, outcome]
-  have noExhaust : s.exhaustionEvents next none = [] := triggersStep_noExhaustion s wf queue rest
-  have transitions : s.workTransitionEvents next = s.mightyEvents next := by
-    unfold GameState.workTransitionEvents
-    rw [pending]
-    change s.exhaustionEvents next none ++ s.mightyEvents next ++ [] ++ [] = _
-    simp only [noExhaust, List.nil_append, List.append_nil]
+  have transitions : s.workTransitionEvents next = s.mightyEvents next :=
+    triggersStep_transitionEvents s wf queue rest pending
   simp only [workStep, pending, microStep, raw, Option.map_some, transitions, List.nil_append]
   rw [withMightyEvents s next]
+
+/-- If finalizing a trigger crosses no Might threshold, event observation leaves the raw
+continuation of the ordinary rules dispatcher in place. -/
+theorem workStep_triggers_noMightEvents (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest)
+    (noCrossing : let outcome := triggersStep s queue rest
+      s.mightyEvents { outcome.1 with pending := outcome.2 ++ rest } = []) :
+    workStep s = microStep0 s := by
+  let outcome := triggersStep s queue rest
+  let next := { outcome.1 with pending := outcome.2 ++ rest }
+  have raw : microStep0 s = some (next, []) := by simp only [microStep0, pending, next, outcome]
+  have transitions : s.workTransitionEvents next = [] :=
+    (triggersStep_transitionEvents s wf queue rest pending).trans noCrossing
+  unfold workStep
+  rw [pending]
+  simp only [microStep, raw, Option.map_some, transitions, List.nil_append, withTriggers_nil]
+
+/-- When no Might thresholds are being watched, finalizing a trigger creates no new observed
+work. The actual step has the same continuation as the ordinary rules dispatcher. -/
+theorem workStep_triggers_noMightWatches (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest)
+    (noWatches : s.mightWatches = []) : workStep s = microStep0 s := by
+  apply workStep_triggers_noMightEvents s wf queue rest pending
+  intro outcome
+  let next := { outcome.1 with pending := outcome.2 ++ rest }
+  have watches : next.mightWatches = [] := (triggersStep_mightWatches s wf queue rest).trans noWatches
+  change s.mightyEvents next = []
+  simp [GameState.mightyEvents, watches]
 
 end Riftbound
 

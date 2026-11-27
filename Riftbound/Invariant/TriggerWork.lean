@@ -34,18 +34,21 @@ private theorem triggerFrames_stop (s : GameState) (rest : List Frame) :
     · exact .resume
     · exact .priority _ 0
 
-/-- A pending ordinary trigger queue reaches a decision or hands control back to its original
-continuation within its length plus one rule step. The final step can open Chain priority. -/
-theorem rawTriggers_bound (s : GameState) (queue : List PendTrigger) (rest : List Frame)
+private theorem rawTriggers_bound_and_observed (s : GameState) (queue : List PendTrigger) (rest : List Frame)
     (pending : s.pending = .triggers queue :: rest) :
     ∃ t used, used ≤ queue.length + 1 ∧ RawWorkPrefix s t used [] ∧
-      TriggerWorkStop rest t.pending := by
+      TriggerWorkStop rest t.pending ∧
+      (s.WF → s.mightWatches = [] → AdvancePrefix s t used []) := by
+  have observe (wf : s.WF) (watches : s.mightWatches = []) :=
+    workStep_triggers_noMightWatches s wf queue rest pending watches
   cases queue with
   | nil =>
     let next := { s with pending := triggerFrames s rest ++ rest }
     have raw : microStep0 s = some (next, []) := by
       simp only [microStep0, pending, triggersStep, next]
-    exact ⟨next, 1, Nat.le_refl _, .single pending rfl raw, triggerFrames_stop s rest⟩
+    refine ⟨next, 1, Nat.le_refl _, .single pending rfl raw, triggerFrames_stop s rest, ?_⟩
+    intro wf watches
+    exact AdvancePrefix.prepend (n := 0) pending rfl ((observe wf watches).trans raw) (by intro fuel prior; simp)
   | cons first more =>
     let sameGroup (t : PendTrigger) :=
       t.controller == first.controller && t.beforeStandardMove == first.beforeStandardMove
@@ -60,10 +63,14 @@ theorem rawTriggers_bound (s : GameState) (queue : List PendTrigger) (rest : Lis
         exact ite_eq_left automatic
       have raw : microStep0 s = some (next, []) := by
         simp only [microStep0, pending, routed, next] <;> rfl
-      obtain ⟨t, used, bound, path, done⟩ := rawTriggers_bound next others rest rfl
+      obtain ⟨t, used, bound, path, done, observed⟩ := rawTriggers_bound_and_observed next others rest rfl
       have shorter : others.length ≤ more.length := List.length_filter_le _ _
-      exact ⟨t, used + 1, by simp only [List.length_cons]; omega,
-        .next pending rfl raw path, done⟩
+      refine ⟨t, used + 1, by simp only [List.length_cons]; omega,
+        .next pending rfl raw path, done, ?_⟩
+      intro wf watches
+      have nextWF : next.WF := ((putTrigger_safe s first []).wf wf).congr rfl rfl rfl rfl
+      have noWatches : next.mightWatches = [] := (putTrigger_automatic_mightWatches s wf first).trans watches
+      exact (observed nextWF noWatches).prepend pending rfl ((observe wf watches).trans raw)
     · let next := { s with pending := .triggerOrder first.controller first group others :: rest }
       have routed : triggersStep s (first :: more) rest =
           (s, [.triggerOrder first.controller first group others]) := by
@@ -71,12 +78,30 @@ theorem rawTriggers_bound (s : GameState) (queue : List PendTrigger) (rest : Lis
         exact ite_eq_right automatic
       have raw : microStep0 s = some (next, []) := by
         simp only [microStep0, pending, routed, next] <;> rfl
-      exact ⟨next, 1, by simp, .single pending rfl raw, .order ..⟩
+      refine ⟨next, 1, by simp, .single pending rfl raw, .order .., ?_⟩
+      intro wf watches
+      exact AdvancePrefix.prepend (n := 0) pending rfl ((observe wf watches).trans raw) (by intro fuel prior; simp)
 termination_by queue.length
 decreasing_by
   subst queue
   apply Nat.lt_succ_of_le
   exact List.length_filter_le _ _
+
+/-- A pending ordinary trigger queue reaches a decision or hands control back to its original
+continuation within its length plus one rule step. The final step can open Chain priority. -/
+theorem rawTriggers_bound (s : GameState) (queue : List PendTrigger) (rest : List Frame)
+    (pending : s.pending = .triggers queue :: rest) :
+    ∃ t used, used ≤ queue.length + 1 ∧ RawWorkPrefix s t used [] ∧ TriggerWorkStop rest t.pending := by
+  obtain ⟨next, used, bound, raw, done, _⟩ := rawTriggers_bound_and_observed s queue rest pending
+  exact ⟨next, used, bound, raw, done⟩
+
+/-- With no active watchers of Might thresholds, the actual engine processes the entire ordinary
+trigger queue within its length plus one step and reaches a decision or its prior continuation. -/
+theorem advance_triggers_noMightWatches (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (watches : s.mightWatches = []) :
+    ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending := by
+  obtain ⟨next, used, bound, _, done, observed⟩ := rawTriggers_bound_and_observed s queue rest pending
+  exact ⟨next, used, bound, observed wf watches, done⟩
 
 /-- The observed trigger work takes at most the queue length plus one step to reach the
 continuation, wait for an answer or process an observer change. -/

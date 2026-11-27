@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3g に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3h に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -95,6 +95,14 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 [`db_mightTriggersAreOrdinary`](../RiftboundCards/MightObservation.lean) は、登録済みのカードとトークンすべてについて、Might を監視する能力番号から即時 Add が解決されないことを `decide` で確かめる。Gear がユニットになって能力番号が変わる場合も、解決側が参照する元の定義と照合する。
 
 [`workStep_expireTurn_mightOrdinary` と `workStep_triggers_mightOrdinary`](../Riftbound/Invariant/MightObservation.lean) は、条件を満たすデータベースで、実際の Expiration と通常の誘発確定が Might の観測で積む作業が通常の誘発キューに限られることを示す。Cleanup が別の種類のイベントから積む作業と、通常の誘発が新たな観測を繰り返す場合は、全体の停止証明に残る。
+
+### 3h. 通常の誘発を Chain に置くときの Might
+
+[`putTrigger_automatic_mightInputs`](../Riftbound/Invariant/TriggerFinalization.lean) は、対象を選ばず通常の誘発を確定するときに、常在型能力の発生源と効果文、印刷・期限付きの Might、バフと装備の加算値が保たれることを示す。効果文には装備でコピーしたものも含む。[`putTrigger_automatic_mightWatches`](../Riftbound/Invariant/TriggerFinalization.lean) は、ターン中に付与された能力も含め、監視中のしきい値の一覧が保たれることを示す。
+
+[`advance_triggers_noMightWatches`](../Riftbound/Invariant/TriggerWork.lean) は、監視中のしきい値が空の局面で、実際の `advance` が誘発キューの件数＋1ステップ以内に次の判断か元の処理へ進むことを示す。監視がある局面でも、各 Unit の Might が変わらなければ新しい誘発は生じない。常在型能力の評価や Combat の補正まで含め、Might 全体が保たれる条件の証明が残る。
+
+静的カード検査を通る試験用定義で、Chain 上の項目数を Might に加える常在型能力を置くと、通常の誘発を Chain に置くだけで Might が4から5に増え、さらに誘発が1件積まれた。監視するしきい値自体は同じなので、この経路を扱うには常在型能力が何を参照するかも考える必要がある。
 
 ## 4. 進め方の案（単位に分ける）
 
