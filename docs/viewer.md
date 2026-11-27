@@ -155,11 +155,13 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 ```
 
 - 得点（`score`）、ターン（`turn`）、フェイズ（`phase`）、手番（`active`）、時間切れの宣言（`clockCalled`）、ゲームの結果（`result`）を照合できる。席番号は0から始まる。2v2 の `score` には、その席のチームの得点を入れる。
+- `xp` は各席の未使用 XP を照合する。たとえば `{"xp":{"seat":{"n":0},"amount":3}}` で席0の XP が3であることを確認できる。
 - `poolResource` は指定した席の Pool に残っている Energy や Power を種類ごとに照合する。`{"poolResource":{"seat":{"n":0},"resource":"spellEnergy","amount":2}}` は席0の Spell 専用 Energy が2であることを表す。`resource` には `"energy"`、`"unitEnergy"`、`"spellEnergy"`、`"anyPower"`、または `{"domainPower":{"domain":"mind"}}` のようにドメインを指定した Power を使う。観測できた種類だけを記録できる。
 - 公開ゾーンにあるカードを全て確認できたときは `zoneCards`、映像に一部だけ映ったときは `zoneContains` を使う。どちらも `zone` と `cards`（`[{"code":"RAD-094"}]` など）を指定する。並び順を問わず、同じコードの枚数を数える。手札・山札・伏せ札は `zoneCount` で枚数を照合できる。
 - `battlefieldControl` は Battlefield の支配者、`battlefieldUnits` はその Battlefield にいる指定プレイヤーの Unit を照合する。どちらも Battlefield を持ち込んだ席を `owner`、現在のカードコードを `field`、確認する席を `controller` に入れる。`battlefieldUnits` では `cards` に全 Unit のコードを入れる。`battlefieldControl` の `controller: null` は支配者なしを表す。
 
 - `unitStates` は Unit のカードコード、Exhaust の有無、与えられたダメージを照合する。`controller` に席、`place` に `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"RAD-157"}}}` を指定する。`units` にはその席がその場所でコントロールする全 Unit を `{"card":{"code":"RAD-026"},"exhausted":true,"damage":2}` の形で入れる。同名の Unit はそれぞれ記録し、並び順は問わない。
+- `markedUnits` は同じ `controller` と `place` の指定で、`marker` が `"buffed"` または `"stunned"` に当てはまる全 Unit のコードを `cards` に入れる。同じコードの Unit が複数該当する場合は枚数分を記録する。
 - `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
 
 - `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。

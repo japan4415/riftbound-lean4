@@ -75,6 +75,25 @@ meta def traceOf (seed turns : Nat) : String :=
     !check [.poolResource s.me (.domainPower .fury) 4] &&
     !check [.poolResource ⟨s.playerCount⟩ .energy 0] : Option Bool).getD false
 
+-- XP is seat-specific, and marker observations retain all copies of a matching Unit.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, first) ← put s p "OGN-051" .base
+  let (s, second) ← put s p "OGN-051" .base
+  let (s, _) ← put s p "OGN-049" .base
+  let (s, _) ← put s s.you "OGN-051" .base
+  let s := (s.modObj first (fun o => { o with buffed := true })).modObj second
+    (fun o => { o with buffed := true, stunned := true })
+  let s := gainXPOf 3 s p
+  let card := cid "OGN-051"
+  let check (facts : List ReplayObservationFact) :=
+    (ReplayObservation.checkAt [⟨1, none, facts⟩] 1 s).isOk
+  return check [.xp p 3, .xp s.you 0, .markedUnits p .base .buffed [card, card],
+      .markedUnits p .base .stunned [card], .markedUnits s.you .base .buffed []] &&
+    !check [.xp p 2] && !check [.markedUnits p .base .buffed [card]] &&
+    !check [.markedUnits p .base .stunned [card, card]] : Option Bool).getD false
+
 -- A token already known to the viewer changes identity in `copies`, using its original ID.
 #guard (do
     let s ← lab

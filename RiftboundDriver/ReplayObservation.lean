@@ -65,6 +65,18 @@ private def ReplayPoolResource.amount (pool : RunePool) : ReplayPoolResource →
   | .domainPower domain => pool.get domain
   | .anyPower => pool.any
 
+/-- A public marker on a Unit. -/
+inductive ReplayUnitMarker where
+  /-- A Buff placed on the Unit. -/
+  | buffed
+  /-- The Unit is Stunned. -/
+  | stunned
+deriving DecidableEq, Repr, ToJson, FromJson
+
+private def ReplayUnitMarker.onUnit (object : Object) : ReplayUnitMarker → Bool
+  | .buffed => object.buffed
+  | .stunned => object.stunned
+
 /-- Public events that can be identified without card faces or engine object IDs. -/
 inductive ReplayPublicEvent where
   /-- The seat drew one card. -/
@@ -106,6 +118,8 @@ inductive ReplayObservationFact where
   | active (seat : Option PlayerId)
   /-- The points shown for a seat, including its shared score in team games. -/
   | score (seat : PlayerId) (points : Nat)
+  /-- The publicly visible unspent XP of a seat. -/
+  | xp (seat : PlayerId) (amount : Nat)
   /-- The observed balance of one resource in the seat's Pool. -/
   | poolResource (seat : PlayerId) (resource : ReplayPoolResource) (amount : Nat)
   /-- The size of a visible zone, including face-down cards or abilities on the Chain. -/
@@ -121,6 +135,9 @@ inductive ReplayObservationFact where
       (cards : List CardId)
   /-- All Units of the controller at the given public place, with exhaustion and marked damage. -/
   | unitStates (controller : PlayerId) (place : ReplayUnitPlace) (units : List ReplayObservedUnit)
+  /-- The codes of all Units of one controller with this marker at the given public place. -/
+  | markedUnits (controller : PlayerId) (place : ReplayUnitPlace) (marker : ReplayUnitMarker)
+      (cards : List CardId)
   /-- Whether time has been called. -/
   | clockCalled (called : Bool)
   /-- The observed game result, or none while the game was ongoing. -/
@@ -230,6 +247,9 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
   | .score seat points =>
     observeSeat s seat
     checkFactValue s!"seat {seat.n} score" points (s.pointsOf seat)
+  | .xp seat amount =>
+    observeSeat s seat
+    checkFactValue s!"seat {seat.n} XP" amount (s.xpOf seat)
   | .poolResource seat resource amount =>
     observeSeat s seat
     checkFactValue s!"seat {seat.n} Pool {(toJson resource).compress}" amount
@@ -254,6 +274,12 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
       return ⟨card, o.exhausted, o.damage⟩
     unless decide (expected.Perm actual) do
       checkFactValue label expected actual
+  | .markedUnits controller place marker cards =>
+    let (label, ids) ← observeUnitsAt s controller place
+    let actual := ids.filterMap fun id => do
+      let object ← s.obj? id
+      if marker.onUnit object then object.kind.cardId? else none
+    checkCardSet s!"{label} with marker {(toJson marker).compress}" cards actual
   | .unitAttachments controller place expected =>
     let (label, ids) ← observeUnitsAt s controller place
     let actual : List ReplayObservedUnitAttachments := ids.filterMap fun id => do
