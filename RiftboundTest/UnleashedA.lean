@@ -819,9 +819,73 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let finished ← play s p keeper [field]
   let tokens := (finished.unitsAtOf field p).filter (fun id =>
     (finished.obj? id).any (fun o => o.originalToken == some (cid "UNL-T06")))
+  let expired ← settleBeginning finished p
   return tokens.length == 2 && tokens.all (fun id => finished.tired id == some true &&
     finished.hasKw id .temporary && (finished.cardDef? id).any (·.id == cid "UNL-081")) &&
-    (finished.cardDef? old).any (·.id == cid "UNL-T06") && finished.tired old == some false
+    (finished.cardDef? old).any (·.id == cid "UNL-T06") && finished.tired old == some false &&
+    expired.unitsAtOf field p == [old] && expired.countIn p .trash "UNL-081" == 1
+
+-- Smoke and Mirrors swaps units at distinct locations with Temporary. Both branches draw.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, first) ← put (s.control p field) p "RAD-001" .base
+  let (s, otherBase) ← put s p "RAD-001" .base
+  let (s, second) ← putAt s p "RAD-001" field
+  let (s, smoke) ← put s p "UNL-083" .hand
+  let unchanged ← play s p smoke [first, second]
+  let marked := (addTempKw { keyword := .temporary } .never s second).1
+  let swapped ← play marked p smoke [first, second]
+  return !(play s p smoke [first, otherBase]).isSome &&
+    unchanged.unitsAtOf field p == [second] && swapped.unitsAtOf field p == [first] &&
+    (swapped.zone (.player p .base)).contains second &&
+    unchanged.handN p == s.handN p && swapped.handN p == s.handN p
+
+-- Smoke and Mirrors requires the caster's own Units, even with a teammate at a different location.
+#guard tun fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, field) ← putBf team ally "VEN-158"
+  let (s, first) ← put s p "RAD-001" .base
+  let (s, second) ← put s ally "RAD-001" .base
+  let (s, own) ← putAt (s.control p field) p "RAD-001" field
+  let (s, smoke) ← put s p "UNL-083" .hand
+  let s := { s with active := some p, phase := .main, pending := [.priority p] }
+  let accepts (targets : List ObjId) := (play s p smoke targets).isSome
+  return accepts [first, own] && !accepts [first, second] && !accepts [second, own]
+
+-- Sumpworks Map can enter as a Reaction on the opponent's turn. It triggers on both
+-- Conquer and Hold until Temporary removes it at the start of its controller's turn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, unit) ← putAt (s.control q field) q "RAD-001" field
+  let (s, gust) ← put s q "OGN-169" .hand
+  let (s, map) ← put s p "UNL-085" .hand
+  let s := { s with active := some q, pending := [.priority q] }
+  let (chain, _) ← (step 100 (s.rich q) ⟨.player q, .playCard gust (payOf s gust) [unit]⟩).toOption
+  let (answer, _) ← (step 100 chain ⟨.player q, .pass⟩).toOption
+  let played ← play answer p map
+  let conquered ← fire played [.scored q field true]
+  let held ← fire conquered [.scored q field false, .scored p field false]
+  let expired ← settleBeginning held p
+  let later ← fire expired [.scored q field false]
+  return played.countIn p .base "UNL-085" == 1 && conquered.handN p == played.handN p + 1 &&
+    held.handN p == conquered.handN p + 1 && expired.countIn p .trash "UNL-085" == 1 &&
+    later.handN p == expired.handN p
+
+-- Sumpworks Map reacts to the opposing team's score in a team game.
+#guard tun fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, field) ← putBf team ally "VEN-158"
+  let (s, map) ← put s p "UNL-085" .base
+  return !(s.detect [.scored ally field true]).any (·.source == map) &&
+    (s.detect [.scored enemy field false]).any (·.source == map)
 
 -- Baron Nashor (UNL-147): the Baron Pit enters the board once, and Baron Nashor goes there
 #guard tun fun s => do
@@ -845,12 +909,20 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     (s5.playBfOptions s.me d).contains s.bf0 && !(s2.playBfOptions s.me d).contains s.bf0 &&
     s6.hasKw c .temporary == false
 
--- LeBlanc, Everywhere at Once (UNL-090): the Temporary units of its player at its Battlefield are
--- not killed at the start of their Beginning Phase
+-- LeBlanc suppresses only her own controller's Temporary triggers at her Battlefield.
 #guard tun fun s => do
-  let (s1, t) ← putAt s s.me "UNL-081" s.bf0
-  let (s2, _) ← putAt s1 s.me "UNL-090" s.bf0
-  return (tempUnits s1 s.me).contains t && !(tempUnits s2 s.me).contains t
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, field) ← putBf team p "VEN-158"
+  let (s, sheltered) ← putAt (s.control p field) p "UNL-081" field
+  let (s, guest) ← putAt s ally "UNL-081" field
+  let (s, outside) ← put s p "UNL-081" .base
+  let (s, _) ← putAt s p "UNL-090" field
+  let next ← settleBeginning s p
+  return (s.temporaryBeginningTriggers ally).any (·.source == guest) &&
+    next.inPlay.contains sheltered && next.inPlay.contains guest &&
+    !next.inPlay.contains outside && next.countIn p .trash "UNL-081" == 1
 
 -- Katarina, Reckless (UNL-023): she readies when her player hides a card
 #guard tun fun s => do

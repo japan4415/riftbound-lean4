@@ -2230,6 +2230,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Dusk Rose Lab は支配者のターンに誘発し、同じ Battlefield にいる自分の Unit を能力の確定時に Kill する。Frozen Fortress は各ターンに誘発し、支配者がいればその席が能力をコントロールする。Petricite Monument の Deflect は Temporary の解決で Gear が死ぬまで続く（CR 190.6、383.3、740）。以上3枚を `full` とし、全1,103枚中576枚を実装済みにした。[カード実装状況](coverage.md)
 - 新しい誘発から Chain を開始するときと、解決後に次の Chain 項目が残るときは、その項目のコントローラーに優先権を渡す（CR 337.4、340.4）。
 
+### Temporary のコピー、入れ替え、得点時の誘発
+
+- Keeper of Masks の Reflection は Keeper のコピーになり、元のオブジェクトと同じ Beginning Phase に Temporary が誘発する。LeBlanc は自身の支配者が同じ Battlefield でコントロールする Temporary だけを抑止する。
+- Smoke and Mirrors は自分がコントロールする別々の場所の Unit を選ぶ。Temporary を持つ対象がいない場合も1枚引く。Sumpworks Map は Reaction でプレイでき、残っている間は相手の Hold と Conquer で引く。以上4枚を `full` とし、全1,103枚中580枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

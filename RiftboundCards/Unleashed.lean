@@ -2389,7 +2389,7 @@ def UNL_081 : CardDef :=
         .unlimited,
       .triggered (.onSelf (.linkedUnitTokens false))
         (.of [] (.prim (.becomeCopy .eventObjects .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-082
 /--
@@ -2445,13 +2445,13 @@ def UNL_083.meta : CardDef :=
 /-- Smoke and Mirrors. -/
 def UNL_083 : CardDef :=
   { UNL_083.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
-        .targetOf .one .friendly .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
+    spellEffect := some (.of [.targetOf .one .you .anywhere [.ofType .unit],
+        .targetOf .one .you .anywhere [.ofType .unit, .not (.at_ (.slot 0))]]
       (.seqOf [.ifThen (.or (.matches (.slot 0) (.hasKeyword .temporary))
           (.matches (.slot 1) (.hasKeyword .temporary)))
           (.prim (.swapPlaces (.slot 0) (.slot 1))) .nop,
         .prim (.draw .you (.const 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-084
 /--
@@ -2506,7 +2506,7 @@ def UNL_085.meta : CardDef :=
 def UNL_085 : CardDef :=
   { UNL_085.meta with
     abilities := [.triggered (.onSelf .opponentScores) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-086
 /--
@@ -2654,7 +2654,7 @@ def UNL_090.meta : CardDef :=
 def UNL_090 : CardDef :=
   { UNL_090.meta with
     abilities := [.passive .always [.ignoreKeyword .temporary .here]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-091
 /--
