@@ -18,6 +18,24 @@ def CardPlay.renameReferences (object : ObjId → ObjId) (stamp : Nat → Nat) (
 def TurnFx.renameReferences (object : ObjId → ObjId) (stamp : Nat → Nat) (note : TurnFx) : TurnFx :=
   { note with target := note.target.map object, stamp := stamp note.stamp }
 
+/-- Renaming object targets and timestamps preserves queries for the same kinds of turn
+marks, including the company recorded immediately before a simultaneous death. -/
+theorem GameState.hasTurnMark_rename {s t : GameState} {id : ObjId} {kind : TurnEffect}
+    {seat : Option PlayerId} (object : ObjId → ObjId) (stamp : Nat → Nat)
+    (injective : Function.Injective object) (turn : t.turn = s.turn)
+    (notes : t.turnFx = s.turnFx.map (TurnFx.renameReferences object stamp)) :
+    t.hasTurnMark (object id) kind seat = s.hasTurnMark id kind seat := by
+  have sameTarget (target : Option ObjId) :
+      (target.map object == some (object id)) = (target == some id) := by
+    cases target with
+    | none => rfl
+    | some prior =>
+      apply Bool.eq_iff_iff.mpr
+      simp only [Option.map_some, beq_iff_eq, Option.some.injEq, injective.eq_iff]
+  unfold GameState.hasTurnMark
+  simp only [notes, List.any_map, List.findSome?_map, Function.comp_def, turn,
+    TurnFx.renameReferences, sameTarget]
+
 /-- The timestamps that a turn effect can compare against the finalization history. -/
 def GameState.playTimestampReferences (s : GameState) : List Nat :=
   s.turnFx.map (·.stamp) ++ s.playLog.filterMap (·.stamp)
