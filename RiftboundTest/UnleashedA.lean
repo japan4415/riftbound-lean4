@@ -1002,6 +1002,91 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   return held.xpOf p == s.xpOf p + 1 && conquered.xpOf p == s.xpOf p + 1 &&
     held.xpOf s.you == s.xpOf s.you && conquered.xpOf s.you == s.xpOf s.you
 
+-- Yuumi's combat trigger chooses another Unit of her own controller at that Battlefield.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let (s, bf) ← putBf (unleashedTeamMain labState) p "OGN-275"
+  let (s, yuumi) ← putAt s p "UNL-056" bf
+  let (s, guest) ← putAt s teammate "OGN-051" bf
+  let (s, foe) ← putAt s q "OGN-051" bf
+  let (s, elsewhere) ← put s p "OGN-051" .base
+  let (s, own) ← putAt s p "OGN-051" bf
+  let offered (active : PlayerId) : Option GameState := do
+    let state := s.inCombatAt bf active
+    let state := { state with pending := .triggers (state.detect [.combatStarted bf active]) :: state.pending }
+    return (← (advance 100 state []).toOption).1
+  let check (attacker : PlayerId) : Option Bool := do
+    let waiting ← offered attacker
+    let targets := (legalFrameActions waiting).filterMap (fun a => match a.kind with
+      | .putTrigger _ ids (.pay ..) => some ids
+      | _ => none)
+    let done := settleChain {} 16 waiting
+    let (expired, _) ← microStep { done with pending := [.expireTurn] }
+    return targets == [[own]] && done.mightNow own == some (5 : Int) && done.hasKw own .tank &&
+      [yuumi, guest, foe, elsewhere].all (fun id => !done.hasKw id .tank) &&
+      expired.mightNow own == some (2 : Int) && !expired.hasKw own .tank
+  return (← check p) && (← check q)
+
+-- Lillia grants Tank to its controller's Unit tokens and gains Might from that seat's token plays.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let (s, lillia) ← put (unleashedTeamMain labState) p "UNL-058" .base
+  let (s, ordinary) ← put s p "OGN-051" .base
+  let (s, ownEvent) := playUnitTokenAt s p "Recruit" none
+  let (s, otherEvent) := playUnitTokenAt s teammate "Recruit" none
+  let (s, enemyEvent) := playUnitTokenAt s q "Recruit" none
+  let [.tokenPlayed _ own] := ownEvent | none
+  let [.tokenPlayed _ guest] := otherEvent | none
+  let [.tokenPlayed _ foe] := enemyEvent | none
+  let done ← fire s (ownEvent ++ otherEvent ++ enemyEvent ++ [.played p ordinary])
+  let (after, extra) := playUnitTokenAt done p "Recruit" none
+  let twice ← fire after extra
+  let (expired, _) ← microStep { twice with pending := [.expireTurn] }
+  return done.hasKw own .tank && [guest, foe, ordinary].all (fun id => !done.hasKw id .tank) &&
+    done.mightNow lillia == some (5 : Int) && twice.mightNow lillia == some (6 : Int) &&
+    expired.mightNow lillia == some (4 : Int) && expired.hasKw own .tank
+
+-- Master Yi uses the highest eligible cost reduction, and only the controller's XP matters.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, yi) ← put s p "UNL-059" .hand
+  let (s, boardYi) ← put s p "UNL-059" .base
+  let cost := fun xp => payOf (s.setXP p xp) yi
+  let funded := (s.setXP p 11).fund p 6
+  let (entered, _) ← (step 100 funded ⟨.player p, .playCard yi ⟨6, []⟩ []⟩).toOption
+  return [0, 2, 3, 5, 6, 10, 11, 16].map cost ==
+      [⟨12, [.calm, .calm, .calm]⟩, ⟨12, [.calm, .calm, .calm]⟩,
+       ⟨10, [.calm, .calm]⟩, ⟨10, [.calm, .calm]⟩,
+       ⟨8, [.calm]⟩, ⟨8, [.calm]⟩, ⟨6, []⟩, ⟨6, []⟩] &&
+    entered.countIn p .base "UNL-059" == 2 && (entered.poolOf p).energy == 0 &&
+    payOf (s.setXP q 16) yi == ⟨12, [.calm, .calm, .calm]⟩ &&
+    !(s.setXP p 15).blocksChoice q boardYi && (s.setXP p 16).blocksChoice q boardYi &&
+    !(s.setXP p 16).blocksChoice p boardYi
+
+-- Downstage Dramatics can respond to an enemy item and draws a second card only with Repeat.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, older) ← onChain s q "OGN-129"
+  let (s, spell) ← put s p "UNL-061" .hand
+  let opened := { (s.fund p 4) with active := some q, pending := [.chainPass p 0, .priority q] }
+  let castFor (energy draws : Nat) : Option Bool := do
+    let a : Action := ⟨.player p, .playCard spell ⟨energy, []⟩ []⟩
+    let (casted, _) ← (step 100 opened a).toOption
+    let (response, _) ← (step 100 casted ⟨.player p, .pass⟩).toOption
+    let (done, events) ← (step 100 response ⟨.player q, .pass⟩).toOption
+    return a ∈ legalFrameActions opened && done.zone .chain == [older] &&
+      done.handN p + 1 == opened.handN p + draws &&
+      events.countP (fun | .drew drawer => drawer == p | _ => false) == draws &&
+      (casted.poolOf p).energy == 4 - energy
+  return (← castFor 2 1) && (← castFor 4 2) &&
+    !(step 100 opened ⟨.player p, .playCard spell ⟨3, []⟩ []⟩).isOk
+
 -- Alpha Wildclaw (UNL-057): the units of its player here with less Might can't be chosen by
 -- enemies; the stronger ones, and those elsewhere, can
 #guard tun fun s => do

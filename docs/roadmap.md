@@ -2378,6 +2378,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Scuttle Crab はプレイ時に引く。Deathknell では選んだ敵の手札を公開し、その敵が支配する伏せ札をターン中に閲覧できる権限を自身の支配者に与え、1 XP を加える。Lean では新たに閲覧できる札が Hidden ゾーンにあり、権限の席・ターン・支配者が一致することを証明した。2v2 の選択肢と、対局リプレイで閲覧権が切れることを確認し、全1,103枚中700枚を `full` とした。[公式総合ルール 128.2.a、129.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Unleashed の戦闘、XP と Repeat
+
+- Yuumi, Magical Cat が攻撃または防御するときは、同じ Battlefield にいる自身の支配者の別の Unit に +3 Might と Tank をターン終了まで与える。Lillia, Protector of Dreams の Tank とトークンのプレイも自身の支配者のものに限る。Master Yi, Unstoppable は到達した最も高い段階の費用軽減を使い、XP 16 で敵から選ばれなくなる。Downstage Dramatics は Reaction で割り込み、Repeat を払うと2枚引く。4枚を確認し、全1,103枚中704枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

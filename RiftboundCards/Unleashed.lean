@@ -1685,14 +1685,14 @@ def UNL_056.meta : CardDef :=
 def UNL_056 : CardDef :=
   { UNL_056.meta with
     abilities := [.triggered (.onSelf .attack)
-        (.of [.targetOf .one .friendly .here [.ofType .unit, .notSelf]]
+        (.of [.targetOf .one .you .here [.ofType .unit, .notSelf]]
           (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn,
             .grant (.slot 0) (.keyword .it { keyword := .tank }) .thisTurn])) .unlimited,
       .triggered (.onSelf .defend)
-        (.of [.targetOf .one .friendly .here [.ofType .unit, .notSelf]]
+        (.of [.targetOf .one .you .here [.ofType .unit, .notSelf]]
           (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 3)) .thisTurn,
             .grant (.slot 0) (.keyword .it { keyword := .tank }) .thisTurn])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-057
 /--
@@ -1748,8 +1748,8 @@ def UNL_058 : CardDef :=
         { event := .playToken, subject := Selector.all .you .anywhere [.ofType .unit] }
         (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited,
       .passive .always
-        [.keyword (Selector.all .friendly .anywhere [.ofType .unit, .token]) { keyword := .tank }]],
-    status := .drafted }
+        [.keyword (Selector.all .you .anywhere [.ofType .unit, .token]) { keyword := .tank }]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-059
 /--
@@ -1789,7 +1789,7 @@ def UNL_059 : CardDef :=
       .passive (.cmp .ge .xp (.const 11))
         [.costMinus .self (.const 6), .costPower .self (.const 3) (some .calm) false],
       .passive (.cmp .ge .xp (.const 16)) [.cant .self .beChosen]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-060
 /--
@@ -1846,7 +1846,7 @@ def UNL_061 : CardDef :=
   { UNL_061.meta with
     spellEffect := some (.of []
       (.prim (.draw .you (.const 1)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-062
 /--
