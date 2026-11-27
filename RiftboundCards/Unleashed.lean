@@ -3204,8 +3204,7 @@ def UNL_110 : CardDef :=
   { UNL_110.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
         .targetOf .one .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
-      (.seqOf [.prim (.deal (.slot 0) (.mightOf (.slot 1))),
-        .prim (.deal (.slot 1) (.mightOf (.slot 0)))])),
+      (.prim (.exchangeDamage (.slot 0) (.slot 1)))),
     status := .drafted }
 
 -- BEGIN GENERATED UNL-111

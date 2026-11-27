@@ -874,9 +874,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-057" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
   let (s3, w) ← put s2 s.me "OGN-136" .base
-  let a ← play s3 s.me c [v]
+  let (s4, enemy) ← put s3 s.you "OGN-136" .base
+  let a ← play s4 s.me c [v]
+  let b ← play s4 s.me c [enemy]
   return a.kwAmount v .shield == 3 && a.hasKw v .tank && !a.hasKw w .tank &&
-    a.kwAmount w .shield == 0 && !(a.mapObjects endTurnObj).hasKw v .tank
+    a.kwAmount w .shield == 0 && !(a.mapObjects endTurnObj).hasKw v .tank &&
+    b.kwAmount enemy .shield == 3 && b.hasKw enemy .tank && !(b.mapObjects endTurnObj).hasKw enemy .tank
 
 -- Blastcone Fae (OGN-097) and Teemo (OGN-197): when played
 #guard t fun s => do
@@ -885,8 +888,13 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, f) ← put s2 s.you "OGN-136" .base
   let a ← play s3 s.me c [] { pick := fun ts => ts.contains e }
   let b ← play s3 s.me c [] { pick := fun ts => ts.contains f }
+  let hidden ← activate (s3.control s.me s.bf0) s.me c 1 [s.bf0] ⟨0, [.fury]⟩
+  let card ← (hidden.zone (.player s.me .hidden)).head?
+  let revealed ← activate { hidden with turn := hidden.turn + 1 } s.me card 2 []
+    ⟨0, []⟩ { pick := fun ts => ts.contains e }
   return a.mightNow e == some 3 && a.mightNow f == some 2 && b.mightNow f == some 1 &&
-    b.mightNow e == some 5
+    b.mightNow e == some 5 && revealed.mightNow e == some 3 &&
+    (revealed.mapObjects endTurnObj).mightNow e == some 5
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-197" .hand
   let a ← play s1 s.me c
@@ -1755,6 +1763,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
     crowd.mightNow u == (s4.mightNow u).map (· + 1) && crowd.mightNow w == s4.mightNow w &&
     atBase.mightNow v == (s3.mightNow v).map (· + 2) &&
     baseCrowd.mightNow v == (t1.mightNow v).map (· + 1) && baseCrowd.mightNow x == t1.mightNow x
+
+-- En Garde can target a teammate's Unit, while the extra Might counts only the caster's Units.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, active := some p, turn := 3
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s p "OGN-276"
+  let (s, spell) ← put s p "OGN-046" .hand
+  let (s, ours) ← putAt (s.control p field) p "OGN-136" field
+  let (s, theirs) ← putAt s partner "OGN-136" field
+  let owned ← play s p spell [ours]
+  let shared ← play s p spell [theirs]
+  return owned.mightNow ours == (s.mightNow ours).map (· + 2) &&
+    shared.mightNow theirs == (s.mightNow theirs).map (· + 1) &&
+    shared.mightNow ours == s.mightNow ours
 
 -- Siphon Power (OGN-266): friendly units at the chosen battlefield +1, enemy units there -1 (min 1)
 #guard t fun s => do
@@ -2869,8 +2895,14 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s4, f) ← putAt s3 s.me "OGN-001" s.bf0
   let (s5, far) ← put s4 s.you "OGN-001" .base
   let a ← play s5 s.me c [k, e]
+  let (s6, home) ← put s5 s.me "OGN-190" .base
+  let (s7, witness) ← put s6 s.me "OGN-001" .base
+  let (dead, events) := killObj s7 home
+  let b ← fire dead events
+  let damage (state : GameState) (id : ObjId) := (state.obj? id).map (·.damage)
   return (a.obj? e).map (·.damage) == some 5 && (a.obj? f).map (·.damage) == some 4 &&
-    (a.obj? far).map (·.damage) == some 0 && a.countIn s.me .trash "OGN-190" == 1
+    (a.obj? far).map (·.damage) == some 0 && a.countIn s.me .trash "OGN-190" == 1 &&
+    damage b witness == damage s7 witness && damage b e == damage s7 e && damage b f == damage s7 f
 
 -- Sigil of the Storm (OGN-287): recycle one of my runes on resolution, without a target.
 #guard t fun s => do

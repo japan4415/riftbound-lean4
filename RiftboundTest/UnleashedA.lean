@@ -34,6 +34,39 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
     pending := [.priority ⟨0⟩]
     turnOrder := Mode.teamTurnOrder true }
 
+-- Clash of Giants makes both chosen Units deal damage before Cleanup removes either.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-110" .hand
+  let (s, first) ← put s p "OGN-136" .base
+  let (s, second) ← put s q "OGN-136" .base
+  let (s, third) ← put s q "OGN-001" .base
+  let resolved ← play s p spell [first, second]
+  let unequal ← play s p spell [first, third]
+  return (play s p spell [first, first]).isNone && resolved.countIn p .trash "OGN-136" == 1 &&
+    resolved.countIn q .trash "OGN-136" == 1 && (resolved.obj? third).map (·.damage) == some 0 &&
+    unequal.countIn p .trash "OGN-136" == 1 && (unequal.obj? third).map (·.damage) == some 2
+
+-- The Ruination kills the Units of all seats together and applies an existing death replacement.
+#guard tun fun labState => do
+  let s := unleashedTeamMain labState
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let (s, spell) ← put s p "UNL-180" .hand
+  let (s, _) ← put s p "OGN-136" .base
+  let (s, _) ← put s partner "OGN-136" .base
+  let (s, banished) ← put s q "OGN-136" .base
+  let (s, field) ← putBf s r "OGN-275"
+  let (s, _) ← putAt (s.control r field) r "OGN-136" field
+  let (s, gear) ← put s q "SFD-009" .base
+  let resolved ← play (s.addTurnFxOn p banished .banishInstead) p spell
+  return ([p, partner, r].all (fun who => resolved.countIn who .trash "OGN-136" == 1)) &&
+    resolved.countIn q .banishment "OGN-136" == 1 && resolved.countIn q .trash "OGN-136" == 0 &&
+    (resolved.zone (.player q .base)).contains gear && resolved.battlefields.contains field
+
 -- Arena Kingpin enters ready and can exhaust to give even an opponent's Unit temporary Might.
 #guard tun fun s => do
   let p := s.me

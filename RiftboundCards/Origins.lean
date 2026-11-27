@@ -1242,8 +1242,9 @@ def OGN_046 : CardDef :=
   { OGN_046.meta with
     spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
       (.seqOf [.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn,
-        .ifThen (.cmp .eq (.count (Selector.all .friendly .anywhere [.ofType .unit, .at_ (.slot 0)]))
-          (.const 1)) (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn) .nop])),
+        .ifThen (.and (.matches (.slot 0) (.sameController .self))
+          (.cmp .eq (.count (Selector.all .you .anywhere [.ofType .unit, .at_ (.slot 0)])) (.const 1)))
+          (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn) .nop])),
     status := .drafted }
 
 -- BEGIN GENERATED OGN-047
