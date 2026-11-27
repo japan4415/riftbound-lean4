@@ -147,9 +147,10 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let opposing := { s with active := some q, pending := [.priority p] }
   let reacted ← activate opposing p hidden 2
   let fromHidden ← (reacted.unitsAtOf field p).find? (fun id => (reacted.cardDef? id).any (·.id == cid "RAD-095"))
+  let opponentsBeginning ← settleBeginning reacted q
+  let ownBeginning ← settleBeginning reacted p
   return !ordinary.hasKw fromHand .temporary && reacted.hasKw fromHidden .temporary &&
-    (beginStep reacted q).1.inPlay.contains fromHidden &&
-    (beginStep reacted p).1.countIn p .trash "RAD-095" == 1
+    opponentsBeginning.inPlay.contains fromHidden && ownBeginning.countIn p .trash "RAD-095" == 1
 
 -- Lulu changes base Might on move, so the target's existing buff still applies.
 #guard radianceCase fun s => do

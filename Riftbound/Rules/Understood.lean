@@ -581,7 +581,7 @@ def Trigger.runs (t : Trigger) : Bool :=
   (t.occurrence == .every || (t.occurrence == .deathGroup && t.event == .die &&
     t.subject != .self)) && t.condition.understood &&
     (match t.cost with
-     | .killFriendly _ fs => FilterList.understood fs
+     | .killFriendly _ fs | .killControlled _ fs => FilterList.understood fs
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
@@ -628,6 +628,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .conquer | .hold => true
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
+      | .battlefieldBeginning => t.subject == .self
       | _ => false) &&
     (t.subject == .self ||
       (match t.subject with

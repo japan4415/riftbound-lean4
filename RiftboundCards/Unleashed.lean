@@ -6021,11 +6021,11 @@ def UNL_209.meta : CardDef :=
 /-- Dusk Rose Lab. -/
 def UNL_209 : CardDef :=
   { UNL_209.meta with
-    abilities := [.triggered { event := .at_ .beginning }
-      (.of [] (.ifThen (.exists (Selector.all .friendly .here [.ofType .unit]))
-        (.may (.seqOf [.prim (.kill (Selector.one .friendly .here [.ofType .unit])),
-          .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .at_ .beginning, condition := .iControlHere, optional := true,
+        cost := .killControlled 1 (.ofList [.ofType .unit, .at_ .self]) }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-210
 /--
@@ -6091,9 +6091,9 @@ def UNL_212.meta : CardDef :=
 /-- Frozen Fortress. -/
 def UNL_212 : CardDef :=
   { UNL_212.meta with
-    abilities := [.triggered { event := .at_ .beginning }
+    abilities := [.triggered { event := .battlefieldBeginning }
       (.of [] (.prim (.deal (Selector.all .any .here [.ofType .unit]) (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-213
 /--

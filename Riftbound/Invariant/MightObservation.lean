@@ -295,7 +295,7 @@ private theorem detect_mem {s : GameState} {events : List Event} {t : PendTrigge
     (fun t => !s.departures.seats.contains t.controller)
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
-    if s.config.mode.isTeamDuel then
+    if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
       (s.triggerSeatOrder events).flatMap (fun p => group.filter (fun t => t.controller == p))
     else group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
   have seatMem (group : List PendTrigger) (seated : t ∈ seatOrder group) : t ∈ group := by

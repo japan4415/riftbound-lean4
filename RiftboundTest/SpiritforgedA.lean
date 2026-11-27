@@ -4568,11 +4568,26 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, u) ← addObject s sprite (.player s.me .base)
   let (s2, g) ← put s1 s.me "SFD-051" .base
   let held := (attachTo u s2 g).1
-  let r := beginStep held s.me
-  let bare := beginStep s1 s.me
-  return (r.1.zone (.player s.me .base)).contains u &&
-    (r.1.zone (.player s.me .trash)).any (fun o => (r.1.cardDef? o).any (·.id == cid "SFD-051")) &&
-    !(bare.1.zone (.player s.me .base)).contains u
+  let rescued ← settleBeginning held s.me
+  let bare ← settleBeginning s1 s.me
+  return (rescued.zone (.player s.me .base)).contains u &&
+    rescued.countIn s.me .trash "SFD-051" == 1 && !(bare.zone (.player s.me .base)).contains u
+
+-- Petricite Monument's Deflect covers teammates until its Temporary trigger resolves.
+#guard tsf fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, monument) ← put team p "SFD-104" .base
+  let (s, friendly) ← put s ally "RAD-001" .base
+  let (s, opponent) ← put s enemy "RAD-001" .base
+  let s := { s with active := some p, pending := [.phase .beginning] }
+  let (waiting, _) ← (advance 100 s []).toOption
+  let dead := settleChain {} 16 waiting
+  return waiting.hasKw friendly .deflect && !waiting.hasKw opponent .deflect &&
+    waiting.inPlay.contains monument && dead.countIn p .trash "SFD-104" == 1 &&
+    !dead.hasKw friendly .deflect
 
 -- (audit) Emperor of the Sands: only an Equipment played counts, not any other Gear
 #guard tsf fun s => do

@@ -20,6 +20,82 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Frozen Fortress belongs to its controller even on the opponent's turn. On its controller's
+-- turn, lethal damage to the last Unit there prevents that Battlefield's Hold.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, fort) ← putBf s q "UNL-212"
+  let (s, unit) ← putAt (s.control p fort) p "RAD-001" fort
+  let (s, safe) ← put s p "RAD-001" .base
+  let offTurn := { s with active := some q, pending := [.phase .beginning] }
+  let (waiting, events) ← (advance 100 offTurn []).toOption
+  let item ← (waiting.zone .chain).head?
+  let own ← settleBeginning s p
+  let openField := s.modObj fort (fun o => { o with control := none })
+  return events.contains (.phaseStarted q .beginning) && waiting.inPlay.contains unit &&
+    (waiting.obj? item).any (·.controller == p) &&
+    (openField.battlefieldBeginningTriggers q).any (fun t => t.source == fort && t.controller == q) &&
+    own.countIn p .trash "RAD-001" == 1 && (own.obj? safe).any (·.damage == 0) &&
+    own.pointsOf p == s.pointsOf p && own.controlOf fort == none
+
+-- Simultaneous Battlefield triggers follow turn order in a free-for-all.
+#guard tun fun s => do
+  let p0 : PlayerId := ⟨0⟩
+  let p1 : PlayerId := ⟨1⟩
+  let p2 : PlayerId := ⟨2⟩
+  let p3 : PlayerId := ⟨3⟩
+  let ffa := GameState.empty { s.config with mode := .ffa4 } s.cards
+  let (s, first) ← putBf ffa p1 "UNL-212"
+  let (s, second) ← putBf s p0 "UNL-212"
+  let (s, third) ← putBf s p3 "UNL-212"
+  let s := ((s.control p1 first).control p0 second).control p3 third
+  let s := { s with active := some p2, turnOrder := [p0, p1, p2, p3] }
+  return (s.detect [.phaseStarted p2 .beginning]).map (·.source) == [third, second, first]
+
+-- Dusk Rose Lab pays its cost during finalization. A Temporary Unit is still available while
+-- its Beginning trigger waits in the same queue.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, labField) ← putBf s q "UNL-209"
+  let (s, unit) ← putAt (s.control p labField) p "RAD-095" labField
+  let s := (addTempKw { keyword := .temporary } .never s unit).1
+  let (waiting, events) ← (advance 100 { s with pending := [.phase .beginning] } []).toOption
+  let choice ← (legalFrameActions waiting).find? fun a =>
+    match a.kind with | .putTrigger _ [] (.pay [id] ..) => id == unit | _ => false
+  let (paid, paymentEvents) ← (step 100 waiting choice).toOption
+  let finished := settleChain {} 24 paid
+  return events.contains (.phaseStarted p .beginning) && waiting.inPlay.contains unit &&
+    !(s.timedTriggers q .beginning).any (·.source == labField) &&
+    !paid.inPlay.contains unit && paymentEvents.any (fun | .died .. => true | _ => false) &&
+    !paymentEvents.any (fun | .chosenByAbility .. => true | _ => false) &&
+    finished.handN p == s.handN p + 1 && finished.pointsOf p == s.pointsOf p
+
+-- A teammate's Unit at Dusk Rose Lab cannot pay the Lab controller's cost.
+#guard tun fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, labField) ← putBf team ally "UNL-209"
+  let (s, own) ← putAt (s.control p labField) p "RAD-095" labField
+  let (s, _) ← putAt s ally "RAD-095" labField
+  let trigger ← (s.timedTriggers p .beginning).find? (·.source == labField)
+  return trigPayments s trigger == [[own]]
+
+-- Gust can return a Temporary permanent before its pending ability resolves.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← putAt (s.control p s.bf0) p "RAD-001" s.bf0
+  let (s, gust) ← put s q "OGN-169" .hand
+  let s := (addTempKw { keyword := .temporary } .never s unit).1
+  let (waiting, _) ← (advance 100 { s with pending := [.phase .beginning] } []).toOption
+  let (response, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let finished ← play response q gust [unit]
+  return finished.countIn p .hand "RAD-001" == 1 && finished.countIn p .trash "RAD-001" == 0 &&
+    finished.pointsOf p == s.pointsOf p
+
 -- Honeyfruit enters exhausted. At 6 XP, the two Add abilities are separate choices and
 -- share the card's Exhaust cost. The Level ability adds both resources together.
 #guard tun fun s => do

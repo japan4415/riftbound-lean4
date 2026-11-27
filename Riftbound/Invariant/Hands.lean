@@ -1328,26 +1328,13 @@ theorem microStep_handInv0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
   · -- Beginning
     rename_i rest hp
-    dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      refine hinv.of_play (by intro phase; cases phase) rfl rfl ?_
-      intro member
-      have inRest : Frame.setupHands ∈ rest := by simpa using member
-      rw [hp]
-      exact List.mem_cons_of_mem _ inRest
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      have hP := (beginStep_safe s (s.active.getD ⟨0⟩)).same
-      refine ⟨fun hmem => ?_, fun hph => (by cases hph), fun _ _ _ hph => (by cases hph)⟩
-      have : Frame.setupHands ∈ rest := by simpa using hmem
-      have h1 := hinv.turn (by rw [hp]; exact List.mem_cons_of_mem _ this)
-      show (beginStep s (s.active.getD ⟨0⟩)).1.turnOrder.Perm
-        (allPlayers (beginStep s (s.active.getD ⟨0⟩)).1.playerCount)
-      rw [hP.turnOrder, show (beginStep s (s.active.getD ⟨0⟩)).1.playerCount = s.playerCount by
-        simp [GameState.playerCount, hP.config]]
-      exact h1
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_play (by intro phase; cases phase) rfl rfl ?_
+    intro member
+    have inRest : Frame.setupHands ∈ rest := by simpa using member
+    rw [hp]
+    exact List.mem_cons_of_mem _ inRest
   · -- Scoring Step
     rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h

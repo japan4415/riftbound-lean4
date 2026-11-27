@@ -38,10 +38,7 @@ theorem microStep_phase0 {s s' : GameState} {es : List Event} {ph : Phase} {rest
   cases ph with
   | setup => exact absurd rfl hne
   | awaken => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
-  | beginning =>
-    dsimp only at h
-    split at h <;>
-      (simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl)
+  | beginning => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | channel => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | draw => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | main => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl

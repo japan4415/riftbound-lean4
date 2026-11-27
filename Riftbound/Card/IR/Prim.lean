@@ -413,6 +413,8 @@ inductive TriggerEvent where
   | at_ (t : Timing)
   /-- A linked instruction played a group of Unit tokens (CR 388-389). -/
   | linkedUnitTokens (inheritsTarget : Bool)
+  /-- Every Beginning Phase, using the Battlefield's ability controller (CR 190.6, 315.2.a). -/
+  | battlefieldBeginning
 deriving DecidableEq, Repr, Hashable
 
 /-- Something that happens in the game that a replacement ability can change (CR 367-375). -/
@@ -726,6 +728,8 @@ inductive TriggerCost where
   | discardAndExhaust (count : Nat)
   /-- Spend one buff on a Unit the triggered ability's controller controls (CR 702.2.b.2). -/
   | spendBuff
+  /-- Kill exactly this many permanents the player personally controls (CR 740.1). -/
+  | killControlled (count : Nat) (filters : FilterList)
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

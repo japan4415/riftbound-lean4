@@ -267,17 +267,10 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     let p := s.active.getD ⟨0⟩
-    match s.deathGroupChoice (tempUnits s p) with
-    | some (unit, controller, first, other) =>
-      some ({ s with
+    some ({ s with
         phase := .beginning
-        pending := .eitherDo controller unit {} first other .nil :: .phase .beginning :: rest }, [])
-    | none =>
-      let r := beginStep s p
-      some ({ r.1 with
-                phase := .beginning,
-                pending := .cleanup :: .draw p (s.extraDraws p) :: .scoreHolds :: rest },
-        Event.phaseStarted p .beginning :: r.2)
+        pending := .cleanup :: .draw p (s.extraDraws p) :: .scoreHolds :: rest },
+      [Event.phaseStarted p .beginning])
   | .scoreHolds :: rest =>
     let p := s.active.getD ⟨0⟩
     let r := hold s p
@@ -603,14 +596,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf.congr rfl rfl rfl rfl
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ((beginStep_safe s _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((hold_safeP s _).wf hwf).congr rfl rfl rfl rfl
@@ -704,14 +692,9 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact (beginStep_safe s _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (hold_safeP s _).phys hwf

@@ -590,18 +590,11 @@ theorem microStep_stack0 {s s' : GameState} {es : List Event} (hinv : StackInv s
     rw [hp] at hb
     exact hb.pop rfl
   · rename_i rest hp
-    dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      refine hinv.of_next rfl (fun hb => ?_)
-      rw [hp] at hb
-      exact hb.swap rfl [_, .phase .beginning]
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      refine hinv.of_next (beginStep_safe s (s.active.getD ⟨0⟩)).same.result (fun hb => ?_)
-      rw [hp] at hb
-      exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    refine hinv.of_next rfl (fun hb => ?_)
+    rw [hp] at hb
+    exact hb.swap rfl [Frame.cleanup, Frame.draw _ _, Frame.scoreHolds]
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h

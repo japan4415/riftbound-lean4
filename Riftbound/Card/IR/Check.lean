@@ -349,7 +349,7 @@ def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
   Selector.ok c t.subject &&
     Condition.ok { c with slots := t.watched } t.condition &&
     (match t.cost with
-     | .killFriendly _ fs => FilterList.ok c fs
+     | .killFriendly _ fs | .killControlled _ fs => FilterList.ok c fs
      | _ => true)
 
 /-- How many effects a list holds. -/

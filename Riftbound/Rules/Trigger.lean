@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Chain
+public import Riftbound.Rules.Temporary
 
 /-!
 # Triggered abilities
@@ -279,6 +280,20 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
           | _, _ => [])
       else []
     | _, _ => [])
+
+/-- Beginning triggers that use the Battlefield's current controller. For an open Battlefield,
+the turn player handles the ability (CR 190.6). -/
+def GameState.battlefieldBeginningTriggers (s : GameState) (turnPlayer : PlayerId) : List PendTrigger :=
+  s.battlefields.flatMap fun src =>
+    (s.cardDef? src).toList.flatMap fun d =>
+      triggersAmong s src ((s.controlOf src).getD turnPlayer) .battlefieldBeginning d 0 d.fullAbilities.length
+
+/-- Collect one Temporary trigger per permanent from its effective keywords, before scoring (CR 816). -/
+def GameState.temporaryBeginningTriggers (s : GameState) (p : PlayerId) : List PendTrigger :=
+  (tempUnits s p).filterMap fun src =>
+    (s.cardDef? src).map fun d =>
+      { source := src, card := d.id, idx := d.allAbilities.length, controller := p,
+        triggerKeyword := some .temporary }
 
 /-- The abilities that an effect of this turn sets off at the end of the turn (`endTrigger`): the
 ability of the card fires with the object as its source. -/
@@ -622,6 +637,8 @@ def detectOne (s : GameState) : Event → List PendTrigger
       (triggersOf s u o.controller .move).map (fun t => { t with eventBattlefields := fields }) ++
         watchersOf s u o.controller .move
     | none => []
+  | .phaseStarted p .beginning =>
+    s.timedTriggers p .beginning ++ s.battlefieldBeginningTriggers p ++ s.temporaryBeginningTriggers p
   | .phaseStarted p ph =>
     match ph.timing? with
     | some tm => s.timedTriggers p tm ++ s.fxTriggers tm
@@ -856,7 +873,7 @@ def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger
     (fun t => !s.departures.seats.contains t.controller))
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
-    if s.config.mode.isTeamDuel then
+    if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
       (s.triggerSeatOrder es).flatMap (fun p => group.filter (fun t => t.controller == p))
     else group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
   let (beforeMove, later) := all.partition (·.beforeStandardMove)
@@ -1292,6 +1309,13 @@ def triggerReturnUnitHereOptions (s : GameState) (t : PendTrigger) : List ObjId 
   (s.pickCandidates t.controller t.source {} .you .here (.ofList [.ofType .unit])
     false).getD []
 
+/-- Distinct sets of permanents the given side can select for a Kill cost. -/
+def triggerKillOptions (s : GameState) (t : PendTrigger) (n : Nat)
+    (side : Side) (fs : FilterList) : List (List ObjId) :=
+  let env : Env := { passMight := s.mightTable }
+  let candidates := (s.pickCandidates t.controller t.source env side .anywhere fs false).getD []
+  (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
@@ -1312,10 +1336,8 @@ def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : 
   | .discardAndExhaust n =>
     if canExhaustTriggerSource s t then triggerDiscardOptions s t.controller n else []
   | .spendBuff => (triggerBuffOptions s t).map (fun id => [id])
-  | .killFriendly n fs =>
-    let env : Env := { passMight := s.mightTable }
-    let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
-    (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
+  | .killFriendly n fs => triggerKillOptions s t n .friendly fs
+  | .killControlled n fs => triggerKillOptions s t n .you fs
 
 /-- The affected Units each choose how to replace their Kill. Compute the combinations against
 the same board, before paying any part of the simultaneous cost (CR 372, 373). -/
@@ -1333,7 +1355,8 @@ def triggerCostOptions (s : GameState) (t : PendTrigger) (checkPool : Bool := tr
     List (List ObjId × List (ObjId × PlayerId)) :=
   let payments := trigPayments s t checkPool
   match trigCost s t with
-  | .killFriendly .. => payments.flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
+  | .killFriendly .. | .killControlled .. =>
+    payments.flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
   | _ => payments.map (·, [])
 
 /-- A direct trigger payment must leave enough Power for Deflect (CR 356, 809). -/
@@ -1602,7 +1625,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
   | .exhaustSelf =>
     if canExhaustTriggerSource s t then some (setExhausted true s t.source) else none
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
-  | .killFriendly n _ =>
+  | .killFriendly n _ | .killControlled n _ =>
     if ids.length == n then
       some (resolveDeathGroupWith (noteTriggerBanishers s banishers) ids (killOrSaveInGroup s))
     else none
@@ -1724,6 +1747,11 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
     · simp at h
   · split at h
     · cases h; exact applyEach_safe (sendObj_safe .trash) _ _
+    · simp at h
+  · split at h
+    · cases h
+      exact (noteTriggerBanishers_safe s banishers).trans
+        (resolveDeathGroupWith_safe _ ids (killOrSaveInGroup_safe s))
     · simp at h
   · split at h
     · cases h

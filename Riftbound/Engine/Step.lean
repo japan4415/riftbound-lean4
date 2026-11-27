@@ -30,7 +30,7 @@ def GameState.actionKillCosts (s : GameState) (a : Action) : List ObjId :=
   match s.pending, a.kind with
   | .triggerOrder _ first more _ _ :: _, .putTrigger i _ (.pay ids ..) =>
     match (first :: more)[i]? with
-    | some t => match trigCost s t with | .killFriendly .. => ids | _ => []
+    | some t => match trigCost s t with | .killFriendly .. | .killControlled .. => ids | _ => []
     | none => []
   | .priority _ :: _, .playCard card _ targets _ _ pick
   | .teamInvitation _ :: _, .playCard card _ targets _ _ pick

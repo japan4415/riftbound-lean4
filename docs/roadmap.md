@@ -2224,6 +2224,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Bellows Breath は1つの Base または Battlefield から異なる Unit を最大3体選べる。対象が複数の場所に分かれた場合は、解決時に元の対象がいる場所を1つ選ぶ（CR 355.11、355.13、359.3.e.8）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Piercing Light の1体目が Battlefield を離れた場合、2体目へのダメージは対象が有効であれば実行する。以上2枚を `full` とし、全1,103枚中573枚を実装済みにした。[カード実装状況](coverage.md)
 
+### Beginning Phase の誘発と Temporary
+
+- Temporary は Beginning Phase に Chain へ載り、得点前に解決する。同じ開始時点に自分がコントロールする誘発は順序を選べ、対戦相手は解決前に Reaction を使える。FFA で複数の席がコントロールする誘発はターン順で載せる（CR 315.2.a、383、816）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Dusk Rose Lab は支配者のターンに誘発し、同じ Battlefield にいる自分の Unit を能力の確定時に Kill する。Frozen Fortress は各ターンに誘発し、支配者がいればその席が能力をコントロールする。Petricite Monument の Deflect は Temporary の解決で Gear が死ぬまで続く（CR 190.6、383.3、740）。以上3枚を `full` とし、全1,103枚中576枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

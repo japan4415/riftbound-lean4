@@ -48,23 +48,22 @@ meta def putTk (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     | none => false
   | none => false
 
--- the Beginning Phase kills them and leaves the others: the Sprite is in the Trash with a new
--- identifier (a token, it ceases to exist at the next Cleanup), the Mech stays, and the event is
--- a death
-#guard match mainTk with
-  | some s0 =>
-    let p := s0.active.getD ⟨0⟩
-    match putTk s0 p "TKN-Sprite" .base with
-    | some (s1, sp) =>
-      match putTk s1 p "TKN-Mech" .base with
-      | some (s2, mech) =>
-        let r := beginStep s2 p
-        !(r.1.zone (.player p .base)).contains sp && (r.1.zone (.player p .base)).contains mech &&
-        (r.1.zone (.player p .trash)).length == (s2.zone (.player p .trash)).length + 1 &&
-        r.2.any (fun e => match e with | .died .. => true | _ => false)
-      | none => false
-    | none => false
-  | none => false
+-- Temporary waits on the Chain. Passing twice kills the Sprite and leaves the Mech.
+#guard (show Option Bool from do
+  let s ← mainTk
+  let p := s.active.getD ⟨0⟩
+  let (s, sprite) ← putTk s p "TKN-Sprite" .base
+  let (s, mech) ← putTk s p "TKN-Mech" .base
+  let (waiting, started) ← (advance 100 { s with pending := [.phase .beginning] } []).toOption
+  let item ← (waiting.zone .chain).head?
+  let .chainPass first _ :: _ := waiting.pending | none
+  let (passed, _) ← (step 100 waiting ⟨.player first, .pass⟩).toOption
+  let .chainPass last _ :: _ := passed.pending | none
+  let (settled, events) ← (step 100 passed ⟨.player last, .pass⟩).toOption
+  return started.contains (.phaseStarted p .beginning) && waiting.inPlay.contains sprite &&
+    (waiting.obj? item).any (fun o => o.triggerKeyword == some .temporary && o.controller == p) &&
+    !settled.inPlay.contains sprite && settled.inPlay.contains mech &&
+    events.any (fun | .died _ controller => controller == p | _ => false)).getD false
 
 -- in a real game: the Sprite put on the Base on turn 1 is still there when the other player's turn
 -- is over, and gone at the start of its controller's next turn, while the Mech stays

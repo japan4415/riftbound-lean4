@@ -3042,10 +3042,9 @@ def SFD_104.meta : CardDef :=
 /-- Petricite Monument. -/
 def SFD_104 : CardDef :=
   { SFD_104.meta with
-
     abilities := [.passive .always
       [.keyword (Selector.all .friendly .anywhere [.ofType .unit]) { keyword := .deflect }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-105
 /--

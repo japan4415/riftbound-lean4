@@ -24,12 +24,7 @@ theorem microStep_isSome0 {s : GameState} {f : Frame} {rest : List Frame}
   cases f with
   | setupHands => exact ⟨_, rfl⟩
   | beginTurn => exact ⟨_, rfl⟩
-  | phase ph =>
-    cases ph
-    case beginning =>
-      dsimp only
-      split <;> exact ⟨_, rfl⟩
-    all_goals exact ⟨_, rfl⟩
+  | phase ph => cases ph <;> exact ⟨_, rfl⟩
   | scoreHolds => exact ⟨_, rfl⟩
   | expireTurn => exact ⟨_, rfl⟩
   | draw p n startingHand =>
@@ -526,14 +521,9 @@ theorem microStep_ownerOk0 {s s' : GameState} {es : List Event} (hwf : s.WF) (ho
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hown.congr rfl rfl
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hown.congr rfl rfl
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ((beginStep_safe s _).own hwf hown).congr rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hown.congr rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((hold_safeP s _).own hwf hown).congr rfl rfl

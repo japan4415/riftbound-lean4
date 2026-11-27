@@ -212,8 +212,10 @@ def equipCanExhaust (c : CardDef) : Bool :=
     | .equip, .costOrExhaustUnit _ => true
     | _, _ => false)
 
-/-- Keyword effects that need an effective value captured when they trigger. -/
+/-- Triggered abilities supplied by the source's effective keywords. -/
 def keywordTrigger : Keyword → Option Ability
+  | .temporary => some (.triggered (Trigger.onSelf (.at_ .beginning))
+      (EffectDef.of [] (.prim (.kill .self))) .unlimited)
   | .disarm => some (.triggered (Trigger.onSelf .attack)
       (EffectDef.of [Choice.targetOf .one .enemy .here [.ofType .unit]]
         (.grant (.slot 0) (.mightMinus .it .eventAmount) .thisTurn)) .unlimited)

@@ -421,15 +421,9 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact Tick.of_tc ⟨rfl, rfl⟩
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safe (beginStep_safe s _)
-      exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     have h1 : TC s (hold s (s.active.getD ⟨0⟩)).1 := TC.of_safeP (hold_safeP s _)
