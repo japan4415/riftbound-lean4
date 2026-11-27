@@ -2340,6 +2340,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Legion はその席がプレイを確定した別の物理カードを数える。手札に戻った同じカードと、同じ名前の別の1枚を区別する。再照合では、プレイの確定時に保存した物理カードIDも確認できる。[公式総合ルール 812.1.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Unleashed の Repeat と手札の入れ替え
+
+- Upstage Comedy は Repeat の支払いと2回分の対象をプレイ時に選ぶ。Concentrate はプレイした席の XP で費用が決まり、Evershade Stalker と Lunar Boon はカードを捨ててから引く。4枚を `full` とし、全1,103枚中662枚を実装済みとした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

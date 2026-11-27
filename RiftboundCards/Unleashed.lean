@@ -348,7 +348,7 @@ def UNL_009 : CardDef :=
   { UNL_009.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.prim (.ready (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-010
 /--
@@ -2684,7 +2684,7 @@ def UNL_091 : CardDef :=
         [.costMinus .self (.const 2)],
       .passive (.cmp .ge .xp (.const 11)) [.costMinus .self (.const 4)]],
     spellEffect := some (.of [] (.prim (.draw .you (.const 2)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-092
 /--
@@ -3564,7 +3564,7 @@ def UNL_123 : CardDef :=
         (.of []
         (.seqOf [.prim (.discard .you (.const 1)),
           .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-124
 /--
@@ -3617,7 +3617,7 @@ def UNL_125 : CardDef :=
     spellEffect := some (.of []
       (.seqOf [.prim (.discard .you (.const 1)),
         .prim (.draw .you (.const 2))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-126
 /--

@@ -104,6 +104,80 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
   return fresh.tired ordinary == some true && afterDeath.tired ready == some false &&
     afterDeath.kwAmount ready .assault == 1
 
+-- Upstage Comedy determines both targets at finalization when Repeat is paid.
+#guard tun fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "UNL-009" .hand
+  let (s, ours) ← put s p "OGN-051" .base
+  let (s, theirs) ← put s s.you "OGN-051" .base
+  let before := (s.tire ours).tire theirs
+  let funded := before.fund p 4
+  let actions := legalFrameActions funded
+  let ready (energy : Nat) (targets : List ObjId) : Option Action :=
+    actions.find? (fun a => match a.kind with
+      | .playCard card pay ids _ _ _ => card == spell && pay.energy == energy && ids == targets
+      | _ => false)
+  let one ← ready 2 [ours]
+  let both ← ready 4 [ours, theirs]
+  let (once, _) ← (step 100 funded one).toOption
+  let (repeated, _) ← (step 100 funded both).toOption
+  let single := settleChain {} 12 once
+  let double := settleChain {} 12 repeated
+  return single.tired ours == some false && single.tired theirs == some true &&
+    double.tired ours == some false && double.tired theirs == some false &&
+    !(legalFrameActions (before.fund p 3)).contains both &&
+    (ready 4 [ours, ours]).isSome && (ready 2 [ours, theirs]).isNone
+
+-- Concentrate uses the paying seat's larger Level discount once, including without a Legend.
+#guard tun fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "UNL-091" .hand
+  let noLegend ← (s.zone (.player p .legendZone)).foldlM (fun t id =>
+    (moveObj t id (.player p .trash)).map Prod.fst) s
+  let richXP := (noLegend.setXP p 11).fund p 1
+  let drawn ← cast richXP p spell ⟨1, []⟩
+  let cost (xp : Nat) := (noLegend.setXP p xp).energyCost? p spell
+  return [0, 5, 6, 10, 11, 12].map cost == [some 5, some 5, some 3, some 3, some 1, some 1] &&
+    (noLegend.setXP s.you 11).energyCost? p spell == some 5 &&
+    drawn.handN p == noLegend.handN p + 1 && (drawn.poolOf p).energy == 0
+
+-- Evershade Stalker must discard before drawing. An empty hand still draws what it can.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, stalker) ← put s p "UNL-123" .hand
+  let (s, fodder) ← put s p "OGN-051" .hand
+  let (queued, _) ← (step 100 (s.rich p) ⟨.player p, .playCard stalker ⟨3, []⟩ []⟩).toOption
+  let (next, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (waiting, _) ← (step 100 next ⟨.player q, .pass⟩).toOption
+  let (done, events) ← (step 100 waiting ⟨.player p, .discardPick fodder⟩).toOption
+  let empty ← (s.zone (.player p .hand)).foldlM (fun t id =>
+    (moveObj t id (.player p .trash)).map Prod.fst) s
+  let (empty, sole) ← put empty p "UNL-123" .hand
+  let fromEmpty ← play empty p sole
+  return waiting.handN p + 1 == s.handN p && waiting.pending.head? == some (.discard p 1) &&
+    !(legalFrameActions waiting).contains ⟨.player p, .discardDone⟩ &&
+    done.handN p == waiting.handN p && done.countIn p .trash "OGN-051" == 1 &&
+    events.any (fun | .discarded q _ _ => q == p | _ => false) &&
+    events.any (fun | .drew q => q == p | _ => false) && fromEmpty.handN p == 1
+
+-- Lunar Boon reacts above an older enemy Spell, discards a chosen card, then draws two.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, previous) ← onChain s q "OGN-129"
+  let (s, moon) ← put s p "UNL-125" .hand
+  let (s, fodder) ← put s p "OGN-051" .hand
+  let opened := { (s.fund p 3) with active := some q, pending := [.chainPass p 0, .priority q] }
+  let (casted, _) ← (step 100 opened ⟨.player p, .playCard moon ⟨3, []⟩ []⟩).toOption
+  let (next, _) ← (step 100 casted ⟨.player p, .pass⟩).toOption
+  let (waiting, _) ← (step 100 next ⟨.player q, .pass⟩).toOption
+  let (drawn, events) ← (step 100 waiting ⟨.player p, .discardPick fodder⟩).toOption
+  let draws := events.countP (fun | .drew q => q == p | _ => false)
+  return waiting.pending.head? == some (.discard p 1) && waiting.handN p + 1 == s.handN p &&
+    drawn.zone .chain == [previous] && drawn.handN p == waiting.handN p + 1 && draws == 2 &&
+    drawn.countIn p .trash "OGN-051" == 1 && (casted.poolOf p).energy == 0
+
 -- Vault Breaker legally opens a Battlefield-to-Battlefield Standard Move for this turn.
 #guard tun fun s => do
   let p := s.me
