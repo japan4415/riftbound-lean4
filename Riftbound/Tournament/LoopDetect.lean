@@ -63,6 +63,62 @@ theorem runForcedAnswers_append (fuel : Nat) (s : GameState) (left right : List 
         obtain ⟨next, _⟩ := outcome
         exact ih next
 
+/-- A state relation transports each checked forced answer to a forced answer at a related state. -/
+def TransportsForcedAnswers (fuel : Nat) (related : GameState → GameState → Prop) : Prop :=
+  ∀ ⦃s t next : GameState⦄ ⦃answer : Action⦄ ⦃events : List Event⦄,
+    related s t → forcedAnswer s = some answer → step fuel s answer = .ok (next, events) →
+    ∃ other next' events', forcedAnswer t = some other ∧
+      step fuel t other = .ok (next', events') ∧ related next next'
+
+/-- A checked sequence can be replayed from a related state with the same number of
+answers, preserving the relation at its endpoint. -/
+theorem runForcedAnswers_transport {fuel : Nat} {related : GameState → GameState → Prop}
+    (transport : TransportsForcedAnswers fuel related) {s t next : GameState}
+    {answers : List Action} (view : related s t)
+    (run : runForcedAnswers fuel s answers = some next) :
+    ∃ others next', others.length = answers.length ∧
+      runForcedAnswers fuel t others = some next' ∧ related next next' := by
+  induction answers generalizing s t with
+  | nil =>
+    change some s = some next at run
+    obtain rfl := Option.some.inj run
+    exact ⟨[], _, rfl, rfl, view⟩
+  | cons answer rest ih =>
+    simp only [runForcedAnswers] at run
+    split at run
+    · contradiction
+    next canPlay =>
+      have forced : forcedAnswer s = some answer := by simpa using canPlay
+      cases act : step fuel s answer with
+      | error error => simp [act, Except.toOption] at run
+      | ok outcome =>
+        obtain ⟨middle, events⟩ := outcome
+        simp only [act, Except.toOption] at run
+        obtain ⟨other, middle', events', forced', act', related'⟩ := transport view forced act
+        obtain ⟨others, next', length, replay, relatedNext⟩ := ih related' run
+        exact ⟨other :: others, next', by simp [length],
+          by simp [runForcedAnswers, forced', act', Except.toOption, replay], relatedNext⟩
+
+/-- Once a relation preserves forced transitions, a checked cycle closing under that
+relation can be replayed arbitrarily many times, with potentially different action identifiers. -/
+theorem runForcedAnswers_equivalentCycle_repeats {fuel : Nat} {related : GameState → GameState → Prop}
+    (transport : TransportsForcedAnswers fuel related) (transitive : ∀ ⦃a b c⦄, related a b → related b c → related a c)
+    {start finish current : GameState} {cycle : List Action}
+    (run : runForcedAnswers fuel start cycle = some finish) (returns : related start finish)
+    (currentRelated : related start current) (rounds : Nat) :
+    ∃ answers final, answers.length = rounds * cycle.length ∧
+      runForcedAnswers fuel current answers = some final ∧ related start final := by
+  induction rounds generalizing current with
+  | zero => exact ⟨[], current, by simp, rfl, currentRelated⟩
+  | succ rounds ih =>
+    obtain ⟨one, next, oneLength, first, nextRelated⟩ :=
+      runForcedAnswers_transport transport currentRelated run
+    obtain ⟨rest, final, restLength, remaining, finalRelated⟩ :=
+      ih (current := next) (transitive returns nextRelated)
+    refine ⟨one ++ rest, final, ?_, ?_, finalRelated⟩
+    · rw [List.length_append, oneLength, restLength, Nat.succ_mul, Nat.add_comm]
+    · simp [runForcedAnswers_append, first, remaining]
+
 /-- A nonempty cycle of forced answers that returns to an identical decision state. -/
 def isExactForcedLoop (fuel : Nat) (s : GameState) (answers : List Action) : Bool :=
   !answers.isEmpty && decide (runForcedAnswers fuel s answers = some s)

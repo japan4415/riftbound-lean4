@@ -21,6 +21,80 @@ meta def t (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Chemtech Enforcer adds its printed Assault and requires a discard when played.
+#guard t fun s => do
+  let p := s.me
+  let (s, enforcer) ← put s p "OGN-003" .hand
+  let resolved ← play s p enforcer
+  let entered ← resolved.firstOf p .base "OGN-003"
+  return resolved.kwAmount entered .assault == 2 &&
+    resolved.handN p + 2 == s.handN p &&
+    (resolved.zone (.player p .trash)).length == (s.zone (.player p .trash)).length + 1
+
+-- Dangerous Duo can choose an opposing Unit once its own player has played another card.
+#guard t fun s => do
+  let p := s.me
+  let (s, duo) ← put s p "OGN-016" .hand
+  let (s, earlier) ← put s p "OGN-136" .hand
+  let (s, foe) ← put s s.you "OGN-136" .base
+  let alone ← play s p duo [] { pick := (· == [foe]) }
+  let afterEarlier ← play s p earlier
+  let gained ← play afterEarlier p duo [] { pick := (· == [foe]) }
+  return alone.mightNow foe == s.mightNow foe &&
+    gained.mightNow foe == (s.mightNow foe).map (· + 2)
+
+-- Scrapyard Champion prompts for two separate discards and draws only after both.
+#guard t fun s => do
+  let p := s.me
+  let (s, champion) ← put s p "OGN-020" .hand
+  let (s, earlier) ← put s p "OGN-136" .hand
+  let (s, first) ← put s p "OGN-136" .hand
+  let (s, second) ← put s p "OGN-136" .hand
+  let alone ← play s p champion
+  let pre ← play s p earlier
+  let send (state : GameState) (q : PlayerId) (kind : ActionKind) :=
+    (step 100 state ⟨.player q, kind⟩).toOption
+  let (entered, _) ← send (pre.rich p) p (.playCard champion (payOf pre champion) [])
+  let (passed, _) ← send entered p .pass
+  let (waiting, early) ← send passed s.you .pass
+  let (one, middle) ← send waiting p (.discardPick first)
+  let (resolved, last) ← send one p (.discardPick second)
+  let draws (events : List Event) := events.countP (· == .drew p)
+  return alone.handN p + 1 == s.handN p && draws early == 0 && draws middle == 0 &&
+    draws last == 2 && resolved.handN p == waiting.handN p &&
+    resolved.countIn p .trash "OGN-136" == s.countIn p .trash "OGN-136" + 2
+
+-- A teammate's Magma Wurm readies Units as they enter in a team game.
+#guard t fun labState => do
+  let mode := Mode.teamDuel
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let initial := GameState.empty { mode, ruleSet := .coreOnly } labState.cards
+  let (s, _) ← put initial p "OGN-011" .base
+  let (s, ally) ← put s teammate "OGN-136" .hand
+  let (s, foe) ← put s opponent "OGN-136" .hand
+  let (s, gear) ← put s teammate "OGN-021" .hand
+  let (s, tokens) ← put s teammate "SFD-076" .hand
+  let (s, _) ← put s teammate "OGN-136" .mainDeck
+  let turnOf (seat : PlayerId) : GameState :=
+    { s with
+      active := some seat
+      phase := .main
+      turn := 3
+      pending := [.priority seat]
+      turnOrder := Mode.teamTurnOrder true }
+  let allied ← play (turnOf teammate) teammate ally
+  let opposed ← play (turnOf opponent) opponent foe
+  let created ← play (turnOf teammate) teammate tokens
+  let token ← (created.zone (.player teammate .base)).find? (fun id =>
+    (created.cardDef? id).any (·.name == "Mech"))
+  let allyInPlay ← allied.firstOf teammate .base "OGN-136"
+  let foeInPlay ← opposed.firstOf opponent .base "OGN-136"
+  let gearDefinition ← s.cardDef? gear
+  return allied.tired allyInPlay == some false && opposed.tired foeInPlay == some true &&
+    created.tired token == some false && !s.readyNow teammate gear gearDefinition
+
 -- Real Hold scoring supplies the turn player's decisions and units, even on printed fields
 -- brought by the other player.
 #guard t fun s => do
@@ -2743,6 +2817,28 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let plain ← play t1 s.me d
   return readyUnits second s.me == readyUnits on s.me + 2 && on.handN s.me == s3.handN s.me &&
     readyUnits plain s.me == readyUnits t1 s.me
+
+-- Confront affects the caster's own Units, including tokens, in a team game.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let start :=
+    { initial with
+      turnOrder := Mode.teamTurnOrder true
+      active := some p
+      phase := .main
+      turn := 3
+      pending := [.priority p] }
+  let (s, confront) ← put start p "OGN-129" .hand
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let resolved ← play s p confront
+  let definition ← resolved.tokenCard "Mech"
+  let (own, _) := playInstructedTokens resolved p definition none 1 false
+  let (both, _) := playInstructedTokens own teammate definition none 1 false
+  let yours ← both.firstOf p .base definition.id.code
+  let allied ← both.firstOf teammate .base definition.id.code
+  return both.tired yours == some false && both.tired allied == some true
 
 -- Raging Firebrand (OGN-031): the next spell this turn costs 5 less, only that one, this turn
 -- (The Harrowing costs 6)

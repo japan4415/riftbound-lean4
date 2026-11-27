@@ -3141,19 +3141,20 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             exact Safe.refl s
         | cons _ _ => simp at h
 
-/-- A Unit token the player plays enters ready: an effect of the turn says the units the player
-plays enter ready ("Friendly units enter ready this turn"), or a passive ability of an object they
-control says their tokens do. -/
+/-- A Unit token enters ready when a turn effect, its destination, or a passive ability
+applies. The preview supplies its type, controller, and destination to the selector. -/
 def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef)
     (dest : Option ObjId := none) : Bool :=
   c.hasType .unit && ((s.fxOf p).any (fun k => k == .unitsReady) ||
     s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
-    -- a passive ability of an object the player controls: "your tokens enter ready"
-    s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
-      (s.activeMods g).any (fun m =>
-        match m with
-        | .entersReady (.pick .all .friendly .anywhere fs) => fs == FilterList.ofList [.token]
-        | _ => false)))
+    s.passiveSources.any (fun source =>
+      (s.obj? source).any (fun object =>
+        (s.activeMods source).any (fun
+          | .entersReady (.pick .all side place filters) =>
+            let preview := createOne c.id p dest false s
+            (preview.candidates object.controller source {} side place filters).any
+              (·.contains ⟨s.nextId⟩)
+          | _ => false))))
 
 /-- The tokens played between two states are the new token objects (CR 184.2). -/
 def tokenPlays (s s' : GameState) (p : PlayerId) : List Event :=

@@ -5512,9 +5512,9 @@ def UNL_191 : CardDef :=
   { UNL_191.meta with
     abilities := [
       .passive (.cmp .ge .xp (.const 6))
-        [.mightPlus (Selector.all .friendly .anywhere [.ofType .unit]) (.const 1)],
+        [.mightPlus (Selector.all .you .anywhere [.ofType .unit]) (.const 1)],
       .passive (.cmp .ge .xp (.const 11))
-        [.entersReady (Selector.all .friendly .anywhere [.ofType .unit])]],
+        [.entersReady (Selector.all .you .anywhere [.ofType .unit])]],
     status := .drafted }
 
 -- BEGIN GENERATED UNL-192

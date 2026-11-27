@@ -69,7 +69,7 @@ itself, or a card on a side (seen by `p`) with the properties. -/
 def GameState.costSelects (s : GameState) (p : PlayerId) (src c : ObjId) : Selector → Bool
   | .self => src == c
   | .pick .all side _ fs =>
-    (s.obj? c).any (fun o => side.admits p o) && (fs.holds s src {} c == some true)
+    (s.obj? c).any (fun o => side.admits p o s.config.mode) && (fs.holds s src {} c == some true)
   | _ => false
 
 /-- The card `c` enters ready: by itself, by a passive ability of its own whose condition holds,

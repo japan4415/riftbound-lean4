@@ -213,6 +213,29 @@ theorem applyFrame0_priority_mana_cleanup {s next : GameState} {p : PlayerId} {r
   obtain ⟨⟨afterAdd, addEvents⟩, _, mapped⟩ := Option.map_eq_some_iff.mp applied
   exact (congrArg (fun result : GameState × List Event => result.1.pending) mapped).symm
 
+/-- When the frame handler accepts a direct Unit or Gear play, it schedules Cleanup before
+returning control (CR 319.6, 322). -/
+theorem applyFrame0_permanentPlay_cleanup {s next : GameState} {actor : Actor}
+    {card : ObjId} {pay : RunePool.Payment} {targets : List ObjId} {flow : Option Cost}
+    {discard : Option ObjId} {pick : SpellPick} {events : List Event}
+    {definition : CardDef} (known : s.cardDef? card = some definition)
+    (permanent : definition.hasType .spell = false)
+    (applied : applyFrame0 s ⟨actor, .playCard card pay targets flow discard pick⟩ =
+      some (next, events)) : next.pending.head? = some .cleanup := by
+  have notCastable (who : PlayerId) : castable s who card pay targets flow pick = false := by
+    simp only [castable, known]
+    cases s.obj? card <;> simp [permanent]
+  cases pending : s.pending with
+  | nil => simp [applyFrame0, pending] at applied
+  | cons frame rest =>
+    cases frame <;> simp only [applyFrame0, pending] at applied
+    all_goals
+      first
+      | contradiction
+      | simp only [applyPlayCard, reactStep, notCastable, Bool.false_eq_true, ite_false] at applied
+        obtain ⟨_, _, eq⟩ := Option.map_eq_some_iff.mp applied
+        exact (congrArg (fun result : GameState × List Event => result.1.pending.head?) eq).symm
+
 /-- Cleanup must have run out of immediate work before it returns neutral priority (CR 322). -/
 theorem cleanupFrame_priority_ready {s : GameState} {rest trailing : List Frame} {p : PlayerId}
     (pending : (cleanupFrame s rest).1.pending = .priority p :: trailing) :

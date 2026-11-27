@@ -40,7 +40,7 @@
 | I16 | **Priority の受け渡し**: [Priority.lean](../Riftbound/Invariant/Priority.lean) で、最後のパスまでは `step` が手番順で次のプレイヤーの `chainPass` に停止し、最後のパスで Chain の先頭を解決するフレームに進むと証明した。席順が全席の並べ替えであれば、一巡で全席を重複なく回る（338.2, 339, 340） | L2 | M4 |
 | I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。[Priority.lean](../Riftbound/Invariant/Priority.lean) で、即時 Add の処理後に Cleanup を行うことと、Cleanup が通常の優先権に戻るときは実行すべき処理が残っていないことを局所的に証明した。到達可能な全状態での証明は残っている | L2 | M5 |
 | I18 | **任意の選択は必ず問われる**: 解決中の選択は決定フレーム、プレイ時の追加コストなどは `Action` で受け取る（[design.md §3](design.md#3-設計原則) の P4）。[Choices.lean](../Riftbound/Invariant/Choices.lean) で、実行可能な `may`、明示的な対象選択、複数の効果の選択、任意の誘発、印刷された Spell の任意追加コストを局所的に証明した。直接プレイを受け付ける全フレームで、任意のディスカードを見送る手と、支払いに使える各手札を選ぶ手が列挙されることを証明した。効果による Spell のプレイでも、同じ対象・モード・価格で任意のディスカードを選べることをプレイ案の列挙について証明した。すべての効果・コスト・誘発を通した証明は残っている | L4 | M4 |
-| I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける。[LoopDetect.lean](../Riftbound/Tournament/LoopDetect.lean) で状態が完全に一致する場合を証明した。識別子の付け替えを含む場合は残っている（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
+| I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける。[LoopDetect.lean](../Riftbound/Tournament/LoopDetect.lean) で状態が完全に一致する場合を証明した。強制手と遷移を保存する任意の同値関係で、同値な状態に戻るサイクルを繰り返せると証明した。識別子と timestamp の付け替えがこの条件を満たす証明は残っている（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
 
 I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正しさ」を補う定理である（[design.md §6.3](design.md#63-できること全ての担保)）。
 
@@ -2304,6 +2304,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 ### 同じ効果で複数の Unit に与えるダメージ
 
 - Cannon Barrage と Anivia, Primal は対象の敵 Unit すべてにダメージを与え、Cleanup で撃破を処理する。2枚を `full` とし、全1,103枚中626枚が実装済みとなった。
+
+### Origins の Legion と登場時の Ready
+
+- Magma Wurm は2対2でチームメイトの Unit が登場するときにも適用される。カードとトークンの両方で確認した。「あなたの」と書かれた Renata Glasc、Wuju Master の対象は各カードの支配者に限る。Chemtech Enforcer、Sky Splitter、Dangerous Duo、Raging Soul、Scrapyard Champion、Confront と合わせて7枚を `full` とし、全1,103枚中633枚が実装済みとなった。
+- `applyFrame0_permanentPlay_cleanup` により、フレームの処理が Unit・Gear の直接プレイを受理したときに、次の処理が Cleanup になることを証明した。通常の優先権、Chain、Showdown を含む。
 
 ## M10: 完了判定（original.md の最終目的）
 

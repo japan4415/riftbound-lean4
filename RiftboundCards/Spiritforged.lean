@@ -5011,7 +5011,7 @@ def SFD_171 : CardDef :=
   { SFD_171.meta with
 
     abilities := [.passive .always
-      [.entersReady (Selector.all .friendly .anywhere [.token])]],
+      [.entersReady (Selector.all .you .anywhere [.token])]],
     status := .drafted }
 
 -- BEGIN GENERATED SFD-172
