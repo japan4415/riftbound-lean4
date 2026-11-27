@@ -245,6 +245,53 @@ theorem legalActions_playDiscardChoices {s : GameState} {p : PlayerId} {c : ObjI
   · intro allowed
     exact ⟨⟨legal.1, .inl (legalFrame_playDiscard_iff.mpr ⟨unpaid, allowed⟩)⟩, rfl⟩
 
+/-- A valid limited Spell plan admits every optional discard choice with the same targets,
+mode and price (CR 355.1, 357.1, 423.3). -/
+theorem limitedSpellOptions_playDiscardChoices {s : GameState} {p : PlayerId} {c : ObjId}
+    {price : EffectPlayPrice} {powerBudget : Option Nat} {plan : EffectSpellPlay}
+    {discard : Option ObjId}
+    (offered : plan ∈ limitedSpellOptions s p c price powerBudget) :
+    { plan with discard } ∈ limitedSpellOptions s p c price powerBudget ↔ discard ∈ s.playDiscards p c := by
+  cases cardDef : s.cardDef? c with
+  | none => simp [limitedSpellOptions, cardDef] at offered
+  | some d =>
+    by_cases blocked : (!d.hasType .spell || s.cantPlay p || s.noSpells p || s.blocksPlay p c d) = true
+    · simp [limitedSpellOptions, cardDef, blocked] at offered
+    cases spell : d.spellEffect with
+    | none => simp [limitedSpellOptions, cardDef, blocked, spell] at offered
+    | some effect =>
+      cases base : price.baseCost s p c d with
+      | none => simp [limitedSpellOptions, cardDef, blocked, spell, base] at offered
+      | some cost =>
+        let resolving := s.pending.findSome? (fun | .finishSpell id => some id | _ => none)
+        let variants (candidate : List ObjId × Cost × SpellPick) : List EffectSpellPlay :=
+          let (targets, price, pick) := candidate
+          if targets.all (fun id => resolving != some id && (s.pendingSpell id).isNone) then
+            (s.playDiscards p c).map (fun discard => ⟨targets, price, pick, discard⟩)
+          else []
+        have form : limitedSpellOptions s p c price powerBudget =
+            (effectSpellOptions s p c d effect cost price.energyCut powerBudget).flatMap variants := by
+          simp [limitedSpellOptions, cardDef, blocked, spell, base, resolving, variants] <;> rfl
+        rw [form, List.mem_flatMap] at offered ⊢
+        constructor
+        · rintro ⟨⟨targets, quoted, choice⟩, _, h⟩
+          dsimp only [variants] at h
+          split at h
+          · obtain ⟨selected, valid, eq⟩ := List.mem_map.mp h
+            have same : selected = discard := congrArg EffectSpellPlay.discard eq
+            simpa only [same] using valid
+          · simp at h
+        · intro valid
+          obtain ⟨⟨targets, quoted, choice⟩, candidate, h⟩ := offered
+          refine ⟨⟨targets, quoted, choice⟩, candidate, ?_⟩
+          dsimp only [variants] at h ⊢
+          split at h
+          · rename_i targetsAllowed
+            simp only [targetsAllowed, ite_true]
+            obtain ⟨selected, _, rfl⟩ := List.mem_map.mp h
+            exact List.mem_map.mpr ⟨discard, valid, rfl⟩
+          · simp at h
+
 end Riftbound
 
 end
