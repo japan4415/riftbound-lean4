@@ -108,10 +108,43 @@ def Frame.disclosedFaces (viewer : PlayerId) (viewerDeck : List ObjId) :
     | some env => env.disclosedFaces viewerDeck
     | none => []
 
-/-- Cards whose faces the current resolution lets the viewer read. Frames preserve the
-disclosures of a parent instruction while its child asks a question. -/
+/-- Whether this viewer was authorized to inspect the controller's facedown cards this turn. -/
+def GameState.canInspectFacedown (s : GameState) (viewer controller : PlayerId) : Bool :=
+  s.turnFx.any (fun note =>
+    note.turn == s.turn && note.who == viewer && note.kind == .inspectFacedown controller)
+
+/-- Facedown cards the viewer has permission to inspect this turn (CR 128.2.a, 129.4).
+The cards are identified by their current controller. -/
+def GameState.facedownInspections (s : GameState) (viewer : PlayerId) : List ObjId :=
+  (List.range s.playerCount).flatMap fun seat =>
+    (s.zone (.player ⟨seat⟩ .hidden)).filter (fun id =>
+      (s.obj? id).any (fun o => s.canInspectFacedown viewer o.controller))
+
+/-- This permission only gives access to a card in a Hidden zone, and only to the named
+viewer in the recorded turn. -/
+theorem GameState.mem_facedownInspections_iff {s : GameState} {viewer : PlayerId} {id : ObjId} :
+    id ∈ s.facedownInspections viewer ↔
+      ∃ seat < s.playerCount, id ∈ s.zone (.player ⟨seat⟩ .hidden) ∧
+        ∃ object, s.obj? id = some object ∧
+          ∃ note ∈ s.turnFx, note.turn = s.turn ∧ note.who = viewer ∧
+            note.kind = .inspectFacedown object.controller := by
+  simp only [GameState.facedownInspections, List.mem_flatMap, List.mem_range, List.mem_filter]
+  apply exists_congr
+  intro seat
+  apply and_congr_right
+  intro _
+  apply and_congr_right
+  intro _
+  cases found : s.obj? id with
+  | none => simp
+  | some object =>
+    simp [GameState.canInspectFacedown, List.any_eq_true, and_assoc]
+
+/-- Cards the viewer may read through an active resolution or a turn-long permission.
+Frames preserve the disclosures of a parent instruction while its child asks a question. -/
 def GameState.resolutionDisclosedFaces (s : GameState) (viewer : PlayerId) : List ObjId :=
-  s.pending.flatMap (Frame.disclosedFaces viewer (s.zone (.player viewer .mainDeck)))
+  s.pending.flatMap (Frame.disclosedFaces viewer (s.zone (.player viewer .mainDeck))) ++
+    s.facedownInspections viewer
 
 /-- Zone card faces including the current resolution's Reveal and inspection permissions.
 Only cards still present in the zone are shown, and bookkeeping zones remain outside the view. -/
@@ -181,7 +214,9 @@ theorem GameState.mem_resolutionDisclosedFaces_predict {s : GameState} {p : Play
     {count : Nat} {first candidate : ObjId} {more top bottom : List ObjId} {tail : List Frame}
     (pending : s.pending = .predict p count first more top bottom :: tail)
     (member : candidate ∈ first :: more) : candidate ∈ s.resolutionDisclosedFaces p := by
-  simp only [GameState.resolutionDisclosedFaces, pending, List.flatMap_cons, Frame.disclosedFaces,
+  unfold GameState.resolutionDisclosedFaces
+  apply List.mem_append_left
+  simp only [pending, List.flatMap_cons, Frame.disclosedFaces,
     beq_self_eq_true, ite_true]
   rcases List.mem_cons.mp member with equal | later
   · simp [equal]

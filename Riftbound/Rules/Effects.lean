@@ -3925,6 +3925,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       Event.hiddenPlayed p :: (if (s.cardDef? src).any (·.hasType .spell) then
         [Event.played p src] else [])
       else [])
+  | .allowFacedownInspection whose =>
+    (whose.resolve s p env).map fun players =>
+      (players.foldl (fun board q => board.addTurnFx p (.inspectFacedown q)) s, [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel
       (fun t id => (t.addTurnFxOn p id (e.forCopy env.abilityCopyStamp), []))
@@ -4315,6 +4318,15 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact addTurnFx_safe s p e
+  | allowFacedownInspection whose =>
+    simp only [applyPrim, Option.map_eq_some_iff] at h
+    obtain ⟨players, _, rfl⟩ := h
+    have safe (state : GameState) (seats : List PlayerId) :
+        Safe state (seats.foldl (fun board q => board.addTurnFx p (.inspectFacedown q)) state) := by
+      induction seats generalizing state with
+      | nil => exact Safe.refl state
+      | cons seat rest ih => exact (addTurnFx_safe state p _).trans (ih _)
+    exact safe s players
   | addEnergy ps n only =>
     cases only with
     | some a => simp [applyPrim] at h

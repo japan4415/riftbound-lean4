@@ -398,6 +398,15 @@ theorem Effect.SingleRun.gainXP (who : PlayerSel) (amount : Amount) :
   by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
     cases who.resolve s p env <;> cases amount.evalS s p src env <;> exact ⟨_, _, rfl⟩
 
+/-- A permission to inspect facedown cards consumes one Run step. -/
+theorem Effect.SingleRun.allowFacedownInspection (whose : PlayerSel) :
+    (Effect.prim (.allowFacedownInspection whose)).SingleRun := by
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+    effectDamageBatch?, permanentPlayEffects, applyPrim]
+  by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
+    cases whose.resolve s p env <;> exact ⟨_, _, rfl⟩
+
 private def noAttachments (events : List Event) : Prop :=
   ∀ gear unit, Event.attached gear unit ∉ events
 

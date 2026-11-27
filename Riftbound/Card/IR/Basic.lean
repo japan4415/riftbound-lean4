@@ -547,6 +547,8 @@ inductive TurnEffect where
   | duplicatedUnitToken (copy : Option Timestamp)
   /-- Friendly Units enter ready for the rest of the turn. -/
   | friendlyUnitsReady
+  /-- The player may inspect facedown cards this seat controls for the rest of the turn. -/
+  | inspectFacedown (controller : PlayerId)
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices limited by an ability's rules text belong to that instance. -/

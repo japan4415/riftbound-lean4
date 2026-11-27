@@ -764,6 +764,62 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     done.countIn third .trash "OGN-088" == 1 && !(done.zone (.player third .mainDeck)).contains drawn &&
     events.contains (.drew third) && !(events.contains (.drew q))
 
+-- Scuttle Crab draws one card when played.
+#guard tun fun s => do
+  let p := s.me
+  let (s, crab) ← put s p "UNL-053" .hand
+  let played ← play s p crab
+  let deck := Zone.player p .mainDeck
+  return played.countIn p .base "UNL-053" == 1 && played.handN p == s.handN p &&
+    (played.zone deck).length + 1 == (s.zone deck).length
+
+-- Scuttle Crab reveals one opponent's hand publicly, then gives only its controller
+-- permission to inspect that opponent's facedown cards for the current turn.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let other : PlayerId := ⟨3⟩
+  let hand := Zone.player enemy .hand
+  let hidden := Zone.player enemy .hidden
+  let elsewhere := Zone.player other .hidden
+  let (s, crab) ← put (unleashedTeamMain labState) p "UNL-053" .base
+  let (s, enemyField) ← putBf s enemy "OGN-275"
+  let (s, otherField) ← putBf s other "OGN-276"
+  let (s, handCard) ← put s enemy "OGN-058" .hand
+  let (s, first) ← put s enemy "SFD-004" .hidden
+  let (s, second) ← put s other "OGN-094" .hidden
+  let placed := ((s.control enemy enemyField).control other otherField)
+    |>.modObj first (fun o => { o with hiddenAt := some enemyField })
+    |>.modObj second (fun o => { o with hiddenAt := some otherField })
+  let (dead, death) := killObj placed crab
+  let (offered, _) ← (advance 100 (dead.withTriggers death) []).toOption
+  let choose (seat : PlayerId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [] none (some seat))⟩
+  let (queued, _) ← (step 100 offered (choose enemy)).toOption
+  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => do
+      match state.pending with
+      | .chainPass seat _ :: _ =>
+        let (next, more) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next (events ++ more)
+      | _ => some (state, events)
+  let (done, events) ← pass 8 queued []
+  let expired := { done with turn := done.turn + 1 }
+  let (unhidden, _) ← moveObj done first hand
+  let (newlyHidden, replacement) ← moveObj unhidden handCard hidden
+  let during := newlyHidden.modObj replacement (fun o => { o with hiddenAt := some enemyField })
+  return (legalFrameActions offered).contains (choose other) &&
+    !(step 100 offered (choose p)).isOk && !(step 100 offered (choose mate)).isOk &&
+    events == [.handRevealed enemy [handCard]] && done.xpOf p == placed.xpOf p + 1 &&
+    done.resolutionZoneCardFaces p hidden == some [some (cid "SFD-004")] &&
+    done.resolutionZoneCardFaces mate hidden == some [none] &&
+    done.resolutionZoneCardFaces other hidden == some [none] &&
+    done.resolutionZoneCardFaces p elsewhere == some [none] &&
+    done.resolutionZoneCardFaces p hand == some [none] &&
+    during.resolutionZoneCardFaces p hidden == some [some (cid "OGN-058")] &&
+    expired.resolutionZoneCardFaces p hidden == some [none]
+
 -- Megatusk grants Ganking to its controller's units at its location for the current turn.
 #guard tun fun s => do
   let p := s.me

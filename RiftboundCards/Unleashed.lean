@@ -1595,8 +1595,12 @@ def UNL_053.meta : CardDef :=
 def UNL_053 : CardDef :=
   { UNL_053.meta with
     abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
-      .triggered (.onSelf .die) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited],
-    status := .drafted }
+      .triggered (.onSelf .deathknell)
+        { playerTarget := some .enemy
+          body := .revealHand (.chosen 0)
+            (.seqOf [.prim (.allowFacedownInspection (.chosen 0)), .prim (.gainXP .you (.const 1))]) }
+        .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-054
 /--

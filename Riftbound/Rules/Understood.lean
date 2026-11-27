@@ -309,6 +309,7 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
+  | .allowFacedownInspection whose => whose.understood
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
   | .delayUntilDeath s _ => s.understood

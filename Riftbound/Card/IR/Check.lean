@@ -222,6 +222,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .extraTurn p => p.ok c
   | .win p => p.ok c
   | .turnEffect _ => true
+  | .allowFacedownInspection whose => whose.ok c
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .delayUntilDeath s _ => Selector.ok c s

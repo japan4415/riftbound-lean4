@@ -219,6 +219,8 @@ inductive Prim where
   | win (p : PlayerSel)
   /-- Make something true for the rest of the turn. -/
   | turnEffect (e : TurnEffect)
+  /-- Let the acting player inspect facedown cards these players control this turn. -/
+  | allowFacedownInspection (whose : PlayerSel)
   /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if it is
   empty. -/
   | returnChampion (candidate : Selector)

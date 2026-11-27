@@ -2374,6 +2374,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Doran's Shield を装備した Unit は最初に戦闘ダメージを割り当てられる。Boots of Swiftness は Battlefield 間の通常移動を許し、移動後に Unit は Exhaust する。Plundering Poro と Cull は装備先や自身の Conquer で Exhaust 済みの Gold を出し、Doran's Ring は捨て札の回答後に引く。5枚を `full` とし、全1,103枚中699枚を実装済みとした。
 - Hexdrinker は付いている間だけ Deflect を与え、敵の Spell の支払いに Power を一つ加える。複数ドメインの Power がある場合、エンジンが消費するドメインを固定順で選ぶ。支払い元を選べるようにするまで `drafted` とする。
 
+### ターン中の伏せ札の閲覧
+
+- Scuttle Crab はプレイ時に引く。Deathknell では選んだ敵の手札を公開し、その敵が支配する伏せ札をターン中に閲覧できる権限を自身の支配者に与え、1 XP を加える。Lean では新たに閲覧できる札が Hidden ゾーンにあり、権限の席・ターン・支配者が一致することを証明した。2v2 の選択肢と、対局リプレイで閲覧権が切れることを確認し、全1,103枚中700枚を `full` とした。[公式総合ルール 128.2.a、129.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

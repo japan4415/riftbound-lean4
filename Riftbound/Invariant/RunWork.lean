@@ -62,6 +62,7 @@ mutual
 /-- Check the effect constructors for which the observed dispatcher has a termination proof. -/
 def Effect.observedWorkSupported : Effect → Bool
   | .nop | .retainTargetSet _ | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.discard ..)
+  | .prim (.allowFacedownInspection _)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
   | .prim (.lookTop _) | .prim (.recycleTop _) | .prim (.predict _)
   | .prim (.drawLooked (.revealedDeck _)) | .prim (.recycle (.revealedDeck _))
@@ -114,6 +115,7 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case recycleTop who => exact (Effect.SingleRun.recycleTop who).observed
     case predict amount => exact Effect.ObservedFinite.predict amount
     case gainXP who amount => exact (Effect.SingleRun.gainXP who amount).observed
+    case allowFacedownInspection whose => exact (Effect.SingleRun.allowFacedownInspection whose).observed
     case deal target amount => exact Effect.ObservedFinite.deal target amount
     case exchangeDamage a b => exact Effect.ObservedFinite.exchangeDamage a b
     case markOn target note => exact Effect.ObservedFinite.markOn target note
