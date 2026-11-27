@@ -125,6 +125,14 @@ private def ReplayPublicEvent.covers (actual expected : ReplayPublicEvent) : Boo
   | .playedCardCode p _, .playedCard q | .playedTokenCode p _, .playedToken q => p == q
   | _, _ => actual == expected
 
+/-- Card faces recorded in a single reveal or private look during an answer. -/
+structure ReplayObservedDisclosure where
+  /-- None for a public reveal, or the one seat that looked privately. -/
+  onlyFor : Option PlayerId
+  /-- The observed faces, including the number of copies of each. -/
+  cards : List CardId
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A fact observed at a game checkpoint, expressed without engine-generated object IDs. -/
 inductive ReplayObservationFact where
   /-- The turn number. -/
@@ -170,6 +178,8 @@ inductive ReplayObservationFact where
   | hiddenAt (seat owner : PlayerId) (field : CardId) (count : Nat)
   /-- These public events occurred in order during the answer that reached this checkpoint. -/
   | eventsInOrder (events : List ReplayPublicEvent)
+  /-- These public reveals and private looks occurred in order during this answer. -/
+  | disclosuresInOrder (disclosures : List ReplayObservedDisclosure)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Facts from a source such as a scoreboard, video frame or independent game log. -/
@@ -189,6 +199,13 @@ def ReplayObservation.checkWindow (observation : ReplayObservation) : Except Str
   if let some last := observation.through? then
     if last < observation.checkpoint then
       throw s!"checkpoint {observation.checkpoint}: observation window ends before it starts ({last})"
+
+/-- Does this answer need to retain faces during the automatic work between decisions? -/
+def ReplayObservation.wantsDisclosures (schedule : List ReplayObservation) (checkpoint : Nat) : Bool :=
+  (schedule.takeWhile (·.checkpoint <= checkpoint)).any fun observation =>
+    checkpoint <= observation.through?.getD observation.checkpoint && observation.facts.any fun
+      | .disclosuresInOrder (_ :: _) => true
+      | _ => false
 
 private def checkFactValue {α : Type} [DecidableEq α] [ToJson α]
     (label : String) (expected actual : α) : Except String Unit :=
@@ -263,8 +280,18 @@ private def observeChainItem (s : GameState) (id : ObjId) : Except String Replay
   | .card _ card | .token card => .spell object.controller card
   | .chainAbility card _ _ => .ability object.controller card
 
-private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState) (events : List Event) :
-    Except String Unit := do
+private def observedInOrder {Expected Actual : Type} (expected : List Expected)
+    (actual : List Actual) (covers : Actual → Expected → Bool) : Bool :=
+  (actual.foldl (fun remaining item => match remaining with
+    | next :: rest => if covers item next then rest else remaining
+    | [] => []) expected).isEmpty
+
+private def CardDisclosure.covers (actual : CardDisclosure) (expected : ReplayObservedDisclosure) : Bool :=
+  actual.onlyFor == expected.onlyFor &&
+    expected.cards.all (fun card => expected.cards.count card <= actual.cards.count card)
+
+private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState)
+    (events : List Event) (disclosures : List CardDisclosure) : Except String Unit := do
   match fact with
   | .turn number => checkFactValue "turn" number s.turn
   | .phase expectedPhase => checkFactValue "phase" expectedPhase s.phase
@@ -331,11 +358,13 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
   | .eventsInOrder expected =>
     let moves := events.filterMap (fun | .moved old new _ => some (old, new) | _ => none)
     let actual := events.filterMap (ReplayPublicEvent.ofEngineEvent s moves)
-    let unmatched := actual.foldl (fun remaining event => match remaining with
-      | next :: rest => if event.covers next then rest else remaining
-      | [] => []) expected
-    unless unmatched.isEmpty do
+    unless observedInOrder expected actual ReplayPublicEvent.covers do
       throw s!"public events: expected in order {(toJson expected).compress}, replayed {(toJson actual).compress}"
+  | .disclosuresInOrder expected =>
+    for reveal in expected do
+      reveal.onlyFor.forM (observeSeat s)
+    unless observedInOrder expected disclosures CardDisclosure.covers do
+      throw "the recorded card disclosures did not occur in order for the requested audiences"
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
     match expected, s.result with
@@ -346,7 +375,8 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
 
 /-- Validate the observations at this position and advance an ordered observation schedule. -/
 def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : Nat)
-    (s : GameState) (events : List Event := []) : Except String (List ReplayObservation) := do
+    (s : GameState) (events : List Event := []) (disclosures : List CardDisclosure := []) :
+    Except String (List ReplayObservation) := do
   let (eligible, later) := schedule.span (fun observation => observation.checkpoint <= checkpoint)
   let mut unmatched := []
   for observation in eligible do
@@ -354,7 +384,7 @@ def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : 
     let errorPrefix := s!"checkpoint {checkpoint}: observation{source}"
     let last := observation.through?.getD observation.checkpoint
     if last < checkpoint then throw s!"{errorPrefix}: its last eligible checkpoint was {last}"
-    if let .error reason := observation.facts.forM (fun fact => fact.check s events) then
+    if let .error reason := observation.facts.forM (fun fact => fact.check s events disclosures) then
       if checkpoint < last then
         unmatched := observation :: unmatched
       else if observation.through?.isSome then

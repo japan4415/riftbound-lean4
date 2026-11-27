@@ -866,6 +866,37 @@ def check_seat_view(folder: Path, command: Callable[..., str], archive: Path,
     return view
 
 
+def check_disclosure_observations(folder: Path, command: Callable[..., str], archive: dict,
+                                  steps: list[dict], looked: int, revealed: int) -> None:
+    source = folder / "disclosure-observations-input.json"
+    output = folder / "disclosure-observations-archive.json"
+    inputs = json.loads(json.dumps(archive["input"]))
+    game = inputs["games"][0]
+    observations = []
+    for checkpoint, audience in ((looked, 0), (revealed, None)):
+        evidence = [row for row in steps[checkpoint]["disclosures"] if row["onlyFor"] == audience]
+        assert evidence and all(row["cards"] for row in evidence)
+        disclosures = [{"onlyFor": None if audience is None else {"n": audience},
+                        "cards": [{"code": code} for code in row["cards"]]}
+                       for row in evidence]
+        observations.append({"checkpoint": checkpoint - 1, "through": checkpoint,
+                             "facts": [{"disclosuresInOrder": {"disclosures": disclosures}}]})
+    game["observations"] = observations
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    summary = json.loads(command("record", source, output))
+    assert summary["exact"] and json.loads(command("verify", output)) == summary
+    assert json.loads(output.read_text(encoding="utf-8"))["games"][0]["checkpoints"] == (
+        archive["games"][0]["checkpoints"])
+
+    private = observations[0]["facts"][0]["disclosuresInOrder"]["disclosures"][0]
+    private["onlyFor"] = {"n": 1}
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, output, error="card disclosures did not occur")
+    private["onlyFor"] = None
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, output, error="card disclosures did not occur")
+
+
 def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: dict) -> None:
     for label, (archive, suffix, live_row) in fixtures.items():
         path = folder / f"judge-{label}-private-rewind-archive.json"
@@ -895,6 +926,7 @@ def check_private_rewinds(folder: Path, command: Callable[..., str], fixtures: d
                             for d in row.get("disclosures", [])))
             published = {card for d in p1[revealed]["disclosures"] if d["public"] for card in d["cards"]}
             assert published and published <= inspected
+            check_disclosure_observations(folder, command, archive, steps, looked, revealed)
             rewind = p1[live_row["i"]]
             assert rewind["judgeRewind"] < rewind["i"]
             assert all(slot is None for slot in rewind["state"]["zones"]["p0.hand"])

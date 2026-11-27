@@ -1586,8 +1586,10 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     if let .unknown description := answer then
       missing := some description
       break
-    let (_, next, events) ← input.advance history answer (checkpoint + 1) fuel
-    pending ← ReplayObservation.checkAt pending (checkpoint + 1) next.state events
+    let index := checkpoint + 1
+    let (_, next, events) ← input.advance history answer index fuel
+      (ReplayObservation.wantsDisclosures pending index)
+    pending ← ReplayObservation.checkAt pending index next.state events next.disclosures
     history := next :: history
     checkpoint := checkpoint + 1
     exact := exact && next.answerExact
@@ -1659,7 +1661,8 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
     let (action, next, events) ← input.advance history answer (index + 1) fuel
-    pending ← ReplayObservation.checkAt pending (index + 1) next.state events
+      (ReplayObservation.wantsDisclosures pending (index + 1))
+    pending ← ReplayObservation.checkAt pending (index + 1) next.state events next.disclosures
     exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
     let legacyPlays := if upgradePermanentChoices then
