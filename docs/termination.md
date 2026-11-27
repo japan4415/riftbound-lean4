@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3h に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3i に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -100,9 +100,15 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`putTrigger_automatic_mightInputs`](../Riftbound/Invariant/TriggerFinalization.lean) は、対象を選ばず通常の誘発を確定するときに、常在型能力の発生源と効果文、印刷・期限付きの Might、バフと装備の加算値が保たれることを示す。効果文には装備でコピーしたものも含む。[`putTrigger_automatic_mightWatches`](../Riftbound/Invariant/TriggerFinalization.lean) は、ターン中に付与された能力も含め、監視中のしきい値の一覧が保たれることを示す。
 
-[`advance_triggers_noMightWatches`](../Riftbound/Invariant/TriggerWork.lean) は、監視中のしきい値が空の局面で、実際の `advance` が誘発キューの件数＋1ステップ以内に次の判断か元の処理へ進むことを示す。監視がある局面でも、各 Unit の Might が変わらなければ新しい誘発は生じない。常在型能力の評価や Combat の補正まで含め、Might 全体が保たれる条件の証明が残る。
+[`advance_triggers_noMightWatches`](../Riftbound/Invariant/TriggerWork.lean) は、監視中のしきい値が空の局面で、実際の `advance` が誘発キューの件数＋1ステップ以内に次の判断か元の処理へ進むことを示す。監視がある局面でも、各 Unit の Might が変わらなければ新しい誘発は生じない。
 
 静的カード検査を通る試験用定義で、Chain 上の項目数を Might に加える常在型能力を置くと、通常の誘発を Chain に置くだけで Might が4から5に増え、さらに誘発が1件積まれた。監視するしきい値自体は同じなので、この経路を扱うには常在型能力が何を参照するかも考える必要がある。
+
+### 3i. Might を変える常在型能力の読み取り
+
+[`db_mightReads`](../RiftboundCards/MightRead.lean) は、登録済みのカードとトークンで Might や Tank・Assault・Shield に関わる常在型能力の条件と参照式が、証明対象の式に収まることを `decide` で確かめる。印刷された定義とユニット化した Gear の定義を照合する。
+
+[`triggersStep_activeMightMods`](../Riftbound/Invariant/MightRead.lean) は、検査を通ったデータベースでは、通常の誘発を処理しても既存のオブジェクトで有効な Might 関連の常在型補正の一覧が変わらないことを示す。装備でコピーした効果文、Trash の枚数を数える式、今の戦闘で攻撃側や防御側にいるかの判定を含む。補正の量、装備から着用者に付与した効果、Assault と Shield の加算を合成して最終的な Might を保つ証明が残る。
 
 ## 4. 進め方の案（単位に分ける）
 

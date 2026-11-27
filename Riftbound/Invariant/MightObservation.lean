@@ -55,7 +55,8 @@ private theorem animated_allAbilities (d : CardDef) (n : Nat) :
     (d.withUnitGearMight n).allAbilities = (d.withUnitGearMight 0).allAbilities := by
   rfl
 
-private def DeclaredDefinition (db : CardDB) (seen : CardDef) : Prop :=
+/-- A card definition read during play has the printed or animated abilities from the database. -/
+def DeclaredDefinition (db : CardDB) (seen : CardDef) : Prop :=
   ∃ d, db.find? seen.id = some d ∧
     (seen.allAbilities = d.allAbilities ∨ seen.allAbilities = (d.withUnitGearMight 0).allAbilities)
 
@@ -63,7 +64,8 @@ private theorem declared_of_find {db : CardDB} {id : CardId} {d : CardDef}
     (found : db.find? id = some d) : DeclaredDefinition db d := by
   exact ⟨d, (CardDB.find?_id found) ▸ found, Or.inl rfl⟩
 
-private theorem declared_of_cardDef {s : GameState} {id : ObjId} {d : CardDef}
+/-- An object's definition is declared in the database, with Gear animation if applicable. -/
+theorem declared_of_cardDef {s : GameState} {id : ObjId} {d : CardDef}
     (found : s.cardDef? id = some d) : DeclaredDefinition s.cards d := by
   unfold GameState.cardDef? at found
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at found
@@ -78,7 +80,8 @@ private theorem declared_of_cardDef {s : GameState} {id : ObjId} {d : CardDef}
     subst d
     exact ⟨printed, (CardDB.find?_id lookup) ▸ lookup, Or.inr (animated_allAbilities printed n)⟩
 
-private theorem declared_of_attachmentText {s : GameState} {id : ObjId} {last : Bool}
+/-- Copied Effect Text comes from a declared definition. -/
+theorem declared_of_attachmentText {s : GameState} {id : ObjId} {last : Bool}
     {d : CardDef} {stamp : Timestamp} (member : (d, stamp) ∈ s.attachmentTextDefs id last) :
     DeclaredDefinition s.cards d := by
   unfold GameState.attachmentTextDefs at member
