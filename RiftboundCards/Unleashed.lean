@@ -3403,7 +3403,7 @@ def UNL_117.meta : CardDef :=
 def UNL_117 : CardDef :=
   { UNL_117.meta with
     abilities := [.passive .always [.playToBf [.enemyAlone], .playToBfAll [.enemyAlone]]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-118
 /--
@@ -3488,8 +3488,9 @@ def UNL_120.meta : CardDef :=
 /-- Rengar. -/
 def UNL_120 : CardDef :=
   { UNL_120.meta with
-    abilities := [.passive .always [.playToBf [.enemyOccupied]]],
-    status := .drafted }
+    -- Official Unleashed errata extends both the location and timing permissions of Ambush.
+    abilities := [.passive .always [.ambushToBf [.enemyOccupied]]],
+    status := .full }
 
 -- BEGIN GENERATED UNL-121
 /--

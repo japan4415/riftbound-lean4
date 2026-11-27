@@ -300,7 +300,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
   | .moveExtraUnitPowerHere _ => true
-  | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
+  | .playToBf fs | .ambushToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .playHereFor _ _ => true
   | .noPlayToBase => true

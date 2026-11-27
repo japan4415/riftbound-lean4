@@ -744,15 +744,30 @@ def GameState.chooseCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List Ob
       else acc) 0
   else 0
 
-/-- Ambush grants Reaction when a Unit is played to a Battlefield where its player has a Unit
-(CR 822.1.b). -/
+/-- Read a play-location filter for the player playing the card, including a card owned by
+someone else (CR 188, 355.2, 355.17.b). -/
+def GameState.matchesPlayLocation (s : GameState) (p : PlayerId) (c b : ObjId)
+    (filters : FilterList) : Bool :=
+  let context := if (s.obj? c).any (·.controller != p) then
+    s.modObj c (fun o => { o with controller := p })
+  else s
+  FilterList.holds context c Env.empty b filters == some true
+
+/-- Locations covered by the card's Ambush keyword, including printed extensions (CR 822.1.d). -/
+def CardDef.ambushBattlefieldFilters (d : CardDef) : List FilterList :=
+  if !d.hasKeyword .ambush then [] else
+    FilterList.ofList [.myUnitsHere] :: d.abilities.flatMap (fun
+      | .passive .always mods => mods.filterMap (fun
+        | .ambushToBf filters => some (FilterList.ofList filters)
+        | _ => none)
+      | _ => [])
+
+/-- A Unit has Reaction when played to a location covered by its Ambush permission (CR 822). -/
 def GameState.ambushAt (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Bool :=
-  s.hasKw c .ambush && (match ts with
-    | [bf] => (s.cardDef? bf).any (·.hasType .battlefield) &&
-        (s.zone .battlefieldZone).any (fun u =>
-          (s.cardDef? u).any (·.hasType .unit) &&
-            (s.obj? u).any (fun o => o.controller == p && o.loc == some bf))
-    | _ => false)
+  match ts with
+  | [bf] => (s.cardDef? bf).any (·.hasType .battlefield) &&
+    (s.cardDef? c).any (fun d => d.ambushBattlefieldFilters.any (s.matchesPlayLocation p c bf))
+  | _ => false
 
 /-- The lowest Energy the cost of the card `c` can be cut to: the greatest floor of the cuts. -/
 def GameState.cutFloor (s : GameState) (p : PlayerId) (c : ObjId) : Nat :=
@@ -1071,15 +1086,6 @@ def CardDef.playBattlefieldFilters (d : CardDef) : List FilterList :=
         | _ => none)
     | _ => [])
 
-/-- Read a play-location filter for the player playing the card, including a card owned by
-someone else (CR 188, 355.2, 355.17.b). -/
-def GameState.matchesPlayLocation (s : GameState) (p : PlayerId) (c b : ObjId)
-    (filters : FilterList) : Bool :=
-  let context := if (s.obj? c).any (·.controller != p) then
-    s.modObj c (fun o => { o with controller := p })
-  else s
-  FilterList.holds context c Env.empty b filters == some true
-
 /-- Whether a Battlefield passes the restrictions on playing the permanent there. A permission
 from another effect cannot override a restriction (CR 054.2, 355.17.b). -/
 def GameState.playBfLocationAllowed (s : GameState) (p : PlayerId) (c : ObjId)
@@ -1095,9 +1101,9 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
   match s.cardDef? c with
   | some d =>
     if d.canPlayAtBattlefield then
-      -- the units of the player can be played to the Battlefields another object of theirs names
+      -- Friendly Units can be played to locations permitted by a friendly source.
       let granted : List FilterList := s.inPlay.flatMap (fun g =>
-        if (s.obj? g).any (·.controller == p) then
+        if (s.obj? g).any (fun object => s.config.mode.sameSide p object.controller) then
           ((s.cardDef? g).map (fun dg => dg.abilities.flatMap (fun ab =>
             match ab with
             | Ability.passive .always mods =>
@@ -1109,10 +1115,8 @@ def GameState.playBfOptions (s : GameState) (p : PlayerId) (c : ObjId) : List Ob
         (s.obj? g).any (·.controller == p) &&
           FilterList.holds s c Env.empty g (FilterList.ofList [.permitsOpenPlay]) == some true)
       let open_ : List FilterList := if permit then [FilterList.ofList [.openBf]] else []
-      -- Ambush: to a Battlefield where the player has Units
-      let ambush : List FilterList :=
-        if d.hasKeyword .ambush then [FilterList.ofList [.myUnitsHere]] else []
-      let anywhereAllowed := d.playBattlefieldFilters ++ open_ ++ ambush ++ granted
+      let anywhereAllowed := d.playBattlefieldFilters ++ open_ ++
+        d.ambushBattlefieldFilters ++ granted
       let nextUnit := d.hasType .unit && (s.fxOf p).contains .nextUnitAnywhereBuffed
       (s.zone .battlefieldZone).filter (fun b =>
         s.playBfLocationAllowed p c d b &&

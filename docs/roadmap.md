@@ -2407,6 +2407,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Mindsplitter は誘発の対象にした相手の手札を公開し、その手札から選んだ1枚を捨てさせる。Machine Evangel は自分の Base に Recruit を3体出す。Renata Glasc, Industrialist は自分のトークンを Ready で登場させる。Danger Zone は Repeat を選べて、自分が支配する Mech だけを強化する。
 - Bandle Soldier の追加効果は自分の XP で決まり、Scrutinizing Sergeant は自分自身とチームメイトを含む味方の Unit を数える。6枚を確認し、全1,103枚中730枚を `full` とした。
 
+### 敵がいる Battlefield へのプレイ
+
+- 敵の Unit がいる場所への Ambush を Rengar, Trophy Hunter に適用する。通常の配置先と Reaction の両方でこの許可を確認する。Dauntless Vanguard の配置先にも敵の Unit が必要になる。[Unleashed 公式訂正](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) [公式総合ルール 822.1.d](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Arachnoid Horror は同じ場所に他の味方 Unit がいない敵を探す。チームメイトもこの配置の許可を使える。敵の Unit に付いた Gear があっても、Unit が一人かどうかの判定は変わらない。[公式総合ルール 740.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

@@ -83,6 +83,22 @@ def players (s : GameState) : List PlayerId := (List.range s.playerCount).map (f
 def inPlay (s : GameState) : List ObjId :=
   s.players.flatMap (fun p => s.zone (.player p .base)) ++ s.zone .battlefieldZone
 
+/-- The Unit has no other friendly Unit at its location. Together at a Battlefield includes a
+teammate's Units. At a Base, the other Unit must occupy the same physical Base. -/
+def unitIsAloneAt (s : GameState) (id : ObjId) : Bool :=
+  (s.cardDef? id).any (·.hasType .unit) && (s.obj? id).any (fun object =>
+    !s.inPlay.any (fun other => other != id && (s.cardDef? other).any (·.hasType .unit) &&
+      (s.obj? other).any (fun companion =>
+        s.config.mode.sameSide object.controller companion.controller &&
+          match object.loc with
+          | some field => companion.loc == some field
+          | none => s.locate other == s.locate id)))
+
+/-- One of the opponents of the seat has this Unit at the named Battlefield. -/
+def enemyUnitAt (s : GameState) (p : PlayerId) (bf id : ObjId) : Bool :=
+  (s.cardDef? id).any (·.hasType .unit) && (s.obj? id).any (fun o =>
+    o.loc == some bf && !s.config.mode.sameSide p o.controller)
+
 /-- The public XP of a player, whether or not they have a Legend (CR 729). -/
 def xpOf (s : GameState) (p : PlayerId) : Nat :=
   s.experience.getD p.n 0
@@ -575,17 +591,11 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
   | .myUnitsHere =>
     some ((s.obj? self).any (fun me => !(s.unitsAtOf id me.controller).isEmpty))
   | .enemyAlone =>
-    some (match s.obj? self with
-      | some me =>
-        ((s.zone .battlefieldZone).filter (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          !s.config.mode.sameSide me.controller o.controller) && (s.cardDef? u).any (·.hasType .unit))).length == 1
-      | none => false)
+    some ((s.obj? self).any (fun me => (s.zone .battlefieldZone).any (fun unit =>
+      s.enemyUnitAt me.controller id unit && s.unitIsAloneAt unit)))
   | .enemyOccupied =>
-    some (match s.obj? self with
-      | some me =>
-        (s.zone .battlefieldZone).any (fun u => (s.obj? u).any (fun o => o.loc == some id &&
-          !s.config.mode.sameSide me.controller o.controller))
-      | none => false)
+    some ((s.obj? self).any (fun me => (s.zone .battlefieldZone).any
+      (s.enemyUnitAt me.controller id)))
   | .hidden =>
     some (match s.obj? id with
       | some o => (s.zone (.player o.owner .hidden)).contains id

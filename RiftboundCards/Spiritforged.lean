@@ -2744,7 +2744,7 @@ def SFD_093 : CardDef :=
 
     -- may be played to an occupied enemy Battlefield (as it is played, with its cost)
     abilities := [.passive .always [.playToBf [.enemyOccupied]]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-094
 /--

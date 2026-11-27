@@ -2799,10 +2799,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let (s1, v) ← put s s.me "SFD-093" .hand
   let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
   let (s3, bf2) ← putBf s2 s.me "SFD-216"
+  let (gearOnly, _) ← putAt s3 s.you "SFD-009" bf2
   let r ← play s3 s.me v [s.bf0]
   return (r.zone .battlefieldZone).any (fun o => r.isCard "SFD-093" o &&
       (r.obj? o).any (·.loc == some s.bf0)) &&
-    (play s3 s.me v [bf2]).isNone
+    (play s3 s.me v [bf2]).isNone && (play gearOnly s.me v [bf2]).isNone
 
 -- Lucian, Gunslinger (SFD-028): when it attacks, damage equal to its Assault to an enemy unit here
 #guard tsf fun s => do

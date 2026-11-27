@@ -534,7 +534,7 @@ def StaticMod.runs : StaticMod → Bool
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
   | .moveExtraUnitPowerHere _ => true
-  | .playToBf fs => FilterList.understood (FilterList.ofList fs)
+  | .playToBf fs | .ambushToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .playHereFor _ _ => true
   | .noPlayToBase => true

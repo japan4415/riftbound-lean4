@@ -196,17 +196,6 @@ def GameState.banisherOf (s : GameState) (id : ObjId) : Option ObjId :=
       | Ability.passive .always mods => mods.contains .banishOnDeath
       | _ => false)))
 
-/-- The Unit has no other friendly Unit at its location. Together at a Battlefield includes a
-teammate's Units. At a Base, the other Unit must occupy the same physical Base. -/
-def GameState.unitIsAloneAt (s : GameState) (id : ObjId) : Bool :=
-  (s.cardDef? id).any (·.hasType .unit) && (s.obj? id).any (fun object =>
-    !s.inPlay.any (fun other => other != id && (s.cardDef? other).any (·.hasType .unit) &&
-      (s.obj? other).any (fun companion =>
-        s.config.mode.sameSide object.controller companion.controller &&
-          match object.loc with
-          | some field => companion.loc == some field
-          | none => s.locate other == s.locate id)))
-
 /-- Append the authoritative answer if the pre-existing replay mark would give a different one. -/
 def recordDeathCompany (notes : List TurnFx) (who : PlayerId) (dead : ObjId)
     (turn stamp : Nat) (recorded alone : Bool) : List TurnFx :=

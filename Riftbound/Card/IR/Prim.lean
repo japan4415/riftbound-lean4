@@ -559,6 +559,8 @@ inductive StaticMod where
   /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is
   attacking), as an ability. -/
   | playToBf (fs : List Filter)
+  /-- These destinations also qualify for this card's Ambush permissions (CR 822.1.d). -/
+  | ambushToBf (fs : List Filter)
   /-- The card is not played to the Base from the hand: only where `playToBf` says. -/
   | noPlayToBase
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/

@@ -1123,14 +1123,6 @@ theorem activatable_spec {s : GameState} {p : PlayerId} {src : ObjId} {idx : Nat
         | replacement _ _ _ => simp [ha] at h
         | triggered _ _ _ => simp [ha] at h
 
-/-- The Unit has Ambush and the pick names a Battlefield where its player has Units (CR 822): it can
-be played there as a Reaction. -/
-def ambushPick (s : GameState) (c : ObjId) (ts : List ObjId) : Bool :=
-  (s.cardDef? c).any (·.hasKeyword .ambush) &&
-    match s.bfPick ts with
-    | some b => FilterList.holds s c Env.empty b (FilterList.ofList [.myUnitsHere]) == some true
-    | none => false
-
 /-- The card is a Reaction (CR 813): a Gear with Quick-Draw has Reaction (CR 819). -/
 def reactSpell (s : GameState) (c : ObjId) : Bool :=
   s.cardHasReaction c
@@ -1142,7 +1134,7 @@ def reactable (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
   ((castable s p c pay ts flow pick ||
       (flow.isNone && s.extraOk p c ts pick && playable s p c pay none ts pick) ||
       (flow.isNone && bfPlayOk s p c pay ts pick)) &&
-    reactSpell s c) || ((flow.isNone && bfPlayOk s p c pay ts pick) && ambushPick s c ts)
+    reactSpell s c) || ((flow.isNone && bfPlayOk s p c pay ts pick) && s.ambushAt p c ts)
 
 /-- Every way the player can use an activated ability: each object they use abilities of, each
 ability, each payment that pays its cost, and each pick of targets, that the Pool covers. -/
@@ -1272,7 +1264,7 @@ theorem reactable_spec {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePoo
         (flow = none ∧ s.extraOk p c ts pick = true ∧ playable s p c pay none ts pick = true)) ∨
         (flow = none ∧ bfPlayOk s p c pay ts pick = true)) ∧
         reactSpell s c = true) ∨
-        ((flow = none ∧ bfPlayOk s p c pay ts pick = true) ∧ ambushPick s c ts = true) := by
+        ((flow = none ∧ bfPlayOk s p c pay ts pick = true) ∧ s.ambushAt p c ts = true) := by
   simp [reactable, and_assoc]
 
 /-- The Reactions listed are exactly the Spells that can be cast in answer. -/

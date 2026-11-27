@@ -1542,6 +1542,48 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     (s5.playBfOptions s.me d).contains s.bf0 && !(s2.playBfOptions s.me d).contains s.bf0 &&
     s6.hasKw c .temporary == false
 
+-- The Arachnoid Horror permission is shared with a teammate, and enemy teammates keep
+-- each other company. An attached Gear does not keep its Unit from being alone.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let enemyAlly : PlayerId := ⟨3⟩
+  let s := unleashedTeamMain labState
+  let (s, field) ← putBf s enemy "VEN-158"
+  let (s, arrival) ← put s ally "UNL-111" .hand
+  let (s, _) ← putAt (s.control enemy field) enemy "UNL-111" field
+  let (s, _) ← putAt s enemy "SFD-009" field
+  let (permitted, _) ← put s p "UNL-117" .base
+  let (accompanied, _) ← putAt permitted enemyAlly "UNL-111" field
+  let main := { (permitted.rich ally) with active := some ally, pending := [.priority ally] }
+  let recruit : Action := ⟨.player ally, .playCard arrival (payOf main arrival) [field]⟩
+  let (entered, _) ← (step 100 main recruit).toOption
+  return !(s.playBfOptions ally arrival).contains field &&
+    !(accompanied.playBfOptions ally arrival).contains field &&
+    (entered.unitsAtOf field ally).any (fun unit =>
+      (entered.cardDef? unit).any (·.id == cid "UNL-111"))
+
+-- Rengar extends Ambush at Reaction speed to an enemy Unit's Battlefield (CR 822.1.d).
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, rengar) ← put s p "UNL-120" .hand
+  let (s, rival) ← putAt (s.control q field) q "UNL-111" field
+  let (s, gearOnly) ← putBf s q "VEN-158"
+  let (s, _) ← putAt s q "SFD-009" gearOnly
+  let (s, responseTo) ← onChain s q "OGN-154"
+  let reaction := { (s.rich p) with active := some q, pending := [.chainPass p 0, .priority q] }
+  let playTo (ts : List ObjId) : Action := ⟨.player p, .playCard rengar (payOf reaction rengar) ts⟩
+  let (played, _) ← (step 100 reaction (playTo [field])).toOption
+  return (legalFrameActions reaction).contains (playTo [field]) &&
+    !(step 100 reaction (playTo [gearOnly])).isOk &&
+    !(step 100 reaction (playTo [])).isOk &&
+    (played.unitsAtOf field p).any (fun unit =>
+      (played.cardDef? unit).any (·.id == cid "UNL-120")) &&
+    played.inPlay.contains rival && (played.zone .chain).contains responseTo
+
 -- LeBlanc suppresses only her own controller's Temporary triggers at her Battlefield.
 #guard tun fun s => do
   let p : PlayerId := ⟨0⟩
