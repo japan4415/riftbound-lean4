@@ -20,6 +20,22 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Forbidding Waste weakens only a lone defender at its Battlefield.
+#guard tun fun s => do
+  let attacker : PlayerId := ⟨0⟩
+  let defender : PlayerId := ⟨2⟩
+  let teammate : PlayerId := ⟨3⟩
+  let board := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, field) ← putBf board defender "UNL-210"
+  let (s, attacking) ← putAt (s.control defender field) attacker "OGN-049" field
+  let (s, defending) ← putAt s defender "OGN-049" field
+  let (s, elsewhere) ← put s defender "OGN-049" .base
+  let combat := s.inCombatAt field attacker
+  let (together, _) ← putAt combat teammate "OGN-049" field
+  return s.mightNow defending == some 5 && combat.mightNow defending == some 3 &&
+    combat.mightNow attacking == some 5 && combat.mightNow elsewhere == some 5 &&
+    together.mightNow defending == some 5
+
 -- Frozen Fortress belongs to its controller even on the opponent's turn. On its controller's
 -- turn, lethal damage to the last Unit there prevents that Battlefield's Hold.
 #guard tun fun s => do

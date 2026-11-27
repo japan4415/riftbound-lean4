@@ -6047,7 +6047,7 @@ def UNL_210 : CardDef :=
   { UNL_210.meta with
     abilities := [.passive .always
       [.mightMinus (Selector.all .any .here [.ofType .unit, .defender, .alone]) (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-211
 /--
