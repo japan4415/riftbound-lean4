@@ -214,6 +214,15 @@ theorem rank_preserved {left right : List Nat} (rename : OrderedReferenceBijecti
       exact mem_earlier.mpr ⟨rename.forward_mem previous previousMem, (rename.order previousMem member).mpr order⟩
   simpa only [referenceRank, earlierLeft, earlierRight, List.length_map] using sameReferences.length_eq
 
+/-- Renaming a list of known references preserves its ordered list of ranks. -/
+theorem map_ranks {left right : List Nat} (rename : OrderedReferenceBijection left right)
+    {references : List Nat} (known : ∀ id ∈ references, id ∈ left) :
+    (references.map rename.forward).map (referenceRank right) = references.map (referenceRank left) := by
+  rw [List.map_map]
+  apply List.map_congr_left
+  intro reference member
+  exact rename.rank_preserved (known reference member)
+
 /-- Add the next allocation in both states. Fresh counters are larger than all
 references in their respective states, so extending the bijection preserves its order. -/
 def extendFresh {left right : List Nat} (rename : OrderedReferenceBijection left right)
@@ -467,6 +476,29 @@ theorem replaceAfterMove_forward {s t s' t' : GameState} {leftId rightId leftNew
     simp [replaceAfterMove, congrSupport, extendFresh, removePair, earlier]
 
 end OrderedReferenceBijection
+
+/-- The ordered contents of every zone, expressed with references ranked across all zones. -/
+def GameState.rankedZoneReferences (s : GameState) : List (Zone × List Nat) :=
+  (allZones s.playerCount).map fun zone =>
+    (zone, ((s.zone zone).map ObjId.n).map (referenceRank (s.zoneIds.map ObjId.n)))
+
+/-- If a correspondence takes every zone to the same ordered contents, both games
+have the same projection by reference rank. -/
+theorem GameState.rankedZoneReferences_eq {s t : GameState} (players : s.playerCount = t.playerCount)
+    (rename : OrderedReferenceBijection (s.zoneIds.map ObjId.n) (t.zoneIds.map ObjId.n))
+    (sameZones : ∀ z ∈ allZones s.playerCount,
+      ((s.zone z).map ObjId.n).map rename.forward = (t.zone z).map ObjId.n) :
+    s.rankedZoneReferences = t.rankedZoneReferences := by
+  unfold GameState.rankedZoneReferences
+  rw [← players]
+  apply List.map_congr_left
+  intro zone valid
+  have known (id : Nat) (member : id ∈ (s.zone zone).map ObjId.n) : id ∈ s.zoneIds.map ObjId.n := by
+    obtain ⟨object, found, rfl⟩ := List.mem_map.mp member
+    exact List.mem_map.mpr ⟨object, GameState.mem_zoneIds valid found, rfl⟩
+  have same := (rename.map_ranks known).symm
+  rw [sameZones zone valid] at same
+  exact congrArg (fun ids => (zone, ids)) same
 
 end Riftbound
 
