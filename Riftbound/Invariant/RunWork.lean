@@ -270,7 +270,8 @@ theorem Effect.ObservedFinite.eachPlayer {who : PlayerSel} {body : Effect}
     obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
     exact ⟨_, _, _, _, rfl, .cons finite .nil⟩
 
-private theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+/-- Resolve a Run instruction that immediately presents a decision, including its observer. -/
+theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {effect : Effect} {more : EffectList} {rest : List Frame} {keeps : List Frame → Prop}
     (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .run p src env (.cons effect more) :: rest)
@@ -317,30 +318,32 @@ theorem Effect.ObservedFinite.eitherOf {options : EffectList} (finite : options.
       apply advance_run_decision wf reads pending
       cases later <;> rfl
 
-private theorem advance_draw_frames {s : GameState} {keeps : List Frame → Prop}
-    (players : List PlayerId) (count : Nat) (wf : s.WF) (reads : MightRead.database s.cards)
-    (frames : ResolutionPrefix (players.map fun p => .draw p count) keeps s.pending)
+/-- Resolve a prefix of draws, preserving the tracked continuation and ordinary trigger order. -/
+theorem advance_draw_frames {s : GameState} {frames : List Frame}
+    {keeps : List Frame → Prop} (count : Nat) (draws : ∀ f ∈ frames, ∃ p, f = .draw p count)
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : ResolutionPrefix frames keeps s.pending)
     (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
     AdvanceTo s keeps := by
-  induction players generalizing s with
+  induction frames generalizing s with
   | nil =>
-    obtain ⟨tail, ready, tracked⟩ := frames
+    obtain ⟨tail, ready, tracked⟩ := pending
     exact .resume wf (ready.symm ▸ tracked)
-  | cons p players ih =>
-    obtain ⟨tail, ready, tracked⟩ := frames
-    let draws := players.map (fun q => Frame.draw q count)
-    let tracks := ResolutionPrefix draws keeps
-    have resolution : ∀ f ∈ draws, f.isResolution = true := by
-      intro frame member
-      obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
+  | cons first frames ih =>
+    obtain ⟨p, rfl⟩ := draws first List.mem_cons_self
+    obtain ⟨tail, ready, tracked⟩ := pending
+    have following f (member : f ∈ frames) := draws f (List.mem_cons_of_mem _ member)
+    have resolution : ∀ f ∈ frames, f.isResolution = true := by
+      intro f member
+      obtain ⟨_, rfl⟩ := following f member
       rfl
-    have begins : s.pending = .draw p count :: (draws ++ tail) := ready
+    let tracks := ResolutionPrefix frames keeps
     have work : AdvanceTo s tracks := by
-      obtain ⟨t, used, events, _, path, result⟩ :=
-        advance_draw_until wf reads begins tracks ⟨tail, rfl, tracked⟩
+      obtain ⟨t, used, events, _, path, outcome⟩ :=
+        advance_draw_until wf reads ready tracks ⟨tail, rfl, tracked⟩
           (fun _ route q ne => route.insert resolution inserted q ne)
-      exact ⟨t, used, events, path, result⟩
-    exact work.then reads (fun state safe checked kept => ih safe checked kept)
+      exact ⟨t, used, events, path, outcome⟩
+    exact work.then reads (fun _ safe checked kept => ih following safe checked kept)
 
 /-- Draw instructions finish their generated batches, or stop at Burn Out or another decision. -/
 theorem Effect.ObservedFinite.draw (who : PlayerSel) (amount : Amount) :
@@ -365,8 +368,11 @@ theorem Effect.ObservedFinite.draw (who : PlayerSel) (amount : Amount) :
       · exact fun _ route q ne => route.insert resolution
           (fun _ keep q' ne' => keep.insert inserted q' ne') q ne
     exact head.then reads (fun state safe checked tracked =>
-      advance_draw_frames players count safe checked tracked
-        (fun _ keep q ne => keep.insert inserted q ne))
+      advance_draw_frames count
+        (fun frame member => by
+          obtain ⟨q, _, h⟩ := List.mem_map.mp member
+          exact ⟨q, h.symm⟩)
+        safe checked tracked (fun _ keep q ne => keep.insert inserted q ne))
   cases players : who.resolve s p live with
   | none => exact enter [] 0 (by simp only [runEffect, Effect.pickSel?, Prim.pickSel?,
       runEffect1, runPrimEffect, players]; rfl)

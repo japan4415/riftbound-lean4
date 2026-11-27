@@ -166,13 +166,19 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`RiftboundCards.step_chainPass_last_checked_to_decision`](../RiftboundCards/MightRead.lean) は、対応する命令列であれば、最後の Pass からこの宣言確定を含めて次の決定点か試合終了まで進むことを示す。追加の fuel でも結果とイベント列は一致する。個別の対象を記録した Repeat の証明も、後続の保留 Spell を同じ処理へ渡す。
 
+### 3s. Showdown の最後の Pass とダメージ割り当ての確定
+
+`step_showdownPass_last_to_decision` と `step_assignDone_to_decision` は、実際の入力処理とイベント観測を経て、次の決定点か空のスタックに到達することを示す。前者は Combat のダメージ置換順や割り当ての選択、割り当て不要の Combat、Combat がない場合の支配確定を扱う。後者はもう一方の割り当て、致死ダメージで生じる死亡置換の選択、ダメージ適用からリコール・戦闘結果・支配確定・Cleanup までを扱う。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
+
+継続スタックには、通常の移動で残る Cleanup を含められる。連続する Cleanup を消化した後、先頭が通常の優先権などの入力フレームか空になる場合を扱う。通常の誘発は残る解決フレームの後ろに積み、即時 Add は観測時に実行する。ダメージ置換などの入力が出た場合はそこで止まる。登録カード用の定理は4人戦の投了後も使え、fuel を増やしても状態とイベント列は一致する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成と、観測まで含めた即時 Add の処理は証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass から次の決定点までの停止は証明済み。Chain、Combat、他の合法手と作業フレームの合成が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。残る入力や効果と作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。

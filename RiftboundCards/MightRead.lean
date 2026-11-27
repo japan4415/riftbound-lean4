@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
@@ -104,6 +105,44 @@ theorem step_priority_pass_to_decision {s : Riftbound.GameState} {p : Riftbound.
       ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
   exact Riftbound.step_priority_pass_to_decision wf (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, a final Showdown Pass reaches the next decision or game end.
+Additional fuel gives the same state and events. -/
+theorem step_showdownPass_last_to_decision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {p : Riftbound.PlayerId} {passes cleanups : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  obtain ⟨t, used, events, stopped, finished⟩ :=
+    Riftbound.step_showdownPass_last_to_decision wf (mightReads_of_registered cards)
+      pending last legal decision front
+  exact ⟨t, used, events, stopped,
+    fun extra => Riftbound.step_mono finished (Nat.le_add_right _ extra)⟩
+
+/-- Assignment confirmation with the registered cards advances to a decision or game end,
+including when lethal damage needs a replacement choice. -/
+theorem step_assignDone_to_decision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {att side : Riftbound.PlayerId} {acc : List Riftbound.ObjId}
+    {done : List (Riftbound.ObjId × Nat)} {cleanups : Nat}
+    {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .assign bf att side acc done ::
+      Riftbound.combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Riftbound.Legal s ⟨.player side, .assignDone⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player side, .assignDone⟩ = .ok (t, events) := by
+  obtain ⟨t, used, events, stopped, finished⟩ :=
+    Riftbound.step_assignDone_to_decision wf (mightReads_of_registered cards)
+      pending legal decision front
+  exact ⟨t, used, events, stopped,
+    fun extra => Riftbound.step_mono finished (Nat.le_add_right _ extra)⟩
 
 /-- For registered cards, check the top item's actual Run programs and follow the final
 Chain Pass through deferred limited Spell declarations to a decision. -/
