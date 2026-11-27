@@ -119,6 +119,8 @@ Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"
 
 単体の Standard Move は `observedStandardMove` の `move` に `seat`、Unit のコード `unit`、移動先 `destination` を指定できる。移動先は `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}`。観測した出発地は `from`、支払った移動費用は `fee` に入れ、該当する手を絞れる。`inspect` の `answerByCode` から転記できる。推定した移動には `inferredStandardMove` の `move` と `evidence` を使う。
 
+カードのプレイは `observedCardPlay` の `play` に、プレイした `seat`、出したカード `source`、宣言順の対象 `targets` を指定できる。各カードを `{"card":{"code":"OGN-001"}}` で表し、観測できた `location`、`controller`、`exhausted` で候補を絞れる。支払いは `payment`、Flow の費用は `flowCost`、追加コストの捨て札は `discard`、最初のモードや移動先は `choice`、対象のプレイヤーは `playerTarget` で指定できる。入力例は `inspect` の `answerByCode` に出る。一致する合法手が複数なら `exact: false` になる。推定したプレイは `inferredCardPlay` の `play` と `evidence` に記録する。
+
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 
 Sealed や Draft のサイドボードを照合する場合は、`limitedPools` に各席が受け取ったカードの ID を、同じカードの枚数も含めて登録する。ゲームごとに選んだデッキを `games[].decks.limited.decks` に記録する。Basic Rune はプール外から持ち込める。ブランクの Battlefield は `{"code":"TKN-LimitedBlank"}` で表す。

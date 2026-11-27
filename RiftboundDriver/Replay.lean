@@ -152,6 +152,58 @@ structure ReplayStandardMove where
   fee? : Option Cost := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A physical card described by its printed code and, when observed, its location. -/
+structure ReplayCardReference where
+  /-- The printed identity of the card. -/
+  card : CardId
+  /-- The zone or Battlefield before the answer was applied. -/
+  location? : Option ReplayCardLocation := none
+  /-- The controlling seat, if the source records it. -/
+  controller? : Option PlayerId := none
+  /-- Whether a permanent was exhausted, if visible in the source. -/
+  exhausted? : Option Bool := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The response to a play's separately declared discard cost. -/
+inductive ReplayPlayDiscard where
+  /-- The play did not declare a discard. -/
+  | none
+  /-- The card used to pay the cost. -/
+  | card (reference : ReplayCardReference)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The mode and shared destination of the first effect on a play. -/
+inductive ReplayPlayChoice where
+  /-- The play has no mode or shared destination. -/
+  | plain
+  /-- The chosen mode index. -/
+  | mode (index : Nat)
+  /-- The chosen Battlefield, or the Base indicated by the effect. -/
+  | destination (place : ReplayUnitPlace)
+  /-- A mode that also chooses a destination. -/
+  | modeDestination (index : Nat) (place : ReplayUnitPlace)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A card play transcribed from the declaration without engine-generated object IDs. -/
+structure ReplayCardPlay where
+  /-- The seat playing the card. -/
+  seat : PlayerId
+  /-- The card and its zone before the play. -/
+  source : ReplayCardReference
+  /-- The object targets, in declaration order. -/
+  targets : List ReplayCardReference
+  /-- The exact declared payment, if available. -/
+  payment? : Option RunePool.Payment := none
+  /-- The stated Flow price, before discounts, if available. -/
+  flowCost? : Option Cost := none
+  /-- The stated discard, including an explicit decision to decline it. -/
+  discard? : Option ReplayPlayDiscard := none
+  /-- The first effect's mode or destination, if observed. -/
+  choice? : Option ReplayPlayChoice := none
+  /-- The player selected by the declaration, if recorded. -/
+  playerTarget? : Option PlayerId := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -170,6 +222,10 @@ inductive ReplayAnswer where
   | observedStandardMove (move : ReplayStandardMove)
   /-- A Standard Move was inferred from incomplete observations. -/
   | inferredStandardMove (move : ReplayStandardMove) (evidence : String)
+  /-- The card played and its declared targets were observed. -/
+  | observedCardPlay (play : ReplayCardPlay)
+  /-- The declaration of a card play was reconstructed from incomplete observations. -/
+  | inferredCardPlay (play : ReplayCardPlay) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -207,6 +263,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     throw s!"answer {index}: a card pick by code needs the current game state"
   | .observedStandardMove _ | .inferredStandardMove _ _ =>
     throw s!"answer {index}: a move by card code needs the current game state"
+  | .observedCardPlay _ | .inferredCardPlay _ _ =>
+    throw s!"answer {index}: a play by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
@@ -290,6 +348,65 @@ private def ReplayStandardMove.resolve (move : ReplayStandardMove) (s : GameStat
     | throw s!"seat {move.seat.n} has no legal Standard Move of {move.unit.code} to {(toJson move.destination).compress}"
   return (action, matching.length == 1)
 
+private def ReplayCardReference.ofObject? (s : GameState) (id : ObjId) :
+    Option ReplayCardReference := do
+  let object ← s.obj? id
+  let card ← object.kind.cardId?
+  return {
+    card, location? := replayCardLocation s id, controller? := some object.controller
+    exhausted? := if s.inPlay.contains id then some object.exhausted else none }
+
+private def ReplayCardReference.matches (s : GameState) (ref : ReplayCardReference) (id : ObjId) : Bool :=
+  (s.obj? id).any (fun object =>
+    object.kind.cardId? == some ref.card && ref.location?.all (·.matches s id) &&
+      ref.controller?.all (· == object.controller) &&
+      ref.exhausted?.all (fun exhausted => s.inPlay.contains id && exhausted == object.exhausted))
+
+private def ReplayPlayDiscard.ofObject? (s : GameState) : Option ObjId → Option ReplayPlayDiscard
+  | .none => some .none
+  | some id => (.card ·) <$> ReplayCardReference.ofObject? s id
+
+private def ReplayPlayDiscard.matches (s : GameState) : ReplayPlayDiscard → Option ObjId → Bool
+  | .none, .none => true
+  | .card ref, some id => ref.matches s id
+  | _, _ => false
+
+private def ReplayPlayChoice.ofPick? (s : GameState) (pick : SpellPick) : Option ReplayPlayChoice :=
+  let place (field : Option ObjId) := replayMoveDestination s (field.elim .base .battlefield)
+  match pick.effectChoice with
+  | .plain => some .plain
+  | .mode index => some (.mode index)
+  | .destination field => .destination <$> place field
+  | .modeDestination index field => .modeDestination index <$> place field
+  | _ => none
+
+/-- Describe a play with the known card identities, targets, and transcribable choices. -/
+def ReplayCardPlay.fromAction? (s : GameState) (action : Action) : Option ReplayCardPlay := do
+  let .player seat := action.actor | none
+  let .playCard id payment targets flowCost? discard pick := action.kind | none
+  let source ← ReplayCardReference.ofObject? s id
+  let targets ← targets.mapM (ReplayCardReference.ofObject? s)
+  return {
+    seat, source, targets, payment? := some payment, flowCost?
+    discard? := ReplayPlayDiscard.ofObject? s discard, choice? := ReplayPlayChoice.ofPick? s pick
+    playerTarget? := pick.playerTarget }
+
+private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player play.seat && match action.kind with
+    | .playCard id payment targets flowCost discard pick =>
+      play.source.matches s id && play.targets.length == targets.length &&
+        (play.targets.zip targets).all (fun (reference, target) => reference.matches s target) &&
+        play.payment?.all (· == payment) && play.flowCost?.all (some · == flowCost) &&
+        play.discard?.all (fun declared => declared.matches s discard) &&
+        play.choice?.all (fun declared => some declared == ReplayPlayChoice.ofPick? s pick) &&
+        play.playerTarget?.all (some · == pick.playerTarget)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {play.seat.n} has no legal play of {play.source.card.code} with the recorded declaration"
+  return (action, matching.length == 1)
+
 /-- Data needed to transcribe the currently pending random decision. -/
 inductive ReplayChanceDecision where
   /-- A permutation of these objects. -/
@@ -342,6 +459,8 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     (choice.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolveMove (move : ReplayStandardMove) :=
     (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolvePlay (play : ReplayCardPlay) :=
+    (play.resolve s).mapError (fun error => s!"answer {index}: {error}")
   match answer with
   | .observedChance outcome => resolveChance outcome
   | .inferredChance outcome evidence =>
@@ -355,6 +474,10 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
   | .inferredStandardMove move evidence =>
     checkInference index evidence
     return ((← resolveMove move).1, false)
+  | .observedCardPlay play => resolvePlay play
+  | .inferredCardPlay play evidence =>
+    checkInference index evidence
+    return ((← resolvePlay play).1, false)
   | _ =>
     return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 
