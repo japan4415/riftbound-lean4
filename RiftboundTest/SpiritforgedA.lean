@@ -2435,12 +2435,82 @@ private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId
 
 -- Poro Snax (SFD-046): draw 1 when played; pay 1 Calm, exhaust, kill it: draw 1
 #guard tsf fun s => do
-  let (s1, g) ← put s s.me "SFD-046" .base
-  let a ← fire s1 [.played s.me g]
-  let b ← activate s1 s.me g 1 [] ⟨1, [.calm]⟩
-  return a.handN s.me == s1.handN s.me + 1 && b.handN s.me == s1.handN s.me + 1 &&
-    (b.obj? g).isNone && b.countIn s.me .trash "SFD-046" == 1 &&
-    (activate s1 s.me g 1 [] ⟨1, []⟩).isNone
+  let p := s.me
+  let (s, card) ← put s p "SFD-046" .hand
+  let played ← play s p card
+  let gear ← played.firstOf p .base "SFD-046"
+  let funded := played.fund p 1 (calm := 1)
+  let useGear (pay : RunePool.Payment) : Action := ⟨.player p, .activate gear 1 pay []⟩
+  let answer := useGear ⟨1, [.calm]⟩
+  let (queued, events) ← (step 100 funded answer).toOption
+  let resolved := settleChain {} 12 queued
+  return played.handN p == s.handN p && played.deckN p + 1 == s.deckN p &&
+    queued.handN p == funded.handN p && queued.countIn p .trash "SFD-046" == 1 &&
+    (queued.obj? gear).isNone && queued.tired gear == none && !(queued.zone .chain).isEmpty &&
+    (queued.poolOf p).total == 0 && events.any (fun
+      | .died _ who => who == p
+      | _ => false) &&
+    resolved.countIn p .trash "SFD-046" == 1 && resolved.handN p == funded.handN p + 1 &&
+    !(step 100 funded (useGear ⟨1, []⟩)).isOk && !(step 100 (funded.tire gear) answer).isOk
+
+-- Premonition answers an opposing Spell on the Chain and draws only for its caster.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, opposing) ← put s p "SFD-087" .hand
+  let (s, answer) ← put s q "SFD-087" .hand
+  let declared ← castStop s p opposing
+  let (reaction, _) ← (step 100 declared ⟨.player p, .pass⟩).toOption
+  let pay := payOf reaction answer
+  let kind : ActionKind := .playCard answer pay []
+  let funded := reaction.rich q
+  let (both, _) ← (step 100 funded ⟨.player q, kind⟩).toOption
+  let once := settleChain {} 2 both
+  let done := settleChain {} 12 both
+  return (both.zone .chain).length == 2 &&
+    once.deckN q + 3 == both.deckN q && once.deckN p == both.deckN p &&
+    done.deckN q + 3 == both.deckN q && done.deckN p + 3 == both.deckN p
+
+-- Punch First can strengthen an enemy Unit and loses exactly its bonus at turn end.
+#guard tsf fun s => do
+  let (s, card) ← put s s.me "SFD-097" .hand
+  let (s, unit) ← put s s.you "OGN-051" .base
+  let (s, gear) ← put s s.me "SFD-064" .base
+  let resolved ← play s s.me card [unit]
+  return resolved.mightNow unit == (s.mightNow unit).map (· + 5) &&
+    (resolved.mapObjects endTurnObj).mightNow unit == s.mightNow unit &&
+    (play s s.me card [gear]).isNone
+
+-- Feral Strength and Frigid Touch support separate targets and stacking for paid Repeat.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, ally) ← put s p "SFD-158" .base
+  let (s, foe) ← put s s.you "SFD-158" .base
+  let (s, strength) ← put s p "SFD-034" .hand
+  let (s, frigid) ← put s p "SFD-066" .hand
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let rich := s.rich p
+  let boosted ← cast rich p strength ⟨4, []⟩ [foe, ally] (pick := pick)
+  let weakened ← cast rich p frigid ⟨4, []⟩ [foe, foe] (pick := pick)
+  let single ← cast rich p frigid ⟨2, []⟩ [ally]
+  return boosted.mightNow foe == some 8 && boosted.mightNow ally == some 8 &&
+    weakened.mightNow foe == some 2 && weakened.mightNow ally == some 6 &&
+    single.mightNow ally == some 4 && single.mightNow foe == some 6 &&
+    (weakened.mapObjects endTurnObj).mightNow foe == some 6 &&
+    (boosted.mapObjects endTurnObj).mightNow ally == some 6 &&
+    (cast rich p frigid ⟨3, []⟩ [foe, foe] (pick := pick)).isNone
+
+-- Honest Broker's Deathknell plays an exhausted Gold only after it dies.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, unit) ← put s p "SFD-155" .base
+  let goldBefore := s.countNamed p .base "Gold"
+  let (dying, events) := killObj s unit
+  let resolved ← fire dying events
+  let gold ← resolved.firstOf p .base "SFD-T03"
+  let (left, leave) ← moveObj s unit (.player p .hand)
+  return resolved.countNamed p .base "Gold" == goldBefore + 1 &&
+    resolved.tired gold == some true && (left.detect [.moved unit leave (.player p .hand)]).isEmpty
 
 -- Renata Glasc, Mastermind (SFD-088): at a battlefield only: pay 1 Mind to draw 1; pay 4 Mind and
 -- exhaust to score 1 point (an ability with a guard cannot be used while the guard is false)

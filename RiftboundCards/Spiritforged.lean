@@ -1014,7 +1014,7 @@ def SFD_034 : CardDef :=
   { SFD_034.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-035
 /--
@@ -1068,7 +1068,7 @@ def SFD_036 : CardDef :=
 
     abilities := [.triggered (.onSelf .die)
       (.of [] (.ifThen (.marked .diedAlone) (.prim (.draw .you (.const 1))) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-037
 /--
@@ -1341,9 +1341,9 @@ def SFD_046 : CardDef :=
   { SFD_046.meta with
 
     abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
-      .activated [.pay ⟨1, [.domain .calm]⟩, .exhaustSelf] .normal
-        (.of [] (.seqOf [.prim (.kill .self), .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+      .activated [.pay ⟨1, [.domain .calm]⟩, .exhaustSelf, .killSelf] .normal
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-047
 /--
@@ -1936,7 +1936,7 @@ def SFD_066 : CardDef :=
   { SFD_066.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-067
 /--
@@ -2558,7 +2558,7 @@ def SFD_087 : CardDef :=
   { SFD_087.meta with
     spellEffect := some (.of []
       (.prim (.draw .you (.const 3)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-088
 /--
@@ -2845,7 +2845,7 @@ def SFD_097 : CardDef :=
   { SFD_097.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 5)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-098
 /--
@@ -4557,7 +4557,7 @@ def SFD_155 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-156
 /--

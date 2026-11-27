@@ -2361,6 +2361,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Blood Rush の2回分は別々の対象を選べ、Assault はターン終了時に切れる。Cloth Armor は Quick-Draw で登場時に装着でき、通常の Equip は外れている間に Mind の Power を使う。Experimental Hexplate の Mech は装備している間だけ有効。Factory Recall は装備中の敵 Gear もオーナーの手札に戻す。Lucian, Merciless、Black Market Broker、Sandshifter を合わせて7枚を `full` とし、全1,103枚中685枚を実装済みとした。[Spiritforged 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-errata/)
 - Counter Strike は敵 Unit のダメージを一度防いでから自分が引くケースを確認した。公式ギャラリーの取得データは1 Power のドメインを特定できないため、費用を確認するまで `drafted` とする。
 
+### Spiritforged の起動コスト、Reaction と Deathknell
+
+- Poro Snax は能力の宣言で自身をキルしてから Chain に能力を置き、解決時にカードを引く。Premonition は相手の Spell に応答でき、先に解決して自身の席だけが3枚引く。Feral Strength、Frigid Touch、Punch First、Lonely Poro、Honest Broker を合わせて7枚を `full` とし、全1,103枚中692枚を実装済みとした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
