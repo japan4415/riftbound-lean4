@@ -844,7 +844,7 @@ private theorem priorityPass_reads {s : GameState} {p : PlayerId} {rest : List F
       exact GameState.poolOf_setPool_self _ _ _
     · exact GameState.poolOf_setPool_ne _ who _
   exact ⟨rfl, fun _ _ => rfl, fun _ _ => rfl, rfl, fun _ => rfl, rfl, rfl, rfl, rfl, combat, rfl,
-    rfl, rfl, pools, rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
+    rfl, rfl, (by intro q; rw [pools]), rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
 
 private theorem priorityPass_observations {s : GameState} {p : PlayerId} {rest : List Frame}
     (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = .priority p :: rest) :

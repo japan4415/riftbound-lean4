@@ -236,7 +236,8 @@ private theorem automatic_mightOf (s : GameState) (wf : s.WF) (trigger : PendTri
     intro o
     cases o <;> rfl
 
-private theorem buffEffects (s : GameState) (p : PlayerId) :
+/-- The extra Might from turn effects uses only the recorded buff facts. -/
+theorem buffEffects (s : GameState) (p : PlayerId) :
     (s.fxOf p).filter (· == .buffsExtraMight) =
       (s.turnFx.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p))).map
         (·.kind) := by
@@ -498,10 +499,11 @@ structure SameMightReads (before after : GameState) : Prop where
   unitsAtOf : after.unitsAtOf = before.unitsAtOf
   /-- The current turn. -/
   turn : after.turn = before.turn
-  /-- Facts recorded during this turn. -/
-  turnFx : after.turnFx = before.turnFx
-  /-- Each player's resource pool. -/
-  poolOf : after.poolOf = before.poolOf
+  /-- Turn facts other than the bookkeeping for Gear-only Power. -/
+  turnFacts : after.turnFx.filter (fun note => note.kind != .gearMana) =
+    before.turnFx.filter (fun note => note.kind != .gearMana)
+  /-- Power already spent by each player. -/
+  powerSpent : ∀ p, (after.poolOf p).spent = (before.poolOf p).spent
   /-- Each player's experience. -/
   xpOf : after.xpOf = before.xpOf
   /-- Each side's points. -/
@@ -518,14 +520,15 @@ namespace SameMightReads
 /-- A state agrees with itself on its Might reads. -/
 theorem refl (s : GameState) : SameMightReads s s :=
   ⟨rfl, fun _ _ => rfl, fun _ _ => rfl, rfl, fun _ => rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
+    fun _ => rfl, rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
 
-private theorem replacePending {s t : GameState} (same : SameMightReads s t) (frames : List Frame)
+/-- Replace only the stack, preserving the Combat read. -/
+theorem replacePending {s t : GameState} (same : SameMightReads s t) (frames : List Frame)
     (combat : ({ t with pending := frames } : GameState).combatNow = s.combatNow) :
     SameMightReads s { t with pending := frames } :=
   ⟨same.config, same.zone, same.objects, same.cardDef, same.attachmentText, same.mightOf,
-    same.equipBonus, same.buffBonus, same.combat, combat, same.unitsAtOf, same.turn, same.turnFx,
-    same.poolOf, same.xpOf, same.pointsOf, same.departures, same.spentOnSpell⟩
+    same.equipBonus, same.buffBonus, same.combat, combat, same.unitsAtOf, same.turn, same.turnFacts,
+    same.powerSpent, same.xpOf, same.pointsOf, same.departures, same.spentOnSpell⟩
 
 /-- A stable read of one of the old objects gives the same result in both states. -/
 theorem readObj {s t : GameState} (same : SameMightReads s t) {id : ObjId} (old : id.n < s.nextId)
@@ -558,9 +561,9 @@ private theorem putTrigger_sameMightReads (s : GameState) (wf : s.WF) (trigger :
     rw [← equal, shape]
     rfl
   refine ⟨cfg, zone, fun id old => objects id (Nat.ne_of_lt old), card, text, might, equip, buff,
-    combat, automatic_combatNow s wf trigger, automatic_unitsAtOf s wf trigger, turn, turnFx,
+    combat, automatic_combatNow s wf trigger, automatic_unitsAtOf s wf trigger, turn, by rw [turnFx],
     ?_, ?_, ?_, departures, automatic_spentOnSpell s wf trigger⟩
-  · funext p
+  · intro p
     simp only [GameState.poolOf, pools]
   · funext p
     simp only [GameState.xpOf, experience]

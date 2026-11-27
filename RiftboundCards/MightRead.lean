@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.ExpirationWork
+public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
 
 /-!
@@ -76,6 +77,16 @@ theorem step_priority_pass_through_awaken {s : Riftbound.GameState} {p : Riftbou
     · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
   exact Riftbound.step_priority_pass_through_awaken wf (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) ordinaryAwaken pending legal
+
+/-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
+cards, including the Battlefield entry used after a concession. -/
+theorem advance_detectedTriggers (s : Riftbound.GameState) (triggers : List Riftbound.PendTrigger)
+    (rest : List Riftbound.Frame) (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) :
+    ∃ t used events, Riftbound.AdvancePrefix
+      { s with pending := Riftbound.insertDetectedTriggers s triggers rest } t used events ∧
+      Riftbound.TriggerWorkStop (Riftbound.afterLeadingTriggers (Riftbound.ordinaryTriggerContinuation s triggers rest))
+        t.pending :=
+  Riftbound.advance_detectedTriggers_checkedMight s triggers rest wf (mightReads_of_registered cards)
 
 end RiftboundCards
 

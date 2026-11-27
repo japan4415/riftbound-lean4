@@ -136,7 +136,7 @@ theorem advance_beginTurn_clock {s : GameState} {result : GameResult}
     unfold GameState.combatNow
     simp only [done, pending, List.findSome?_cons, List.findSome?_nil]
   have reads : SameMightReads s done := ⟨rfl, fun _ _ => rfl, fun _ _ => rfl, rfl, fun _ => rfl,
-    rfl, rfl, rfl, rfl, combat, rfl, rfl, rfl, rfl, rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
+    rfl, rfl, rfl, rfl, combat, rfl, rfl, rfl, (fun _ => rfl), rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
   have mighty : s.mightyEvents done = [] :=
     mightyEvents_eq_nil_of_mightNow (fun _ member => (reads.mightNow_eq wf database
       (old_inPlay wf member)).symm)

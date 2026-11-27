@@ -361,9 +361,30 @@ theorem amount_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldSelf
   case points target =>
     cases target <;> simp only [MightRead.amount, Bool.false_eq_true] at supported
     simp only [Amount.evalS0, PlayerSel.resolve, same.departures, same.pointsOf]
-  case powerSpent => simp only [Amount.evalS0, same.poolOf]
+  case powerSpent => simp only [Amount.evalS0, same.powerSpent]
   case xp => simp only [Amount.evalS0, same.xpOf]
 termination_by structural amount
+
+omit same in
+private theorem any_ignore_gear (notes : List TurnFx) (test : TurnFx → Bool)
+    (disjoint : ∀ note, note.kind == .gearMana → test note = false) :
+    (notes.filter (fun note => note.kind != .gearMana)).any test = notes.any test := by
+  rw [List.any_filter]
+  apply congrArg (List.any notes)
+  funext note
+  by_cases gear : (note.kind == .gearMana) = true
+  · simp [bne, gear, disjoint note gear]
+  · simp [bne, gear]
+
+private theorem turnFact_eq (p : PlayerId) (kind : TurnEffect) (notGear : kind ≠ .gearMana) :
+    t.turnFx.any (fun note => note.turn == t.turn && note.who == p && note.kind == kind) =
+      s.turnFx.any (fun note => note.turn == s.turn && note.who == p && note.kind == kind) := by
+  rw [same.turn]
+  let test := fun note : TurnFx => note.turn == s.turn && note.who == p && note.kind == kind
+  have disjoint (note : TurnFx) (gear : note.kind == .gearMana) : test note = false := by
+    have different : TurnEffect.gearMana ≠ kind := Ne.symm notGear
+    simp [test, beq_iff_eq.mp gear, different]
+  rw [← any_ignore_gear t.turnFx test disjoint, ← any_ignore_gear s.turnFx test disjoint, same.turnFacts]
 
 /-- A passive condition supported by the Might check reads the same result in both states. -/
 theorem condition_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldSelf : self.n < s.nextId)
@@ -371,8 +392,12 @@ theorem condition_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldS
     condition.eval t p self env = condition.eval s p self env := by
   cases condition <;> simp only [MightRead.condition, Bool.false_eq_true, Bool.and_eq_true] at supported
   case always => rfl
-  case discardedThisTurn => simp only [Condition.eval, same.turnFx, same.turn]
-  case noted => simp only [Condition.eval, same.turnFx, same.turn]
+  case discardedThisTurn =>
+    simpa only [Condition.eval, Bool.and_comm, Bool.and_left_comm, Bool.and_assoc] using
+      congrArg some (same.turnFact_eq p .cardDiscarded (by intro h; cases h))
+  case noted kind =>
+    have notGear : kind ≠ .gearMana := by simpa using supported
+    exact congrArg some (same.turnFact_eq p kind notGear)
   case spentOnSpell cost => exact same.spentOnSpell p self env cost
   case and a b =>
     simp only [Condition.eval, condition_eq wf p env oldSelf a supported.1,

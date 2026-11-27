@@ -47,7 +47,8 @@ def amount : Amount → Bool
 
 /-- Conditions supported by the proof for a Might-related passive ability. -/
 def condition : Condition → Bool
-  | .always | .discardedThisTurn | .noted .. | .spentOnSpell .. => true
+  | .always | .discardedThisTurn | .spentOnSpell .. => true
+  | .noted kind => kind != .gearMana
   | .and a b => condition a && condition b
   | .cmp _ a b => amount a && amount b
   | .empowered sel | .exists sel => selector sel
