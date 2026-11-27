@@ -1392,9 +1392,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .iControlHere =>
     some ((s.hereOf self).any (fun b => (s.obj? b).any (fun o => o.control == some p)))
   | .spentOnSpell n =>
-    some (s.objects.toList.any (fun (k, o) =>
-      o.owner == p && o.playedTurn == some s.turn && decide (n ≤ o.energyPaid) &&
-        (s.cardDef? ⟨k⟩).any (·.hasType .spell)))
+    some (s.playLog.any (fun play =>
+      play.who == p && play.turn == s.turn && play.moment == .finalized &&
+        play.types.contains .spell && decide (n ≤ play.energyPaid)))
   | _ => none
 
 /-- The player can't choose an object protected from enemy spells and abilities. Read conditions

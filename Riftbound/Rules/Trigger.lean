@@ -1013,8 +1013,8 @@ theorem insertTriggers_contrib (pend : List PendTrigger) (q : PlayerId) (contrib
 
 /-- Add a play to the current turn's history, with the types and player fixed at that moment. -/
 def addCardPlay (turn : Nat) (plays : List CardPlay) (p : PlayerId) (obj : ObjId)
-    (d : CardDef) (moment : PlayMoment) : List CardPlay :=
-  ⟨p, obj, d.types, turn, moment⟩ ::
+    (d : CardDef) (moment : PlayMoment) (energyPaid : Nat := 0) : List CardPlay :=
+  ⟨p, obj, d.types, turn, moment, energyPaid⟩ ::
     (if plays.head?.map (·.turn) == some turn then plays else [])
 
 /-- Whether the hidden card is already recorded as finalized in its original zone. -/
@@ -1033,7 +1033,7 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
         let original := if o.fromHidden then o.formerId.getD id else id
         let noted := if (o.fromHidden || o.hiddenAt.isSome) &&
             hiddenFinalized plays s.turn p original then plays
-          else addCardPlay s.turn plays p id d .finalized
+          else addCardPlay s.turn plays p id d .finalized (if d.hasType .spell then o.energyPaid else 0)
         if d.hasType .spell then noted else addCardPlay s.turn noted p id d .resolved
       else plays
     | _, _ => plays

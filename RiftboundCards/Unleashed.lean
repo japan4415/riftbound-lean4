@@ -215,7 +215,7 @@ def UNL_004 : CardDef :=
   { UNL_004.meta with
     -- +4 Might while I have spent 4 Energy or more to play a spell this turn
     abilities := [.passive (.spentOnSpell 4) [.mightPlus .self (.const 4)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-005
 /--

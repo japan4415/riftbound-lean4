@@ -418,58 +418,19 @@ theorem triggersStep_combatNow (s : GameState) (wf : s.WF) (queue : List PendTri
   rw [replaced] at one
   exact one.symm.trans before.2
 
-private theorem automatic_spentOnSpell (s : GameState) (wf : s.WF) (trigger : PendTrigger)
+private theorem automatic_spentOnSpell (s : GameState) (trigger : PendTrigger)
     (p : PlayerId) (self : ObjId) (env : Env) (cost : Nat) :
     Condition.eval (putTrigger s trigger []) p self env (.spentOnSpell cost) =
       Condition.eval s p self env (.spentOnSpell cost) := by
-  let next := putTrigger s trigger []
   obtain ⟨_, _, turn, _, _, _⟩ := automatic_unchanged s trigger
-  obtain ⟨earlier, absent, _, _, _, _, _, _, _, _, _⟩ := automatic_lookups s wf trigger
-  let pay (k : Nat) (o : Object) : Bool :=
-    o.owner == p && o.playedTurn == some s.turn && decide (cost ≤ o.energyPaid) &&
-      (s.cardDef? ⟨k⟩).any (·.hasType .spell)
-  have stable (k : Nat) (o : Object) : pay k (eraseTriggerBookkeeping o) = pay k o := rfl
-  simp only [Condition.eval, turn, automatic_cardDef s wf trigger]
-  change some (next.objects.toList.any (fun (k, o) => pay k o)) =
-    some (s.objects.toList.any (fun (k, o) => pay k o))
-  congr 1
-  apply Bool.eq_iff_iff.mpr
-  simp only [List.any_eq_true]
-  constructor
-  · rintro ⟨⟨k, value⟩, member, spent⟩
-    have found : next.obj? ⟨k⟩ = some value := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mp member
-    have earlierId : k ≠ s.nextId := by
-      intro fresh
-      subst k
-      have noDefinition : s.cardDef? ⟨s.nextId⟩ = none := by simp [GameState.cardDef?, absent]
-      simp [pay, noDefinition] at spent
-    have same := earlier ⟨k⟩ earlierId
-    rw [found] at same
-    cases known : s.obj? ⟨k⟩ with
-    | none => simp [known] at same
-    | some old =>
-      rw [known] at same
-      have erased := Option.some.inj same
-      refine ⟨(k, old), Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr known, ?_⟩
-      rw [← stable k old, ← erased, stable]
-      exact spent
-  · rintro ⟨⟨k, value⟩, member, spent⟩
-    have found : s.obj? ⟨k⟩ = some value := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mp member
-    have earlierId : k ≠ s.nextId := by
-      intro fresh
-      subst k
-      rw [absent] at found
-      contradiction
-    have same := earlier ⟨k⟩ earlierId
-    rw [found] at same
-    cases known : (putTrigger s trigger []).obj? ⟨k⟩ with
-    | none => simp [known] at same
-    | some newer =>
-      rw [known] at same
-      have erased := Option.some.inj same
-      refine ⟨(k, newer), Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr known, ?_⟩
-      rw [← stable k newer, erased, stable]
-      exact spent
+  have plays : (putTrigger s trigger []).playLog = s.playLog := by
+    obtain ⟨item, transition, _⟩ := automatic_addObject s trigger
+    obtain ⟨⟨next, fresh⟩, added, eq⟩ := Option.map_eq_some_iff.mp transition
+    dsimp only at eq
+    rw [← eq]
+    obtain ⟨_, _, rfl⟩ := addObject_spec added
+    rfl
+  simp [Condition.eval, turn, plays]
 
 /-- The state inputs used by the supported Might-related expressions. Object reads are compared
 for identifiers that already belonged to the game before an ability was added to the Chain. -/
@@ -562,7 +523,7 @@ private theorem putTrigger_sameMightReads (s : GameState) (wf : s.WF) (trigger :
     rfl
   refine ⟨cfg, zone, fun id old => objects id (Nat.ne_of_lt old), card, text, might, equip, buff,
     combat, automatic_combatNow s wf trigger, automatic_unitsAtOf s wf trigger, turn, by rw [turnFx],
-    ?_, ?_, ?_, departures, automatic_spentOnSpell s wf trigger⟩
+    ?_, ?_, ?_, departures, automatic_spentOnSpell s trigger⟩
   · intro p
     simp only [GameState.poolOf, pools]
   · funext p

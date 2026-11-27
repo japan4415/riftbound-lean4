@@ -324,6 +324,8 @@ structure ReplayCheckpoint where
   chosenChampions? : Option (List (Nat × Nat)) := none
   /-- Marked damage and the responsible seat of each hit. Earlier archives did not store this. -/
   damageMarks? : Option (List (Nat × List (Option Nat × Nat))) := none
+  /-- Energy payments in play-log order. Earlier archives did not store this. -/
+  playEnergy? : Option (List Nat) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -562,13 +564,15 @@ private def replayXP (s : GameState) : GameState :=
 /-- Capture the state fingerprint and the events that the engine actually returned. -/
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
-  -- Keep the original state fingerprint and record new registration evidence separately.
-  { state := toString (hash (reprStr (replayXP { s with
-      cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {} })))
+  -- Keep the original state fingerprint and record new evidence separately.
+  let playLog := s.playLog.map (fun play => { play with energyPaid := 0 })
+  let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog }
+  { state := toString (hash (reprStr legacy))
     events
     chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n)))
     damageMarks? := some (s.damageMarks.toList.map (fun (id, marks) =>
-      (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount))))) }
+      (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount)))))
+    playEnergy? := some (s.playLog.map (·.energyPaid)) }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1218,6 +1222,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
       throw s!"checkpoint {index}: Chosen Champion identities differ"
     if witness.damageMarks?.any (fun marked => actual.damageMarks? != some marked) then
       throw s!"checkpoint {index}: damage marks differ"
+    if witness.playEnergy?.any (fun paid => actual.playEnergy? != some paid) then
+      throw s!"checkpoint {index}: Spell Energy payments differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint))

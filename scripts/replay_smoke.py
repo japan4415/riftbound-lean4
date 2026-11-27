@@ -1124,10 +1124,20 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
     if not suffix:
         legacy = json.loads(original)
         legacy["rules"]["schema"] = 1
+        for game in legacy["games"]:
+            for checkpoint in game["checkpoints"]:
+                checkpoint.pop("playEnergy")
         stale.write_text(json.dumps(legacy), encoding="utf-8")
         command("verify", stale, error="card definitions differ")
         assert json.loads(command("revalidate", stale, renewed)) == summary
         assert json.loads(renewed.read_bytes()) == json.loads(original)
+
+        changed_payments = json.loads(original)
+        checkpoint = changed_payments["games"][0]["checkpoints"][0]
+        assert checkpoint["playEnergy"] == []
+        checkpoint["playEnergy"] = [4]
+        stale.write_text(json.dumps(changed_payments), encoding="utf-8")
+        command("verify", stale, error="checkpoint 0: Spell Energy payments differ")
 
     game = old["game"] if suffix == "-ffa" else old["games"][0]
     index, checkpoint = next((index, checkpoint) for index, checkpoint in enumerate(game["checkpoints"])

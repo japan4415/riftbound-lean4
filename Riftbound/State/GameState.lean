@@ -72,7 +72,22 @@ structure CardPlay where
   turn : Nat
   /-- Whether this is a finalization or a resolved play. -/
   moment : PlayMoment
-deriving DecidableEq, Repr
+  /-- The Energy spent on this Spell finalization. Other entries record zero. -/
+  energyPaid : Nat := 0
+deriving DecidableEq
+
+/-- Preserve the archived state representation for historical entries without payment evidence. -/
+instance : Repr CardPlay where
+  reprPrec play _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [
+      field "who" (repr play.who), field "object" (repr play.object),
+      field "types" (repr play.types), field "turn" (repr play.turn),
+      field "moment" (repr play.moment)]
+    let fields := if play.energyPaid == 0 then fields
+      else fields ++ [field "energyPaid" (repr play.energyPaid)]
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Withdrawn seats and the regular turn positions already skipped because of a withdrawal. -/
 structure SeatDepartures where

@@ -2332,6 +2332,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Right of Conquest は自分かチームメイトが支配する Battlefield で枚数を数える。Towering Pairofant は、チームメイトが支配していた Unit が死んだターンにも Ready で登場する。Arena Kingpin、Vault Breaker、Monster Harpoon、Scorchclaw、Jhin, Murderous Artist を合わせて7枚を `full` とし、全1,103枚中657枚を実装済みとした。
 
+### 呪文ごとのエナジー支払い
+
+- 呪文の費用を確定した席と支払ったエナジーをプレイ履歴に記録する。Prepared Neophyte は、その席が同じターンに1つの呪文に4エナジー以上払ったときに強化される。所有者が別の席でも、また同じカードを値引きして再度プレイしても、最初の支払いが残る。全1,103枚中658枚が実装済みになった。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

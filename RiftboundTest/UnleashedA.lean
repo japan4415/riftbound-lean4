@@ -63,6 +63,33 @@ private meta def unleashedTeamMain (labState : GameState) : GameState :=
   return afterSecond.mightNow unit == some (1 : Int) && afterExpensive.mightNow unit == some (5 : Int) &&
     later.mightNow unit == some (1 : Int)
 
+-- When an effect allows casting a card owned by another seat, the payer receives the bonus.
+-- A later discounted cast of the same physical card does not erase the first payment.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let spell := testSpell "TEST-NEOPHYTE-REPLAY" 4
+  let s := { s with cards := { cards := s.cards.cards ++ [spell] } }
+  let (s, ours) ← put s p "UNL-004" .base
+  let (s, theirs) ← put s q "UNL-004" .base
+  let (s, offered) ← put (s.rich p) q spell.id.code .banishment
+  let price : EffectPlayPrice := .reduceEnergy 0
+  let (queued, item) ← queueLimitedSpell s p offered price .normal
+  let fullPrice ← (limitedSpellOptions queued p item price).head?
+  let (paid, events) ← commitLimitedSpell queued p item fullPrice [] effectAddPolicy
+  let recorded := paid.recordTurnEvents events
+  let (trash, recycled) ← moveObj recorded item (.player q .trash)
+  let reduced : EffectPlayPrice := .reduceEnergy 3
+  let (queuedAgain, itemAgain) ← queueLimitedSpell (trash.rich p) p recycled reduced .normal
+  let cheaper ← (limitedSpellOptions queuedAgain p itemAgain reduced).head?
+  let (paidAgain, laterEvents) ← commitLimitedSpell queuedAgain p itemAgain cheaper [] effectAddPolicy
+  let again := paidAgain.recordTurnEvents laterEvents
+  return fullPrice.cost.energy == 4 && cheaper.cost.energy == 1 &&
+    (again.obj? itemAgain).any (fun o => o.owner == q && o.controller == p) &&
+    recorded.mightNow ours == some (5 : Int) && recorded.mightNow theirs == some (1 : Int) &&
+    again.mightNow ours == some (5 : Int) && again.mightNow theirs == some (1 : Int) &&
+    (again.playLog.filter (fun play => play.types.contains .spell)).map (·.energyPaid) == [1, 4]
+
 -- Towering Pairofant considers a Unit that its teammate controlled when it died.
 #guard tun fun labState => do
   let p : PlayerId := ⟨0⟩

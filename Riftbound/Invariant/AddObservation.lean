@@ -59,48 +59,6 @@ private theorem sameBookkeeping_attachmentText {s t : GameState} (cards : t.card
     (by intro o; cases o <;> rfl)
   rw [copies]
 
-private theorem sameBookkeeping_spentOnSpell {s t : GameState} (turn : t.turn = s.turn)
-    (cards : t.cardDef? = s.cardDef?)
-    (same : ∀ id, (t.obj? id).map eraseTriggerBookkeeping = (s.obj? id).map eraseTriggerBookkeeping)
-    (p : PlayerId) (self : ObjId) (env : Env) (cost : Nat) :
-    Condition.eval t p self env (.spentOnSpell cost) = Condition.eval s p self env (.spentOnSpell cost) := by
-  let pay (k : Nat) (o : Object) : Bool :=
-    o.owner == p && o.playedTurn == some s.turn && decide (cost ≤ o.energyPaid) &&
-      (s.cardDef? ⟨k⟩).any (·.hasType .spell)
-  have stable (k : Nat) (o : Object) : pay k (eraseTriggerBookkeeping o) = pay k o := rfl
-  simp only [Condition.eval, turn, cards]
-  change some (t.objects.toList.any (fun (k, o) => pay k o)) =
-    some (s.objects.toList.any (fun (k, o) => pay k o))
-  congr 1
-  apply Bool.eq_iff_iff.mpr
-  simp only [List.any_eq_true]
-  constructor
-  · rintro ⟨⟨k, value⟩, member, spent⟩
-    have found : t.obj? ⟨k⟩ = some value := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mp member
-    have lookup := same ⟨k⟩
-    rw [found] at lookup
-    cases known : s.obj? ⟨k⟩ with
-    | none => simp [known] at lookup
-    | some old =>
-      rw [known] at lookup
-      have erased := Option.some.inj lookup
-      refine ⟨(k, old), Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr known, ?_⟩
-      rw [← stable k old, ← erased, stable]
-      exact spent
-  · rintro ⟨⟨k, value⟩, member, spent⟩
-    have found : s.obj? ⟨k⟩ = some value := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mp member
-    have lookup := same ⟨k⟩
-    rw [found] at lookup
-    cases known : t.obj? ⟨k⟩ with
-    | none => simp [known] at lookup
-    | some after =>
-      rw [known] at lookup
-      have erased := Option.some.inj lookup
-      refine ⟨(k, after), Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr known, ?_⟩
-      rw [← stable k after, erased, stable]
-      exact spent
-
-
 /-- Recording a triggered ability use preserves the reads that contribute to Might. -/
 theorem noteAbilityUse_sameMightReads (s : GameState) (source : ObjId) (idx : Nat)
     (copy : Option Timestamp) : SameMightReads s (s.modObj source (fun o => o.noteAbilityUse idx copy)) := by
@@ -177,7 +135,7 @@ theorem noteAbilityUse_sameMightReads (s : GameState) (source : ObjId) (idx : Na
     intro o
     cases o <;> rfl
   exact ⟨rfl, fun _ _ => rfl, fun id _ => same id, defs, text, base, gear, buff, rfl,
-    combatNow, units, rfl, rfl, (fun _ => rfl), rfl, rfl, rfl, sameBookkeeping_spentOnSpell rfl defs same⟩
+    combatNow, units, rfl, rfl, (fun _ => rfl), rfl, rfl, rfl, (fun _ _ _ _ => rfl)⟩
 
 
 /-- Running an instruction that preserves Might reads and readiness contributes no transition
