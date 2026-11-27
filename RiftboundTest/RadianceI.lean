@@ -104,6 +104,40 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   return result.tired entered == some true &&
     events == [.moved raider returned (.player p .hand), .moved ekko entered (.player p .base), .played p entered]
 
+-- The Kill and any replacement happen before Cruel Patron enters (CR 357, 359.2).
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 4) p "RAD-019" .base
+  let (s, patron) ← put s p "OGN-208" .hand
+  let action : Action := ⟨.player p, .playCard patron ⟨4, []⟩ [raider]⟩
+  let (killed, events) ← (step 100 s action).toOption
+  let victim ← killed.firstOf p .trash "RAD-019"
+  let entered ← killed.firstOf p .base "OGN-208"
+  let (withGear, gear) ← put s p "OGN-077" .base
+  let (saved, replacement) ← (step 100 withGear action).toOption
+  let sacrifice ← saved.firstOf p .trash "OGN-077"
+  let ready ← saved.firstOf p .base "OGN-208"
+  let relevant (es : List Event) := es.filter (fun | .moved .. | .died .. => true | _ => false)
+  return killed.tired entered == some true && saved.tired ready == some false &&
+    saved.tired raider == some true && (saved.obj? ready).any (·.paid) &&
+    relevant events == [.moved raider victim (.player p .trash), .died victim p,
+      .moved patron entered (.player p .base)] &&
+    relevant replacement == [.moved gear sacrifice (.player p .trash), .died sacrifice p,
+      .moved patron ready (.player p .base)]
+
+-- A limited play pays the same Kill cost before it decides how Cruel Patron enters.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 0) p "RAD-019" .base
+  let (s, patron) ← put s p "OGN-208" .hand
+  let plans := permanentPlayPlans s p patron { price := .ignoreBase }
+  let plan ← plans.find? (fun plan => plan.battlefield.isNone && plan.extraObject == some raider)
+  let (result, entered, events) ← applyReducedPermanent s p patron plan
+  let victim ← result.firstOf p .trash "RAD-019"
+  return result.tired entered == some true && (result.obj? entered).any (·.paid) &&
+    events == [.moved raider victim (.player p .trash), .died victim p,
+      .moved patron entered (.player p .base), .played p entered]
+
 -- Spirit reads the returned Gear's printed Energy, excluding both its Power and Spirit's cost.
 #guard radianceCase fun s => do
   let p := s.me

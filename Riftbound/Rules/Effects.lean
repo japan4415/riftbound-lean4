@@ -1306,26 +1306,59 @@ def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Na
     List ReducedPermanentPlay :=
   permanentPlayPlans s p id { price := .reduceEnergy less }
 
-/-- Apply the mark and saved event of a return already paid, or handle the other costs. -/
-def finishReducedPermanentCost (s : GameState) (p : PlayerId) (old new : ObjId)
-    (plan : ReducedPermanentPlay) (placed : GameState × List Event)
-    (returned : Option PermanentReturn) : Option (GameState × List Event) :=
-  match returned with
-  | some paid => some (markPaid placed.1 (some new) false paid.energy, paid.events ++ placed.2)
-  | none => payExtra0 s old plan.extraObject.toList placed (if plan.spendXP then some p else none)
+/-- Carry the cost paid before entry into the limited play's observations and play mark. -/
+def finishReducedPermanentCost (new : ObjId) (placed : GameState × List Event)
+    (payment : Option PermanentPayment) : GameState × List Event :=
+  match payment with
+  | some paid => (markPaid placed.1 (some new) false paid.returnedEnergy, paid.events ++ placed.2)
+  | none => placed
 
-/-- Finishing the limited play cost preserves the entry state invariants. -/
-theorem finishReducedPermanentCost_safe {s : GameState} {p : PlayerId} {old new : ObjId}
-    {plan : ReducedPermanentPlay} {placed result : GameState × List Event}
-    {returned : Option PermanentReturn}
-    (h : finishReducedPermanentCost s p old new plan placed returned = some result) :
-    Safe placed.1 result.1 := by
-  cases returned with
-  | none => exact payExtra0_safe h
-  | some paid =>
-    unfold finishReducedPermanentCost at h
-    obtain rfl := Option.some.inj h
-    exact markPaid_safe placed.1 (some new) false paid.energy
+/-- Recording the paid cost preserves the entry state's invariants. -/
+theorem finishReducedPermanentCost_safe (new : ObjId) (placed : GameState × List Event)
+    (payment : Option PermanentPayment) : Safe placed.1 (finishReducedPermanentCost new placed payment).1 := by
+  cases payment with
+  | none => exact Safe.refl _
+  | some paid => exact markPaid_safe placed.1 (some new) false paid.returnedEnergy
+
+/-- Save the original declaration and the timestamp after payment. -/
+def reducedPlayMark (s entryState : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
+    (plan : ReducedPermanentPlay) : PlayMark :=
+  let ownCosts := (if plan.additionalPaid then [0] else []) ++
+    (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
+  let pick := if plan.battlefieldFees.isEmpty then SpellPick.plain
+    else .payForBattlefield plan.battlefieldFees ownCosts
+  let pick := if plan.gearDiscounts.isEmpty then pick else .withGearDiscounts pick plan.gearDiscounts
+  let pick := if plan.spendXP then .withXP pick else pick
+  { s.playMark p id ⟨plan.cost.energy, []⟩ with
+    paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
+    extraPaid := ownCosts.length
+    shownOff := s.captureShowOff p plan.showOff
+    spellPick := pick
+    stamp := entryState.nextTimestamp }
+
+/-- Set the new permanent's entry status and destination from the state after costs. -/
+def placeReducedPermanent (s entryState onBoard : GameState) (p : PlayerId) (id new : ObjId)
+    (d : CardDef) (plan : ReducedPermanentPlay) : GameState × List Event :=
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  let mark := reducedPlayMark s entryState p id d plan
+  let ready := entryState.readyNow p id d mark.shownOff || plan.accelerated
+  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
+  let moved := (enterBase p d mark ready spent new, [Event.moved id new zone])
+  placeAtBf entryState plan.battlefield.toList moved
+
+/-- Entry preserves structural and ownership invariants after the board change. -/
+theorem placeReducedPermanent_safe (s entryState onBoard : GameState) (p : PlayerId) (id new : ObjId)
+    (d : CardDef) (plan : ReducedPermanentPlay) :
+    Safe onBoard (placeReducedPermanent s entryState onBoard p id new d plan).1 := by
+  unfold placeReducedPermanent
+  let mark := reducedPlayMark s entryState p id d plan
+  let ready := entryState.readyNow p id d mark.shownOff || plan.accelerated
+  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  exact (spendGearDiscounts_safe onBoard p plan.gearDiscounts).trans
+    ((enterBase_safe p d mark ready spent new).trans
+      (placeAtBf_safe entryState plan.battlefield.toList
+        (enterBase p d mark ready spent new, [.moved id new zone])))
 
 /-- Play a Unit or Gear with a chosen reduced-cost finalization. Emit the play after its costs
 have been paid and return the identifier it acquired when it entered play. -/
@@ -1333,27 +1366,13 @@ def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
     (plan : ReducedPermanentPlay) : Option (GameState × ObjId × List Event) := do
   let d ← s.cardDef? id
   let paid ← payByRunes s p id plan.cost (d.hasType .unit) (permanent := true)
-  let zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
-  let returned := payPermanentReturn s paid.1 id plan.extraObject.toList
-  let entryState := returned.elim paid.1 (·.state)
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  let payment := payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none)
+  let entryState := payment.elim paid.1 (·.state)
   let (onBoard, new) ← moveObj entryState id zone
-  let ownCosts := (if plan.additionalPaid then [0] else []) ++
-    (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
-  let pick := if plan.battlefieldFees.isEmpty then SpellPick.plain
-    else .payForBattlefield plan.battlefieldFees ownCosts
-  let pick := if plan.gearDiscounts.isEmpty then pick else .withGearDiscounts pick plan.gearDiscounts
-  let pick := if plan.spendXP then .withXP pick else pick
-  let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
-    paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
-    extraPaid := ownCosts.length
-    shownOff := s.captureShowOff p plan.showOff
-    spellPick := pick
-    stamp := returned.elim s.nextTimestamp (·.state.nextTimestamp) }
-  let ready := (returned.elim s (·.state)).readyNow p id d mark.shownOff || plan.accelerated
-  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
-  let moved := (enterBase p d mark ready spent new, [Event.moved id new zone])
-  let placed := placeAtBf (returned.elim s (·.state)) plan.battlefield.toList moved
-  let extra ← finishReducedPermanentCost s p id new plan placed returned
+  let boardBeforeEntry := payment.elim s (·.state)
+  let placed := placeReducedPermanent s boardBeforeEntry onBoard p id new d plan
+  let extra := finishReducedPermanentCost new placed payment
   let result := payPlayDiscard p id plan.discard extra
   some (result.1, new, s.showOffEvents p plan.showOff ++ paid.2 ++ result.2 ++ [Event.played p new])
 
@@ -1363,15 +1382,19 @@ theorem applyReducedPermanent_safe {s : GameState} {p : PlayerId} {id : ObjId}
     (h : applyReducedPermanent s p id plan = some r) : Safe s r.1 := by
   unfold applyReducedPermanent at h
   simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-  obtain ⟨d, hd, paid, hp, ⟨onBoard, new⟩, hm, extra, he, rfl⟩ := h
-  have returned : Safe paid.1 ((payPermanentReturn s paid.1 id plan.extraObject.toList).elim paid.1 (·.state)) := by
-    cases returned : payPermanentReturn s paid.1 id plan.extraObject.toList with
+  obtain ⟨d, hd, paid, hp, ⟨onBoard, new⟩, hm, rfl⟩ := h
+  let payment := payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none)
+  have beforeEntry : Safe paid.1 (payment.elim paid.1 (·.state)) := by
+    unfold payment
+    cases h : payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none) with
     | none => exact Safe.refl _
-    | some payment => exact payPermanentReturn_safe returned
-  exact (payByRunes_safe hp).trans (returned.trans ((Safe.moveObj hm).trans
-    ((spendGearDiscounts_safe onBoard p plan.gearDiscounts).trans
-      ((enterBase_safe _ _ _ _ _ _).trans ((placeAtBf_safe _ _ _).trans
-        ((finishReducedPermanentCost_safe he).trans (payPlayDiscard_safe _ _ _ _)))))))
+    | some paid => exact (payPermanentExtra_preserves h).1
+  let placed := placeReducedPermanent s (payment.elim s (·.state)) onBoard p id new d plan
+  dsimp only
+  exact (payByRunes_safe hp).trans (beforeEntry.trans ((Safe.moveObj hm).trans
+    ((placeReducedPermanent_safe s (payment.elim s (·.state)) onBoard p id new d plan).trans
+      ((finishReducedPermanentCost_safe new placed payment).trans
+        (payPlayDiscard_safe p id plan.discard (finishReducedPermanentCost new placed payment))))))
 
 /-- The new identity created by banishing the chosen card. -/
 def banishedPlayId (es : List Event) : Option ObjId :=

@@ -849,6 +849,158 @@ theorem killOrSave_zone_other {s : GameState} (hwf : s.WF) {id : ObjId} {z : Zon
     (killOrSave s id).1.zone z = s.zone z :=
   killOrSaveFrom_zone_other id _ hwf hid hz hd
 
+/-- A card held off the Board cannot be the chosen Board object. -/
+theorem offBoard_ne_of_inPlay {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}
+    (hz : z.isBoard = false) (hc : c ∈ s.zone z) (hi : id ∈ s.inPlay) : c ≠ id := by
+  obtain ⟨origin, board, there⟩ := GameState.mem_inPlay_zone hi
+  exact ne_of_mem_other_zone hwf there hc (by intro eq; rw [eq, board] at hz; contradiction)
+
+/-- Modifying a different object retains the declared card and the resources. -/
+theorem RetainsCard.modOther {s : GameState} {z : Zone} {c id : ObjId}
+    (different : c ≠ id) (hc : c ∈ s.zone z) (f : Object → Object) :
+    RetainsCard s (s.modObj id f) z c := by
+  have n : id.n ≠ c.n := by
+    intro eq
+    exact different (by cases c; cases id; simp_all)
+  exact ⟨hc, by rw [GameState.obj?_modObj, ite_eq_right n], rfl⟩
+
+private theorem noteIf_retains {s : GameState} {z : Zone} {c : ObjId}
+    (b : Bool) (f : GameState → GameState)
+    (keep : RetainsCard s (f s) z c) (hc : c ∈ s.zone z) :
+    RetainsCard s (noteIf b f s) z c := by
+  unfold noteIf
+  split
+  · exact keep
+  · exact RetainsCard.refl hc
+
+/-- The notes from a Kill retain every card other than the recorded victim. -/
+theorem noteDeath_retains {s : GameState} {z : Zone} {c : ObjId} (hc : c ∈ s.zone z)
+    (o : Object) (isUnit marked mighty : Bool) (moved banisher : Option ObjId)
+    (different : moved ≠ some c) : RetainsCard s (noteDeath s o isUnit marked mighty moved banisher) z c := by
+  unfold noteDeath
+  have unitNote : RetainsCard s (s.noteUnitDied o.controller) z c := by
+    unfold GameState.noteUnitDied
+    split <;> exact ⟨hc, rfl, rfl⟩
+  have first := noteIf_retains (isUnit && moved.isSome) (·.noteUnitDied o.controller) unitNote hc
+  cases moved with
+  | none => exact first
+  | some n =>
+    have hne : c ≠ n := fun h => different (congrArg some h.symm)
+    let mark (b : Bool) (kind : TurnEffect) {s0 : GameState} (member : c ∈ s0.zone z) :=
+      noteIf_retains b (·.addTurnFxOn o.controller n kind) ⟨member, rfl, rfl⟩ member
+    have buffs := mark (isUnit && o.buffed) .buffedUnitDied first.member
+    have stun := mark (isUnit && o.stunned) .stunnedUnitDied buffs.member
+    have big := mark (isUnit && mighty) .mightyUnitDied stun.member
+    have recalled := mark (isUnit && marked) .recallDied big.member
+    have banish := noteIf_retains banisher.isSome (fun t => t.modObj n (fun x => { x with banishedWith := banisher }))
+      (RetainsCard.modOther hne recalled.member _) recalled.member
+    exact first.trans (buffs.trans (stun.trans (big.trans (recalled.trans banish))))
+
+private theorem retains_noteAlone {s t : GameState} {z : Zone} {c : ObjId}
+    (keep : RetainsCard s t z c) (o : Object) (moved : Option ObjId) (alone : Bool) :
+    RetainsCard s (noteAlone t o moved alone) z c := by
+  cases moved with
+  | none => exact keep
+  | some n =>
+    cases alone <;> exact ⟨keep.member, keep.object, keep.pools⟩
+
+/-- Killing another object keeps the card in its zone, including when the victim goes to that zone. -/
+theorem killObj_retains {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}
+    (hc : c ∈ s.zone z) (different : c ≠ id) : RetainsCard s (killObj s id).1 z c := by
+  unfold killObj sendObj
+  generalize (if s.banishedOnDeath id = true then ZoneKind.banishment else .trash) = dest
+  cases found : s.obj? id with
+  | none => exact RetainsCard.refl hc
+  | some o =>
+    cases moved : moveObj s id (.player o.owner (s.ownerDestination id o dest)) with
+    | none =>
+      dsimp only
+      rw [moved]
+      dsimp only
+      split
+      · exact RetainsCard.refl hc
+      · dsimp only
+        apply retains_noteAlone
+        exact noteDeath_retains hc o _ _ _ none _ (by simp)
+    | some result =>
+      obtain ⟨paid, new⟩ := result
+      dsimp only
+      rw [moved]
+      obtain ⟨_, _, spec⟩ := moveObj_spec moved
+      obtain ⟨kept, hne⟩ := spec.retainsOther hwf (GameState.zone_valid_of_mem hwf hc) hc different
+      dsimp only
+      split
+      · exact kept
+      · dsimp only
+        apply retains_noteAlone
+        refine kept.trans (noteDeath_retains kept.member o _ _ _ _ _ ?_)
+        simp [Object.ownerMoveEvents, Ne.symm hne]
+
+/-- Recalling and updating another Unit leaves the card and the Rune Pools where they are. -/
+theorem completeDeathSave_retains {s : GameState} (hwf : s.WF) {z : Zone} {c id : ObjId}
+    (hc : c ∈ s.zone z) (different : c ≠ id) (mark : Option TurnEffect) (p : PlayerId) (clear : Bool) :
+    RetainsCard s (completeDeathSave s id mark p clear).1 z c := by
+  unfold completeDeathSave saveUnitCore
+  dsimp only
+  have healed := RetainsCard.modOther different hc healObj
+  have recalled : RetainsCard (healAllOn s id).1 (sendHome (healAllOn s id).1 id).1 z c := by
+    unfold sendHome
+    split
+    · split
+      · rename_i r moved
+        obtain ⟨_, _, spec⟩ := moveObj_spec moved
+        have h := (healAllOn_safe s id).wf hwf
+        obtain ⟨kept, distinct⟩ := spec.retainsOther h (GameState.zone_valid_of_mem h healed.member)
+          healed.member different
+        exact kept.trans (RetainsCard.modOther distinct kept.member _)
+      · exact RetainsCard.refl healed.member
+    · exact RetainsCard.refl healed.member
+  have exhausted : RetainsCard (sendHome (healAllOn s id).1 id).1
+      (setExhausted true (sendHome (healAllOn s id).1 id).1 id).1 z c := by
+    unfold setExhausted
+    split
+    · exact RetainsCard.modOther different recalled.member _
+    · exact RetainsCard.refl recalled.member
+  have keep := healed.trans (recalled.trans exhausted)
+  exact ⟨keep.member, keep.object, keep.pools⟩
+
+/-- A nested Kill and its replacements retain the card being played off the Board. -/
+theorem killOrSaveFrom_retains (root : ObjId) (fuel : Nat) {s : GameState} (hwf : s.WF)
+    {id : ObjId} {used : List (ObjId × Bool)} {z : Zone} {c : ObjId}
+    (hi : id ∈ s.inPlay) (hz : z.isBoard = false) (hc : c ∈ s.zone z) :
+    RetainsCard s (killOrSaveFrom root fuel s id used).1 z c := by
+  induction fuel generalizing s id used with
+  | zero =>
+    have keep := killObj_retains ((prepareNestedDeath_safe s root id used).wf hwf) hc
+      (offBoard_ne_of_inPlay hwf hz hc hi)
+    exact ⟨keep.member, keep.object, keep.pools⟩
+  | succ fuel ih =>
+    have distinct := offBoard_ne_of_inPlay hwf hz hc hi
+    unfold killOrSaveFrom
+    dsimp only
+    split
+    · have keep := killObj_retains ((prepareNestedDeath_safe s root id used).wf hwf) hc distinct
+      exact ⟨keep.member, keep.object, keep.pools⟩
+    · rename_i save found
+      cases cost : save.cost with
+      | none => exact completeDeathSave_retains hwf hc distinct _ _ _
+      | some next =>
+        have valid : next ∈ s.inPlay := by
+          have eq : save = ⟨save.isSacrifice, some next⟩ := by cases save; simp_all
+          have h := GameState.deathSaveFor_cost_mem (found.trans (congrArg some eq))
+          exact h
+        have first := ih hwf (used := save.useKey id :: used) valid hc
+        have safe := (killOrSaveFrom_safe root fuel s next (save.useKey id :: used)).wf hwf
+        simpa only [cost, Option.elim_some] using first.trans
+          (completeDeathSave_retains safe first.member distinct _ _ _)
+
+/-- Killing or replacing the Kill of a Board object retains an off-Board card and the Pools. -/
+theorem killOrSave_retains {s : GameState} (hwf : s.WF) {id : ObjId} {z : Zone} {c : ObjId}
+    (hi : id ∈ s.inPlay) (hz : z.isBoard = false) (hc : c ∈ s.zone z) :
+    RetainsCard s (killOrSave s id).1 z c := by
+  have keep := killOrSaveFrom_retains id (2 * s.inPlay.length) (used := []) hwf hi hz hc
+  exact ⟨keep.member, keep.object, keep.pools⟩
+
 end Riftbound
 
 end
