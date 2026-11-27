@@ -97,17 +97,21 @@ private theorem immediateAdds_bound (detected : GameState) (triggers : List Pend
       exact ⟨u, n + m, events ++ more, by
         simpa only [List.filterMap_cons, scheduled, List.cons_append] using run.append remaining⟩
 
+/-- The stack left for ordinary triggers and other work after the immediate Adds have run. -/
+def ordinaryTriggerContinuation (s : GameState) (triggers : List PendTrigger)
+    (rest : List Frame) : List Frame :=
+  let ordinary := triggers.filterMap (fun t =>
+    if (t.immediateAddFrame s).isNone then some t else none)
+  if ordinary.isEmpty then rest else insertTriggers ordinary rest
+
 /-- All immediate Adds queued by event observation finish their rule work before the ordinary
 triggers and the original stack. Each Add receives the state produced by its predecessors. -/
 theorem insertDetectedTriggers_addWork (s : GameState) (triggers : List PendTrigger)
     (rest : List Frame) :
-    let ordinary := triggers.filterMap (fun t =>
-      if (t.immediateAddFrame s).isNone then some t else none)
-    let continuation := if ordinary.isEmpty then rest else insertTriggers ordinary rest
     ∃ (t : GameState) (used : Nat) (events : List Event),
       RawWorkPrefix { s with pending := insertDetectedTriggers s triggers rest }
-        { t with pending := continuation } used events := by
-  unfold insertDetectedTriggers
+        { t with pending := ordinaryTriggerContinuation s triggers rest } used events := by
+  unfold ordinaryTriggerContinuation insertDetectedTriggers
   simp only [List.filterMap_map, Function.comp_def]
   exact immediateAdds_bound s triggers s _
 

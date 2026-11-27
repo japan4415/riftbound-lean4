@@ -55,7 +55,7 @@ theorem advance_draw_bound (s : GameState) (p : PlayerId) (count : Nat)
         (∃ remaining hand, t.pending = .chanceBurnOut p :: .draw p (remaining + 1) hand :: rest) ∨
         ∃ before expected, WorkObserverChange before expected t) := by
   obtain ⟨t, used, events, bound, work, done⟩ := rawDraw_bound s p count startingHand rest pending
-  rcases work.observe with reached | ⟨before, expected, actual, steps, emitted, changed, _, cut, reached⟩
+  rcases work.observe with reached | ⟨before, expected, actual, steps, emitted, changed, _, cut, reached, _⟩
   · exact ⟨t, used, events, bound, reached, done.imp_right Or.inl⟩
   · exact ⟨actual, steps, emitted, Nat.le_trans cut bound, reached, Or.inr (Or.inr ⟨before, expected, changed⟩)⟩
 

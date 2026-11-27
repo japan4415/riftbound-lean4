@@ -47,6 +47,17 @@ end RawWorkPrefix
 def AdvancePrefix (s t : GameState) (n : Nat) (events : List Event) : Prop :=
   ∀ fuel before, advance (n + fuel) s before = advance fuel t (before ++ events)
 
+/-- Prepend one observed work step to a known continuation of the engine. -/
+theorem AdvancePrefix.prepend {s next t : GameState} {frame : Frame} {rest : List Frame}
+    {n : Nat} {events more : List Event} (pending : s.pending = frame :: rest)
+    (work : frame.isWork = true) (step : workStep s = some (next, events))
+    (path : AdvancePrefix next t n more) : AdvancePrefix s t (n + 1) (events ++ more) := by
+  intro fuel prior
+  rw [show n + 1 + fuel = n + fuel + 1 by omega]
+  simp only [advance, pending, work, ite_true, step]
+  rw [path]
+  simp only [List.append_assoc]
+
 /-- The rule transition produced `expected` and applying its event observers changed that state. -/
 def WorkObserverChange (before expected actual : GameState) : Prop :=
   actual ≠ expected ∧ ∃ events, microStep0 before = some (expected, events) ∧
@@ -59,7 +70,7 @@ theorem RawWorkPrefix.observe {s t : GameState} {n : Nat} {events : List Event}
     AdvancePrefix s t n events ∨
       ∃ before expected actual used emitted,
         WorkObserverChange before expected actual ∧ 0 < used ∧ used ≤ n ∧
-        AdvancePrefix s actual used emitted := by
+        AdvancePrefix s actual used emitted ∧ emitted <+: events := by
   induction path with
   | done s =>
     exact Or.inl (by intro fuel prior; simp)
@@ -74,25 +85,21 @@ theorem RawWorkPrefix.observe {s t : GameState} {n : Nat} {events : List Event}
       · unfold microStep
         rw [raw]
         rfl
-    have liftPrefix {target : GameState} {used : Nat} {emitted : List Event}
-        (h : AdvancePrefix observed target used emitted) :
-        AdvancePrefix s target (used + 1) (events ++ emitted) := by
-      intro fuel prior
-      rw [show used + 1 + fuel = used + fuel + 1 by omega]
-      simp only [advance, pending, work, ite_true, step]
-      rw [h]
-      simp only [List.append_assoc]
     by_cases unchanged : observed = mid
     · rw [← unchanged] at ih
-      rcases ih with reaches | ⟨before, expected, actual, used, emitted, changed, positive, bound, reaches⟩
-      · exact Or.inl (liftPrefix reaches)
-      · exact Or.inr ⟨before, expected, actual, used + 1, events ++ emitted,
-          changed, by omega, by omega, liftPrefix reaches⟩
+      rcases ih with reaches |
+        ⟨before, expected, actual, used, emitted, changed, positive, bound, reaches, eventPrefix⟩
+      · exact Or.inl (reaches.prepend pending work step)
+      · obtain ⟨laterEvents, h⟩ := eventPrefix
+        exact Or.inr ⟨before, expected, actual, used + 1, events ++ emitted,
+          changed, by omega, by omega, reaches.prepend pending work step,
+          ⟨laterEvents, by rw [List.append_assoc, h]⟩⟩
     · have one : AdvancePrefix observed observed 0 [] := by
         intro fuel prior
         simp
-      refine Or.inr ⟨s, mid, observed, 1, events, ⟨unchanged, events, raw, rfl⟩, by omega, by omega, ?_⟩
-      simpa using liftPrefix one
+      refine Or.inr ⟨s, mid, observed, 1, events, ⟨unchanged, events, raw, rfl⟩,
+        by omega, by omega, ?_, ⟨later, rfl⟩⟩
+      simpa using one.prepend pending work step
 
 end Riftbound
 

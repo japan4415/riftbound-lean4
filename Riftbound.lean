@@ -73,7 +73,7 @@ public import Riftbound.Invariant.ClockRun
 public import Riftbound.Invariant.Cleanup
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.DrawWork
-public import Riftbound.Invariant.AddWork
+public import Riftbound.Invariant.TriggerWork
 public import Riftbound.Invariant.Draw
 public import Riftbound.Invariant.LimitedDraw
 public import Riftbound.Tournament.Format
