@@ -191,6 +191,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
 
 - `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。
+- 山札順を含む元ログがある場合は、Main Deck または Rune Deck の `recordedDeckOrder` を照合できる。`zone` に席と山札を指定し、`cards` に上から順にカードコードを入れる。同じコードのカードも1枚ずつ記録する。全体の並びが分かる場合は `offset` に `null` を指定し、一部だけ分かる場合は先頭から数えた0始まりの位置を指定する。これは元ログの順序と再生結果を照合する項目で、シャッフルの操作は `answers` に別途記録する。この観測を含む入出力JSONには非公開の山札順が入る。
 - `chainOrder` の `items` には、Chain の一番上から順に全項目を入れる。Spell は `{"spell":{"controller":{"n":0},"card":{"code":"SFD-087"}}}`、能力は `{"ability":{"controller":{"n":1},"source":{"code":"SFD-046"}}}` とする。能力の発生元が盤面を離れた後も照合できる。
 - `hiddenAt` は、`seat` の伏せ札のうち、`owner` が持ち込んだコード `field` の Battlefield にある枚数 `count` を照合する。公開された伏せ札の位置と枚数から記録できる。
 - `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`buffedUnit`、`stunnedUnit`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。

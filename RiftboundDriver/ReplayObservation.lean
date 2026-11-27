@@ -217,6 +217,8 @@ inductive ReplayObservationFact where
       (units : List ReplayObservedUnitAttachments)
   /-- The named seat could see these card faces in the zone at this checkpoint. -/
   | visibleZoneContains (viewer : PlayerId) (zone : Zone) (cards : List CardId)
+  /-- A private source recorded the deck from top to bottom, or a slice at a zero-based offset. -/
+  | recordedDeckOrder (zone : Zone) (cards : List CardId) (offset : Option Nat := none)
   /-- The publicly visible Chain, starting from its top. -/
   | chainOrder (items : List ReplayChainItem)
   /-- The number of facedown cards in the seat's Hidden zone at the named Battlefield. -/
@@ -293,6 +295,26 @@ private def publicCards (s : GameState) (zone : Zone) : Except String (List Card
   | .player _ .hand | .player _ .hidden | .player _ .mainDeck | .player _ .runeDeck =>
     throw s!"{zoneLabel zone}: only the count can be observed here"
   | _ => return (← observeZone s zone).filterMap id
+
+/-- Compare a supplied private order without printing the simulated card faces on failure. -/
+private def checkRecordedDeckOrder (s : GameState) (zone : Zone) (cards : List CardId)
+    (offset : Option Nat) : Except String Unit := do
+  match zone with
+  | .player seat .mainDeck | .player seat .runeDeck => observeSeat s seat
+  | _ => throw "a recorded deck order requires a Main Deck or Rune Deck"
+  let label := zoneLabel zone
+  let deck := s.zone zone
+  let ids ← match offset with
+    | none => pure deck
+    | some offset =>
+      unless offset + cards.length ≤ deck.length do
+        throw s!"{label}: recorded deck slice is outside the replayed deck"
+      pure ((deck.drop offset).take cards.length)
+  unless cards.length == ids.length do
+    throw s!"{label}: expected {cards.length} cards in the recorded deck order, replayed {ids.length}"
+  for ((expected, id), index) in (cards.zip ids).zipIdx do
+    unless (s.obj? id).bind (·.kind.cardId?) == some expected do
+      throw s!"{label}: recorded deck order differs at position {offset.getD 0 + index + 1}"
 
 private def observeBattlefield (s : GameState) (owner : PlayerId) (field : CardId) :
     Except String ObjId := do
@@ -383,6 +405,7 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     checkFactValue s!"{zoneLabel zone} count" count (← observeZone s zone).length
   | .zoneCards zone cards => checkCardSet (zoneLabel zone) cards (← publicCards s zone)
   | .zoneContains zone cards => checkCardSet (zoneLabel zone) cards (← publicCards s zone) true
+  | .recordedDeckOrder zone cards offset => checkRecordedDeckOrder s zone cards offset
   | .battlefieldControl owner field controller =>
     let id ← observeBattlefield s owner field
     checkFactValue s!"Battlefield {field.code} from seat {owner.n} controller" controller (s.controlOf id)

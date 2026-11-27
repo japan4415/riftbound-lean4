@@ -1311,6 +1311,40 @@ def check_duel_inspection(folder: Path, command: Callable[..., str], saved: dict
     assert finished["nextAnswer"] is None and finished["decision"] is None and not finished["choices"]
 
 
+def check_deck_order_observations(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
+    inputs = deepcopy(saved["input"])
+    opening = view["games"][0]["steps"][0]["state"]
+
+    def order(seat: int, kind: str) -> list[dict]:
+        return [{"code": opening["new"][str(obj)]["card"]}
+                for obj in opening["zones"][f"p{seat}.{kind}"]]
+
+    main = order(0, "mainDeck")
+    runes = order(1, "runeDeck")
+    whole = {"zone": {"player": {"p": {"n": 0}, "k": "mainDeck"}}, "cards": main, "offset": None}
+    segment = {"zone": {"player": {"p": {"n": 1}, "k": "runeDeck"}},
+               "cards": runes[2:6], "offset": 2}
+    inputs["games"][0]["observations"] = [{"checkpoint": 0, "facts": [
+        {"recordedDeckOrder": whole}, {"recordedDeckOrder": segment},
+    ]}]
+    source = folder / "deck-order-input.json"
+    archive = folder / "deck-order-archive.json"
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", source, archive)) == saved["summary"]
+    assert json.loads(command("verify", archive)) == saved["summary"]
+    assert inspect_game(folder, command, inputs, 1)["checkedObservations"] == 1
+
+    other = next(index for index, card in enumerate(main) if card != main[0])
+    main[0], main[other] = main[other], main[0]
+    inspect_game(folder, command, inputs, 1, error="recorded deck order differs at position 1")
+    main[0], main[other] = main[other], main[0]
+    segment["offset"] = len(runes)
+    inspect_game(folder, command, inputs, 1, error="recorded deck slice is outside the replayed deck")
+    segment["offset"] = 2
+    segment["zone"]["player"]["k"] = "hand"
+    inspect_game(folder, command, inputs, 1, error="requires a Main Deck or Rune Deck")
+
+
 def check_duel_observations(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
     inputs = deepcopy(saved["input"])
     game = inputs["games"][0]
@@ -1469,6 +1503,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert view["cardsFullyChecked"] and not any(saved["games"][0]["summary"]["uncheckedCards"])
     check_duel_inspection(folder, command, saved, view)
     check_duel_observations(folder, command, saved, view)
+    check_deck_order_observations(folder, command, saved, view)
     check_public_events(folder, command, saved, view)
 
     group_archive = folder / "group-move-archive.json"
