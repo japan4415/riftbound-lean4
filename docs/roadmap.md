@@ -2198,6 +2198,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Fizz, Trickster の誘発は確定前に辞退できる。解決時には自身の Trash から Energy の元のコストが3以下の Spell を選び、Energy を免除して Power を支払う（CR 383.3.a、420.3）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
 - 確定した Spell が解決や打ち消しで Chain を離れるときは、オーナーの山札の底へ直接 Recycle する。Spell 自身の指示で Chain を離れる場合はその指示を適用する。Fizz, Trickster を `full` とし、全1,103枚中563枚を実装済みにした（CR 391.3.a、417）。[Vendetta 公式ルール更新](https://playriftbound.com/en-us/news/announcements/core-rules-vendetta-patch-notes/) · [カード実装状況](coverage.md)
 
+### Janna がいる場所での回復と移動
+
+- Janna, Savior の誘発を確定するとき、同じ場所から Base に移す敵 Unit を最大1体選ぶ。対象を選ばずに回復でき、選んだ対象が解決時に無効なら、その対象の移動だけを行わない。[Spiritforged 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 解決時に Janna と同じ場所で支配している Unit のダメージをすべて除き、取り除いた量を記録する。Janna, Savior を `full` とし、全1,103枚中564枚を実装済みにした（CR 419）。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

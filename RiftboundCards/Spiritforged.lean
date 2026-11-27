@@ -1529,7 +1529,7 @@ Printings: SFD-053/221
 
 > [Reaction] (Play any time, even before spells and abilities resolve, including to a
 > battlefield you control.)
-> When you play me, heal your units here, then move an enemy unit from here to its base.
+> When you play me, heal your units here, then move up to one enemy unit from here to its base.
 -/
 def SFD_053.meta : CardDef :=
   { id := ⟨"SFD-053"⟩,
@@ -1547,13 +1547,11 @@ def SFD_053.meta : CardDef :=
 /-- Janna, Savior. -/
 def SFD_053 : CardDef :=
   { SFD_053.meta with
-
     abilities := [.passive .always [.playToBf [.controlled]], .triggered (.onSelf .play)
-      (.of [] (.seqOf [
-        .prim (.heal (Selector.all .friendly .anywhere [.ofType .unit, .at_ .self]) (.const 99)),
-        .prim (.move (Selector.one .enemy .anywhere [.ofType .unit, .at_ .self]) .base)]))
-      .unlimited],
-    status := .drafted }
+      (.of [.targetOf (.upTo 1) .enemy .here [.ofType .unit]] (.seqOf [
+        .prim (.healAll (.all .you .here [.ofType .unit])),
+        .prim (.move (.slot 0) .base)])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-054
 /--

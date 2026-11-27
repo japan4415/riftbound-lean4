@@ -239,6 +239,8 @@ inductive Prim where
   | pay (c : Cost)
   /-- Put cards on the top of their owners' Main Decks. -/
   | topdeck (s : Selector)
+  /-- Clear all marked damage from the selected Units (CR 419). -/
+  | healAll (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
 /-- How long an effect lasts. -/

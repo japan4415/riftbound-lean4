@@ -103,6 +103,18 @@ theorem healOne_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (healOne n 
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
+/-- Heal the damage currently marked on the Unit, recording only damage actually cleared. -/
+def healAllOn (s : GameState) (id : ObjId) : GameState × List Event :=
+  match (s.obj? id).map (·.damage) with
+  | some (n + 1) => healOne (n + 1) s id
+  | _ => (s, [])
+
+theorem healAllOn_safe (s : GameState) (id : ObjId) : Safe s (healAllOn s id).1 := by
+  unfold healAllOn
+  split
+  · exact healOne_safe _ _ _
+  · exact Safe.refl s
+
 /-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
 passive ability that says so. -/
 def readyBlocked (s : GameState) (id : ObjId) : Bool :=
@@ -3742,6 +3754,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .setBaseMight sel n =>
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel (setBaseMight k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
+  | .healAll sel => onSelected s p src env sel healAllOn
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
     (sel.eval s p src env).map (fun ids =>
@@ -3963,6 +3976,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some k =>
       simp only [hn, Option.bind_some] at h
       exact onSelected_safe (healOne_safe k) h
+  | healAll _ => exact onSelected_safe healAllOn_safe h
   | kill sel =>
     simp only [applyPrim] at h
     cases hs : sel.eval s p src env with
@@ -4473,7 +4487,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .topdeck s => some s
   | .deal s _ => some s
   | .setBaseMight s _ => some s
-  | .heal s _ => some s
+  | .heal s _ | .healAll s => some s
   | .kill s => some s
   | .ready s => some s
   | .exhaust s => some s
@@ -4516,6 +4530,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .deal _ n => .deal sel n
   | .setBaseMight _ n => .setBaseMight sel n
   | .heal _ n => .heal sel n
+  | .healAll _ => .healAll sel
   | .detach _ => .detach sel
   | .double _ => .double sel
   | .topdeck _ => .topdeck sel

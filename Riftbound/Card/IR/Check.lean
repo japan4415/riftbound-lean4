@@ -152,6 +152,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .exchangeDamage a b => Selector.ok c a && Selector.ok c b
   | .setBaseMight s n => Selector.ok c s && Amount.ok c n
   | .heal s n => Selector.ok c s && Amount.ok c n
+  | .healAll s => Selector.ok c s
   | .kill s => Selector.ok c s
   | .banish s => Selector.ok c s
   | .recall s _ => Selector.ok c s

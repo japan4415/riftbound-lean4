@@ -431,9 +431,51 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, a) ← putAt s1 s.me "OGN-001" s.bf0
   let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
   let s4 := s3.modObj a (fun o => { o with damage := 3 })
-  let r ← fire s4 [.played s.me j]
+  let r ← fire s4 [.played s.me j] { pick := (· == [e]) }
   return r.dmg a == some 0 && (r.obj? e).any (·.loc.isNone) &&
     (r.obj? j).any (·.loc == some s.bf0)
+
+-- The target is chosen on the Chain. Moving it away does not let Janna select a replacement
+-- and does not stop her from healing every damaged Unit she still controls there.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, janna) ← putAt (s.control p field) p "SFD-053" field
+  let (s, first) ← putAt s p "OGN-001" field
+  let (s, second) ← putAt s p "OGN-001" field
+  let (s, atBase) ← put s p "OGN-001" .base
+  let (s, foe) ← putAt s q "OGN-001" field
+  let (s, another) ← putAt s q "OGN-001" field
+  let s := (setBaseMight 130 s first).1
+  let s := (s.markDamage first 105 (some q)).markDamage second 2 (some q)
+  let s := (s.markDamage atBase 2 (some q)).markDamage another 1 (some p)
+  let pending := insertTriggers (s.detect [.played p janna]) (below s.pending)
+  let (window, _) ← (advance 100 { s with pending } []).toOption
+  let withTarget : Action := ⟨.player p, .putTrigger 0 [foe] (.pay [])⟩
+  let withoutTarget : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let (chain, chose) ← (step 100 window withTarget).toOption
+  let (emptyChoice, _) ← (step 100 window withoutTarget).toOption
+  let noMove := settleChain {} 12 emptyChoice
+  let fromBase := settleChain {} 12 (moveHome chain janna).1
+  let noSource := settleChain {} 12 (sendObj .trash chain janna).1
+  let fled := (moveHome chain foe).1
+  let .chainPass firstSeat _ :: _ := fled.pending | none
+  let (passed, _) ← (step 100 fled ⟨.player firstSeat, .pass⟩).toOption
+  let .chainPass lastSeat _ :: _ := passed.pending | none
+  let (result, events) ← (step 100 passed ⟨.player lastSeat, .pass⟩).toOption
+  let heals := events.filter (fun | .healed .. => true | _ => false)
+  return (legalFrameActions window).contains withTarget &&
+    (legalFrameActions window).contains withoutTarget && chose.contains (.chosenByAbility p foe) &&
+    noMove.dmg first == some 0 && (noMove.obj? foe).any (·.loc == some field) &&
+    fromBase.dmg atBase == some 0 && fromBase.dmg first == some 105 &&
+    (fromBase.obj? foe).any (·.loc == some field) &&
+    noSource.dmg first == some 105 && (noSource.obj? foe).any (·.loc == some field) &&
+    heals.length == 2 && heals.contains (.healed first 105) && heals.contains (.healed second 2) &&
+    result.dmg first == some 0 && result.dmg second == some 0 &&
+    result.damageMarks[first.n]?.isNone && result.damageMarks[second.n]?.isNone &&
+    result.dmg atBase == some 2 && result.dmg another == some 1 &&
+    (result.obj? another).any (·.loc == some field)
 
 -- Bubble Bot (SFD-062): when played, ready another friendly Mech (not itself, not a non-Mech)
 #guard tsf fun s => do
@@ -3079,7 +3121,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s2, j) ← put s1 s.me "SFD-053" .hand
   let (s3, foe) ← putAt s2 s.you "OGN-051" bf
   let mine := s3.control s.me bf
-  let a ← play mine s.me j [bf]
+  let a ← play mine s.me j [bf] { pick := (· == [foe]) }
   return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && reactSpell s3 j &&
     (play s3 s.me j [bf]).isNone
 

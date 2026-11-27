@@ -46,6 +46,10 @@ TEXT_ERRATA = {
         "When I attack or defend, you may pay :rb_rune_fury:. If you do, give me":
             "When I attack or defend, you may pay :rb_rune_fury: to give me",
     },
+    "SFD-053": {
+        "then move an enemy unit from here to its base.":
+            "then move up to one enemy unit from here to its base.",
+    },
     "SFD-140": {
         "ignoring its Energy cost. Recycle that spell after you play it.":
             "ignoring its Energy cost. Then recycle it.",
