@@ -173,7 +173,8 @@ def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (wh
 /-- The abilities of one source that watch an event. A watcher in a group of deaths uses the
 controller and text it had on the Board. -/
 def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEvent)
-    (occurrence : Occurrence) (src : ObjId) (deadController : Option PlayerId := none) :
+    (occurrence : Occurrence) (src : ObjId) (deadController : Option PlayerId := none)
+    (eventAmount : Option Nat := none) :
     List PendTrigger :=
   match s.obj? src with
   | some o =>
@@ -195,7 +196,8 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
               (t.event == .playIncludingTokens && (ev == .play || ev == .playToken))
             if matchesEvent && t.subject != .self &&
                 subjectHolds board src c subj who t.subject &&
-                condOkEnv board src c { slots := [.obj subj], passMight := board.mightTable } t.condition &&
+                condOkEnv board src c
+                  { slots := [.obj subj], passMight := board.mightTable, eventAmount } t.condition &&
                 t.occurrence == occurrence && limitOk s src j lim stamp then
               some { source := src, card := cd.id, idx := j, controller := c,
                      subject := some subj, copyStamp := stamp }
@@ -204,10 +206,20 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
     | none => []
   | none => []
 
+/-- The Energy the player spent on this Spell at finalization, even after it leaves the Chain. -/
+def GameState.watchedSpellEnergy (s : GameState) (who : PlayerId) (spell : ObjId) : Option Nat := do
+  let object ← s.obj? spell
+  if (s.cardDef? spell).any (·.hasType .spell) && s.playLog.any (fun play =>
+      play.who == who && play.moment == .finalized && play.turn == s.turn &&
+        (play.object == spell || some play.object == object.formerId)) then
+    some object.energyPaid
+  else none
+
 /-- The abilities in play that fire for one subject of an event. -/
 def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEvent) :
     List PendTrigger :=
-  s.passiveSources.flatMap (fun src => watchersAt s subj who ev .every src)
+  let eventAmount := if ev == .play then s.watchedSpellEnergy who subj else none
+  s.passiveSources.flatMap (fun src => watchersAt s subj who ev .every src (eventAmount := eventAmount))
 
 /-- A grouped death fires once per watching ability. Its source may be one of the dead objects. -/
 def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTrigger :=

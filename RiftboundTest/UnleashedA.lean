@@ -20,6 +20,47 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+private meta def testSpell (code : String) (energy : Nat) : CardDef :=
+  { id := cid code, name := code, types := [.spell], cost := some ⟨energy, []⟩,
+    spellEffect := some (.of [] .nop), status := .full }
+
+-- A second cheaper Spell cannot borrow the Energy spent on the first one to ready Revna.
+#guard tun fun s => do
+  let p := s.me
+  let costly := testSpell "TEST-COSTLY-SPELL" 4
+  let cheap := testSpell "TEST-CHEAP-SPELL" 3
+  let board := { s with cards := ⟨s.cards.cards ++ [costly, cheap]⟩ }
+  let (s, revna) ← put board p "UNL-005" .base
+  let (s, heavy) ← put s p costly.id.code .hand
+  let (s, light) ← put s p cheap.id.code .hand
+  let s := s.tire revna
+  let below ← play s p light
+  let ready ← play s p heavy
+  let paid ← ready.firstOf p .trash costly.id.code
+  let later ← play (ready.tire revna) p light
+  return below.tired revna == some true && ready.tired revna == some false &&
+    ready.watchedSpellEnergy p paid == some 4 && ready.watchedSpellEnergy s.you paid == none &&
+    later.tired revna == some true
+
+-- Forgotten Library checks control and the payment of the resolving Spell.
+#guard tun fun s => do
+  let p := s.me
+  let costly := testSpell "TEST-COSTLY-SPELL" 4
+  let cheap := testSpell "TEST-CHEAP-SPELL" 3
+  let board := { s with cards := ⟨s.cards.cards ++ [costly, cheap]⟩ }
+  let (s, field) ← putBf board s.you "UNL-211"
+  let (s, _) ← putAt s p "OGN-049" field
+  let (s, heavy) ← put s p costly.id.code .hand
+  let (s, light) ← put s p cheap.id.code .hand
+  let withoutControl ← play s p heavy
+  let choosing ← play (s.control p field) p heavy
+  let .predict owner _ first _ _ _ :: _ := choosing.pending | none
+  let (kept, _) ← (step 100 choosing ⟨.player p, .predictPick first false⟩).toOption
+  let later ← play (settleChain {} 12 kept) p light
+  let predicts (t : GameState) : Bool :=
+    t.pending.head?.any (fun | .predict .. => true | _ => false)
+  return owner == p && !predicts withoutControl && !predicts later
+
 -- Forbidding Waste weakens only a lone defender at its Battlefield.
 #guard tun fun s => do
   let attacker : PlayerId := ⟨0⟩

@@ -2239,9 +2239,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Lillia, Fae Fawn は誘発した移動の出発地点を保持する。最初の能力に Flash を重ねて移動した場合、各能力が自分の出発地点に Sprite を作る。カードを `full` とし、全1,103枚中581枚を実装済みにした。[カード実装状況](coverage.md)
 
-### Forbidding Waste の単独防衛
+### 単独防衛と誘発元の Spell の支払い
 
-- Forbidding Waste では単独で防衛している Unit の Might が2下がる。同じ Battlefield にチームメイトの Unit がいる場合は下がらない。攻撃側と別の場所にいる Unit への影響もシナリオで確認し、全1,103枚中582枚を `full` とした。[カード実装状況](coverage.md)
+- Forbidding Waste では単独で防衛している Unit の Might が2下がる。同じ Battlefield にチームメイトの Unit がいる場合は下がらない。
+- Revna the Lorekeeper と Forgotten Library の誘発は、解決した Spell の確定時に本人が支払った Energy を調べる。同じターンに別の Spell に支払った Energy は参照しない。以上3枚を `full` とし、全1,103枚中584枚が実装済みとなった。[カード実装状況](coverage.md)
 
 ## M10: 完了判定（original.md の最終目的）
 

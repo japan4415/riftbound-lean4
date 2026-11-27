@@ -216,10 +216,10 @@ private theorem triggersOfMatching_queued {s : GameState} {src : ObjId} {p : Pla
 
 private theorem watchersAt_queued {s : GameState} {src subj : ObjId} {who : PlayerId}
     {select : TriggerEvent → Bool} {event : TriggerEvent} {t : PendTrigger} {occurrence : Occurrence}
-    {dead : Option PlayerId} (observedEvent : select event = true)
+    {dead : Option PlayerId} {amount : Option Nat} (observedEvent : select event = true)
     (notPlay : event ≠ .play) (notToken : event ≠ .playToken)
     (notDeath : (event == .die || event == .firstUnitDeathHere) = false)
-    (member : t ∈ watchersAt s subj who event occurrence src dead) :
+    (member : t ∈ watchersAt s subj who event occurrence src dead amount) :
     QueuedEventAbility select s.cards t := by
   unfold watchersAt at member
   split at member

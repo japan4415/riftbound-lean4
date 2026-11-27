@@ -242,9 +242,9 @@ def UNL_005 : CardDef :=
   { UNL_005.meta with
     abilities := [.triggered
       { event := .play, subject := Selector.all .you .anywhere [.ofType .spell],
-        condition := .spentOnSpell 4 }
+        condition := .cmp .ge .eventAmount (.const 4) }
       (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-006
 /--
@@ -5221,7 +5221,7 @@ def UNL_181.meta : CardDef :=
 def UNL_181 : CardDef :=
   { UNL_181.meta with
     abilities := [.triggered
-      { condition := .spentOnSpell 4,
+      { condition := .cmp .ge .eventAmount (.const 4),
         subject := Selector.all .you .anywhere [.ofType .spell], event := .play }
       (.of [] (.may (.seqOf [.prim (.banishWith (.slot 0)),
         .ifThen (.cmp .ge (.count (Selector.all .friendly .inBanishment
@@ -6068,10 +6068,10 @@ def UNL_211.meta : CardDef :=
 def UNL_211 : CardDef :=
   { UNL_211.meta with
     abilities := [.triggered
-      { condition := .and .iControlHere (.spentOnSpell 4),
+      { condition := .and .iControlHere (.cmp .ge .eventAmount (.const 4)),
         subject := Selector.all .you .anywhere [.ofType .spell], event := .play }
       (.of [] predict1) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-212
 /--
