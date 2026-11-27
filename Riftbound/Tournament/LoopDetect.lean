@@ -38,6 +38,18 @@ theorem forcedAnswer_unique {s : GameState} {answer other : Action}
       simpa [forced] using member
     · simp at forced
 
+/-- A decision with two different ordinary player answers cannot be forced. -/
+theorem forcedAnswer_none_of_alternatives {s : GameState} {p : PlayerId}
+    {first next : ActionKind} (firstLegal : LegalFrame s ⟨.player p, first⟩)
+    (nextLegal : LegalFrame s ⟨.player p, next⟩) (distinct : first ≠ next) :
+    forcedAnswer s = none := by
+  cases forced : forcedAnswer s with
+  | none => rfl
+  | some answer =>
+    have firstOnly := forcedAnswer_unique forced firstLegal rfl
+    have nextOnly := forcedAnswer_unique forced nextLegal rfl
+    exact (distinct (congrArg Action.kind (firstOnly.trans nextOnly.symm))).elim
+
 private theorem eraseDups_eq_single_answer {actions : List Action} {answer : Action} :
     actions.eraseDups = [answer] ↔ answer ∈ actions ∧ ∀ other ∈ actions, other = answer := by
   constructor
@@ -345,6 +357,27 @@ theorem forcedAnswer_priority_none_of_rune {s : GameState} {p : PlayerId} {rune 
     have rune := unique use (by simp [legalFrameActions, pending, offered])
     have distinct : (⟨.player p, .pass⟩ : Action) ≠ use := by simp [use]
     exact (distinct (pass.trans rune.symm)).elim
+
+/-- An optional trigger is not forced while its controller has a legal alternative to declining. -/
+theorem forcedAnswer_optionalTrigger_none {s : GameState} {p : PlayerId} {first chosen : PendTrigger}
+    {more other : List PendTrigger} {rest : List Frame} {index : Nat} {accept : ActionKind}
+    (pending : s.pending = .triggerOrder p first more other none :: rest)
+    (trigger : (first :: more)[index]? = some chosen) (optional : trigOptional s chosen = true)
+    (legal : LegalFrame s ⟨.player p, accept⟩) (different : accept ≠ .putTrigger index [] .skip) :
+    forcedAnswer s = none := by
+  have decline : LegalFrame s ⟨.player p, .putTrigger index [] .skip⟩ := by
+    simp [LegalFrame, pending, triggerFinishOk, trigger, trigLegal, optional]
+  exact forcedAnswer_none_of_alternatives legal decline different
+
+/-- A trigger funding decision can be cancelled, so choosing an eligible Add is not forced. -/
+theorem forcedAnswer_triggerFunding_none {s : GameState} {p : PlayerId} {first : PendTrigger}
+    {more other : List PendTrigger} {rest : List Frame} {plan : TriggerFunding} {add : EffectAdd}
+    (pending : s.pending = .triggerOrder p first more other (some plan) :: rest)
+    (eligible : add ∈ triggerFundingAdds s (first :: more) plan) :
+    forcedAnswer s = none := by
+  have cancel : LegalFrame s ⟨.player p, .decide false⟩ := by simp [LegalFrame, pending]
+  have fund : LegalFrame s ⟨.player p, .triggerAdd add⟩ := by simp [LegalFrame, pending, eligible]
+  exact forcedAnswer_none_of_alternatives cancel fund (by simp)
 
 end Riftbound
 
