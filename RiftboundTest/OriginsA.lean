@@ -21,6 +21,94 @@ meta def t (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Real Hold scoring supplies the turn player's decisions and units, even on printed fields
+-- brought by the other player.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, altar) ← putBf s q "OGN-275"
+  let (s, grove) ← putBf s q "OGN-280"
+  let (s, peak) ← putBf s q "OGN-288"
+  let bringUnder (board : GameState) (field : ObjId) : Option GameState := do
+    let (withUnit, _) ← putAt board p "OGN-136" field
+    return withUnit.modObj field (fun o => { o with control := some p })
+  let s ← [altar, grove, peak].foldlM bringUnder s
+  let start := { s with pending := [.scoreHolds, .priority p] }
+  let (scored, events) ← (advance 100 start []).toOption
+  let declines := settleChain { yes := false } 30 scored
+  let accepts := settleChain {} 30 scored
+  let newRune := (accepts.runesOf p).filter (fun id => !(s.runesOf p).contains id)
+  let recruit ← (accepts.zone (.player p .base)).find? (fun id =>
+    (accepts.cardDef? id).any (·.name == "Recruit"))
+  return [altar, grove, peak].all (fun field => events.contains (.scored p field false)) &&
+    accepts.pending == [.priority p] && declines.pending == [.priority p] &&
+    accepts.pointsOf p == s.pointsOf p + 3 && declines.pointsOf p == s.pointsOf p + 3 &&
+    accepts.handN p == s.handN p + 1 && declines.handN p == s.handN p + 1 &&
+    accepts.handN q == s.handN q && accepts.countNamed p .base "Recruit" == 1 &&
+    declines.countNamed p .base "Recruit" == 1 && accepts.tired recruit == some true &&
+    newRune.length == 1 && newRune.all (fun rune => accepts.tired rune == some true) &&
+    declines.runesOf p == s.runesOf p && accepts.runesOf q == s.runesOf q
+
+-- Navori Fighting Pit offers both units at the held battlefield and no target in Base.
+#guard t fun s => do
+  let p := s.me
+  let (s, pit) ← putBf s s.you "OGN-283"
+  let (s, first) ← putAt s p "OGN-136" pit
+  let (s, second) ← putAt s p "OGN-136" pit
+  let (s, outside) ← put s p "OGN-136" .base
+  let board := { s.modObj pit (fun o => { o with control := some p }) with
+    pending := [.scoreHolds, .priority p] }
+  let (scored, _) ← (advance 100 board []).toOption
+  let choices := (legalFrameActions scored).filterMap (fun action => match action.kind with
+    | .putTrigger _ [target] (.pay ..) => some target
+    | _ => none)
+  let resolved := settleChain { pick := fun targets => targets == [second] } 12 scored
+  return choices.contains first && choices.contains second && !choices.contains outside &&
+    (resolved.obj? second).any (·.buffed) && !(resolved.obj? first).any (·.buffed) &&
+    !(resolved.obj? outside).any (·.buffed)
+
+-- Obelisk of Power and The Arena's Greatest track a seat's own first Beginning even when
+-- a War seat earlier in the regular turn order has conceded.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let departed : PlayerId := ⟨2⟩
+  let fourth : PlayerId := ⟨3⟩
+  let (s, _) ← putBf s p "OGN-284"
+  let (s, _) ← putBf s p "OGN-290"
+  let config := { s.config with mode := .ffa4 }
+  let start := { s with config, turnOrder := [p, departed, q, fourth], turn := 1 }
+  let first := beginTurnStep (start.withdrawSeat departed) []
+  let second := (List.range 3).foldl (fun state _ => beginTurnStep state []) first
+  let beginning (state : GameState) : Option GameState := do
+    let board := { state with pending := [.phase .beginning, .priority q] }
+    let (prompt, _) ← (advance 100 board []).toOption
+    return settleChain {} 24 prompt
+  let firstResult ← beginning first
+  let secondResult ← beginning second
+  let newRunes := (firstResult.runesOf q).filter (fun rune => !(s.runesOf q).contains rune)
+  return first.active == some q && second.active == some q &&
+    first.turnsTaken q == 1 && second.turnsTaken q == 2 &&
+    firstResult.pointsOf q == s.pointsOf q + 1 && firstResult.pointsOf p == s.pointsOf p &&
+    newRunes.length == 1 && newRunes.all (fun rune => firstResult.tired rune == some false) &&
+    firstResult.runesOf p == s.runesOf p &&
+    secondResult.runesOf q == s.runesOf q && secondResult.pointsOf q == s.pointsOf q
+
+-- Only a unit at Windswept Hillock can use its added standard movement, and the keyword
+-- ceases to apply when the unit enters a different battlefield.
+#guard t fun s => do
+  let p := s.me
+  let elsewhere := s.bf0
+  let (s, hillock) ← putBf s s.you "OGN-297"
+  let (s, warCamp) ← putBf s s.you "OGN-294"
+  let (s, starts) ← putAt s p "OGN-136" hillock
+  let (s, other) ← putAt s p "OGN-136" elsewhere
+  let move (id : ObjId) : Action := ⟨.player p, .standardMove id (.battlefield warCamp) Cost.zero⟩
+  let (moved, _) ← (step 100 s (move starts)).toOption
+  return (legalActions s).contains (move starts) && !(legalActions s).contains (move other) &&
+    (moved.obj? starts).bind (·.loc) == some warCamp && moved.mightNow starts == some 3 &&
+    !moved.hasKw starts .ganking && moved.mightNow other == some 2
+
 -- Rebuke (OGN-172): a unit at a battlefield goes back to its owner's hand
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-172" .hand
@@ -2721,29 +2809,60 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     ((yes.zone (.player s.me .base)).filter (fun u => (yes.cardDef? u).any (·.hasType .rune) &&
       !(buffed.zone (.player s.me .base)).contains u)).all (fun u => yes.tired u == some true)
 
--- The Candlelit Sanctum (OGN-291): when I conquer here, I may recycle either of the top two cards
+-- The Candlelit Sanctum (OGN-291) offers private ordering and Recycle after a real conquest.
 #guard t fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-291"
-  let deck := s1.zone (.player s.me .mainDeck)
-  let yes ← fire s1 [.scored s.me bf true] { yes := true }
-  let no ← fire s1 [.scored s.me bf true] { yes := false }
-  let other ← fire s1 [.scored s.you bf true] { yes := true }
-  let held ← fire s1 [.scored s.me bf false] { yes := true }
-  return deck.length > 3 && (no.zone (.player s.me .mainDeck)) == deck &&
-    (yes.zone (.player s.me .mainDeck)).take (deck.length - 2) == deck.drop 2 &&
-    ((yes.zone (.player s.me .mainDeck)).drop (deck.length - 2)).length == 2 &&
-    (other.zone (.player s.me .mainDeck)) == deck &&
-    (other.zone (.player s.you .mainDeck)) != s1.zone (.player s.you .mainDeck) &&
-    (held.zone (.player s.me .mainDeck)) == deck
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s q "OGN-291"
+  let (s, _) ← putAt s p "OGN-136" bf
+  let board := { s.modObj bf (fun o => { o with contested := some p }) with
+    pending := [.showdown bf p 0, .priority p] }
+  let deck := Zone.player p .mainDeck
+  let first :: second :: rest := board.zone deck | none
+  let (passed, _) ← (step 0 board ⟨.player p, .pass⟩).toOption
+  let (scored, events) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let predicting := settleChain {} 12 scored
+  let pick (state : GameState) (card : ObjId) (recycle : Bool) :=
+    (step 100 state ⟨.player p, .predictPick card recycle⟩).toOption.map Prod.fst
+  let keepSecond ← pick predicting second false
+  let reordered ← pick keepSecond first false
+  let discardSecond ← pick predicting second true
+  let keepFirst ← pick discardSecond first false
+  let discardFirst ← pick predicting first true
+  let keepSecondOnly ← pick discardFirst second false
+  let chance ← pick discardFirst second true
+  let (recycled, _) ← (step 100 chance ⟨.chance, .arrange [second, first]⟩).toOption
+  let held ← fire board [.scored p bf false]
+  return held.zone deck == first :: second :: rest && events.contains (.scored p bf true) && predicting.controlOf bf == some p &&
+    (predicting.resolutionZoneCardFaces p deck).any (fun cards => (cards.take 2).all Option.isSome) &&
+    predicting.resolutionZoneCardFaces q deck == board.zoneCardFaces q deck &&
+    predicting.zone deck == first :: second :: rest &&
+    reordered.zone deck == second :: first :: rest &&
+    keepFirst.zone deck == first :: (rest ++ [second]) &&
+    keepSecondOnly.zone deck == second :: (rest ++ [first]) &&
+    recycled.zone deck == rest ++ [second, first]
 
--- Fortified Position (OGN-279): when I defend here, a unit gains Shield 2
+-- Fortified Position (OGN-279) grants Shield to the defending player's choice through this Combat.
 #guard t fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-279"
-  let (s2, u) ← putAt s1 s.me "OGN-136" bf
-  let a ← fire s2 [.combatStarted bf s.you]
-  let att ← fire s2 [.combatStarted bf s.me]
-  let has (x : GameState) := (x.grantedKws u).any (fun k => k.keyword == .shield)
-  return has a && !has att && !has s2
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "OGN-279"
+  let (s, defender) ← putAt s p "OGN-116" field
+  let (s, other) ← put s p "OGN-116" .base
+  let (s, _) ← putAt s q "OGN-136" field
+  let board := s.modObj field (fun o => { o with control := some p, contested := some q })
+  let (combat, notices) := board.observeCombat [.showdown field q 0]
+  let s := { board with combat }
+  let whileAttacking ← fire s [.combatStarted field p]
+  let chosen ← fire s notices { pick := fun targets => targets == [defender] }
+  let (finished, events) ← (advance 100 { chosen with pending := [.combatFinish field, .priority q] } []).toOption
+  let shielded (board : GameState) (id : ObjId) :=
+    (board.grantedKws id).contains ⟨.shield, .amount 2⟩
+  return combat.isSome && notices.contains (.combatStarted field q) &&
+    shielded chosen defender && !shielded chosen other && !shielded whileAttacking defender &&
+    (finished.obj? defender).isSome && !shielded finished defender &&
+    finished.phase == .main && events.any (fun e => match e with
+      | .combatEnded bf _ => bf == field | _ => false)
 
 -- Paying as an effect resolves. Flame Chompers (OGN-006): when it is discarded, I may pay Fury to
 -- play it (with no Fury in the Pool, or if I decline, it stays in the Trash)

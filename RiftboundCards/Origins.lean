@@ -7481,7 +7481,7 @@ def OGN_275 : CardDef :=
   { OGN_275.meta with
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-276
 /--
@@ -7501,7 +7501,7 @@ def OGN_276.meta : CardDef :=
 def OGN_276 : CardDef :=
   { OGN_276.meta with
     abilities := [.passive .always [.victoryScorePlus (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-277
 /--
@@ -7566,8 +7566,8 @@ def OGN_279 : CardDef :=
   { OGN_279.meta with
     abilities := [.triggered (.onSelf .defend)
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
-        (.grant (.slot 0) (.keyword .it ⟨.shield, .amount 2⟩) .thisTurn)) .unlimited],
-    status := .drafted }
+        (.grant (.slot 0) (.keyword .it ⟨.shield, .amount 2⟩) .thisCombat)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-280
 /--
@@ -7588,7 +7588,7 @@ def OGN_280 : CardDef :=
   { OGN_280.meta with
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-281
 /--
@@ -7655,7 +7655,7 @@ def OGN_283 : CardDef :=
   { OGN_283.meta with
     abilities := [.triggered (.onSelf .youHold)
       (.of [.targetOf .one .any .here [.ofType .unit]] (.prim (.buff (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-284
 /--
@@ -7677,7 +7677,7 @@ def OGN_284 : CardDef :=
     abilities := [.triggered
       { event := .at_ .beginning, condition := .cmp .eq (.turnsTaken .you) (.const 1) }
       (.of [] (.prim (.channel .you (.const 1) (.const 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-285
 /--
@@ -7761,7 +7761,7 @@ def OGN_288 : CardDef :=
   { OGN_288.meta with
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.may (.prim (.channel .you (.const 0) (.const 1))))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-289
 /--
@@ -7808,7 +7808,7 @@ def OGN_290 : CardDef :=
     abilities := [.triggered
       { event := .at_ .beginning, condition := .cmp .eq (.turnsTaken .you) (.const 1) }
       (.of [] (.prim (.score .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-291
 /--
@@ -7829,11 +7829,8 @@ def OGN_291.meta : CardDef :=
 def OGN_291 : CardDef :=
   { OGN_291.meta with
     abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.seqOf [
-        .prim (.lookTop 2),
-        .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 2, .not (.top 1)]))),
-        .may (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
-    status := .drafted }
+      (.of [] (.prim (.predict (.const 2)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-292
 /--
@@ -7901,7 +7898,7 @@ def OGN_294 : CardDef :=
   { OGN_294.meta with
     abilities := [.passive .always
       [.mightPlus (Selector.all .any .here [.ofType .unit]) (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-295
 /--
@@ -7963,7 +7960,7 @@ def OGN_297 : CardDef :=
   { OGN_297.meta with
     abilities := [.passive .always
       [.keyword (Selector.all .any .here [.ofType .unit]) ⟨.ganking, .none⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-298
 /--

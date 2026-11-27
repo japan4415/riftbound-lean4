@@ -1148,7 +1148,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **動くようになったカード**: Albus Ferros（230。バフを持つ自分のユニットごとに、「消費するか」を聞いて、消費したら、疲労した Rune を 1 つ引く）、The Candlelit Sanctum（291。上の 2 枚を、それぞれ、リサイクルしてもよい。残りを戻す順番は、選べない）、Fortified Position（279）。
 - **動くカード**: 222 → **225 枚**。
 - **レビューで直したこと**: Albus は、提示された時点で、そのユニットがバフを持つかを確かめる。Sanctum のテストは、相手が征服したときに、相手のデッキが動くこと（Battlefield の能力は、征服した側のために働く）と、守り切ったとき（Hold）には、動かないことを確かめる。
-- **近似として残したこと**: Fortified Position の Shield 2 は、「この戦闘のあいだ」ではなく、「このターンのあいだ」続く（戦闘の長さの持続が、まだない）。Sanctum は、残すカードの順番を選べない。
+- **当時の近似**: Fortified Position の Shield 2 はターン終了まで続き、Sanctum には残すカードの順番の選択がなかった。現在は [Origins の Battlefields](#origins-の-battlefields-2026-11-27) の実装で解消した。
 
 ### M7 の実装の記録（2026-11-23）: 最高の Might による値引き、2 枚目のプレイ、バフの上乗せ（3 枚）
 
@@ -2109,6 +2109,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - M8 までに `partial`（多人数の仕組み待ち）としたカードを `full` にする。
 
 **証明（L6）**: I10、I19。
+
+### Origins の Battlefields（2026-11-27）
+
+- The Candlelit Sanctum は Conquer した席だけが山札の上2枚を見て、それぞれを残すか Recycle するか選ぶ。残すカードは選んだ順番で山札の上に置き、2枚とも Recycle するときは下に置く順番を抽選する。Predict と同じエンジンの処理を使う。
+- Fortified Position は防御した席が選んだ Unit に Shield 2 を与える。戦闘終了時に Shield が消えることを、同じターンの状態で確認した。
+- Altar to Unity、Aspirant’s Climb、Grove of the God-Willow、Navori Fighting Pit、Obelisk of Power、Startipped Peak、The Arena’s Greatest、Trifarian War Camp、Windswept Hillock も検証した。Origins の `full` は 298 枚中 69 枚、全体では 1,103 枚中 520 枚。[対戦シナリオ](../RiftboundTest/OriginsA.lean)
 
 ## M10: 完了判定（original.md の最終目的）
 
