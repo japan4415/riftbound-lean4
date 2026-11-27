@@ -1780,7 +1780,8 @@ theorem Choice.mem_sortedTargetGroups {s : GameState} {p : PlayerId} {self : Obj
   · simp only [GameState.targetsByBattlefield, List.mem_map] at hg
     obtain ⟨_, _, rfl⟩ := hg
     exact (List.mem_filter.mp hi).1
-  · split at hg
+  · dsimp only at hg
+    split at hg
     · obtain rfl := List.mem_singleton.mp hg
       contradiction
     · simp only [GameState.targetsByLocation, List.mem_map] at hg
