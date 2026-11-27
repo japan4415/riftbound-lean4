@@ -3803,9 +3803,8 @@ def OGN_141.meta : CardDef :=
 def OGN_141 : CardDef :=
   { OGN_141.meta with
     abilities := [.triggered (.onSelf .play)
-      (.of [] (.seqOf [.may (.prim (.buff (Selector.one .friendly .anywhere [.ofType .unit, .notSelf]))),
-        .may (.prim (.buff (Selector.one .friendly .anywhere
-          [.ofType .unit, .notSelf, .not (.sameAs (.var pickVar))])))])) .unlimited],
+      (.of [.targetOf (.upTo 2) .friendly .anywhere [.ofType .unit, .notSelf]]
+        (.prim (.buff (.slotsFrom 0)))) .unlimited],
     status := .drafted }
 
 -- BEGIN GENERATED OGN-142

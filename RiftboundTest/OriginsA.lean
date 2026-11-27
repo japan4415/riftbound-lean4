@@ -2085,11 +2085,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← put s2 s.me "OGN-136" .base
   let (s4, w) ← put s3 s.me "OGN-136" .base
   let (s5, e) ← put s4 s.you "OGN-136" .base
-  let a ← play s5 s.me c [] { obj := fun o => o == u }
+  let waiting ← castStop s5 s.me c
+  let source ← waiting.firstOf s.me .base "OGN-141"
+  let pick (units : List ObjId) : Action := ⟨.player s.me, .putTrigger 0 units⟩
+  let legal := legalFrameActions waiting
+  let a ← play s5 s.me c [] { pick := (· == [u, v]) }
+  let decline ← play s5 s.me c [] { pick := List.isEmpty }
   let m ← a.firstOf s.me .base "OGN-141"
   let bf (y : GameState) (o : ObjId) := (y.obj? o).map (·.buffed)
   let count := [u, v, w].filter (fun o => bf a o == some true) |>.length
-  return count == 2 && bf a u == some true && bf a m == some false && bf a e == some false
+  return legal.contains (pick []) && legal.contains (pick [u]) && legal.contains (pick [u, v]) &&
+    !(legal.contains (pick [u, u])) && !(legal.contains (pick [u, v, w])) &&
+    !(legal.contains (pick [source])) && !(legal.contains (pick [e])) &&
+    count == 2 && bf a u == some true && bf a v == some true && bf a m == some false &&
+    bf a e == some false && bf decline u == some false && bf decline v == some false
 
 -- Back to Back (OGN-206): two friendly units get +2 Might each; with one unit, only +2
 #guard t fun s => do
@@ -2111,7 +2120,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-141" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
-  let a ← play s2 s.me c
+  let a ← play s2 s.me c [] { pick := (· == [u]) }
   let m ← a.firstOf s.me .base "OGN-141"
   return (a.obj? u).map (·.buffed) == some true && (a.obj? m).map (·.buffed) == some false
 #guard t fun s => do
