@@ -1526,6 +1526,14 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     !accepts [small, anotherSeat] && !offers [small, anotherSeat] &&
     (step 100 s (answer zeros)).isOk
 
+private meta def passUntilChoice : Nat → GameState → List Event → Option (GameState × List Event)
+  | 0, _, _ => none
+  | n + 1, state, events => match state.pending with
+    | .chainPass seat _ :: _ => do
+      let (next, emitted) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+      passUntilChoice n next (events ++ emitted)
+    | _ => some (state, events)
+
 -- A Reaction can break the declaration's Might budget. Keep an inclusion-maximal subset
 -- of the original targets and use the Base declared at finalization.
 #guard tun fun s => do
@@ -1542,14 +1550,7 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     ⟨.player p, .playCard spell ⟨4, [.calm]⟩ [first, second] none none (.destination none)⟩).toOption
   let (window, _) ← (step 100 declared ⟨.player p, .pass⟩).toOption
   let (higher, _) ← (step 100 window ⟨.player q, .playCard response ⟨2, []⟩ [second]⟩).toOption
-  let rec pass : Nat → GameState → Option GameState
-    | 0, _ => none
-    | n + 1, state => match state.pending with
-      | .chainPass seat _ :: _ => do
-        let (next, _) ← (step 100 state ⟨.player seat, .pass⟩).toOption
-        pass n next
-      | _ => some state
-  let waiting ← pass 10 higher
+  let (waiting, _) ← passUntilChoice 10 higher []
   let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
   let legal := legalFrameActions waiting
   let (done, events) ← (step 100 waiting (choose second)).toOption
@@ -1571,17 +1572,33 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let declare : Action := ⟨.player p, .playCard spell ⟨4, [.calm]⟩ [unit] none none (.destination none)⟩
   let (queued, _) ← (step 100 s declare).toOption
   let changed := (setController other queued unit).1
-  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
-    | 0, _, _ => none
-    | n + 1, state, events => match state.pending with
-      | .chainPass seat _ :: _ => do
-        let (next, emitted) ← (step 100 state ⟨.player seat, .pass⟩).toOption
-        pass n next (events ++ emitted)
-      | _ => some (state, events)
-  let (done, events) ← pass 10 changed []
+  let (done, events) ← passUntilChoice 10 changed []
   return queued.turnFx.any (fun note => note.kind == .declaredMoveBases [(unit, owner)]) &&
     (changed.obj? unit).any (·.controller == other) &&
     (done.zone (.player other .base)).contains unit && events.contains (.recalled unit) &&
+    !(events.contains (.movedByEffect p unit))
+
+-- A declared Battlefield that becomes occupied by two other War seats causes a Recall.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let third : PlayerId := ⟨2⟩
+  let fourth : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .ffa4, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, turn := 3, active := some p
+    turnOrder := [p, q, third, fourth], pending := [.priority p] }
+  let (s, otherField) ← putBf s p "OGN-276"
+  let (s, homeField) ← putBf s q "OGN-275"
+  let (s, unit) ← putAt (s.control q homeField) q "OGN-135" homeField
+  let (s, spell) ← put s p "UNL-054" .hand
+  let s := s.fund p 4 (calm := 1)
+  let (queued, _) ← (step 100 s ⟨.player p,
+    .playCard spell ⟨4, [.calm]⟩ [unit] none none (.destination (some otherField))⟩).toOption
+  let (occupied, _) ← putAt queued third "OGN-051" otherField
+  let (occupied, _) ← putAt occupied fourth "OGN-051" otherField
+  let (done, events) ← passUntilChoice 10 occupied []
+  return (done.zone (.player q .base)).contains unit && events.contains (.recalled unit) &&
     !(events.contains (.movedByEffect p unit))
 
 -- Diana pays when finalizing the trigger from a non-combat Showdown, then privately Predicts.

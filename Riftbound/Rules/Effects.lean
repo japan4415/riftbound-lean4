@@ -998,27 +998,21 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
 effect's controller. In team play, a Unit going to an invalid Battlefield is recalled
 instead (CR 449.2.c). -/
 def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
-    (actor : PlayerId := controller) (declaredBase : Option PlayerId := none) : GameState × List Event :=
+    (actor : PlayerId := controller) : GameState × List Event :=
   if s.moveBlockedFor actor u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
-    | none =>
-      if declaredBase.any (fun seat => (s.obj? u).any (·.controller != seat)) then recallFx false s u
-      else moveHome s u
+    | none => moveHome s u
     | some bf => moveOrRecall s (some bf) s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
 theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
-    (actor : PlayerId := p) (declaredBase : Option PlayerId := none) :
-    Safe s (moveByEffect p loc s u actor declaredBase).1 := by
-  by_cases blocked : (s.moveBlockedFor actor u || s.blocksEnemyMove p u) = true
-  · simpa [moveByEffect, blocked] using Safe.refl s
+    (actor : PlayerId := p) : Safe s (moveByEffect p loc s u actor).1 := by
+  unfold moveByEffect
+  split
+  · exact Safe.refl s
   · cases loc with
-    | none =>
-      by_cases changed : declaredBase.any (fun seat => (s.obj? u).any (·.controller != seat)) = true
-      · simpa [moveByEffect, blocked, changed] using recallFx_safe false s u
-      · simpa [moveByEffect, blocked, changed] using moveHome_safe s u
-    | some bf =>
-      simpa [moveByEffect, blocked] using moveOrRecall_safe s (some bf) s u
+    | none => exact moveHome_safe s u
+    | some bf => exact moveOrRecall_safe s (some bf) s u
 
 /-- The Base originally declared for this target of a grouped Move on the Chain. -/
 def GameState.declaredMoveBase (s : GameState) (src unit : ObjId) : Option PlayerId := do
@@ -1030,21 +1024,49 @@ def GameState.declaredMoveBase (s : GameState) (src unit : ObjId) : Option Playe
     else none
   bases.findSome? (fun (id, seat) => if id == unit then some seat else none)
 
-/-- Move a target to its declared location if it is currently somewhere else. -/
-def moveDeclaredTarget (p : PlayerId) (source : ObjId) (env : Env)
+/-- Move a target if its declared destination is still reachable. All targets of a grouped
+Move check the same starting board. A newly invalid location causes a Recall (CR 449.2.c). -/
+def moveDeclaredTarget (before : GameState) (p : PlayerId) (source : ObjId) (env : Env)
     (place : Option ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
-  if (s.obj? id).any (·.loc != place) then
-    moveByEffect (env.effectController.getD p) place s id p (s.declaredMoveBase source id)
-  else (s, [])
+  if before.moveBlockedFor p id || before.blocksEnemyMove (env.effectController.getD p) id then
+    (s, [])
+  else match before.obj? id with
+    | none => (s, [])
+    | some unit =>
+      if unit.loc = place then (s, [])
+      else match place with
+        | some bf =>
+          if before.effectObjectMoveBattlefieldOk id unit bf then sendToBf bf s id
+          else recallFx false s id
+        | none =>
+          if (before.declaredMoveBase source id).any (· != unit.controller) then recallFx false s id
+          else if unit.loc.any (before.homeForbiddenFor id) then (s, [])
+          else moveHomeUnchecked s id
 
 /-- Moving to the declared destination preserves the structural invariants. -/
-theorem moveDeclaredTarget_safe (p : PlayerId) (source : ObjId) (env : Env)
+theorem moveDeclaredTarget_safe (before : GameState) (p : PlayerId) (source : ObjId) (env : Env)
     (place : Option ObjId) (s : GameState) (id : ObjId) :
-    Safe s (moveDeclaredTarget p source env place s id).1 := by
-  unfold moveDeclaredTarget
-  split
-  · exact moveByEffect_safe _ _ _ _ _ _
-  · exact Safe.refl _
+    Safe s (moveDeclaredTarget before p source env place s id).1 := by
+  by_cases blocked : (before.moveBlockedFor p id ||
+      before.blocksEnemyMove (env.effectController.getD p) id) = true
+  · simpa [moveDeclaredTarget, blocked] using Safe.refl s
+  · cases found : before.obj? id with
+    | none => simpa [moveDeclaredTarget, blocked, found] using Safe.refl s
+    | some unit =>
+      by_cases same : unit.loc = place
+      · simpa [moveDeclaredTarget, blocked, found, same] using Safe.refl s
+      · cases place with
+        | some bf =>
+          by_cases valid : before.effectObjectMoveBattlefieldOk id unit bf = true
+          · simpa [moveDeclaredTarget, blocked, found, same, valid] using sendToBf_safe bf s id
+          · simpa [moveDeclaredTarget, blocked, found, same, valid] using recallFx_safe false s id
+        | none =>
+          by_cases otherSeat : (before.declaredMoveBase source id).any (· != unit.controller) = true
+          · simpa [moveDeclaredTarget, blocked, found, same, otherSeat] using recallFx_safe false s id
+          · by_cases forbidden : unit.loc.any (before.homeForbiddenFor id) = true
+            · simpa [moveDeclaredTarget, blocked, found, same, otherSeat, forbidden] using Safe.refl s
+            · simpa [moveDeclaredTarget, blocked, found, same, otherSeat, forbidden] using
+                moveHomeUnchecked_safe s id
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
@@ -3842,7 +3864,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | none => none
     | some place =>
       if place.any (fun bf => !s.battlefields.contains bf) then none
-      else (onSelected s p src env sel (moveDeclaredTarget p src env place)).map (movedEvents p)
+      else (onSelected s p src env sel (moveDeclaredTarget s p src env place)).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -4082,7 +4104,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
         · simp at h
         · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
           show Safe s r0.1
-          exact onSelected_safe (moveDeclaredTarget_safe p src env _) hr0
+          exact onSelected_safe (moveDeclaredTarget_safe s p src env _) hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
