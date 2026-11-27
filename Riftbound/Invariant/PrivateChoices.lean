@@ -170,6 +170,63 @@ theorem legalFrameActions_nameCard_view {s t : GameState} {p : PlayerId} {first 
     legalFrameActions s = legalFrameActions t := by
   simp [legalFrameActions, hs, ht]
 
+/-- An optional instruction offers Yes and No regardless of what its resolution remembers. -/
+theorem legalFrameActions_mayDo_view {s t : GameState} {p : PlayerId}
+    {srcS srcT : ObjId} {envS envT : Env} {x y : Effect}
+    {restS restT : EffectList} {tailS tailT : List Frame}
+    (hs : s.pending = .mayDo p srcS envS x restS :: tailS)
+    (ht : t.pending = .mayDo p srcT envT y restT :: tailT) :
+    legalFrameActions s = legalFrameActions t := by
+  simp [legalFrameActions, hs, ht]
+
+/-- Translate a choice of an object already offered to the player. -/
+def Action.renameOfferedChoice (rename : ObjId → ObjId) (action : Action) : Action :=
+  match action.kind with
+  | .choose id => { action with kind := .choose (rename id) }
+  | _ => action
+
+/-- Once a resolving instruction has offered its candidates, only those references determine
+the legal answers. Translating the offered candidates translates the answers. -/
+theorem legalFrameActions_pickDo_rename {s t : GameState} {p : PlayerId}
+    {srcS srcT firstS firstT : ObjId} {envS envT : Env} {x y : Effect}
+    {restS restT : EffectList} {moreS moreT : List ObjId} {tailS tailT : List Frame}
+    (rename : ObjId → ObjId)
+    (hs : s.pending = .pickDo p srcS envS firstS moreS x restS :: tailS)
+    (ht : t.pending = .pickDo p srcT envT firstT moreT y restT :: tailT)
+    (offered : (firstT :: moreT).Perm ((firstS :: moreS).map rename)) :
+    (legalFrameActions t).Perm ((legalFrameActions s).map (Action.renameOfferedChoice rename)) := by
+  simpa [legalFrameActions, hs, ht, List.map_map, Function.comp_def, Action.renameOfferedChoice]
+    using offered.map (fun id => Action.mk (.player p) (.choose id))
+
+/-- A Showdown selection depends on the offered Battlefields. Which seat opened each
+Showdown is used later and does not change the selection. -/
+theorem legalFrameActions_chooseShowdown_rename {s t : GameState} {p : PlayerId}
+    {firstS firstT : ObjId × PlayerId} {moreS moreT : List (ObjId × PlayerId)}
+    {tailS tailT : List Frame} (rename : ObjId → ObjId)
+    (hs : s.pending = .chooseShowdown p firstS moreS :: tailS)
+    (ht : t.pending = .chooseShowdown p firstT moreT :: tailT)
+    (offered : ((firstT :: moreT).map Prod.fst).Perm
+      (((firstS :: moreS).map Prod.fst).map rename)) :
+    (legalFrameActions t).Perm ((legalFrameActions s).map (Action.renameOfferedChoice rename)) := by
+  simpa [legalFrameActions, hs, ht, List.map_map, Function.comp_def, Action.renameOfferedChoice]
+    using offered.map (fun id => Action.mk (.player p) (.choose id))
+
+/-- Burn Out targets depend on the public seat roster of the selected mode. -/
+theorem legalFrameActions_chooseBurnOut_view {s t : GameState} {p : PlayerId}
+    {tailS tailT : List Frame} (hs : s.pending = .chooseBurnOut p :: tailS)
+    (ht : t.pending = .chooseBurnOut p :: tailT) (mode : s.config.mode = t.config.mode) :
+    legalFrameActions s = legalFrameActions t := by
+  have count : s.playerCount = t.playerCount := congrArg Mode.players mode
+  simp [legalFrameActions, hs, ht, mode, count]
+
+/-- An explicit Burn Out target list is offered as given. -/
+theorem legalFrameActions_chooseBurnOutAmong_view {s t : GameState} {p first : PlayerId}
+    {more : List PlayerId} {tailS tailT : List Frame}
+    (hs : s.pending = .chooseBurnOutAmong p first more :: tailS)
+    (ht : t.pending = .chooseBurnOutAmong p first more :: tailT) :
+    legalFrameActions s = legalFrameActions t := by
+  simp [legalFrameActions, hs, ht]
+
 /-- Concession eligibility is determined by the mode and the public roster of departed seats.
 This applies to team games and to a free-for-all continuing after earlier concessions
 (CR 649-652). -/

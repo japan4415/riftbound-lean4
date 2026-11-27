@@ -37,6 +37,37 @@ theorem forcedAnswer_unique {s : GameState} {answer other : Action}
       simpa [forced] using member
     · simp at forced
 
+private theorem eraseDups_map_actions (rename : Action → Action)
+    (injective : Function.Injective rename) (actions : List Action) :
+    (actions.map rename).eraseDups = actions.eraseDups.map rename := by
+  cases actions with
+  | nil => rfl
+  | cons first rest =>
+    have equality (a b : Action) : (rename a == rename b) = (a == b) := by
+      apply Bool.eq_iff_iff.mpr
+      simpa only [beq_iff_eq] using
+        (show rename a = rename b ↔ a = b from ⟨fun h => injective h, congrArg rename⟩)
+    simp only [List.map_cons, List.eraseDups_cons, List.filter_map, Function.comp_def, equality]
+    rw [eraseDups_map_actions rename injective]
+termination_by actions.length
+decreasing_by exact Nat.lt_succ_of_le List.filter_sublist.length_le
+
+/-- Translating all ordinary answers injectively preserves whether one answer is forced at a
+player decision. The forced answer, if there is one, is translated with the same map. -/
+theorem forcedAnswer_rename {s t : GameState} (rename : Action → Action)
+    (injective : Function.Injective rename)
+    (finished : s.result.isSome = t.result.isSome)
+    (chance : s.pending.head?.any Frame.isChance = t.pending.head?.any Frame.isChance)
+    (answers : legalFrameActions t = (legalFrameActions s).map rename) :
+    forcedAnswer t = (forcedAnswer s).map rename := by
+  unfold forcedAnswer
+  rw [← finished, ← chance, answers, eraseDups_map_actions rename injective]
+  split
+  · rfl
+  · cases (legalFrameActions s).eraseDups with
+    | nil => rfl
+    | cons first rest => cases rest <;> rfl
+
 /-- Play the recorded answers, stopping if one is optional or fails to advance. -/
 def runForcedAnswers (fuel : Nat) (s : GameState) (answers : List Action) : Option GameState :=
   match answers with
