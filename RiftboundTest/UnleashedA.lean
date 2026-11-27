@@ -180,11 +180,12 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
   let ((random, _), disclosures) ← (stepWithDisclosures 100 passed ⟨.player q, .pass⟩).toOption
   let .chanceRecycleTrash owner _ cards :: _ := random.pending | none
-  let (done, moves) ← (step 100 random ⟨.chance, .arrange [second, first]⟩).toOption
+  let orderAnswer : Action := ⟨.chance, .arrange [second, first]⟩
+  let (done, moves) ← (step 100 random orderAnswer).toOption
   let topBefore := (done.zone deck).take start.length
   let bottomCodes := ((done.zone deck).drop start.length).map (fun id => (done.cardDef? id).map (·.id))
   let draw ← cast s p order ⟨2, []⟩ [] {} (.mode 1)
-  return legal.contains chosen && legal.contains (action [] (.mode 0)) &&
+  return chainAnswerWorkSupported random orderAnswer && legal.contains chosen && legal.contains (action [] (.mode 0)) &&
     legal.contains (action [first, second, left] (.mode 0)) &&
     !legal.contains (action [first, second, left, fourth] (.mode 0)) &&
     !legal.contains (action [first, first] (.mode 0)) && !legal.contains (action [own] (.mode 0)) &&

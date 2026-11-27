@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.DamageWork
+public import Riftbound.Invariant.RecyclePaymentWork
 
 /-!
 # Checking Run programs for termination (I12)
@@ -66,7 +67,9 @@ def Effect.observedWorkSupported : Effect → Bool
   | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage ..
   | .chooseDeathBanisher .. | .chooseDeathGear .. | .chooseDeathFree ..
   | .recordDeathSacrifice .. | .recordDeathOrder .. | .recordDeathReselection ..
-  | .recordNestedDeathDecision .. => true
+  | .recordNestedDeathDecision .. | .orderRuneRecycle .. | .recordRuneRecycle ..
+  | .finishTrashRecycle .. | .recycleTrashTargets .. | .recycleFromTrash ..
+  | .chooseTrashRecycle .. | .recordTrashRecycle .. | .completeActivation .. => true
   | .seq program => program.observedWorkSupported
   | .eitherOf (.cons only .nil) => only.observedWorkSupported
   | .eitherOf _ => true
@@ -147,6 +150,15 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case recordDeathReselection group earlier unit choice => exact .recordDeathReselection group earlier unit choice
   case recordNestedDeathDecision root used unit choice scope =>
     exact .recordNestedDeathDecision root used unit choice scope
+  case orderRuneRecycle remaining chosen => exact .orderRuneRecycle remaining chosen
+  case recordRuneRecycle remaining chosen rune => exact .recordRuneRecycle remaining chosen rune
+  case finishTrashRecycle picked => exact .finishTrashRecycle picked
+  case recycleTrashTargets => exact .recycleTrashTargets
+  case recycleFromTrash side count upTo picked => exact .recycleFromTrash side count upTo picked
+  case chooseTrashRecycle side count picked => exact .chooseTrashRecycle side count picked
+  case recordTrashRecycle side count upTo picked => exact .recordTrashRecycle side count upTo picked
+  case completeActivation source index baseEnergy targets filters =>
+    exact .completeActivation source index baseEnergy targets filters
 termination_by structural effect
 
 /-- A supported program is finite through the real observer. -/

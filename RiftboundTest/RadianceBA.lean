@@ -91,8 +91,14 @@ open Riftbound
   let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ ::
       .resumeCost locked :: _ := asked.pending
     | none
-  let (saved, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return locked == action && victim == mord && cost == ally && beforeEvents.isEmpty &&
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, events) ← (step 100 asked answer).toOption
+  let broken := (sendObj .trash asked devourer).1
+  let (restored, undone) ← (step 100 broken answer).toOption
+  return isPlayDeclaration before action && playCostAnswerWorkSupported asked answer &&
+    playCostAnswerWorkSupported broken answer && restored.pending == before.pending &&
+    restored.inPlay.contains ally && undone.isEmpty &&
+    locked == action && victim == mord && cost == ally && beforeEvents.isEmpty &&
     asked.inPlay.contains ally && asked.countIn p .hand "RAD-125" == 1 &&
     ((step 100 asked ⟨.player p, .pass⟩).toOption).isNone &&
     saved.countIn p .base "RAD-125" == 1 && saved.inPlay.contains mord &&

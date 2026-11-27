@@ -2801,11 +2801,21 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s2, u) ← put s1 s.me "OGN-051" .base
   let (s3, first) ← put s2 s.me "OGN-004" .trash
   let (s4, second) ← put s3 s.me "OGN-010" .trash
-  let waiting ← activate s4 s.me g 0 [u] ⟨0, [.chaos]⟩
+  let ready := s4.rich s.me
+  let activation : Action := ⟨.player s.me, .activate g 0 ⟨0, [.chaos]⟩ [u]⟩
+  let chooseFirst : Action := ⟨.player s.me, .choose first⟩
+  let chooseSecond : Action := ⟨.player s.me, .choose second⟩
+  let order : Action := ⟨.chance, .arrange [second, first]⟩
+  let (initial, deferred) ← (step 100 ready activation).toOption
+  let (choosing, _) ← (step 100 initial chooseFirst).toOption
+  let (waiting, _) ← (step 100 choosing chooseSecond).toOption
   let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
-  let (paid, events) ← (step 100 waiting ⟨.chance, .arrange [second, first]⟩).toOption
+  let (paid, events) ← (step 100 waiting order).toOption
   let r := settleChain {} 12 paid
-  return cards.length == 2 && paid.zone (.player s.me .trash) == [] &&
+  return isPlayDeclaration ready activation && decisionRunAnswerWorkSupported initial chooseFirst &&
+    decisionRunAnswerWorkSupported choosing chooseSecond && decisionRunAnswerWorkSupported waiting order &&
+    !deferred.contains (.activated s.me g 0 (some 0)) && cards == [first, second] &&
+    paid.zone (.player s.me .trash) == [] &&
     (paid.obj? g).any (·.attached == none) &&
     events.contains (.recycled s.me) && events.contains (.activated s.me g 0 (some 0)) &&
     (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&

@@ -46,10 +46,44 @@ theorem advance_observed_chain_runs_to_decision (raw : GameState) (notices : Lis
   | resume => exact run (stack.symm ▸ base)
   | queue q ne => exact run (stack.symm ▸ base.insert (fun f member => (finite f member).isResolution) insertFinish q ne)
 
-/-- Lift the observed work after a raw decision to the actual legal action. Surcharge
+/-- Run observed programs, handle their ordinary trigger queue, and resume the supplied
+continuation if no decision interrupts it. -/
+theorem advance_observed_runs_then (raw : GameState) (notices : List Event) {body rest : List Frame}
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (base : ResolutionPrefix body (TriggerWorkTail rest) raw.pending)
+    (finite : ∀ f ∈ body, f.FiniteRun)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → t.pending = rest →
+      ∃ u used events, AdvancePrefix t u used events ∧ u.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  have keep (tail : List Frame) (tracked : TriggerWorkTail rest tail)
+      (q : List PendTrigger) (ne : q ≠ []) : TriggerWorkTail rest (insertTriggers q tail) :=
+    tracked.insert front q ne
+  obtain ⟨mid, entered, early, path, midWF, cards, route⟩ := advance_observed_work raw notices wf reads
+  have run (now : ResolutionPrefix body (TriggerWorkTail rest) mid.pending) : ∃ t used events,
+      AdvancePrefix (raw.withTriggers notices) t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
+    obtain ⟨after, elapsed, later, done, stop | ⟨tail, safe, known⟩⟩ :=
+      advance_run_frames midWF (cards ▸ reads) now finite keep
+    · exact ⟨after, entered + elapsed, early ++ later, path.append done, stop⟩
+    · obtain ⟨ready, queued, queuePath, stop | ⟨atRest, readyWF, readyCards⟩⟩ :=
+        advance_trigger_tail after rest safe (known ▸ cards ▸ reads) tail
+      · exact ⟨ready, entered + elapsed + queued, early ++ later,
+          by simpa only [List.append_nil] using (path.append done).append queuePath, stop⟩
+      · obtain ⟨t, used, events, resumed, stop⟩ :=
+          resume ready readyWF (readyCards ▸ known ▸ cards ▸ reads) atRest
+        exact ⟨t, entered + elapsed + queued + used, (early ++ later) ++ events,
+          by simpa only [List.append_nil] using ((path.append done).append queuePath).append resumed, stop⟩
+  generalize stack : mid.pending = frames at route
+  cases route with
+  | empty => exact ⟨mid, entered, early, path, by rw [stack]; rfl⟩
+  | resume => exact run (stack.symm ▸ base)
+  | queue q ne => exact run (stack.symm ▸ base.insert (fun f h => (finite f h).isResolution) keep q ne)
+
+/-- Lift the observed work after a raw decision to the declared action. Surcharge
 payment preserves the card database and the pending frames. -/
-theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
-    (legal : Legal s a) (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+theorem advance_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
+    (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
     (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
     (reads : MightRead.database raw.cards)
     (run : let next := s.paySurcharge a raw
@@ -57,8 +91,8 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
       next.WF → MightRead.database next.cards → next.pending = raw.pending →
       ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
         t.pending.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+    ∃ initial initialEvents t used events, applyDeclaredAction s a = some (initial, initialEvents) ∧
+      AdvancePrefix initial t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
   let next := s.paySurcharge a raw
   let events := notices ++ extraEvents a notices
   let observed := events ++ s.actionTransitionEvents next a
@@ -72,10 +106,27 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
     simp only [applyAction_of_ne regular, applyFrame, applied, Option.map_some, next, events, observed]
   obtain ⟨t, fuel, emitted, path, stopped⟩ :=
     run (surcharge.wf rawWF) (same ▸ reads) surcharge.pending_eq
-  have finished : step fuel s a = .ok (t, events ++ emitted) := by
-    simp only [step, ite_eq_left legal, answer]
-    exact path.finish stopped events
-  exact ⟨t, fuel, _, stopped, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
+  exact ⟨_, _, t, fuel, emitted, answer, path, stopped⟩
+
+/-- Lift the observed work after a raw decision to the actual legal action. Surcharge
+payment preserves the card database and the pending frames. -/
+theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notices : List Event}
+    (legal : Legal s a) (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+    (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
+    (reads : MightRead.database raw.cards)
+    (run : let next := s.paySurcharge a raw
+      let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
+      next.WF → MightRead.database next.cards → next.pending = raw.pending →
+      ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
+        t.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+  obtain ⟨_, before, t, used, events, declared, path, stopped⟩ :=
+    advance_observed_frame_to_decision noCostChoice regular applied rawWF reads run
+  have finished : step used s a = .ok (t, before ++ events) := by
+    simp only [step, ite_eq_left legal, declared]
+    exact path.finish stopped before
+  exact ⟨t, used, _, stopped, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
 
 /-- The three effect decisions that resume with a Run program. -/
 def isChainEffectAnswer (s : GameState) (a : Action) : Bool :=
@@ -92,7 +143,8 @@ def chainAnswerContinuation? : List Frame → Option (List Frame)
   | .triggers q :: rest => if !q.isEmpty && isOrdinaryDecisionTail rest then some rest else none
   | rest => if isOrdinaryDecisionTail rest then some rest else none
 
-private theorem chainAnswerContinuation_sound {tail rest : List Frame}
+/-- A parsed continuation describes the actual waiting decision and any trigger queue. -/
+theorem chainAnswerContinuation_sound {tail rest : List Frame}
     (ready : chainAnswerContinuation? tail = some rest) :
     TriggerWorkTail rest tail ∧ isOrdinaryDecisionTail rest = true := by
   unfold chainAnswerContinuation? at ready
@@ -109,7 +161,8 @@ private theorem chainAnswerContinuation_sound {tail rest : List Frame}
       exact ⟨Or.inl rfl, by assumption⟩
     · contradiction
 
-private theorem isOrdinaryDecisionTail_front {rest : List Frame} (ready : isOrdinaryDecisionTail rest = true) :
+/-- The ordinary decision permits trigger insertion immediately in front of it. -/
+theorem isOrdinaryDecisionTail_front {rest : List Frame} (ready : isOrdinaryDecisionTail rest = true) :
     ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q := by
   intro f head
   have both : (!f.isWork) = true ∧ (!f.isResolution) = true := by
@@ -119,7 +172,8 @@ private theorem isOrdinaryDecisionTail_front {rest : List Frame} (ready : isOrdi
   cases isTriggers
   cases both.1
 
-private theorem isOrdinaryDecisionTail_boundary {rest : List Frame} (ready : isOrdinaryDecisionTail rest = true) :
+/-- The dispatcher stops at an ordinary decision. -/
+theorem isOrdinaryDecisionTail_boundary {rest : List Frame} (ready : isOrdinaryDecisionTail rest = true) :
     rest.head?.all (fun f => !f.isWork) = true := by
   cases head : rest.head? with
   | none => rfl
@@ -141,17 +195,46 @@ theorem chainEffectAnswer_rule {s raw : GameState} {a : Action} {events : List E
       simp only [applyFrame0, stack, kind, Option.some.injEq, Prod.mk.injEq] at applied
       rw [← applied.1]
 
+/-- Chance supplies the order of Main Deck cards Recycled from the Trash. -/
+def isTrashRecycleOrderAnswer (s : GameState) (a : Action) : Bool :=
+  match s.pending.head?, a.kind with
+  | some (.chanceRecycleTrash ..), .arrange _ => true
+  | _, _ => false
+
+/-- Decisions that resume a possibly empty Run prefix, including chance ordering after Recycle. -/
+def isRunProgramAnswer (s : GameState) (a : Action) : Bool :=
+  isChainEffectAnswer s a || isTrashRecycleOrderAnswer s a
+
+private theorem runProgramAnswer_rule {s raw : GameState} {a : Action} {events : List Event}
+    (answer : isRunProgramAnswer s a = true) (applied : applyFrame0 s a = some (raw, events)) :
+    s.actionDeathCostChoice a = none ∧ a.kind ≠ .concede ∧ raw.cards = s.cards := by
+  rcases Bool.or_eq_true_iff.mp answer with effect | order
+  · exact chainEffectAnswer_rule effect applied
+  cases stack : s.pending with
+  | nil => simp [isTrashRecycleOrderAnswer, stack] at order
+  | cons frame rest =>
+    cases frame <;> simp [isTrashRecycleOrderAnswer, stack] at order
+    case chanceRecycleTrash =>
+      cases kind : a.kind <;> simp [kind] at order
+      case arrange ids =>
+        simp only [applyFrame0, stack, kind, Option.some.injEq, Prod.mk.injEq] at applied
+        have preserved := (recycleTrashCards_safe s ids).same
+        unfold SameMeta at preserved
+        have cards := congrArg GameState.cards preserved
+        exact ⟨by simp [GameState.actionDeathCostChoice, stack], by simp,
+          (congrArg GameState.cards applied.1.symm).trans cards⟩
+
 /-- Inspect the actual Runs scheduled by a choice on the Chain. The check also recognizes the
 item finish and a waiting decision, with or without an ordinary trigger queue. -/
 def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
-  isChainEffectAnswer s a && ((applyFrame0 s a).any fun result =>
+  isRunProgramAnswer s a && ((applyFrame0 s a).any fun result =>
     (result.1.pending.takeWhile isRunFrame).all runFrameSupported &&
       match result.1.pending.dropWhile isRunFrame with
       | .finishSpell _ :: tail => (chainAnswerContinuation? tail).isSome
       | _ => false)
 
-/-- A checked legal answer to an optional effect, a branch choice or an object selection reaches
-the next decision through the actual dispatcher. Additional fuel gives the same state and log. -/
+/-- A checked legal answer to an effect or Recycle order on the Chain reaches the next
+decision through the actual dispatcher. Additional fuel gives the same state and log. -/
 theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : chainAnswerWorkSupported s a = true) :
@@ -171,7 +254,7 @@ theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
       | none => simp [parsed] at finishes
       | some original =>
         obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
-        obtain ⟨noCost, regular, cards⟩ := chainEffectAnswer_rule effect applied
+        obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule effect applied
         have rawWF := applyFrame_wf0 wf (legal.frame regular) applied
         have pending : raw.pending = raw.pending.takeWhile isRunFrame ++ .finishSpell item :: tail := by
           rw [← layout, List.takeWhile_append_dropWhile]
@@ -181,6 +264,42 @@ theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
           (stack.trans pending) programs tracked (isOrdinaryDecisionTail_front ready)
           (isOrdinaryDecisionTail_boundary ready)
     · contradiction
+
+/-- Check effect answers that return straight to a decision after their generated Runs. -/
+def decisionRunAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
+  isRunProgramAnswer s a && (applyFrame0 s a).any (fun result =>
+    (result.1.pending.takeWhile isRunFrame).all runFrameSupported &&
+      (chainAnswerContinuation? (result.1.pending.dropWhile isRunFrame)).isSome)
+
+/-- Run a checked effect or Recycle order answer whose continuation is an ordinary decision,
+possibly preceded by a trigger queue. -/
+theorem step_decisionRunAnswer_checked_to_decision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : decisionRunAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+  unfold decisionRunAnswerWorkSupported at supported
+  obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at condition
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some, Bool.and_eq_true_iff] at condition
+    obtain ⟨programs, continuation⟩ := condition
+    cases parsed : chainAnswerContinuation? (raw.pending.dropWhile isRunFrame) with
+    | none => simp [parsed] at continuation
+    | some rest =>
+      obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
+      obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule answer applied
+      apply step_observed_frame_to_decision legal noCost regular applied
+        (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+      intro next observed safe checked stack
+      refine advance_observed_runs_then next observed safe checked
+        ⟨_, stack.trans List.takeWhile_append_dropWhile.symm, tracked⟩
+        (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member))
+        (isOrdinaryDecisionTail_front ready) ?_
+      intro t _ _ resumed
+      exact ⟨t, 0, [], by intro fuel prior; simp, resumed.symm ▸ isOrdinaryDecisionTail_boundary ready⟩
 
 end Riftbound
 
