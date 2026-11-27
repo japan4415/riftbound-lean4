@@ -2208,6 +2208,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Guardian Angel を装備した Unit が死ぬ場合、その Gear が代わりに死ぬ。Unit は回復、消耗、Recall の順に処理される。実際に取り除いたダメージ量を記録し、Recall では Standard Move のイベントを発生させない（CR 373、419、456、825）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Soraka などで Base にいる Unit を救った場合は、回復と消耗を記録する。Guardian Angel を `full` とし、全1,103枚中565枚を実装済みにした。[カード実装状況](coverage.md)
 
+### Origins のダメージ呪文の対象確認
+
+- Hextech Ray、Void Seeker、Falling Comet は、解決時に対象が Battlefield にいるか確認する。Void Seeker は、Flash で対象が Base に戻った場合もドローを実行する（CR 359.3.e.5）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Singularity は確定時に異なる Unit を最大2体選ぶ。解決時に残った対象それぞれへ同時に6ダメージを与える。以上4枚を `full` とし、全1,103枚中569枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

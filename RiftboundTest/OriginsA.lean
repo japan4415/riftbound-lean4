@@ -1694,17 +1694,18 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, u) ← put s1 s.me "OGN-136" .base
   return (play s2 s.me c [u]).isNone
 
--- Singularity (OGN-105): 6 damage to each of up to two units (two different units)
+-- Singularity (OGN-105): 6 damage to each of up to two distinct declared targets.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-105" .hand
   let (s2, a) ← put s1 s.you "OGN-116" .base
   let (s3, b) ← put s2 s.you "OGN-116" .base
   let (s4, d) ← put s3 s.you "OGN-116" .base
-  let x ← play s4 s.me c [] { obj := fun o => o == a }
-  let n ← play s4 s.me c [] { yes := false }
+  let x ← play s4 s.me c [a, b]
+  let n ← play s4 s.me c []
   let dmg (y : GameState) (u : ObjId) := (y.obj? u).map (·.damage)
-  return dmg x a == some 6 && (dmg x b == some 6 || dmg x d == some 6) &&
-    !(dmg x b == some 6 && dmg x d == some 6) && dmg n a == some 0 && dmg n b == some 0
+  return dmg x a == some 6 && dmg x b == some 6 && dmg x d == some 0 &&
+    dmg n a == some 0 && dmg n b == some 0 && dmg n d == some 0 &&
+    (play s4 s.me c [a, a]).isNone && (play s4 s.me c [a, b, d]).isNone
 
 -- Kinkou Monk (OGN-141): buff up to two other friendly units, different ones, not itself
 #guard t fun s => do
@@ -1734,7 +1735,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-105" .hand
   let (s2, a) ← put s1 s.me "OGN-116" .base
-  let x ← play s2 s.me c
+  let x ← play s2 s.me c [a]
   return (x.obj? a).map (·.damage) == some 6
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-141" .hand
@@ -2694,6 +2695,46 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   match step 100 (s.rich p) ⟨.player p, .playCard c (payOf s c) ts⟩ with
   | .ok (x, _) => some x
   | .error _ => none
+
+-- CR 359.3.e.5: Flash strands the damage instruction, and Void Seeker still draws.
+-- Hextech Ray and Falling Comet apply the same Battlefield restriction on resolution.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, enemy) ← putAt (s.control q field) q "OGN-116" field
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (s, ray) ← put s p "OGN-009" .hand
+  let (s, voidSeeker) ← put s p "OGN-024" .hand
+  let (s, comet) ← put s p "OGN-085" .hand
+  let check (card : ObjId) (damage : Nat) (draw : Nat) : Option Bool := do
+    let normal ← play s p card [enemy]
+    let openChain ← castOpen s p card [enemy]
+    let response ← passBy openChain p
+    let returned ← play response q flash [enemy]
+    return (normal.obj? enemy).any (fun o => o.damage == damage) &&
+      (returned.obj? enemy).any (fun o => o.damage == 0 && o.loc.isNone) &&
+      (play (moveHome s enemy).1 p card [enemy]).isNone &&
+      normal.handN p + 1 == s.handN p + draw && returned.handN p + 1 == s.handN p + draw
+  return (← check ray 3 0) && (← check voidSeeker 4 1) && (← check comet 6 0)
+
+-- Gust removes one Singularity target after both have been declared. The second target survives
+-- the check, and the resolution never asks for a replacement for the first target.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, first) ← putAt (s.control q field) q "OGN-006" field
+  let (s, second) ← put s q "OGN-116" .base
+  let (s, backup) ← put s q "OGN-116" .base
+  let (s, spell) ← put s p "OGN-105" .hand
+  let (s, gust) ← put s q "OGN-169" .hand
+  let openChain ← castOpen s p spell [first, second]
+  let response ← passBy openChain p
+  let result ← play response q gust [first]
+  return result.handN q == s.handN q && result.countIn q .hand "OGN-006" == 1 &&
+    (result.obj? second).any (fun o => o.damage == 6) && (result.obj? backup).any (fun o => o.damage == 0) &&
+    result.countIn p .trash "OGN-105" == 1 && (result.zone .chain).isEmpty
 
 -- Wind Wall (OGN-064): counter a spell on the Chain (Confront would draw 1)
 #guard t fun s => do

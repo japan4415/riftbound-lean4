@@ -242,9 +242,11 @@ def OGN_009.meta : CardDef :=
 /-- Hextech Ray. -/
 def OGN_009 : CardDef :=
   { OGN_009.meta with
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.prim (.deal (.slot 0) (.const 3)))),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      body := .prim (.deal (.slot 0) (.const 3))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-010
 /--
@@ -640,10 +642,11 @@ def OGN_024.meta : CardDef :=
 /-- Void Seeker. -/
 def OGN_024 : CardDef :=
   { OGN_024.meta with
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 4)),
-        .prim (.draw .you (.const 1))])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      body := .seqOf [.prim (.deal (.slot 0) (.const 4)), .prim (.draw .you (.const 1))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-025
 /--
@@ -2305,9 +2308,11 @@ def OGN_085.meta : CardDef :=
 /-- Falling Comet. -/
 def OGN_085 : CardDef :=
   { OGN_085.meta with
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.prim (.deal (.slot 0) (.const 6)))),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      body := .prim (.deal (.slot 0) (.const 6))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-086
 /--
@@ -2814,11 +2819,11 @@ def OGN_105.meta : CardDef :=
 /-- Singularity. -/
 def OGN_105 : CardDef :=
   { OGN_105.meta with
-    spellEffect := some (.of []
-      (.seqOf [.may (.prim (.deal (Selector.one .any .anywhere [.ofType .unit]) (.const 6))),
-        .may (.prim (.deal (Selector.one .any .anywhere
-          [.ofType .unit, .not (.sameAs (.var pickVar))]) (.const 6)))])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf (.upTo 2) .any .anywhere [.ofType .unit]]
+      body := .prim (.deal (.slotsFrom 0) (.const 6))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-106
 /--
