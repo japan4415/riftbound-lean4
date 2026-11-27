@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Engine.Step
+public import Riftbound.Invariant.Setup
 
 /-!
 # Termination of the opening draws (I12)
@@ -31,6 +32,68 @@ private theorem advance_onDecision (fuel : Nat) {s : GameState} {events : List E
   | cons frame rest =>
     have notWork : frame.isWork = false := by simpa [next] using decision
     cases fuel <;> simp [advance, GameState.preparePriority_of_setup phase, next, notWork]
+
+private theorem setupTail_waits {s : GameState} {frame : Frame} {rest : List Frame}
+    (inv : SetupInv s) (pending : s.pending = frame :: rest) (setup : frame.isSetup = true) :
+    rest.head?.all (fun f => !f.isWork) = true := by
+  rcases inv.2 with ⟨ordered, _⟩ | noSetup
+  · cases rest with
+    | nil => rfl
+    | cons next more =>
+      have present : next ∈ s.pending := by rw [pending]; simp
+      have nextSetup := startFrames_isSetup s.playerCount next (ordered.subset present)
+      cases next <;> simp_all [Frame.isSetup, Frame.isWork]
+  · have head := noSetup frame (pending ▸ List.mem_cons_self)
+    simp [setup] at head
+
+private theorem step_setup_chance {s t : GameState} {a : Action} {events : List Event}
+    (fuel : Nat) (legal : Legal s a) (actor : a.actor = .chance) (ordinary : a.kind ≠ .concede)
+    (noCost : s.actionDeathCostChoice a = none) (phase : t.phase = .setup)
+    (applied : applyFrame0 s a = some (t, events)) :
+    step fuel s a = advance fuel t (events ++ extraEvents a events) := by
+  have declared : applyDeclaredAction s a = some (t, events ++ extraEvents a events) := by
+    simp only [applyDeclaredAction, noCost, applyAction_of_ne ordinary, applyFrame, applied,
+      Option.map_some, GameState.paySurcharge, actor]
+    rw [setup_noTriggers phase]
+  simp only [step, legal, ite_true, declared]
+
+/-- An opening shuffle records the permutation and stops on the remaining setup decisions
+without any automatic work. -/
+theorem step_setupShuffle_waits {s : GameState} {z : Zone} {rest : List Frame} {order : List ObjId}
+    (fuel : Nat) (phase : s.phase = .setup) (inv : SetupInv s)
+    (pending : s.pending = .chanceShuffle z :: rest) (legal : Legal s ⟨.chance, .arrange order⟩) :
+    step fuel s ⟨.chance, .arrange order⟩ = .ok ({ s.reorder z order with pending := rest }, []) := by
+  let a : Action := ⟨.chance, .arrange order⟩
+  let t := { s.reorder z order with pending := rest }
+  have applied : applyFrame0 s a = some (t, []) := by simp [applyFrame0, pending, a, t]
+  have noCost : s.actionDeathCostChoice a = none := by simp [GameState.actionDeathCostChoice, pending]
+  have nextPhase : t.phase = .setup := phase
+  rw [step_setup_chance fuel legal rfl (by intro eq; cases eq) noCost nextPhase applied]
+  exact advance_onDecision fuel nextPhase (setupTail_waits inv pending rfl)
+
+/-- A successful opening Battlefield pick stops on the remaining setup decisions, even with
+zero work fuel. -/
+theorem step_setupBattlefield_waits {s : GameState} {p : PlayerId} {rest : List Frame} {index : Nat}
+    (fuel : Nat) (phase : s.phase = .setup) (inv : SetupInv s) (wf : s.WF) (owners : s.OwnerOk)
+    (pending : s.pending = .chanceBattlefield p :: rest) (legal : Legal s ⟨.chance, .pick index⟩) :
+    ∃ t events, step fuel s ⟨.chance, .pick index⟩ = .ok (t, events) ∧ t.pending = rest := by
+  let a : Action := ⟨.chance, .pick index⟩
+  have ordinary : a.kind ≠ .concede := by intro eq; cases eq
+  obtain ⟨result, applied⟩ := applyFrame_isSome0 wf owners (Legal.frame (a := a) legal ordinary)
+  have noCost : s.actionDeathCostChoice a = none := by simp [GameState.actionDeathCostChoice, pending]
+  have pick := applied
+  simp only [applyFrame0, pending, a] at pick
+  split at pick
+  · rename_i selected indexed
+    simp only [Option.map_eq_some_iff] at pick
+    obtain ⟨⟨board, id⟩, moved, rfl⟩ := pick
+    obtain ⟨_, _, spec⟩ := moveObj_spec moved
+    let t := { board with pending := rest }
+    have nextPhase : t.phase = .setup := spec.other.phase.trans phase
+    refine ⟨t, [.moved selected id .battlefieldZone], ?_, rfl⟩
+    rw [step_setup_chance fuel legal rfl ordinary noCost nextPhase applied]
+    exact advance_onDecision fuel nextPhase (setupTail_waits inv pending rfl)
+  · contradiction
 
 private theorem advance_setupDraw_then (count fuel : Nat) (s : GameState) (events : List Event)
     (p : PlayerId) (start : Option Nat) (rest : List Frame) {restOfBatch : List Frame}
@@ -121,6 +184,33 @@ theorem advance_setupHands_bound {s : GameState} {events : List Event} {rest : L
   · rcases choice with ⟨p, frames, h⟩ | h
     · exact ⟨p, frames, Or.inr h⟩
     · exact ⟨first, tail, Or.inl (h.trans firstMulligan)⟩
+
+/-- A legal opening turn order reaches the first Mulligan or Burn Out question within one
+work step plus five per participating seat, including when a seat has already departed. -/
+theorem step_setupTurnOrder_bound {s : GameState} {rest : List Frame} {order : List PlayerId}
+    (phase : s.phase = .setup) (pending : s.pending = .chanceTurnOrder :: rest)
+    (seats : s.participatingSeats ≠ []) (legal : Legal s ⟨.chance, .arrangePlayers order⟩) :
+    ∃ result, step (5 * s.participatingSeats.length + 1) s ⟨.chance, .arrangePlayers order⟩ =
+        .ok result ∧
+      (∃ p frames, result.1.pending = .mulligan p 0 :: frames ∨
+        result.1.pending = .chanceBurnOut p :: frames) := by
+  let a : Action := ⟨.chance, .arrangePlayers order⟩
+  let t := { s with turnOrder := s.completeOpeningOrder order, pending := .setupHands :: rest }
+  have ordinary : a.kind ≠ .concede := by intro eq; cases eq
+  have legalFrame := Legal.frame (a := a) legal ordinary
+  simp only [LegalFrame, pending, a] at legalFrame
+  have participants : t.participatingOrder.Perm s.participatingSeats :=
+    legalFrame.2.1.filter s.participates
+  have nonempty : t.participatingOrder ≠ [] := by
+    intro empty
+    exact seats (List.length_eq_zero_iff.mp (by simpa [empty] using participants.length_eq.symm))
+  have applied : applyFrame0 s a = some (t, []) := by simp [applyFrame0, pending, a, t]
+  have noCost : s.actionDeathCostChoice a = none := by simp [GameState.actionDeathCostChoice, pending]
+  have nextPhase : t.phase = .setup := phase
+  have done := advance_setupHands_bound (events := []) (s := t) nextPhase rfl nonempty
+  rw [participants.length_eq] at done
+  rw [step_setup_chance _ legal rfl ordinary noCost nextPhase applied]
+  exact done
 
 /-- After confirming at least one opening card, redraws reach the recycle order or Burn Out
 within one work step per requested card and one to finish drawing. -/
