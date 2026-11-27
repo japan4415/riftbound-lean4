@@ -34,8 +34,9 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     else options
   let choices ← options.mapM fun action => do
     let detail ← Json.parse (actionJson action frame (some state))
-    let byCode := (ReplayCardPick.fromAction? state action).map fun choice =>
-      ("answerByCode", toJson (ReplayAnswer.observedCardPick choice))
+    let coded := (ReplayCardPick.fromAction? state action).map ReplayAnswer.observedCardPick <|>
+      (ReplayStandardMove.fromAction? state action).map ReplayAnswer.observedStandardMove
+    let byCode := coded.map fun answer => ("answerByCode", toJson answer)
     let byLocation := (ReplayCardPick.fromActionAtLocation? state action).map fun choice =>
       ("answerByLocation", toJson (ReplayAnswer.observedCardPick choice))
     pure (Json.mkObj ([("detail", detail), ("answer", toJson (ReplayAnswer.observed action))] ++

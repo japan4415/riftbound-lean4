@@ -138,6 +138,20 @@ structure ReplayCardPick where
   location? : Option ReplayCardLocation := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A Unit's Standard Move recorded without engine-generated object IDs. -/
+structure ReplayStandardMove where
+  /-- The seat that made the move. -/
+  seat : PlayerId
+  /-- The visible Unit's card or token code. -/
+  unit : CardId
+  /-- The Unit's departure location, if it was observed. -/
+  from? : Option ReplayCardLocation := none
+  /-- The destination Battlefield, or the named seat's Base. -/
+  destination : ReplayUnitPlace
+  /-- The fee specified by the source, if it recorded one. -/
+  fee? : Option Cost := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -152,6 +166,10 @@ inductive ReplayAnswer where
   | observedCardPick (choice : ReplayCardPick)
   /-- The chosen card code was inferred from incomplete observations. -/
   | inferredCardPick (choice : ReplayCardPick) (evidence : String)
+  /-- The Unit and destination of a Standard Move were observed. -/
+  | observedStandardMove (move : ReplayStandardMove)
+  /-- A Standard Move was inferred from incomplete observations. -/
+  | inferredStandardMove (move : ReplayStandardMove) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -187,6 +205,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
     throw s!"answer {index}: a chance outcome by card code needs the current game state"
   | .observedCardPick _ | .inferredCardPick _ _ =>
     throw s!"answer {index}: a card pick by code needs the current game state"
+  | .observedStandardMove _ | .inferredStandardMove _ _ =>
+    throw s!"answer {index}: a move by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
@@ -243,6 +263,33 @@ private def ReplayCardPick.resolve (choice : ReplayCardPick) (s : GameState) :
     | throw s!"seat {choice.seat.n} has no legal {reprStr choice.kind} pick of {choice.card.code}"
   return (action, matching.length == 1)
 
+private def replayMoveDestination (s : GameState) : MoveDest → Option ReplayUnitPlace
+  | .base => some .base
+  | .battlefield id => do
+    let .battlefield owner field ← replayCardLocation s id | none
+    return .battlefield owner field
+
+/-- Describe one legal Standard Move by the Unit's code and printed Battlefield identity. -/
+def ReplayStandardMove.fromAction? (s : GameState) (action : Action) : Option ReplayStandardMove := do
+  let .player seat := action.actor | none
+  let .standardMove unit dest fee := action.kind | none
+  let code ← replayCardCode s unit
+  let destination ← replayMoveDestination s dest
+  return { seat, unit := code, from? := replayCardLocation s unit, destination, fee? := some fee }
+
+private def ReplayStandardMove.resolve (move : ReplayStandardMove) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun a =>
+    a.actor == .player move.seat && match a.kind with
+    | .standardMove unit dest fee =>
+      replayCardCode s unit == some move.unit &&
+        replayMoveDestination s dest == some move.destination &&
+        move.from?.all (·.matches s unit) && move.fee?.all (· == fee)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {move.seat.n} has no legal Standard Move of {move.unit.code} to {(toJson move.destination).compress}"
+  return (action, matching.length == 1)
+
 /-- Data needed to transcribe the currently pending random decision. -/
 inductive ReplayChanceDecision where
   /-- A permutation of these objects. -/
@@ -293,6 +340,8 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     (outcome.resolve s).mapError (fun error => s!"answer {index}: {error}")
   let resolvePick (choice : ReplayCardPick) :=
     (choice.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveMove (move : ReplayStandardMove) :=
+    (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
   match answer with
   | .observedChance outcome => resolveChance outcome
   | .inferredChance outcome evidence =>
@@ -302,6 +351,10 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
   | .inferredCardPick choice evidence =>
     checkInference index evidence
     return ((← resolvePick choice).1, false)
+  | .observedStandardMove move => resolveMove move
+  | .inferredStandardMove move evidence =>
+    checkInference index evidence
+    return ((← resolveMove move).1, false)
   | _ =>
     return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 
