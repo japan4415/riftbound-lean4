@@ -169,6 +169,23 @@ theorem advance_triggers_to_decision (s : GameState) (wf : s.WF) (queue : List P
   obtain ⟨f, tail, left, asks⟩ := decides started
   exact ⟨next, used, f, tail, bound, trace, left, asks⟩
 
+/-- Trigger work cannot expose neutral priority when its continuation does not start there. -/
+theorem advance_triggers_to_nonpriorityDecision (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards)
+    (started : queue ≠ [] ∨ s.zone .chain ≠ [])
+    (different : ∀ p tail, rest ≠ .priority p :: tail) :
+    ∃ t used f tail, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧
+      t.pending = f :: tail ∧ f.isWork = false ∧ (∀ p, f ≠ .priority p) := by
+  obtain ⟨next, used, bound, trace, stop, decides⟩ :=
+    advance_checked_triggers s wf queue rest pending database
+  obtain ⟨f, tail, pending, decision⟩ := decides started
+  refine ⟨next, used, f, tail, bound, trace, pending, decision, ?_⟩
+  intro p equal
+  subst f
+  rw [pending] at stop
+  cases stop
+  exact different p tail rfl
+
 /-- The observed trigger work takes at most the queue length plus one step to reach the
 continuation, wait for an answer or process an observer change. -/
 theorem advance_triggers_bound (s : GameState) (queue : List PendTrigger) (rest : List Frame)

@@ -45,7 +45,7 @@ private theorem step_rune_to_decision {s board : GameState} {a : Action} {p : Pl
     (rune : applyRune s p card ability = some (board, events))
     (applied : applyFrame0 s a = some (board, events)) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   have cards : board.cards = s.cards := by
     have cardEq := congrArg GameState.cards (applyRune_sameMeta rune)
     exact cardEq
@@ -59,7 +59,7 @@ private theorem step_fastMana_to_decision {s board : GameState} {a : Action} {p 
     (mana : applyMana s p source index pay chosen = some (board, events))
     (applied : applyFrame0 s a = some (board, events)) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   obtain ⟨paid, pool, safe, rfl⟩ := applyMana_cases mana
   have cards : (paid.setPool p pool).cards = s.cards := by
     have cardEq := congrArg GameState.cards safe.same
@@ -73,7 +73,7 @@ theorem step_priorityMana_to_decision {s : GameState} {p : PlayerId} {rest : Lis
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .priority p :: rest)
     (legal : Legal s ⟨.player p, .manaAbility source index pay chosen⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .manaAbility source index pay chosen⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .manaAbility source index pay chosen⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .manaAbility source index pay chosen⟩
   have regular : action.kind ≠ .concede := by intro eq; cases eq
   have frame := legal.frame regular
@@ -100,7 +100,7 @@ theorem step_resourceActivation_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (resource : a.kind.isResourceActivation = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   have regular : a.kind ≠ .concede := by
     intro eq
     rw [eq] at resource

@@ -24,13 +24,13 @@ private theorem setup_noTriggers {s : GameState} (phase : s.phase = .setup) (eve
   · exact (noSetup phase).elim
 
 private theorem advance_onDecision (fuel : Nat) {s : GameState} {events : List Event}
-    (decision : s.pending.head?.all (fun f => !f.isWork) = true) :
+    (phase : s.phase = .setup) (decision : s.pending.head?.all (fun f => !f.isWork) = true) :
     advance fuel s events = .ok (s, events) := by
   cases next : s.pending with
-  | nil => cases fuel <;> simp [advance, next]
+  | nil => cases fuel <;> simp [advance, GameState.preparePriority_of_setup phase, next]
   | cons frame rest =>
     have notWork : frame.isWork = false := by simpa [next] using decision
-    cases fuel <;> simp [advance, next, notWork]
+    cases fuel <;> simp [advance, GameState.preparePriority_of_setup phase, next, notWork]
 
 private theorem advance_setupDraw_then (count fuel : Nat) (s : GameState) (events : List Event)
     (p : PlayerId) (start : Option Nat) (rest : List Frame) {restOfBatch : List Frame}
@@ -47,7 +47,7 @@ private theorem advance_setupDraw_then (count fuel : Nat) (s : GameState) (event
       simp only [workStep, pending, microStep, microStep0, Option.map_some]
       rw [setup_noTriggers (s := next) phase]
     rw [show 0 + 1 + fuel = fuel + 1 by omega]
-    simpa only [advance, pending, Frame.isWork, ite_true, work] using
+    simpa only [advance, GameState.preparePriority, pending, Frame.isWork, ite_true, work] using
       finish next (events ++ start.toList.map (.drewGroup p)) phase rfl
   | succ count ih =>
     rw [show count + 1 + 1 + fuel = (count + 1 + fuel) + 1 by omega]
@@ -57,11 +57,11 @@ private theorem advance_setupDraw_then (count fuel : Nat) (s : GameState) (event
       have work : workStep s = some (next, []) := by
         simp only [workStep, pending, microStep, microStep0, drawn, Option.map_some]
         rw [setup_noTriggers (s := next) phase]
-      simpa only [advance, pending, Frame.isWork, ite_true, work, List.append_nil] using
+      simpa only [advance, GameState.preparePriority, pending, Frame.isWork, ite_true, work, List.append_nil] using
         (show ∃ result, advance (count + 1 + fuel) next events = .ok result ∧
             ((∃ q frames, result.1.pending = .chanceBurnOut q :: frames) ∨
               result.1.pending = restOfBatch) from
-          ⟨_, advance_onDecision _ rfl, Or.inl ⟨_, _, rfl⟩⟩)
+          ⟨_, advance_onDecision _ phase rfl, Or.inl ⟨_, _, rfl⟩⟩)
     | some draw =>
       obtain ⟨board, en⟩ := draw
       let began := start <|> some ((s.zone (.player p .hand)).length)
@@ -70,7 +70,7 @@ private theorem advance_setupDraw_then (count fuel : Nat) (s : GameState) (event
       have work : workStep s = some (next, en ++ [.drew p]) := by
         simp only [workStep, pending, microStep, microStep0, drawn, Option.map_some]
         rw [setup_noTriggers (s := next) samePhase]
-      simpa only [advance, pending, Frame.isWork, ite_true, work] using
+      simpa only [advance, GameState.preparePriority, pending, Frame.isWork, ite_true, work] using
         ih next (events ++ (en ++ [.drew p])) began samePhase rfl
 
 private theorem advance_openingDraws (players : List PlayerId) (s : GameState)
@@ -82,7 +82,7 @@ private theorem advance_openingDraws (players : List PlayerId) (s : GameState)
   induction players generalizing s events with
   | nil =>
     have stop : s.pending.head?.all (fun f => !f.isWork) = true := by simpa [pending] using decision
-    exact ⟨_, advance_onDecision _ stop, Or.inr (by simpa using pending)⟩
+    exact ⟨_, advance_onDecision _ phase stop, Or.inr (by simpa using pending)⟩
   | cons p players ih =>
     have frames : s.pending = .draw p 4 :: (players.map (fun p => Frame.draw p 4) ++ rest) :=
       by simpa only [List.map_cons, List.cons_append] using pending
@@ -117,7 +117,7 @@ theorem advance_setupHands_bound {s : GameState} {events : List Event} {rest : L
   obtain ⟨result, done, choice⟩ :=
     advance_openingDraws s.participatingOrder next events afterDraws phase rfl decision
   refine ⟨result, ?_, ?_⟩
-  · simpa only [advance, pending, Frame.isWork, ite_true, work, List.append_nil] using done
+  · simpa only [advance, GameState.preparePriority, pending, Frame.isWork, ite_true, work, List.append_nil] using done
   · rcases choice with ⟨p, frames, h⟩ | h
     · exact ⟨p, frames, Or.inr h⟩
     · exact ⟨first, tail, Or.inl (h.trans firstMulligan)⟩

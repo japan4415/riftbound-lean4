@@ -47,19 +47,21 @@ def CardDisclosure.capture (before after : GameState) (offset : Nat) (events : L
 def advanceWithDisclosures : Nat → GameState → List Event → List CardDisclosure →
     Except RuleError ((GameState × List Event) × List CardDisclosure)
   | 0, s, es, seen =>
-    match s.pending with
-    | f :: _ => if f.isWork then .error .fuelExhausted else .ok ((s, es), seen)
-    | [] => .ok ((s, es), seen)
+    let prepared := s.preparePriority
+    match prepared.pending with
+    | f :: _ => if f.isWork then .error .fuelExhausted else .ok ((prepared, es), seen)
+    | [] => .ok ((prepared, es), seen)
   | n + 1, s, es, seen =>
-    match s.pending with
+    let prepared := s.preparePriority
+    match prepared.pending with
     | f :: _ =>
       if f.isWork then
-        match workStep s with
+        match workStep prepared with
         | some (s', es') => advanceWithDisclosures n s' (es ++ es')
-            (seen ++ CardDisclosure.capture s s' es.length es')
+            (seen ++ CardDisclosure.capture prepared s' es.length es')
         | none => .error (.internal "microStep")
-      else .ok ((s, es), seen)
-    | [] => .ok ((s, es), seen)
+      else .ok ((prepared, es), seen)
+    | [] => .ok ((prepared, es), seen)
 
 /-- Capturing disclosures preserves the result, the events and any errors from `advance`. -/
 theorem advanceWithDisclosures_erase (fuel : Nat) (s : GameState) (es : List Event)
@@ -67,20 +69,20 @@ theorem advanceWithDisclosures_erase (fuel : Nat) (s : GameState) (es : List Eve
     (advanceWithDisclosures fuel s es seen).map Prod.fst = advance fuel s es := by
   induction fuel generalizing s es seen with
   | zero =>
-    cases h : s.pending with
+    cases h : s.preparePriority.pending with
     | nil => simp [advanceWithDisclosures, advance, h] <;> rfl
     | cons f rest => by_cases work : f.isWork <;> simp [advanceWithDisclosures, advance, h, work] <;> rfl
   | succ n ih =>
-    cases h : s.pending with
+    cases h : s.preparePriority.pending with
     | nil => simp [advanceWithDisclosures, advance, h] <;> rfl
     | cons f rest =>
       by_cases work : f.isWork
-      · cases hw : workStep s with
+      · cases hw : workStep s.preparePriority with
         | none => simp [advanceWithDisclosures, advance, h, work, hw] <;> rfl
         | some transition =>
           obtain ⟨next, events⟩ := transition
           simpa [advanceWithDisclosures, advance, h, work, hw] using
-            ih next (es ++ events) (seen ++ CardDisclosure.capture s next es.length events)
+            ih next (es ++ events) (seen ++ CardDisclosure.capture s.preparePriority next es.length events)
       · simp [advanceWithDisclosures, advance, h, work] <;> rfl
 
 /-- Take an ordinary answer and record any card faces it shows before the next decision. -/

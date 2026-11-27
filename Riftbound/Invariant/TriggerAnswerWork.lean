@@ -97,14 +97,13 @@ theorem step_putTrigger_to_decision {s : GameState} {p : PlayerId} {first : Pend
     (legal : Legal s ⟨.player p, .putTrigger index targets payment⟩)
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ = advance extra t events := by
   obtain ⟨initial, before, t, used, events, applied, ran, stop⟩ :=
     advance_putTrigger_to_decision (index := index) (targets := targets) (payment := payment)
       wf reads pending decision
-  have finished : step used s ⟨.player p, .putTrigger index targets payment⟩ = .ok (t, before ++ events) := by
-    simp only [step, ite_eq_left legal, applied]
-    exact ran.finish stop before
-  exact ⟨t, used, _, stop, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
+  refine ⟨t, used, before ++ events, stop, fun extra => ?_⟩
+  simp only [step, ite_eq_left legal, applied]
+  exact ran extra before
 
 /-- Preparing a funded trigger opens the resource choice window. -/
 theorem step_prepareTrigger_to_decision {s : GameState} {p : PlayerId} {first : PendTrigger}
@@ -114,7 +113,7 @@ theorem step_prepareTrigger_to_decision {s : GameState} {p : PlayerId} {first : 
     (pending : s.pending = .triggerOrder p first group others none :: rest)
     (legal : Legal s ⟨.player p, .prepareTrigger index targets payment⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .prepareTrigger index targets payment⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .prepareTrigger index targets payment⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .prepareTrigger index targets payment⟩
   let plan : TriggerFunding := { index := index, targets := targets, payment := payment }
   let raw := { s with pending := .triggerOrder p first group others (some plan) :: rest }
@@ -132,7 +131,7 @@ theorem step_triggerAdd_to_decision {s : GameState} {p : PlayerId} {first : Pend
     (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
     (legal : Legal s ⟨.player p, .triggerAdd add⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .triggerAdd add⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .triggerAdd add⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .triggerAdd add⟩
   let chosen := { plan with adds := plan.adds ++ [add] }
   let raw := { s with pending := .triggerOrder p first group others (some chosen) :: rest }
@@ -150,7 +149,7 @@ theorem step_cancelTriggerFunding_to_decision {s : GameState} {p : PlayerId} {fi
     (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
     (legal : Legal s ⟨.player p, .decide false⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .decide false⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .decide false⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .decide false⟩
   let raw := { s with pending := .triggerOrder p first group others :: rest }
   have applied : applyFrame0 s action = some (raw, []) := by simp only [applyFrame0, pending, action, raw]
@@ -228,7 +227,7 @@ theorem step_triggerCostAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : triggerCostAnswerWorkSupported s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold triggerCostAnswerWorkSupported at supported
   obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with

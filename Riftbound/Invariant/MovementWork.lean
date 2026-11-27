@@ -54,7 +54,7 @@ theorem step_standardMove_to_decision {s : GameState} {p : PlayerId} {u : ObjId}
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .priority p :: rest)
     (legal : Legal s ⟨.player p, .standardMove u dest pay⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .standardMove u dest pay⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .standardMove u dest pay⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .standardMove u dest pay⟩
   have regular : action.kind ≠ .concede := by intro eq; cases eq
   have frame := legal.frame regular
@@ -81,7 +81,7 @@ theorem step_confirmGroupMove_to_decision {s : GameState} {p : PlayerId} {units 
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .groupMove p dest pay units :: rest)
     (legal : Legal s ⟨.player p, .decide true⟩) (decision : isOrdinaryDecisionTail rest = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .decide true⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .decide true⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .decide true⟩
   have regular : action.kind ≠ .concede := by intro eq; cases eq
   have frame := legal.frame regular
@@ -106,7 +106,7 @@ theorem step_chooseShowdown_to_decision {s : GameState} {p : PlayerId} {bf : Obj
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .chooseShowdown p first more :: rest)
     (legal : Legal s ⟨.player p, .choose bf⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .choose bf⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .choose bf⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .choose bf⟩
   have regular : action.kind ≠ .concede := by intro eq; cases eq
   have frame := legal.frame regular
@@ -125,7 +125,7 @@ theorem step_startGroupMove_to_decision {s : GameState} {p : PlayerId}
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .priority p :: rest)
     (legal : Legal s ⟨.player p, .startGroupMove dest pay⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .startGroupMove dest pay⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .startGroupMove dest pay⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .startGroupMove dest pay⟩
   let raw := { s with pending := .groupMove p dest pay [] :: .priority p :: rest }
   have applied : applyFrame0 s action = some (raw, []) := by simp only [applyFrame0, pending, action, raw]
@@ -140,7 +140,7 @@ theorem step_chooseGroupMove_to_decision {s : GameState} {p : PlayerId}
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .groupMove p dest pay units :: rest)
     (legal : Legal s ⟨.player p, .choose u⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .choose u⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .choose u⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .choose u⟩
   let raw := { s with pending := .groupMove p dest pay (units ++ [u]) :: rest }
   have applied : applyFrame0 s action = some (raw, []) := by simp only [applyFrame0, pending, action, raw]
@@ -153,7 +153,7 @@ theorem step_cancelGroupMove_to_decision {s : GameState} {p : PlayerId}
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .groupMove p dest pay units :: rest)
     (legal : Legal s ⟨.player p, .decide false⟩) (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .decide false⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .decide false⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .decide false⟩
   let raw := { s with pending := rest }
   have applied : applyFrame0 s action = some (raw, []) := by simp only [applyFrame0, pending, action, raw]
@@ -174,7 +174,7 @@ theorem step_cleanupAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : cleanupAnswerWorkSupported s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold cleanupAnswerWorkSupported at supported
   obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with

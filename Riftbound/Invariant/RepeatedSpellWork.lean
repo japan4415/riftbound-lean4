@@ -175,7 +175,7 @@ theorem step_chainPass_last_repeated {s : GameState} {p : PlayerId} {passes : Na
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, 0 < used ∧ RepeatedSpellEnd t ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   have initialWF : initial.WF := wf.congr rfl rfl rfl rfl

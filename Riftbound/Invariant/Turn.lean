@@ -72,8 +72,7 @@ theorem step_concede {fuel : Nat} {s : GameState} {a : Action} {p : PlayerId}
     | cons frame rest =>
       cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, h, hk]
   simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp twoSided]
-  unfold advance
-  cases fuel <;> simp
+  cases fuel <;> simp [advance, GameState.preparePriority]
 
 /-- Taking turns in turn order: the turn player at turn `k` (CR 118, 301). -/
 def GameState.turnPlayerAt (s : GameState) (k : Nat) : PlayerId :=

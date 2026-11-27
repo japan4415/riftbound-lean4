@@ -130,13 +130,12 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
       ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
         t.pending.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   obtain ⟨_, before, t, used, events, declared, path, stopped⟩ :=
     advance_observed_frame_to_decision noCostChoice regular applied rawWF reads run
-  have finished : step used s a = .ok (t, before ++ events) := by
-    simp only [step, ite_eq_left legal, declared]
-    exact path.finish stopped before
-  exact ⟨t, used, _, stopped, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
+  refine ⟨t, used, before ++ events, stopped, fun extra => ?_⟩
+  simp only [step, ite_eq_left legal, declared]
+  exact path extra before
 
 /-- Run action observers and any ordinary trigger queue when the raw action is already
 waiting at a decision. -/
@@ -146,7 +145,7 @@ theorem step_observed_action_waits {s raw : GameState} {a : Action} {notices : L
     (wf : raw.WF) (reads : MightRead.database raw.cards)
     (waiting : raw.pending.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   apply step_observed_frame_to_decision legal noCost ordinary applied wf reads
   intro next observed safe checked stack
   obtain ⟨mid, used, added, entered, midWF, cards, route⟩ :=
@@ -319,7 +318,7 @@ theorem step_predictAnswer_waits_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (checked : predictAnswerWaits s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold predictAnswerWaits at checked
   obtain ⟨isPredict, wait⟩ := Bool.and_eq_true_iff.mp checked
   cases applied : applyFrame0 s a with
@@ -341,12 +340,12 @@ def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
       | _ => false)
 
 /-- A checked legal program answer on the Chain reaches the next
-decision through the actual dispatcher. Additional fuel gives the same state and log. -/
+decision through the actual dispatcher. Any later Cleanup consumes the remaining fuel. -/
 theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : chainAnswerWorkSupported s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold chainAnswerWorkSupported at supported
   obtain ⟨effect, body⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with
@@ -384,7 +383,7 @@ theorem step_decisionRunAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : decisionRunAnswerWorkSupported s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold decisionRunAnswerWorkSupported at supported
   obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with

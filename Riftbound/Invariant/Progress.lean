@@ -763,35 +763,17 @@ theorem workStep_stack {s s' : GameState} {es : List Event} (hinv : StackInv s)
     · exact applyDeclaredAction_stack before legal applied
     · exact before
 
+/-- Prepending Cleanup preserves the bottom of the stack. -/
+theorem StackInv.preparePriority {s : GameState} (known : StackInv s) : StackInv s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    exact known.of_next rfl (fun bottom => bottom.prepend [.cleanup])
+
 /-- The automatic work keeps the stack invariant. -/
-theorem advance_stack :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, StackInv s →
-      advance n s es = .ok (s', es') → StackInv s'
-  | 0, s, s', es, es', hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
-  | n + 1, s, s', es, es', hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_stack n (workStep_stack hinv hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
+theorem advance_stack (n : Nat) {s s' : GameState} {es es' : List Event} (known : StackInv s)
+    (done : advance n s es = .ok (s', es')) : StackInv s' :=
+  advance_preserves StackInv (fun _ known => known.preparePriority) workStep_stack known done
 
 /-- A step keeps the stack invariant. -/
 theorem step_stack {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
@@ -814,6 +796,7 @@ theorem advance_idle :
       advance n s es = .ok (s', es') → TopIdle s'
   | 0, s, s', es, es', h => by
     unfold advance at h
+    dsimp only at h
     split at h
     · rename_i f rest hp
       split at h
@@ -834,6 +817,7 @@ theorem advance_idle :
       exact absurd hg (by simp)
   | n + 1, s, s', es, es', h => by
     unfold advance at h
+    dsimp only at h
     split at h
     · rename_i f rest hp
       split at h

@@ -51,7 +51,7 @@ theorem step_chainPass_next {s : GameState} {p : PlayerId} {passes : Nat} {rest 
   have applied := applyDeclaredAction_chainPass pending
   simp only [beforeLast, ite_true] at applied
   simp only [step, legal, ite_true, applied]
-  exact advance_waitsForDecision fuel rfl rfl
+  exact advance_waitsForDecision fuel rfl rfl rfl
 
 /-- The last required pass hands control to resolution, leaving the Chain in place for that
 work frame to read (CR 338.2, 339, 340). -/
@@ -257,6 +257,17 @@ theorem cleanupFrame_priority_ready {s : GameState} {rest trailing : List Frame}
             · simp [continueAfterCleanup] at pending
           next staged =>
             exact ⟨⟨noWinner, noWork⟩, staged, by simpa only [continueAfterCleanup] using pending⟩
+
+/-- **I17.** A successful step offers neutral priority during play only at a Cleanup fixed point. -/
+theorem step_priority_settled {fuel : Nat} {s t : GameState} {events : List Event} {a : Action}
+    (applied : step fuel s a = .ok (t, events)) {p : PlayerId} {tail : List Frame}
+    (pending : t.pending = .priority p :: tail) (playing : t.phase ≠ .setup) : t.Settled := by
+  unfold step at applied
+  split at applied
+  · split at applied
+    · exact advance_priority_settled applied pending playing
+    · contradiction
+  · contradiction
 
 end Riftbound
 

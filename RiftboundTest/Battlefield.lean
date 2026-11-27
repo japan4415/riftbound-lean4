@@ -69,6 +69,7 @@ meta def bfReady : Option (GameState × PlayerId × ObjId × ObjId × ObjId × O
   let s := { s with cards := ⟨s.cards.cards ++ [feeCard]⟩ }
   let feeSource := { newCard s.cards s (otherP p) feeCard.id with loc := some field }
   let (s, _) ← addObject s feeSource .battlefieldZone
+  let s := s.modObj field (fun battlefield => { battlefield with control := some (otherP p) })
   let s := s.setPool p { energy := 1 }
   let send (s : GameState) (kind : ActionKind) := (step 100 s ⟨.player p, kind⟩).toOption
   let start := ActionKind.startGroupMove (.battlefield field) ⟨1, []⟩

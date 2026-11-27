@@ -14,7 +14,7 @@ theorem step_showdownPass_next_to_decision {s : GameState} {p : PlayerId} {field
     (pending : s.pending = .showdown field p passes :: rest)
     (remaining : passes + 1 < s.participatingCount) (legal : Legal s ⟨.player p, .pass⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events := by
   let a : Action := ⟨.player p, .pass⟩
   let raw := { s with pending := .showdown field (s.nextParticipant p) (passes + 1) :: rest }
   have applied : applyFrame0 s a = some (raw, []) := by
@@ -29,7 +29,7 @@ theorem step_inviteTeammate_to_decision {s : GameState} {p guest : PlayerId} {re
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .priority p :: rest)
     (legal : Legal s ⟨.player p, .inviteTeammate guest⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .inviteTeammate guest⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .inviteTeammate guest⟩ = advance extra t events := by
   let a : Action := ⟨.player p, .inviteTeammate guest⟩
   let raw := { s with pending := .teamInvitation guest :: .priority p :: rest }
   have applied : applyFrame0 s a = some (raw, []) := by simp only [applyFrame0, pending, a, raw]
@@ -43,7 +43,7 @@ theorem step_teamInvitationPass_to_decision {s : GameState} {guest : PlayerId} {
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .teamInvitation guest :: rest)
     (legal : Legal s ⟨.player guest, .pass⟩) (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player guest, .pass⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player guest, .pass⟩ = advance extra t events := by
   let a : Action := ⟨.player guest, .pass⟩
   let raw := { s with pending := rest }
   have applied : applyFrame0 s a = some (raw, []) := by simp only [applyFrame0, pending, a, raw]
@@ -59,7 +59,7 @@ theorem step_assignPick_to_decision {s : GameState} {field unit : ObjId} {attack
     (pending : s.pending = .assign field attacker side chosen done :: rest)
     (legal : Legal s ⟨.player side, .assignPick unit⟩) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player side, .assignPick unit⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player side, .assignPick unit⟩ = advance extra t events := by
   let a : Action := ⟨.player side, .assignPick unit⟩
   let raw := { s with pending := .assign field attacker side (chosen ++ [unit]) done :: rest }
   have applied : applyFrame0 s a = some (raw, []) := by simp only [applyFrame0, pending, a, raw]

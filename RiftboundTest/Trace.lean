@@ -13,6 +13,20 @@ namespace RiftboundTest
 
 open Riftbound RiftboundDriver
 
+-- An unfinished Cleanup can never appear as available neutral priority in the observed engine.
+#guard (do
+  let initial ← lab
+  let p := initial.me
+  let (board, victim) ← put initial p "OGN-051" .base
+  let damaged := board.modObj victim (fun o => { o with damage := 10 })
+  let (next, events) ← (advance 10 damaged []).toOption
+  let (observed, _) ← (advanceWithDisclosures 10 damaged [] []).toOption
+  let inTrash ← next.firstOf p .trash "OGN-051"
+  return (advance 0 damaged []).toOption.isNone &&
+    damaged.pending.head? == some (.priority p) && next.pending.head? == some (.priority p) &&
+    next.countIn p .trash "OGN-051" == 1 && (cleanupStep next).isNone &&
+    inTrash != victim && events.contains (.died inTrash p) && observed == (next, events) : Option Bool).getD false
+
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=
   match demoTrace seed turns with | .ok j => j | .error e => "ERROR " ++ e

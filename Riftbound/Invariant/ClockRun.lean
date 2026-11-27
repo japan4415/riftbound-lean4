@@ -687,39 +687,25 @@ theorem workStep_tick {s s' : GameState} {es : List Event}
     · exact absurd called notClock
   · exact Tick.of_tc ⟨rfl, rfl⟩
 
+/-- Preparing a neutral priority decision does not advance time. -/
+theorem GameState.preparePriority_clock (s : GameState) : TC s s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · rw [unchanged]
+    exact ⟨rfl, rfl⟩
+  · rw [staged]
+    exact ⟨rfl, rfl⟩
+
 /-- The work after an answer keeps the clock and does not take the turn counter past it. -/
-theorem advance_keep :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event},
-      ClockOk s → advance n s es = .ok (s', es') → ClockOk s' ∧ s'.clock = s.clock
-  | 0, s, s', es, es', hc, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact ⟨hc, rfl⟩
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ⟨hc, rfl⟩
-  | n + 1, s, s', es, es', hc, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · split at h
-        · rename_i s1 es1 hm
-          obtain ⟨hc1, hcl1⟩ := (workStep_tick hm).keep hc
-          obtain ⟨hc2, hcl2⟩ := advance_keep n hc1 h
-          exact ⟨hc2, hcl2.trans hcl1⟩
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact ⟨hc, rfl⟩
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ⟨hc, rfl⟩
+theorem advance_keep (n : Nat) {s s' : GameState} {es es' : List Event} (known : ClockOk s)
+    (done : advance n s es = .ok (s', es')) : ClockOk s' ∧ s'.clock = s.clock :=
+  advance_preserves (fun t => ClockOk t ∧ t.clock = s.clock)
+    (fun t previous =>
+      let kept := (Tick.of_tc t.preparePriority_clock).keep previous.1
+      ⟨kept.1, kept.2.trans previous.2⟩)
+    (fun previous worked =>
+      let kept := (workStep_tick worked).keep previous.1
+      ⟨kept.1, kept.2.trans previous.2⟩)
+    ⟨known, rfl⟩ done
 
 /-- **I14, one step.** A step keeps the turn counter within a hard deadline. A clock that is set
 stays fixed. The call of time sets it to three turns after the current turn (TR 408.2, 408.4.c). -/

@@ -1135,36 +1135,28 @@ theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hown :
         (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) before legal applied
     · exact before
 
+/-- Preparing a priority decision leaves the stack free of setup work. -/
+theorem SetupInv.preparePriority {s : GameState} (known : SetupInv s) :
+    SetupInv s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, rest, neutral, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    refine known.of_nonsetup (new := [.cleanup, .priority p]) neutral rfl rfl ?_ ?_
+    · simp [neutral]
+    · intro frame present
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at present
+      rcases present with rfl | rfl <;> rfl
+
 /-- The automatic work keeps the setup invariant. -/
-theorem advance_setup :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk → SetupInv s →
-      advance n s es = .ok (s', es') → SetupInv s'
-  | 0, s, s', es, es', _, _, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
-  | n + 1, s, s', es, es', hwf, hown, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_setup n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm)
-            (workStep_setup hwf hown hinv hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
+theorem advance_setup (n : Nat) {s s' : GameState} {es es' : List Event}
+    (wf : s.WF) (owners : s.OwnerOk) (setup : SetupInv s)
+    (done : advance n s es = .ok (s', es')) : SetupInv s' := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.OwnerOk ∧ SetupInv t)
+    (fun _ known => ⟨known.1.preparePriority, known.2.1.preparePriority, known.2.2.preparePriority⟩)
+    (fun known worked => ⟨workStep_wf known.1 worked, workStep_ownerOk known.1 known.2.1 worked,
+      workStep_setup known.1 known.2.1 known.2.2 worked⟩)
+    ⟨wf, owners, setup⟩ done
+  exact kept.2.2
 
 /-- A step keeps the setup invariant. -/
 theorem step_setup {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}

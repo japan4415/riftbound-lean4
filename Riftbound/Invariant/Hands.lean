@@ -1604,36 +1604,27 @@ theorem workStep_handInv {s s' : GameState} {es : List Event} (hwf : s.WF) (hown
         (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) before legal applied
     · exact before
 
+/-- Cleanup can be scheduled only after the setup hands were dealt. -/
+theorem HandInv.preparePriority {s : GameState} (known : HandInv s) : HandInv s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, playing, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    refine ⟨?_, ?_, fun _ _ _ => playing⟩
+    · intro setupHands
+      exact known.turn (by simpa using setupHands)
+    · intro setup
+      exact (playing setup).elim
+
 /-- The automatic work keeps the hand invariant. -/
-theorem advance_handInv :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk → HandInv s →
-      advance n s es = .ok (s', es') → HandInv s'
-  | 0, s, s', es, es', _, _, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
-  | n + 1, s, s', es, es', hwf, hown, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_handInv n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm)
-            (workStep_handInv hwf hown hinv hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
+theorem advance_handInv (n : Nat) {s s' : GameState} {es es' : List Event}
+    (wf : s.WF) (owners : s.OwnerOk) (hands : HandInv s)
+    (done : advance n s es = .ok (s', es')) : HandInv s' := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.OwnerOk ∧ HandInv t)
+    (fun _ known => ⟨known.1.preparePriority, known.2.1.preparePriority, known.2.2.preparePriority⟩)
+    (fun known worked => ⟨workStep_wf known.1 worked, workStep_ownerOk known.1 known.2.1 worked,
+      workStep_handInv known.1 known.2.1 known.2.2 worked⟩)
+    ⟨wf, owners, hands⟩ done
+  exact kept.2.2
 
 /-- A step keeps the hand invariant. -/
 theorem step_handInv {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}

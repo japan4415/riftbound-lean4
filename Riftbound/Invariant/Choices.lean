@@ -83,8 +83,9 @@ theorem runEffect_priceUnitToken_choice (s : GameState) (p : PlayerId) (src : Ob
 /-- Automatic work stops at a decision frame even with fuel left. -/
 theorem advance_waitsForDecision (fuel : Nat) {s : GameState} {events : List Event}
     {choice : Frame} {rest : List Frame} (pending : s.pending = choice :: rest)
-    (decision : choice.isWork = false) : advance fuel s events = .ok (s, events) := by
-  cases fuel <;> simp [advance, pending, decision]
+    (decision : choice.isWork = false) (prepared : s.preparePriority = s) :
+    advance fuel s events = .ok (s, events) := by
+  cases fuel <;> simp [advance, prepared, pending, decision]
 
 private theorem insertTriggers_keepsDecision (triggers : List PendTrigger) {choice : Frame}
     (decision : choice.isWork = false) {stack : List Frame} (present : choice ∈ stack) :
@@ -139,13 +140,16 @@ theorem advance_runDecision {s : GameState} {p : PlayerId} {src : ObjId} {env : 
     {events : List Event} (fuel : Nat) (pending : s.pending = .run p src env (.cons effect body) :: rest)
     (scheduled : runEffect s p src (env.withMight s.mightTable) effect body effectAddPolicy =
       (s, [choice], [])) (decision : choice.isWork = false)
+    (notNeutral : ∀ p, choice ≠ .priority p)
     (quiet : s.workTransitionEvents { s with pending := choice :: rest } = []) :
     advance (fuel + 1) s events = .ok ({ s with pending := choice :: rest }, events) := by
   let waiting := { s with pending := choice :: rest }
   have work : workStep s = some (waiting, []) := by
     simp [workStep, pending, microStep, microStep0, scheduled, quiet, withTriggers_nil, waiting]
-  simpa only [advance, pending, Frame.isWork, ite_true, work, List.append_nil] using
-    (advance_waitsForDecision fuel (s := waiting) (events := events) rfl decision)
+  have prepared := GameState.preparePriority_of_nonpriority (s := waiting) rfl notNeutral
+  simpa only [advance, GameState.preparePriority_of_work pending rfl, pending,
+    Frame.isWork, ite_true, work, List.append_nil] using
+    (advance_waitsForDecision fuel (s := waiting) (events := events) rfl decision prepared)
 
 /-- While a `may` decision is open, either answer is legal exactly for the designated player. -/
 theorem legal_mayDecision_iff {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}

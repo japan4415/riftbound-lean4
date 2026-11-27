@@ -126,13 +126,12 @@ theorem step_playDeclaration_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards)
     (play : isPlayDeclaration s a = true) (legal : Legal s a) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   obtain ⟨_, before, t, used, events, declared, path, stopped⟩ :=
     advance_playDeclaration_to_decision wf reads play legal
-  have finished : step used s a = .ok (t, before ++ events) := by
-    simp only [step, ite_eq_left legal, declared]
-    exact path.finish stopped before
-  exact ⟨t, used, _, stopped, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
+  refine ⟨t, used, before ++ events, stopped, fun extra => ?_⟩
+  simp only [step, ite_eq_left legal, declared]
+  exact path extra before
 
 private theorem isPlayDeclaration_resume {s : GameState} {a : Action}
     (play : isPlayDeclaration s a = true) :
@@ -183,7 +182,7 @@ theorem step_playCostAnswer_checked_to_decision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (supported : playCostAnswerWorkSupported s a = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+      ∀ extra, step (used + extra) s a = advance extra t events := by
   unfold playCostAnswerWorkSupported at supported
   obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with

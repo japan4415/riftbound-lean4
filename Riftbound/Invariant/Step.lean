@@ -259,37 +259,17 @@ theorem workStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
       (hwf.congr rfl rfl rfl rfl) legal applied
   · exact GameState.WF.congr hwf rfl rfl rfl rfl
 
+/-- Preparing a priority frame preserves the structural invariants. -/
+theorem GameState.WF.preparePriority {s : GameState} (known : s.WF) : s.preparePriority.WF := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    exact known.congr rfl rfl rfl rfl
+
 /-- The automatic work keeps the game well formed. -/
-theorem advance_wf :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
-      advance n s es = .ok (s', es') → s'.WF
-  | 0, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hwf
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf
-  | n + 1, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_wf n (workStep_wf hwf hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hwf
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf
+theorem advance_wf (n : Nat) {s s' : GameState} {es es' : List Event} (known : s.WF)
+    (done : advance n s es = .ok (s', es')) : s'.WF :=
+  advance_preserves GameState.WF (fun _ known => known.preparePriority) workStep_wf known done
 
 /-- **I3** (engine). A step keeps the game well formed. -/
 theorem step_wf {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
@@ -327,6 +307,7 @@ theorem advance_mono :
     | zero => exact h
     | succ k =>
       unfold advance at h ⊢
+      dsimp only at h ⊢
       split at h
       · split at h
         · exact absurd h (by simp)
@@ -336,6 +317,7 @@ theorem advance_mono :
   | n + 1, m, s, es, r, h, hnm => by
     obtain ⟨k, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
     unfold advance at h ⊢
+    dsimp only at h ⊢
     split at h
     · split at h
       · rename_i hf
@@ -612,35 +594,22 @@ theorem workStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
       (hwf.congr rfl rfl rfl rfl) legal applied
   · exact List.Perm.refl _
 
+/-- Preparing Cleanup does not change the physical cards in the game's zones. -/
+theorem GameState.preparePriority_physIds (s : GameState) :
+    s.preparePriority.physIds = s.physIds := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · exact congrArg GameState.physIds unchanged
+  · rw [staged]
+    rfl
+
 /-- The automatic work keeps the physical cards. -/
-theorem advance_physIds :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
-      advance n s es = .ok (s', es') → s'.physIds.Perm s.physIds
-  | 0, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact List.Perm.refl _
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
-  | n + 1, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact (advance_physIds n (workStep_wf hwf hm) h).trans (workStep_physIds hwf hm)
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact List.Perm.refl _
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
+theorem advance_physIds (n : Nat) {s s' : GameState} {es es' : List Event} (known : s.WF)
+    (done : advance n s es = .ok (s', es')) : s'.physIds.Perm s.physIds := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.physIds.Perm s.physIds)
+    (fun t next => ⟨next.1.preparePriority, t.preparePriority_physIds.symm ▸ next.2⟩)
+    (fun next worked => ⟨workStep_wf next.1 worked, (workStep_physIds next.1 worked).trans next.2⟩)
+    ⟨known, List.Perm.refl _⟩ done
+  exact kept.2
 
 /-- **I1** (engine). A step keeps the physical cards: the list of physical cards in the zones is
 rearranged, nothing is lost or made. -/

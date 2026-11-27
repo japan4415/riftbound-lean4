@@ -623,12 +623,21 @@ theorem workStep_isSome {s : GameState} {f : Frame} {rest : List Frame}
     · exact ⟨_, rfl⟩
   | _ => exact microStep_isSome hp hf
 
+/-- Preparing a Cleanup does not change any object's owner or zone. -/
+theorem GameState.OwnerOk.preparePriority {s : GameState} (known : s.OwnerOk) :
+    s.preparePriority.OwnerOk := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    exact known.congr rfl rfl
+
 /-- The automatic work fails for no reason but the fuel. -/
 theorem advance_error :
     ∀ (n : Nat) {s : GameState} {es : List Event} {e : RuleError},
       s.WF → s.OwnerOk → advance n s es = .error e → e = .fuelExhausted
   | 0, s, es, e, _, _, h => by
     unfold advance at h
+    dsimp only at h
     split at h
     · split at h
       · simpa using h.symm
@@ -636,46 +645,28 @@ theorem advance_error :
     · exact absurd h (by simp)
   | n + 1, s, es, e, hwf, hown, h => by
     unfold advance at h
+    dsimp only at h
     split at h
     · rename_i f rest hp
       split at h
       · rename_i hf
-        obtain ⟨r, hr⟩ := workStep_isSome hwf hown hp hf
+        have preparedWf := hwf.preparePriority
+        have preparedOwners := hown.preparePriority
+        obtain ⟨r, hr⟩ := workStep_isSome preparedWf preparedOwners hp hf
         obtain ⟨s1, es1⟩ := r
         simp only [hr] at h
-        exact advance_error n (workStep_wf hwf hr) (workStep_ownerOk hwf hown hr) h
+        exact advance_error n (workStep_wf preparedWf hr) (workStep_ownerOk preparedWf preparedOwners hr) h
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
 /-- The automatic work keeps `OwnerOk`. -/
-theorem advance_ownerOk :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → s.OwnerOk →
-      advance n s es = .ok (s', es') → s'.OwnerOk
-  | 0, s, s', es, es', hwf, hown, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hown
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hown
-  | n + 1, s, s', es, es', hwf, hown, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_ownerOk n (workStep_wf hwf hm) (workStep_ownerOk hwf hown hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hown
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hown
+theorem advance_ownerOk (n : Nat) {s s' : GameState} {es es' : List Event}
+    (wf : s.WF) (owners : s.OwnerOk) (done : advance n s es = .ok (s', es')) : s'.OwnerOk := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.OwnerOk)
+    (fun _ known => ⟨known.1.preparePriority, known.2.preparePriority⟩)
+    (fun known worked => ⟨workStep_wf known.1 worked, workStep_ownerOk known.1 known.2 worked⟩)
+    ⟨wf, owners⟩ done
+  exact kept.2
 
 /-- A step keeps `OwnerOk`. -/
 theorem step_ownerOk {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}

@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の決定点か試合終了まで追える。証明の範囲は §3 に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の選択に続く状態か試合終了まで追える。通常の優先権を提示する直前に盤面処理が残っていれば、残りの fuel で Cleanup を行う。`AdvancePrefix.finish` は、その確認を済ませた選択で停止することを示す。証明の範囲は §3 に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -122,7 +122,7 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`RiftboundCards.step_priority_pass_ending`](../RiftboundCards/MightRead.lean) は、通常の優先権だけがスタックにある状態での合法な Pass から、実際の `step` を追う。終了フェイズの Cleanup と Expiration を処理した後、通常の誘発が待っていれば、元の作業を再開する前にプレイヤー判断へ到達する。4人戦の投了で空の Battlefield が加わったカードデータでも成り立つ。
 
-通常の誘発キュー以外に進む場合の到達先は、空のスタック、プレイヤー判断、次のターンの開始、イベントが積んだ即時 Add のいずれかになる。即時 Add の場合は、そのフレームを生成した誘発と、生成時に参照したゲーム状態を定理に残す。どの到達先でも、使った手数とイベントの順序を保って残りの `advance` につながる。スタックが空になるかプレイヤー判断に着いた場合は、そこで使った手数だけを fuel に渡しても `step` が成功する。
+通常の誘発キュー以外に進む場合の到達先は、空のスタック、プレイヤー判断、次のターンの開始、イベントが積んだ即時 Add のいずれかになる。即時 Add の場合は、そのフレームを生成した誘発と、生成時に参照したゲーム状態を定理に残す。どの到達先でも、使った手数とイベントの順序を保って残りの `advance` につながる。スタックが空になるか、通常の優先権に必要な確認を終えたプレイヤー判断に着いた場合は、そこで使った手数で `step` が成功する。
 
 ### 3l. 終了フェイズから次のターンへの移行
 
@@ -146,7 +146,7 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`advance_beginning_to_decision`](../Riftbound/Invariant/TurnPhaseWork.lean) は、Beginning の Temporary と死亡置換、追加ドロー、Hold、Channel、Draw、Main を、実際の作業順に追う。Hold の得点がドローに置き換わる場合、Draw を飛ばす効果、山札切れの Burn Out、Main の Cleanup が始める Showdown も含む。即時 Add は観測された時点で解決し、通常の誘発は残っている Cleanup やドローの後ろに積む。
 
-[`RiftboundCards.step_priority_pass_to_decision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行えば、ある有限の fuel で `step` が成功することを示す。追加の fuel を与えても、到達するゲーム状態と発行するイベント列は一致する。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
+[`RiftboundCards.step_priority_pass_to_decision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行うと、有限の fuel で次の選択に続く状態か試合終了に着くことを示す。通常の優先権前に追加の Cleanup が必要な場合は、その状態から残りの fuel で続ける。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
 
 ### 3p. Chain の最後の Pass と先頭項目の解決
 
@@ -164,11 +164,11 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`advance_limited_finalization`](../Riftbound/Invariant/LimitedSpellWork.lean) は、確定候補を生成し、対象や支払いに選択があればプレイヤー判断まで進む。合法な候補が一つなら自動処理を続け、宣言を確定して Chain の優先権へ移る場合、死亡置換の判断を求める場合、取り消して元のゾーンへ戻す場合を扱う。複数の保留 Spell が続く場合は、Chain の項目数と宣言確定の段階を順に比較する。取り消しに成功して次の Spell に移るたび、Chain の項目数が減る。即時 Add でゾーンの内容は変わらないため、観測を挟んでもこの減少は保たれる。
 
-[`RiftboundCards.step_chainPass_last_checked_to_decision`](../RiftboundCards/MightRead.lean) は、対応する命令列であれば、最後の Pass からこの宣言確定を含めて次の決定点か試合終了まで進むことを示す。追加の fuel でも結果とイベント列は一致する。個別の対象を記録した Repeat の証明も、後続の保留 Spell を同じ処理へ渡す。
+[`RiftboundCards.step_chainPass_last_checked_to_decision`](../RiftboundCards/MightRead.lean) は、対応する命令列であれば、最後の Pass からこの宣言確定を含めて次の選択に続く状態か試合終了まで進むことを示す。通常の優先権の前に残る Cleanup は、そこから残りの fuel で処理する。個別の対象を記録した Repeat の証明も、後続の保留 Spell を同じ処理へ渡す。
 
 ### 3s. Showdown の最後の Pass とダメージ割り当ての確定
 
-`step_showdownPass_last_to_decision` と `step_assignDone_to_decision` は、実際の入力処理とイベント観測を経て、次の決定点か空のスタックに到達することを示す。前者は Combat のダメージ置換順や割り当ての選択、割り当て不要の Combat、Combat がない場合の支配確定を扱う。後者はもう一方の割り当て、致死ダメージで生じる死亡置換の選択、ダメージ適用からリコール・戦闘結果・支配確定・Cleanup までを扱う。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
+`step_showdownPass_last_to_decision` と `step_assignDone_to_decision` は、実際の入力処理とイベント観測を経て、次の選択に続く状態か空のスタックに到達することを示す。前者は Combat のダメージ置換順や割り当ての選択、割り当て不要の Combat、Combat がない場合の支配確定を扱う。後者はもう一方の割り当て、致死ダメージで生じる死亡置換の選択、ダメージ適用からリコール・戦闘結果・支配確定・Cleanup までを扱う。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
 
 継続スタックには、通常の移動で残る Cleanup を含められる。連続する Cleanup を消化した後、先頭が通常の優先権などの入力フレームか空になる場合を扱う。通常の誘発は残る解決フレームの後ろに積み、即時 Add は観測時に実行する。ダメージ置換などの入力が出た場合はそこで止まる。登録カード用の定理は4人戦の投了後も使え、fuel を増やしても状態とイベント列は一致する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 

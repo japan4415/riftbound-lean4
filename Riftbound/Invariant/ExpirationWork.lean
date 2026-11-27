@@ -1588,7 +1588,7 @@ private theorem priority_pass_prefix {s initial t : GameState} {p : PlayerId} {u
     (applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []))
     (path : AdvancePrefix initial t used events) :
     (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   constructor
   · intro fuel
@@ -1607,7 +1607,7 @@ theorem step_priority_pass_ending {s : GameState} {p : PlayerId}
     (legal : Legal s ⟨.player p, .pass⟩) :
     ∃ t used events, 0 < used ∧ EndingWorkStop t.pending.head? ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
   have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
@@ -1627,7 +1627,7 @@ theorem step_priority_pass_ending_with_adds {s : GameState} {p : PlayerId}
     ∃ t used events, 0 < used ∧
       (t.pending.head?.all (fun frame => !frame.isWork) = true ∨ t.pending = [.beginTurn]) ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
   have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
@@ -1644,7 +1644,7 @@ theorem step_priority_pass_to_awaken {s : GameState} {p : PlayerId}
     (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
     ∃ t used events, 0 < used ∧ TurnBoundaryStop t ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
   have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
@@ -1661,7 +1661,7 @@ theorem step_priority_pass_through_awaken {s : GameState} {p : PlayerId}
     (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
     ∃ t used events, 0 < used ∧ AwakenWorkStop s.cards t ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
   have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
@@ -1671,23 +1671,21 @@ theorem step_priority_pass_through_awaken {s : GameState} {p : PlayerId}
       ordinaryMight ordinaryAwaken rfl
   exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
 
-/-- With ordinary Might and Awaken triggers, the standard priority Pass succeeds with
-some finite fuel, carrying every emitted event to the next decision or game end. -/
+/-- With ordinary Might and Awaken triggers, the standard Pass reaches the continuation
+of the next decision or game end with finite fuel. Remaining fuel can finish Cleanup. -/
 theorem step_priority_pass_to_decision {s : GameState} {p : PlayerId}
     (wf : s.WF) (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
     (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)
     (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
     ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events := by
   let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
   have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
     applyDeclaredAction_priorityPass wf database pending
   obtain ⟨t, used, events, positive, path, stop⟩ :=
     advance_ending_to_decision (s := initial) (wf.congr rfl rfl rfl rfl) database
       ordinaryMight ordinaryAwaken rfl
-  obtain ⟨_, finished⟩ := priority_pass_prefix legal applyPass path
-  exact ⟨t, used, events, positive, stop, fun extra =>
-    step_mono (finished stop) (Nat.le_add_right _ _)⟩
+  exact ⟨t, used, events, positive, stop, (priority_pass_prefix legal applyPass path).1⟩
 
 end Riftbound
 

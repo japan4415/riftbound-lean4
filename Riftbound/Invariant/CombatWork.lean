@@ -412,7 +412,7 @@ theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : Pla
     (boundary : rest.head?.all (fun f => !f.isWork) = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .pass⟩
   let suffix := List.replicate cleanups Frame.cleanup ++ rest
   let result := showdownEnd s bf suffix
@@ -471,10 +471,10 @@ theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : Pla
       exact entered.then observedReads (fun _ tWF tReads track =>
         advance_draw_frames 1 (endShowdown_frames s bf true) tWF tReads track insertTail)
   obtain ⟨t, used, events, path, stop⟩ := advance_combat_to_decision observedReads work boundary front
-  refine ⟨t, used, result.2 ++ events, stop, ?_⟩
-  change step used s action = _
+  refine ⟨t, used, result.2 ++ events, stop, fun extra => ?_⟩
+  change step (used + extra) s action = _
   simp only [step, ite_eq_left (show Legal s action from legal), declaration]
-  exact path.finish stop result.2
+  exact path extra result.2
 
 private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat × Nat) :
     (Effect.endCombatDamage excess).ObservedFinite :=
@@ -525,7 +525,7 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
     (boundary : rest.head?.all (fun f => !f.isWork) = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      step used s ⟨.player side, .assignDone⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player side, .assignDone⟩ = advance extra t events := by
   let action : Action := ⟨.player side, .assignDone⟩
   let suffix := List.replicate cleanups Frame.cleanup ++ rest
   let tail := combatSteps bf ++ suffix
@@ -609,10 +609,10 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
       have base : waiting next.pending := ⟨tail, stack, Or.inl rfl⟩
       exact (advance_action_observation next notices nextWF nextReads base insertWaiting).then observedReads proceed
   obtain ⟨t, used, events, path, stop⟩ := advance_combat_to_decision observedReads work boundary front
-  refine ⟨t, used, result.2 ++ events, stop, ?_⟩
-  change step used s action = _
+  refine ⟨t, used, result.2 ++ events, stop, fun extra => ?_⟩
+  change step (used + extra) s action = _
   simp only [step, ite_eq_left (show Legal s action from legal), declaration]
-  exact path.finish stop result.2
+  exact path extra result.2
 
 end Riftbound
 

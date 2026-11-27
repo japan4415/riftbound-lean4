@@ -97,10 +97,12 @@ theorem advance_beginTurn_checkpoint {s : GameState} {rest : List Frame} (wf : s
       intro empty
       have observed := observe
       simp [sees, empty] at observed
-    obtain ⟨t, used, f, later, _, path, decision, stop⟩ := advance_triggers_to_decision waiting
-      (workStep_wf wf step) detected _ activeStack (waitingCards ▸ checkedMight) (Or.inl nonempty)
+    obtain ⟨t, used, f, later, _, path, decision, stop, notNeutral⟩ :=
+      advance_triggers_to_nonpriorityDecision waiting (workStep_wf wf step) detected _ activeStack
+        (waitingCards ▸ checkedMight) (Or.inl nonempty) (by simp [turnFrames])
     have reached : t.WF := by
-      have finish := path.finish (by simp [decision, stop]) []
+      have prepared := GameState.preparePriority_of_nonpriority decision notNeutral
+      have finish := path.finish (by simp [prepared, decision, stop]) []
       exact advance_wf used (workStep_wf wf step) (by simpa using finish)
     exact ⟨t, used + 1, by omega, by simpa using path.prepend pending rfl step, reached,
       Or.inr (by simp [decision, stop])⟩

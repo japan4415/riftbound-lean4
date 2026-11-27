@@ -54,7 +54,7 @@ theorem AdvancePrefix.prepend {s next t : GameState} {frame : Frame} {rest : Lis
     (path : AdvancePrefix next t n more) : AdvancePrefix s t (n + 1) (events ++ more) := by
   intro fuel prior
   rw [show n + 1 + fuel = n + fuel + 1 by omega]
-  simp only [advance, pending, work, ite_true, step]
+  simp only [advance, GameState.preparePriority_of_work pending work, pending, work, ite_true, step]
   rw [path]
   simp only [List.append_assoc]
 
@@ -67,14 +67,17 @@ theorem AdvancePrefix.append {s t u : GameState} {n m : Nat} {first second : Lis
 
 /-- At the end of the stack or at a decision, the steps used so far are enough for `advance`. -/
 theorem AdvancePrefix.finish {s t : GameState} {n : Nat} {events : List Event}
-    (path : AdvancePrefix s t n events) (boundary : t.pending.head?.all (fun frame => !frame.isWork) = true)
+    (path : AdvancePrefix s t n events)
+    (boundary : t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true)
     (before : List Event) : advance n s before = .ok (t, before ++ events) := by
   rw [← Nat.add_zero n, path]
+  have unchanged := GameState.preparePriority_of_idle boundary
+  rw [unchanged] at boundary
   cases stack : t.pending with
-  | nil => rw [advance, stack]
+  | nil => simp [advance, unchanged, stack]
   | cons frame rest =>
     have choice : frame.isWork = false := by simpa [stack] using boundary
-    simp only [advance, stack, choice, Bool.false_eq_true, ↓reduceIte]
+    simp only [advance, unchanged, stack, choice, Bool.false_eq_true, ↓reduceIte]
 
 /-- The rule transition produced `expected` and applying its event observers changed that state. -/
 def WorkObserverChange (before expected actual : GameState) : Prop :=

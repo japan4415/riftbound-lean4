@@ -221,8 +221,8 @@ theorem advance_chain_resolution {s : GameState} {item : ObjId} {rest : List Fra
     advance_chain_resolution_to_decision wf reads pending finite front decision
   exact ⟨t, used, events, positive, path, .decision stop⟩
 
-/-- Lift certified Chain resolution to the actual final Pass. The amount of fuel used suffices for a
-successful step at the decision. -/
+/-- Lift certified Chain resolution to the actual final Pass, including any Cleanup
+required before offering neutral priority. -/
 theorem step_chainPass_last_certified_to_decision {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
     {item : ObjId} (wf : s.WF) (reads : MightRead.database s.cards) (ongoing : s.result = none)
     (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
@@ -233,7 +233,7 @@ theorem step_chainPass_last_certified_to_decision {s : GameState} {p : PlayerId}
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+      step used s ⟨.player p, .pass⟩ = advance 0 t events := by
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   obtain ⟨t, used, events, positive, path, stop⟩ :=
     advance_chain_resolution_to_decision (s := initial) (wf.congr rfl rfl rfl rfl) reads rfl finite front decision
@@ -242,10 +242,10 @@ theorem step_chainPass_last_certified_to_decision {s : GameState} {p : PlayerId}
     rw [step_chainPass_last _ ongoing pending last]
     simpa only [List.nil_append] using path fuel []
   · rw [step_chainPass_last _ ongoing pending last]
-    simpa only [List.nil_append] using path.finish stop []
+    simpa only [List.nil_append, Nat.add_zero] using path 0 []
 
-/-- Lift certified Chain resolution to the actual final Pass. At a decision the amount of
-fuel used suffices for a successful step. -/
+/-- Lift certified Chain resolution to the actual final Pass. A prepared decision
+can be returned without further work. -/
 theorem step_chainPass_last_certified {s : GameState} {p : PlayerId} {passes : Nat} {rest : List Frame}
     {item : ObjId} (wf : s.WF) (reads : MightRead.database s.cards) (ongoing : s.result = none)
     (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
@@ -256,11 +256,13 @@ theorem step_chainPass_last_certified {s : GameState} {p : PlayerId} {passes : N
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, 0 < used ∧ ChainWorkEnd t ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   obtain ⟨t, used, events, positive, stopped, continues, finishes⟩ :=
     step_chainPass_last_certified_to_decision wf reads ongoing pending last finite front decision
-  exact ⟨t, used, events, positive, .decision stopped, continues, fun _ => finishes⟩
+  refine ⟨t, used, events, positive, .decision stopped, continues, fun ready => finishes.trans ?_⟩
+  let here : AdvancePrefix t t 0 [] := by intro fuel seen; simp
+  simpa using here.finish ready events
 
 /-- Whether the frame contains a Run program. -/
 def isRunFrame : Frame → Bool
@@ -303,7 +305,7 @@ theorem step_chainPass_last_checked_to_decision {s : GameState} {p : PlayerId} {
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+      step used s ⟨.player p, .pass⟩ = advance 0 t events := by
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   cases chain : s.zone .chain with
   | cons item older =>
@@ -332,7 +334,7 @@ theorem step_chainPass_last_checked_to_decision {s : GameState} {p : PlayerId} {
       rw [step_chainPass_last _ ongoing pending last]
       simpa only [List.nil_append] using full fuel []
     · rw [step_chainPass_last _ ongoing pending last]
-      simpa only [List.nil_append] using full.finish stop []
+      simpa only [List.nil_append, Nat.add_zero] using full 0 []
 
 /-- A final Chain Pass checks the current program only, then follows the observed dispatcher
 to the next decision or a queued limited Spell. -/
@@ -344,11 +346,13 @@ theorem step_chainPass_last_checked {s : GameState} {p : PlayerId} {passes : Nat
     (decision : rest.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, 0 < used ∧ ChainWorkEnd t ∧
       (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true →
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true →
         step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   obtain ⟨t, used, events, positive, stopped, continues, finishes⟩ :=
     step_chainPass_last_checked_to_decision wf reads ongoing pending last checked front decision
-  exact ⟨t, used, events, positive, .decision stopped, continues, fun _ => finishes⟩
+  refine ⟨t, used, events, positive, .decision stopped, continues, fun ready => finishes.trans ?_⟩
+  let here : AdvancePrefix t t 0 [] := by intro fuel seen; simp
+  simpa using here.finish ready events
 
 end Riftbound
 

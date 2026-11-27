@@ -38,7 +38,7 @@ theorem step_freeForAllConcede_checked_to_decision {s : GameState} {p : PlayerId
     (ffa : s.config.mode.isFreeForAll = true) (legal : Legal s ⟨.player p, .concede⟩)
     (checked : concessionWorkSupported s p = true) :
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .concede⟩ = .ok (t, events) := by
+      ∀ extra, step (used + extra) s ⟨.player p, .concede⟩ = advance extra t events := by
   let action : Action := ⟨.player p, .concede⟩
   have noCost : s.actionDeathCostChoice action = none := by
     cases pending : s.pending with
@@ -78,10 +78,10 @@ theorem step_freeForAllConcede_checked_to_decision {s : GameState} {p : PlayerId
             exact advance_observed_cleanup_to_decision raw notices safe (cards ▸ reads) pending cleanup
           · contradiction
     obtain ⟨t, used, work, firstPath, stops⟩ := path
-    refine ⟨t, used, notices ++ work, stops, fun extra => step_mono ?_ (Nat.le_add_right _ extra)⟩
-    change step used s action = _
+    refine ⟨t, used, notices ++ work, stops, fun extra => ?_⟩
+    change step (used + extra) s action = _
     simp only [step, ite_eq_left (show Legal s action from legal), declared]
-    exact firstPath.finish stops notices
+    exact firstPath extra notices
 
 end Riftbound
 
