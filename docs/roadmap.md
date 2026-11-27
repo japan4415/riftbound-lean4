@@ -2177,6 +2177,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Vendetta の訂正に従い、誘発を確定するときに Energy 1 を支払う。解決時に非公開の Predict を行い、その後の山札の一番上を公開する。公開したカードが Spell なら引く（CR 383.3.b）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
 - Diana, Lunari を `full` とし、全1,103枚中559枚を実装済みにした。[カード実装状況](coverage.md)
 
+### 攻撃と防御で Fury を支払う Draven
+
+- Draven, Vanquisher の攻撃・防御時の誘発は、Vendetta の訂正に従い、Chain を確定するときに Fury 1 を支払う。能力が解決した場合はそのターンの Might が2増える。攻撃側、防御側、支払いを辞退した場合、打ち消された場合を確認した（CR 383.3.b、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- Draven, Vanquisher を `full` とし、全1,103枚中560枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

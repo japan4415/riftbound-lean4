@@ -869,6 +869,32 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     b.mightNow d == (s2.mightNow d).map (· + 2) && c.mightNow d == s2.mightNow d &&
     e.mightNow d == s2.mightNow d
 
+-- The Vendetta errata makes Fury a base cost of the attack or defend trigger. It is already
+-- spent while the ability can still be countered.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, draven) ← putAt (s.fund p 0 1) p "SFD-020" bf
+  let (s, _) ← putAt s q "OGN-049" bf
+  let offer (state : GameState) (attacker : PlayerId) :=
+    let pending := insertTriggers (state.detect [.combatStarted bf attacker]) state.pending
+    (advance 100 { state with pending } []).toOption
+  let (attacking, _) ← offer s p
+  let (defending, _) ← offer s q
+  let (short, _) ← offer (s.fund p 1 0 1) p
+  let pay : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (chain, _) ← (step 100 attacking pay).toOption
+  let (skipped, _) ← (step 100 defending skip).toOption
+  let item ← (chain.zone .chain).head?
+  let resolved := settleChain {} 12 chain
+  let countered := settleChain {} 12 (counterObj chain item).1
+  return (legalFrameActions attacking).contains pay && (legalFrameActions defending).contains pay &&
+    !(step 100 short pay).isOk && (chain.poolOf p).fury == 0 && (skipped.poolOf p).fury == 1 &&
+    chain.mightNow draven == some 4 && resolved.mightNow draven == some 6 &&
+    (countered.poolOf p).fury == 0 && countered.mightNow draven == some 4
+
 -- Corrupt Enforcer (SFD-123): discard 1 when it moves to a battlefield; draw 1 when it wins
 #guard tsf fun s => do
   let (s1, u) ← putAt s s.me "SFD-123" s.bf0

@@ -543,8 +543,7 @@ def SFD_019 : CardDef :=
 Printings: SFD-020/221, SFD-020a/221
 
 > When I win a combat, play a Gold gear token exhausted.
-> When I attack or defend, you may pay :rb_rune_fury:. If you do, give me +2 :rb_might: this
-> turn.
+> When I attack or defend, you may pay :rb_rune_fury: to give me +2 :rb_might: this turn.
 -/
 def SFD_020.meta : CardDef :=
   { id := ⟨"SFD-020"⟩,
@@ -560,19 +559,15 @@ def SFD_020.meta : CardDef :=
 
 /-- Draven, Vanquisher. -/
 def SFD_020 : CardDef :=
+  let payForMight (event : TriggerEvent) : Ability :=
+    .triggered { Trigger.onSelf event with optional := true, cost := .pay ⟨0, [.domain .fury]⟩ }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
   { SFD_020.meta with
-
     abilities := [.triggered (.onSelf .winCombat)
         (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
-      .triggered (.onSelf .attack)
-        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
-            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited,
-      .triggered (.onSelf .defend)
-        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
-            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited],
-    status := .drafted }
+      payForMight .attack,
+      payForMight .defend],
+    status := .full }
 
 -- BEGIN GENERATED SFD-021
 /--
