@@ -2,13 +2,15 @@ module
 
 public import Riftbound.Invariant.CleanupWork
 public import Riftbound.Invariant.AwakenWork
+public import Riftbound.Invariant.ObservedAddWork
 
 /-!
 # Finite turn Expiration and Cleanup work
 
 Expiration clears the state that would call for another pass. Cleanup and event observation
-can run between passes, so the rank tracks both the pending Expirations and whether the state
-still contains anything that Expiration is responsible for clearing.
+can run between passes. In the normal Ending continuation, immediate Add batches also run
+between passes. The rank accounts for their resource changes alongside board changes and
+the remaining Cleanup and Expiration frames.
 -/
 
 @[expose] public section
@@ -718,6 +720,627 @@ theorem advance_ending_through_triggers {s : GameState} {rest : List Frame} (wf 
     (checkTurn := false) ⟨fun f member => .stop (continuation f member), by intro h; cases h⟩
   exact ⟨t, used, events, positive, path, stop⟩
 
+private inductive CycleFrame : Frame → Prop where
+  | cleanup : CycleFrame .cleanup
+  | expire : CycleFrame .expireTurn
+  | turn : CycleFrame .beginTurn
+  | queue (pending : List PendTrigger) : CycleFrame (.triggers pending)
+  | choice (p : PlayerId) (src : ObjId) (env : Env) (a b : Effect) (more : EffectList) :
+      CycleFrame (.eitherDo p src env a b more)
+
+private structure CycleStack (frames : List Frame) : Prop where
+  ending : EndingStack true frames
+  safe : ∀ f ∈ frames, CycleFrame f
+
+private theorem CycleStack.empty : CycleStack [] := ⟨.empty true, fun _ member => nomatch member⟩
+
+private theorem CycleStack.beginTurn : CycleStack [.beginTurn] :=
+  ⟨⟨fun _ member => (List.mem_singleton.mp member).symm ▸ EndingFrame.stop .beginTurn,
+      fun _ => .cons (fun _ impossible => nomatch impossible) .nil⟩,
+    fun _ member => (List.mem_singleton.mp member).symm ▸ CycleFrame.turn⟩
+
+private theorem CycleStack.tail {f : Frame} {rest : List Frame} (stack : CycleStack (f :: rest)) :
+    CycleStack rest := ⟨stack.ending.tail, fun f h => stack.safe f (List.mem_cons_of_mem _ h)⟩
+
+private theorem CycleStack.push {f : Frame} {rest : List Frame} (later : CycleStack rest)
+    (frame : EndingFrame f) (safe : CycleFrame f) (other : f ≠ .beginTurn) : CycleStack (f :: rest) := by
+  refine ⟨later.ending.push frame other, ?_⟩
+  intro task member
+  rcases List.mem_cons.mp member with rfl | inside
+  · exact safe
+  · exact later.safe _ inside
+
+private theorem CycleStack.cleanup {rest : List Frame} (later : CycleStack rest) :
+    CycleStack (.cleanup :: rest) := later.push .cleanup .cleanup (by intro h; cases h)
+
+private theorem CycleStack.expire {rest : List Frame} (later : CycleStack rest) :
+    CycleStack (.expireTurn :: rest) := later.push .expire .expire (by intro h; cases h)
+
+private theorem CycleStack.noPriority {s : GameState} {rest : List Frame} (ok : CycleStack rest) :
+    s.stagedShowdowns rest = [] := by
+  cases rest with
+  | nil => rfl
+  | cons first later =>
+    have safe := ok.safe first List.mem_cons_self
+    cases safe <;> rfl
+
+private theorem CycleStack.ordinary {s : GameState} (triggers : List PendTrigger) {rest : List Frame}
+    (ok : CycleStack rest) : CycleStack (ordinaryTriggerContinuation s triggers rest) := by
+  unfold ordinaryTriggerContinuation
+  dsimp only
+  split
+  · exact ok
+  · rename_i nonempty
+    refine ⟨insertTriggers_ending _ (fun h => nonempty (by rw [h]; rfl)) rest ok.ending, ?_⟩
+    intro f found
+    rcases insertTriggers_mem _ _ found with before | ⟨_, rfl⟩
+    · exact ok.safe _ before
+    · exact .queue _
+
+private def combatObservationFrame : Frame → Bool
+  | .showdown .. | .endShowdown .. | .combatResolve .. | .combatResult ..
+  | .combatControl .. | .combatFinish .. => true
+  | _ => false
+
+private theorem CycleStack.noCombat {stack : List Frame} (ok : CycleStack stack) :
+    ∀ f ∈ stack, combatObservationFrame f = false := by
+  intro f member
+  have safe := ok.safe f member
+  cases safe <;> rfl
+
+private theorem observeCombat_idle (s : GameState) (stack : List Frame)
+    (quiet : ∀ f ∈ stack, combatObservationFrame f = false) :
+    s.observeCombat stack = (s.combat, []) := by
+  unfold GameState.observeCombat
+  cases active : s.combat with
+  | some c =>
+    have none : stack.any (fun
+        | .showdown bf .. | .endShowdown bf | .combatResolve bf _ | .combatResult bf |
+          .combatControl bf | .combatFinish bf => bf == c.battlefield
+        | _ => false) = false := by
+      apply List.any_eq_false.mpr
+      intro f member
+      have silent := quiet f member
+      cases f <;> simp [combatObservationFrame] at silent ⊢
+    dsimp only
+    rw (config := { transparency := .all }) [none]
+    simp only [Bool.false_eq_true, ↓reduceIte]
+  | none =>
+    have none : stack.findSome? (fun
+      | .showdown bf p _ => some (bf, p)
+      | _ => none) = none := by
+      apply List.findSome?_eq_none_iff.mpr
+      intro f member
+      have silent := quiet f member
+      cases f <;> simp [combatObservationFrame] at silent ⊢
+    dsimp only
+    rw (config := { transparency := .all }) [none]
+
+private theorem fightingAt_idle (s : GameState) (stack : List Frame)
+    (quiet : ∀ f ∈ stack, combatObservationFrame f = false) (field : ObjId) :
+    ({ s with pending := stack } : GameState).fightingAt field =
+      s.combat.any (fun c => c.battlefield == field) := by
+  have none : stack.any (fun
+      | .showdown bf .. | .endShowdown bf => bf == field
+      | _ => false) = false := by
+    apply List.any_eq_false.mpr
+    intro f member
+    have silent := quiet f member
+    cases f <;> simp [combatObservationFrame] at silent ⊢
+  change (s.combat.any (fun c => c.battlefield == field) || stack.any (fun
+      | .showdown bf .. | .endShowdown bf => bf == field
+      | _ => false)) = s.combat.any (fun c => c.battlefield == field)
+  rw [none, Bool.or_false]
+
+private theorem expiration_cleanupMeasure (s : GameState) (pending : List Frame)
+    (combat : ∀ field, ({ s.mapObjects endTurnObj with pending, pools := {}, turnFx := [] } : GameState).fightingAt field =
+      s.fightingAt field) :
+    let t := { s.mapObjects endTurnObj with pending, pools := {}, turnFx := [] }
+    t.cleanupMeasure = s.cleanupMeasure ∨ MeasLt t.cleanupMeasure s.cleanupMeasure := by
+  intro t
+  have config : t.config = s.config := rfl
+  have cards : t.cards = s.cards := rfl
+  have zone : t.zone = s.zone := rfl
+  have board : t.inPlay = s.inPlay := rfl
+  have lookup (id : ObjId) : t.obj? id = (s.obj? id).map endTurnObj := GameState.obj?_mapObjects ..
+  have prints : t.printedCardDef? = s.printedCardDef? := by
+    funext id
+    unfold GameState.printedCardDef?
+    rw [lookup, cards]
+    cases s.obj? id <;> rfl
+  have unit : t.isUnit = s.isUnit := by
+    funext id
+    unfold GameState.isUnit
+    rw [prints, lookup]
+    cases s.obj? id <;> rfl
+  have fields : t.battlefields = s.battlefields := by
+    simp only [GameState.battlefields, GameState.isBattlefield, zone, prints]
+  have tok : t.isTok = s.isTok := by
+    funext id
+    unfold GameState.isTok
+    rw [lookup]
+    cases s.obj? id <;> rfl
+  have loose : t.looseP = s.looseP := by
+    funext id
+    unfold GameState.looseP
+    rw [lookup, board]
+    cases s.obj? id <;> rfl
+  have atField : t.unitsAt = s.unitsAt := by
+    funext field
+    unfold GameState.unitsAt
+    rw [zone]
+    apply List.filter_congr
+    intro id _
+    unfold GameState.isAt
+    rw [unit, lookup]
+    cases s.obj? id <;> rfl
+  have controller (id : ObjId) : (t.obj? id).map Object.controller = (s.obj? id).map Object.controller := by
+    rw [lookup]
+    cases s.obj? id <;> rfl
+  have players : t.unitsOf = s.unitsOf := by
+    funext p field
+    simp only [GameState.unitsOf, GameState.isControlledBy, atField, controller]
+  have control : t.controlOf = s.controlOf := by
+    funext id
+    unfold GameState.controlOf
+    rw [lookup]
+    cases s.obj? id <;> rfl
+  have contest (id : ObjId) : (t.obj? id).bind Object.contested = (s.obj? id).bind Object.contested := by
+    rw [lookup]
+    cases s.obj? id <;> rfl
+  have healed : t.dmgC = 0 := by
+    unfold GameState.dmgC
+    apply List.countP_eq_zero.mpr
+    intro id _
+    rw [lookup]
+    cases s.obj? id <;> simp [endTurnObj, healObj]
+  have fighting : ∀ field, t.fightingAt field = s.fightingAt field := combat
+  have sameMeasure :
+      t.cleanupMeasure = (s.pot, s.tokC, s.cLoose, s.cLost, s.cStale, s.cNew) := by
+    unfold GameState.cleanupMeasure GameState.cLoose GameState.cLost GameState.cStale GameState.cNew
+    have pot : t.pot = s.pot := rfl
+    have tokens : t.tokC = s.tokC := by
+      simp only [GameState.tokC, GameState.nbZones, GameState.playerCount, config, zone, tok]
+    simp only [GameState.lostControl, GameState.staleContest, GameState.newContest, pot, tokens,
+      healed, Nat.add_zero, fields, loose, board, control, contest, players, fighting, atField, controller]
+  rw [sameMeasure]
+  by_cases damage : s.dmgC = 0
+  · left
+    simp [GameState.cleanupMeasure, damage]
+  · right
+    exact MeasLt.at2 rfl (Nat.lt_add_of_pos_right (Nat.pos_of_ne_zero damage))
+
+private theorem ordinary_filter (keep : Frame → Bool) (ignores : ∀ q, keep (.triggers q) = false)
+    (state : GameState) (triggers : List PendTrigger) (rest : List Frame) :
+    (ordinaryTriggerContinuation state triggers rest).filter keep = rest.filter keep := by
+  unfold ordinaryTriggerContinuation
+  dsimp only
+  split
+  · rfl
+  · exact insertTriggers_filter keep ignores _ rest
+
+private theorem ordinary_head {state : GameState} {triggers : List PendTrigger} {rest : List Frame}
+    {head : Frame} (notTrigger : ∀ q, head ≠ .triggers q)
+    (found : (ordinaryTriggerContinuation state triggers rest).head? = some head) :
+    rest.head? = some head := by
+  unfold ordinaryTriggerContinuation at found
+  dsimp only at found
+  split at found
+  · exact found
+  · exact insertTriggers_head notTrigger found
+
+private theorem CycleStack.sameMeasure {s t : GameState} (old : CycleStack s.pending)
+    (next : CycleStack t.pending)
+    (config : t.config = s.config) (cards : t.cards = s.cards) (objects : t.objects = s.objects)
+    (zones : t.zones = s.zones) (combat : t.combat = s.combat) :
+    t.cleanupMeasure = s.cleanupMeasure := by
+  apply cleanupMeasure_eq config cards objects zones
+  intro field
+  have oldFight := fightingAt_idle s s.pending old.noCombat field
+  have newFight := fightingAt_idle t t.pending next.noCombat field
+  have eta (state : GameState) : { state with pending := state.pending } = state := by cases state; rfl
+  rw [eta s] at oldFight
+  rw [eta t] at newFight
+  rw [oldFight, newFight, combat]
+
+private theorem resolve_cycle_observation (raw : GameState) (notices : List Event)
+    (wf : raw.WF) (database : MightRead.database raw.cards) (allowed : CycleStack raw.pending) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.WF ∧ t.cards = raw.cards ∧ CycleStack t.pending ∧
+      (inExpirationWork t →
+        (inExpirationWork raw ∧ t.cleanupMeasure = raw.cleanupMeasure ∧
+          t.pending.countP isExpiration = raw.pending.countP isExpiration ∧
+          t.pending.countP Frame.isCleanup = raw.pending.countP Frame.isCleanup)) := by
+  rcases withTriggers_cases raw notices with ⟨winner, finished, _⟩ | unchanged | ⟨queue, woven, _⟩
+  · let done := raw.withTriggers notices
+    have stop : done.pending = [] := congrArg GameState.pending finished
+    refine ⟨done, 0, [], by intro fuel past; simp [done], withTriggers_wf notices wf, withTriggers_cards raw _,
+      stop ▸ CycleStack.empty, by simp [inExpirationWork, stop]⟩
+  · let next := raw.withTriggers notices
+    have projected := congrArg GameState.pending unchanged
+    have stack : next.pending = raw.pending := projected
+    have measure : next.cleanupMeasure = raw.cleanupMeasure := by
+      change (raw.withTriggers notices).cleanupMeasure = _
+      rw [unchanged]
+      exact allowed.sameMeasure allowed rfl rfl rfl rfl rfl
+    refine ⟨next, 0, [], by intro fuel past; simp [next], withTriggers_wf notices wf, withTriggers_cards raw _,
+      stack ▸ allowed, ?_⟩
+    intro inside
+    exact ⟨by simpa only [inExpirationWork, stack] using inside, measure,
+      congrArg (List.countP isExpiration) stack, congrArg (List.countP Frame.isCleanup) stack⟩
+  · let ready := raw.recordTurnEvents notices
+    let continuation := ordinaryTriggerContinuation ready queue raw.pending
+    have keeps : CycleStack continuation := CycleStack.ordinary queue allowed
+    obtain ⟨board, used, events, path, wellFormed, cards, measure⟩ :=
+      advance_insertDetectedTriggers_adds_measured ready queue raw.pending
+        (wf.congr rfl rfl rfl rfl) database
+    let next := { board with pending := continuation }
+    have rawMeasure : ({ ready with pending := continuation } : GameState).cleanupMeasure = raw.cleanupMeasure :=
+      allowed.sameMeasure keeps rfl rfl rfl rfl rfl
+    refine ⟨next, used, events, by rw [woven]; exact path, wellFormed.congr rfl rfl rfl rfl,
+      cards, keeps, ?_⟩
+    intro inside
+    refine ⟨?_, (measure continuation).trans rawMeasure, ?_, ?_⟩
+    · rcases inside with clean | expire
+      · exact Or.inl (ordinary_head (fun q h => by cases h) clean)
+      · exact Or.inr (ordinary_head (fun q h => by cases h) expire)
+    · change continuation.countP isExpiration = _
+      rw [List.countP_eq_length_filter, ordinary_filter isExpiration (fun _ => rfl), ← List.countP_eq_length_filter]
+    · change continuation.countP Frame.isCleanup = _
+      rw [List.countP_eq_length_filter, ordinary_filter Frame.isCleanup (fun _ => rfl), ← List.countP_eq_length_filter]
+
+private def expirationDirty (s : GameState) : Nat :=
+  if (expirationFrames s).isEmpty then 0 else 1
+
+/-- Compare Expiration count first, then board changes, then clearing turn state and consuming Cleanup. -/
+private def EndingCycleLt (next before : GameState) : Prop :=
+  Prod.Lex (· < ·) (Prod.Lex MeasLt (Prod.Lex (· < ·) (· < ·)))
+    (next.pending.countP isExpiration, next.cleanupMeasure, expirationDirty next,
+      next.pending.countP Frame.isCleanup)
+    (before.pending.countP isExpiration, before.cleanupMeasure, expirationDirty before,
+      before.pending.countP Frame.isCleanup)
+
+private theorem endingCycleLt_wf : WellFounded EndingCycleLt := by
+  unfold EndingCycleLt
+  exact InvImage.wf (fun s : GameState => (s.pending.countP isExpiration, s.cleanupMeasure, expirationDirty s,
+    s.pending.countP Frame.isCleanup))
+    ((Prod.lex ⟨_, Nat.lt_wfRel.wf⟩ (Prod.lex ⟨_, MeasLt.wf⟩
+      (Prod.lex ⟨_, Nat.lt_wfRel.wf⟩ ⟨_, Nat.lt_wfRel.wf⟩))).wf)
+
+private theorem cleanup_cycle_routes (s : GameState) (rest : List Frame) (wf : s.WF)
+    (pending : s.pending = .cleanup :: rest) (suffix : CycleStack rest) :
+    let raw := cleanupFrame s rest
+    CycleStack raw.1.pending ∧
+      (¬inExpirationWork raw.1 ∨
+        (raw.1.pending = .cleanup :: rest ∧ MeasLt raw.1.cleanupMeasure s.cleanupMeasure) ∨
+        raw = ({ s with pending := rest }, [])) := by
+  unfold cleanupFrame
+  cases winner : s.winner with
+  | some p => exact ⟨.empty, Or.inl (by simp [inExpirationWork])⟩
+  | none =>
+    cases decision : cleanupDeathBanishChoice s with
+    | some answer =>
+      obtain ⟨src, p, a, b⟩ := answer
+      exact ⟨suffix.cleanup.push (.stop (.decision rfl)) (.choice ..) (by intro h; cases h),
+        Or.inl (by simp [inExpirationWork])⟩
+    | none =>
+      have keep (next : GameState) (safe : Safe s next) :
+          { next with pending := .cleanup :: rest } = next := by
+        have same := safe.same.pending.trans pending
+        rw [← same]
+      cases group : cleanupResolveDeathGroup s with
+      | some r =>
+        change CycleStack (.cleanup :: rest) ∧
+          (¬inExpirationWork { r.1 with pending := .cleanup :: rest } ∨
+            (.cleanup :: rest = .cleanup :: rest ∧
+              MeasLt ({ r.1 with pending := .cleanup :: rest } : GameState).cleanupMeasure s.cleanupMeasure) ∨ _)
+        exact ⟨suffix.cleanup, Or.inr (Or.inl ⟨rfl, by
+          rw [keep r.1 (cleanupResolveDeathGroup_safe group)]
+          exact cleanupResolveDeathGroup_decreases wf group⟩)⟩
+      | none =>
+        cases one : cleanupStep s with
+        | some r =>
+          obtain ⟨next, events⟩ := r
+          have safe := cleanupStep_safe (s' := next) (es := events) one
+          dsimp only
+          exact ⟨suffix.cleanup, Or.inr (Or.inl ⟨rfl, by rw [keep next safe]; exact cleanupStep_lt wf one⟩)⟩
+        | none =>
+          have idle : continueAfterCleanup s rest = ({ s with pending := rest }, []) := by
+            unfold continueAfterCleanup
+            rw [observeCombat_idle s rest suffix.noCombat]
+          exact ⟨by simpa only [suffix.noPriority (s := s), idle] using suffix,
+            Or.inr (Or.inr (by simp only [suffix.noPriority (s := s), idle]))⟩
+
+private theorem linkedCleanup_withTriggers_pending (s : GameState) :
+    (s.withTriggers [.linkedDamageCleanupDone]).pending = s.pending := by
+  have noScore : s.suddenDeathScorer [.linkedDamageCleanupDone] = none := by
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
+  have noDelay : s.delayedPlayTriggers [.linkedDamageCleanupDone] = [] := by
+    unfold GameState.delayedPlayTriggers
+    split
+    · rfl
+    · apply List.flatMap_eq_nil_iff.mpr
+      intro note _
+      split
+      · simp [GameState.matchesDelayedPlay]
+      · rfl
+  let recorded := s.recordTurnEvents [.linkedDamageCleanupDone]
+  have plays : recorded.playLog = s.playLog := by
+    simp [recorded, GameState.recordTurnEvents, GameState.recordPlayEvent]
+  have first : recorded.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers, plays]
+  have detect : recorded.detect [.linkedDamageCleanupDone] [] = [] := by
+    have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
+      List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
+    simp [GameState.detect, GameState.deathGroupWatchers, GameState.trimLimits, detectOne, empty]
+  unfold GameState.withTriggers
+  rw [noScore]
+  change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
+      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone]) with
+      | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })
+    else recorded).pending = s.pending
+  simp only [first, noDelay, List.nil_append, detect, ite_self]
+  rfl
+
+private theorem settled_cleanup_pending (s : GameState) (rest : List Frame) (wf : s.WF)
+    (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest) :
+    let raw := { s with pending := rest }
+    (raw.withTriggers (s.workTransitionEvents raw)).pending = rest := by
+  intro raw
+  have combat : raw.combatNow = s.combatNow := by
+    unfold GameState.combatNow
+    rw [pending]
+    rfl
+  have reads : SameMightReads s raw := (SameMightReads.refl s).replacePending rest combat
+  have mighty : s.mightyEvents raw = [] :=
+    mightyEvents_eq_nil_of_mightNow (fun _ member =>
+      (reads.mightNow_eq wf database (old_inPlay wf member)).symm)
+  have exhaust : s.exhaustionEvents raw none = [] := by
+    have none : ((s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))).filter
+        (fun id => (s.obj? id).any (fun o => !o.exhausted) && (s.obj? id).any (·.exhausted))) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro id _
+      cases found : s.obj? id <;> simp
+    unfold GameState.exhaustionEvents
+    have lookup : raw.obj? = s.obj? := rfl
+    dsimp only
+    rw [lookup, none]
+    rfl
+  simp only [GameState.workTransitionEvents, pending, exhaust, mighty, GameState.mightReductionEvents,
+    List.nil_append]
+  split
+  · rw [withTriggers_nil]
+  · rw [withTriggers_nil]
+  · split
+    · exact linkedCleanup_withTriggers_pending raw
+    · rw [withTriggers_nil]
+  · rw [withTriggers_nil]
+
+private theorem advance_cycle_cleanup (s : GameState) (rest : List Frame) (wf : s.WF)
+    (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest)
+    (shape : CycleStack s.pending) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.WF ∧ t.cards = s.cards ∧ CycleStack t.pending ∧
+      (inExpirationWork t → EndingCycleLt t s) := by
+  let raw := cleanupFrame s rest
+  let notices := raw.2 ++ s.workTransitionEvents raw.1
+  let observed := raw.1.withTriggers notices
+  have step : workStep s = some (observed, raw.2) := by
+    simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, observed, notices]
+  have suffix : CycleStack rest := (pending ▸ shape).tail
+  have known := cleanupFrame_cards s rest
+  obtain ⟨allowed, route | ⟨pendingSame, smaller⟩ | settled⟩ := cleanup_cycle_routes s rest wf pending suffix
+  · obtain ⟨t, n, added, ran, nextWF, cards, nextShape, facts⟩ :=
+      resolve_cycle_observation raw.1 notices (cleanupFrame_preservesBoard s rest wf).1 (known ▸ database) allowed
+    exact ⟨t, n + 1, raw.2 ++ added, by omega, ran.prepend pending rfl step,
+      nextWF, cards.trans known, nextShape, fun inside => False.elim (route (facts inside).1)⟩
+  · obtain ⟨t, n, added, ran, nextWF, cards, nextShape, facts⟩ :=
+      resolve_cycle_observation raw.1 notices (cleanupFrame_preservesBoard s rest wf).1 (known ▸ database) allowed
+    refine ⟨t, n + 1, raw.2 ++ added, by omega, ran.prepend pending rfl step,
+      nextWF, cards.trans known, nextShape, ?_⟩
+    intro inside
+    obtain ⟨_, measure, count, _⟩ := facts inside
+    have sameCount : t.pending.countP isExpiration = s.pending.countP isExpiration := by rw [count, pendingSame, pending]
+    unfold EndingCycleLt
+    rw [sameCount, measure]
+    exact Prod.Lex.right _ (Prod.Lex.left _ _ smaller)
+  · let simple := { s with pending := rest }
+    have settledRaw : raw = (simple, []) := settled
+    have stack : observed.pending = rest := by
+      change (raw.1.withTriggers (raw.2 ++ s.workTransitionEvents raw.1)).pending = rest
+      rw [settledRaw, List.nil_append]
+      exact settled_cleanup_pending s rest wf database pending
+    have finalShape : CycleStack observed.pending := stack ▸ suffix
+    have same : observed.cleanupMeasure = s.cleanupMeasure := by
+      obtain ⟨_, _, woven⟩ := withTriggers_pending raw.1 notices
+      apply shape.sameMeasure finalShape <;> dsimp only [observed] <;> rw [woven, settledRaw] <;> rfl
+    have nonincrease : expirationDirty observed ≤ expirationDirty s := by
+      unfold expirationDirty
+      split
+      · omega
+      · split
+        · rename_i dirty clear
+          have valid := (expiration_clear_iff s).mp (List.isEmpty_iff.mp clear)
+          have clears := withTriggers_clear (s := raw.1) (events := notices)
+            (by rw [settledRaw]; exact ⟨valid.facts, valid.pools, valid.objects⟩)
+            (fun e found => by
+              rcases List.mem_append.mp found with emitted | noticed
+              · rw [settledRaw] at emitted
+                contradiction
+              · exact transitionEvents_neutral pending (Or.inl rfl) noticed)
+          exact False.elim (dirty (List.isEmpty_iff.mpr ((expiration_clear_iff observed).mpr clears)))
+        · omega
+    have path : AdvancePrefix s observed 1 raw.2 := by
+      have zero : AdvancePrefix observed observed 0 [] := by intro fuel past; simp
+      simpa only [List.append_nil] using zero.prepend pending rfl step
+    refine ⟨observed, 1, raw.2, by decide, path, workStep_wf wf step, (withTriggers_cards _ _).trans known,
+      finalShape, ?_⟩
+    intro _
+    have expCount : observed.pending.countP isExpiration = s.pending.countP isExpiration := by
+      rw [stack, pending]
+      rw [List.countP_cons_of_neg (show ¬ isExpiration .cleanup = true from by decide)]
+    have cleanCount : observed.pending.countP Frame.isCleanup < s.pending.countP Frame.isCleanup := by
+      rw [stack, pending]
+      rw [List.countP_cons_of_pos (show Frame.isCleanup .cleanup = true from rfl)]
+      exact Nat.lt_succ_self _
+    unfold EndingCycleLt
+    rw [expCount, same]
+    exact Prod.Lex.right _ (Prod.Lex.right _ (Prod.Lex.right' _ nonincrease cleanCount))
+
+private theorem advance_cycle_expire (s : GameState) (rest : List Frame) (wf : s.WF)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = .expireTurn :: rest)
+    (shape : CycleStack s.pending) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.WF ∧ t.cards = s.cards ∧ CycleStack t.pending ∧
+      (inExpirationWork t → EndingCycleLt t s) := by
+  let raw := { s.mapObjects endTurnObj with
+    pending := expirationFrames s ++ rest, pools := {}, turnFx := [] }
+  let detected := raw.detect (s.mightyEvents raw)
+  let detects := raw.phase != .setup && raw.pending.all (fun f => !f.isSetup) && !detected.isEmpty
+  let next := if detects then { raw with pending := insertTriggers detected raw.pending } else raw
+  have step : workStep s = some (next, []) := workStep_expireTurn_mightOrdinary s rest pending ordinaryMight
+  have suffix : CycleStack rest := (pending ▸ shape).tail
+  have schedule : expirationFrames s = [] ∨ expirationFrames s = [.cleanup, .expireTurn] := by
+    unfold expirationFrames
+    split
+    · exact Or.inr rfl
+    · exact Or.inl rfl
+  have rawShape : CycleStack raw.pending := by
+    change CycleStack (expirationFrames s ++ rest)
+    rcases schedule with empty | renew
+    · simpa only [empty, List.nil_append] using suffix
+    · simpa only [renew, List.cons_append, List.nil_append] using suffix.expire.cleanup
+  have clearRaw : ExpirationClear raw := expiration_reset_clear s _
+  have properties : CycleStack next.pending ∧ next.cards = s.cards ∧
+      expirationFrames next = [] ∧ next.cleanupMeasure = raw.cleanupMeasure ∧
+      next.pending.countP isExpiration = raw.pending.countP isExpiration := by
+    unfold next
+    split
+    · rename_i observes
+      have nonempty : detected ≠ [] := by
+        intro empty
+        simp [detects, empty] at observes
+      have inserted : CycleStack (insertTriggers detected raw.pending) := by
+        refine ⟨insertTriggers_ending detected nonempty raw.pending rawShape.ending, ?_⟩
+        intro f member
+        rcases insertTriggers_mem _ _ member with before | ⟨_, rfl⟩
+        · exact rawShape.safe _ before
+        · exact .queue _
+      refine ⟨inserted, rfl, (expiration_clear_iff _).mpr ⟨clearRaw.facts, clearRaw.pools, clearRaw.objects⟩,
+        rawShape.sameMeasure inserted rfl rfl rfl rfl rfl, ?_⟩
+      change (insertTriggers detected raw.pending).countP isExpiration = _
+      rw [List.countP_eq_length_filter, insertTriggers_filter isExpiration (fun _ => rfl), ← List.countP_eq_length_filter]
+    · exact ⟨rawShape, rfl, (expiration_clear_iff _).mpr clearRaw, rfl, rfl⟩
+  obtain ⟨nextShape, cards, clear, measure, count⟩ := properties
+  have path : AdvancePrefix s next 1 [] := by
+    have zero : AdvancePrefix next next 0 [] := by intro fuel past; simp
+    exact zero.prepend pending rfl step
+  refine ⟨next, 1, [], by decide, path, workStep_wf wf step, cards, nextShape, ?_⟩
+  intro _
+  have rawCount : raw.pending.countP isExpiration =
+      (expirationFrames s ++ rest).countP isExpiration := rfl
+  unfold EndingCycleLt
+  rw [count, rawCount, pending]
+  rcases schedule with empty | renew
+  · rw [empty, List.nil_append, List.countP_cons_of_pos (show isExpiration .expireTurn = true from rfl)]
+    exact Prod.Lex.left _ _ (Nat.lt_succ_self _)
+  · have sameCount : ([Frame.cleanup, Frame.expireTurn] ++ rest).countP isExpiration =
+        (Frame.expireTurn :: rest).countP isExpiration :=
+      List.countP_cons_of_neg (show ¬ isExpiration .cleanup = true from by decide)
+    rw [renew, sameCount, measure]
+    apply Prod.Lex.right
+    have fights (field : ObjId) : raw.fightingAt field = s.fightingAt field := by
+      have oldFight := fightingAt_idle s s.pending shape.noCombat field
+      have newFight := fightingAt_idle raw raw.pending rawShape.noCombat field
+      have eta (state : GameState) : { state with pending := state.pending } = state := by cases state; rfl
+      rw [eta s] at oldFight
+      rw [eta raw] at newFight
+      exact newFight.trans oldFight.symm
+    rcases expiration_cleanupMeasure s raw.pending fights with same | less
+    · change raw.cleanupMeasure = s.cleanupMeasure at same
+      rw [same]
+      exact Prod.Lex.right _ (Prod.Lex.left _ _ (by simp [expirationDirty, clear, renew]))
+    · exact Prod.Lex.left _ _ less
+
+private theorem advance_cycle_run (s : GameState) (wf : s.WF) (database : MightRead.database s.cards)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (shape : CycleStack s.pending) :
+    ∃ t used events, AdvancePrefix s t used events ∧ t.WF ∧
+      t.cards = s.cards ∧ CycleStack t.pending ∧ ¬inExpirationWork t := by
+  revert wf database ordinaryMight shape
+  apply endingCycleLt_wf.induction s
+  intro state ih wellFormed reads ordinary stack
+  by_cases inside : inExpirationWork state
+  · have stepBatch : ∃ next used events, 0 < used ∧ AdvancePrefix state next used events ∧
+        next.WF ∧ next.cards = state.cards ∧ CycleStack next.pending ∧
+        (inExpirationWork next → EndingCycleLt next state) := by
+      cases frames : state.pending with
+      | nil => simp [inExpirationWork, frames] at inside
+      | cons first rest =>
+        have kind : first = .cleanup ∨ first = .expireTurn := by
+          simpa [inExpirationWork, frames] using inside
+        rcases kind with rfl | rfl
+        · exact advance_cycle_cleanup state rest wellFormed reads frames stack
+        · exact advance_cycle_expire state rest wellFormed ordinary frames stack
+    obtain ⟨next, used, events, _, path, nextWF, cards, nextShape, smaller⟩ := stepBatch
+    by_cases again : inExpirationWork next
+    · obtain ⟨t, later, emitted, run, lastWF, lastCards, lastShape, outside⟩ :=
+        ih next (smaller again) nextWF (cards ▸ reads) (cards ▸ ordinary) nextShape
+      exact ⟨t, used + later, events ++ emitted, path.append run, lastWF,
+        lastCards.trans cards, lastShape, outside⟩
+    · exact ⟨next, used, events, path, nextWF, cards, nextShape, again⟩
+  · exact ⟨state, 0, [], by intro fuel past; simp, wellFormed, rfl, stack, inside⟩
+
+private theorem EndingFrame.queue_nonempty {queue : List PendTrigger}
+    (allowed : EndingFrame (.triggers queue)) : queue ≠ [] := by
+  cases allowed with
+  | queued _ nonempty => exact nonempty
+  | stop boundary =>
+    cases boundary with
+    | decision decision => contradiction
+    | immediateAdd _ _ add =>
+      obtain ⟨_, _, _, _, impossible⟩ := PendTrigger.immediateAddFrame_run add
+      contradiction
+
+/-- Ending resolves the immediate Adds detected at phase entry and during Cleanup, including
+any Expiration passes their effects require. It reaches a player decision, an empty stack, or
+the normal Begin Turn continuation. -/
+theorem advance_ending_with_adds {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true ∨
+        (t.pending = [.beginTurn] ∧ t.WF ∧ t.cards = s.cards)) := by
+  let raw := { s with phase := .ending, pending := [.cleanup, .expireTurn, .beginTurn] }
+  let emitted := [Event.phaseStarted (s.active.getD ⟨0⟩) .ending]
+  let notices := emitted ++ s.workTransitionEvents raw
+  have step : workStep s = some (raw.withTriggers notices, emitted) := by
+    simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, emitted, notices]
+  obtain ⟨mid, adds, added, runAdds, midWF, midCards, midShape, _⟩ :=
+    resolve_cycle_observation raw notices (wf.congr rfl rfl rfl rfl) database
+      CycleStack.beginTurn.expire.cleanup
+  obtain ⟨t, later, events, run, lastWF, lastCards, shape, outside⟩ :=
+    advance_cycle_run mid midWF (midCards ▸ database) (midCards ▸ ordinaryMight) midShape
+  have initial := (runAdds.prepend pending rfl step).append run
+  have positive : 0 < adds + 1 + later := by omega
+  have cards : t.cards = s.cards := lastCards.trans midCards
+  cases stack : t.pending with
+  | nil => exact ⟨t, _, _, positive, initial, Or.inl (by simp [stack])⟩
+  | cons first rest =>
+    have frame := shape.safe first (stack ▸ List.mem_cons_self)
+    cases frame with
+    | cleanup => exact False.elim (outside (Or.inl (stack ▸ rfl)))
+    | expire => exact False.elim (outside (Or.inr (stack ▸ rfl)))
+    | turn =>
+      have order := List.pairwise_cons.mp (stack ▸ shape.ending.turnLast rfl)
+      cases rest with
+      | nil => exact ⟨t, _, _, positive, initial, Or.inr ⟨stack, lastWF, cards⟩⟩
+      | cons f fs => exact False.elim (order.1 f List.mem_cons_self rfl)
+    | choice => exact ⟨t, _, _, positive, initial, Or.inl (by simp [stack, Frame.isWork])⟩
+    | queue queued =>
+      have nonempty := (shape.ending.allowed _ (stack ▸ List.mem_cons_self)).queue_nonempty
+      obtain ⟨done, used, _, _, _, resolved, decisionStack, decision⟩ :=
+        advance_triggers_to_decision t lastWF queued rest stack (cards ▸ database) (Or.inl nonempty)
+      refine ⟨done, adds + 1 + later + used, _, by omega, initial.append resolved, ?_⟩
+      exact Or.inl (by simp [decisionStack, decision])
+
 /-- From the Ending Phase, automatic work can finish, ask for a decision, reach the next turn's
 Awaken stack, or enter an immediate Add that was scheduled by event observation. -/
 inductive TurnBoundaryStop (s : GameState) : Prop where
@@ -737,54 +1360,37 @@ private theorem advance_ending_to_awaken_checkpoint {s : GameState} (wf : s.WF) 
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ TurnBoundaryStop t ∧
       (∀ p, t.pending = turnFrames p → t.WF ∧ t.cards = s.cards) := by
-  have continuation : EndingStack true [.beginTurn] :=
-    ⟨fun f member => (List.mem_singleton.mp member).symm ▸ EndingFrame.stop .beginTurn,
-      fun _ => .cons (fun _ impossible => nomatch impossible) .nil⟩
-  obtain ⟨mid, used, events, positive, path, stop, recover⟩ :=
-    advance_ending_handoff wf database pending continuation
-  cases stack : mid.pending with
-  | nil => exact ⟨mid, used, events, positive, path, .empty stack, by simp [stack, turnFrames]⟩
-  | cons frame rest =>
-    have top : EndingWorkStop (some frame) := by simpa [stack] using stop
-    cases top with
-    | decision decision =>
+  obtain ⟨mid, used, events, positive, path, stop | ⟨normal, midWF, cards⟩⟩ :=
+    advance_ending_with_adds wf database ordinaryMight pending
+  · cases stack : mid.pending with
+    | nil => exact ⟨mid, used, events, positive, path, .empty stack, by simp [stack, turnFrames]⟩
+    | cons frame rest =>
+      have decision : frame.isWork = false := by simpa [stack] using stop
       refine ⟨mid, used, events, positive, path, .decision stack decision, ?_⟩
       intro p frames
-      have first : frame = .phase .awaken := List.cons.inj (stack.symm.trans frames) |>.1
-      subst frame
-      contradiction
-    | immediateAdd observed trigger scheduled =>
-      refine ⟨mid, used, events, positive, path, .immediateAdd observed trigger stack scheduled, ?_⟩
-      intro p frames
-      have first : frame = .phase .awaken := List.cons.inj (stack.symm.trans frames) |>.1
-      obtain ⟨_, _, _, _, ran⟩ := PendTrigger.immediateAddFrame_run scheduled
-      rw [ran] at first
-      contradiction
-    | beginTurn =>
-      obtain ⟨midWF, cards, singleton⟩ := recover (by rw [stack]; rfl)
-      have normal := singleton rfl
-      cases clock : mid.clockConclusion with
-      | some result =>
-        obtain ⟨finish, _⟩ := advance_beginTurn_clock midWF (cards ▸ database) normal clock
-        exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, .empty rfl, by simp [turnFrames]⟩
-      | none =>
-        obtain ⟨t, elapsed, _, start, wellFormed, boundary⟩ :=
-          advance_beginTurn_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) normal clock
-        refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_, ?_⟩
-        · rcases boundary with awakened | choice
-          · exact .awaken _ (by simpa only [List.append_nil] using awakened.1) awakened.2.1
-          · cases next : t.pending with
-            | nil => simp [next] at choice
-            | cons first later =>
-              have decision : first.isWork = false := by simpa [next] using choice
-              exact .decision next decision
-        · intro p frames
-          rcases boundary with awakened | choice
-          · exact ⟨wellFormed, awakened.2.2.2.trans cards⟩
-          · simp [frames, turnFrames, Frame.isWork] at choice
+      simp [frames, turnFrames, Frame.isWork] at stop
+  · cases clock : mid.clockConclusion with
+    | some result =>
+      obtain ⟨finish, _⟩ := advance_beginTurn_clock midWF (cards ▸ database) normal clock
+      exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, .empty rfl, by simp [turnFrames]⟩
+    | none =>
+      obtain ⟨t, elapsed, _, start, wellFormed, boundary⟩ :=
+        advance_beginTurn_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) normal clock
+      refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_, ?_⟩
+      · rcases boundary with awakened | choice
+        · exact .awaken _ (by simpa only [List.append_nil] using awakened.1) awakened.2.1
+        · cases next : t.pending with
+          | nil => simp [next] at choice
+          | cons first later =>
+            have decision : first.isWork = false := by simpa [next] using choice
+            exact .decision next decision
+      · intro p frames
+        rcases boundary with awakened | choice
+        · exact ⟨wellFormed, awakened.2.2.2.trans cards⟩
+        · simp [frames, turnFrames, Frame.isWork] at choice
 
-/-- Follow the real Ending Phase across the normal turn boundary. If there was no earlier
-decision or immediate Add, the engine processes the clock and any ordinary triggers before Awaken. -/
+/-- Follow the real Ending Phase across the normal turn boundary. After resolving Ending's
+immediate Adds, the engine processes the clock and any ordinary triggers before Awaken. -/
 theorem advance_ending_to_awaken {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ TurnBoundaryStop t := by
@@ -932,6 +1538,24 @@ theorem step_priority_pass_ending {s : GameState} {p : PlayerId}
       exact .beginTurn)
   exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
 
+/-- The normal Pass resolves all immediate Adds during Ending and performs any required
+Cleanup and Expiration before the next decision or Begin Turn. -/
+theorem step_priority_pass_ending_with_adds {s : GameState} {p : PlayerId}
+    (wf : s.WF) (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true ∨ t.pending = [.beginTurn]) ∧
+      (∀ fuel, step (used + fuel) s ⟨.player p, .pass⟩ = advance fuel t events) ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+        step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
+  have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
+    applyDeclaredAction_priorityPass wf database pending
+  obtain ⟨t, used, events, positive, path, boundary | ⟨normal, _, _⟩⟩ :=
+    advance_ending_with_adds (s := initial) (wf.congr rfl rfl rfl rfl) database ordinaryMight rfl
+  · exact ⟨t, used, events, positive, Or.inl boundary, priority_pass_prefix legal applyPass path⟩
+  · exact ⟨t, used, events, positive, Or.inr normal, priority_pass_prefix legal applyPass path⟩
+
 /-- The ordinary Pass advances through the turn boundary when Ending reaches it. The remaining
 fuel resumes at Awaken or at the work or decision introduced before it. -/
 theorem step_priority_pass_to_awaken {s : GameState} {p : PlayerId}
@@ -948,8 +1572,8 @@ theorem step_priority_pass_to_awaken {s : GameState} {p : PlayerId}
     advance_ending_to_awaken (s := initial) (wf.congr rfl rfl rfl rfl) database ordinaryMight rfl
   exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
 
-/-- A legal ordinary Pass proceeds through Awaken to Beginning or an earlier decision or
-immediate Add. The remaining fuel starts at the reached boundary. -/
+/-- A legal ordinary Pass proceeds through Ending and Awaken to Beginning or an earlier
+decision or the end of the stack. The remaining fuel starts at the reached boundary. -/
 theorem step_priority_pass_through_awaken {s : GameState} {p : PlayerId}
     (wf : s.WF) (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
     (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)

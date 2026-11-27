@@ -23,7 +23,8 @@ private def isFightAt (field : ObjId) : Frame → Bool
   | .showdown there .. | .endShowdown there => there == field
   | _ => false
 
-private theorem insertTriggers_filter (keep : Frame → Bool)
+/-- Inserting ordinary triggers preserves the subsequence whose filter ignores trigger frames. -/
+theorem insertTriggers_filter (keep : Frame → Bool)
     (ignores : ∀ queue, keep (.triggers queue) = false)
     (queue : List PendTrigger) (stack : List Frame) :
     (insertTriggers queue stack).filter keep = stack.filter keep := by
@@ -57,7 +58,8 @@ theorem insertDetectedTriggers_filter (keep : Frame → Bool)
   · rfl
   · exact insertTriggers_filter keep ignoresTriggers _ _
 
-private theorem insertTriggers_head {queue : List PendTrigger} {stack : List Frame}
+/-- A head frame other than a trigger queue was already at the head before insertion. -/
+theorem insertTriggers_head {queue : List PendTrigger} {stack : List Frame}
     {frame : Frame} (notTrigger : ∀ q, frame ≠ .triggers q)
     (head : (insertTriggers queue stack).head? = some frame) :
     stack.head? = some frame := by
@@ -102,7 +104,8 @@ private theorem any_eq_of_filter_eq (p : Frame → Bool) {first second : List Fr
     simp only [List.any_filter, Bool.and_self]
   rw [← test first, ← test second, eq]
 
-private theorem cleanupMeasure_eq {s t : GameState} (config : t.config = s.config)
+/-- Cleanup's measure depends on the board, the card definitions, and the fields being fought over. -/
+theorem cleanupMeasure_eq {s t : GameState} (config : t.config = s.config)
     (cards : t.cards = s.cards) (objects : t.objects = s.objects) (zones : t.zones = s.zones)
     (fighting : ∀ field, t.fightingAt field = s.fightingAt field) :
     t.cleanupMeasure = s.cleanupMeasure := by
@@ -121,6 +124,87 @@ private theorem cleanupMeasure_eq {s t : GameState} (config : t.config = s.confi
     GameState.unitsOf, GameState.unitsAt, GameState.isAt, GameState.isControlledBy,
     GameState.isUnit, GameState.printedCardDef?, GameState.obj?,
     fighting, config, cards, objects, zone, loose] <;> rfl
+
+/-- Recording an ability use leaves Cleanup's measure unchanged if the same fields are fought over. -/
+theorem noteAbilityUse_cleanupMeasure (s : GameState) (source : ObjId) (index : Nat)
+    (copy : Option Timestamp) (stack : List Frame)
+    (combat : ∀ field, ({ (s.modObj source (fun obj => obj.noteAbilityUse index copy)) with
+      pending := stack } : GameState).fightingAt field = s.fightingAt field) :
+    let t := { (s.modObj source (fun obj => obj.noteAbilityUse index copy)) with pending := stack }
+    t.cleanupMeasure = s.cleanupMeasure := by
+  intro t
+  have config : t.config = s.config := rfl
+  have cards : t.cards = s.cards := rfl
+  have zone : t.zone = s.zone := rfl
+  have board : t.inPlay = s.inPlay := rfl
+  have lookup (id : ObjId) : t.obj? id = (s.obj? id).map
+      (if source = id then (fun o => o.noteAbilityUse index copy) else (fun o => o)) := by
+    change (s.modObj source _).obj? id = _
+    rw [GameState.obj?_modObj]
+    by_cases selected : source = id
+    · subst id
+      simp
+    · have different : source.n ≠ id.n := fun h => selected (congrArg ObjId.mk h)
+      simp [different, selected]
+  have prints : t.printedCardDef? = s.printedCardDef? := by
+    funext id
+    unfold GameState.printedCardDef?
+    rw [lookup, cards]
+    split <;> cases s.obj? id <;> rfl
+  have unit : t.isUnit = s.isUnit := by
+    funext id
+    unfold GameState.isUnit
+    rw [prints, lookup]
+    split <;> cases s.obj? id <;> rfl
+  have fields : t.battlefields = s.battlefields := by
+    simp only [GameState.battlefields, GameState.isBattlefield, zone, prints]
+  have tok : t.isTok = s.isTok := by
+    funext id
+    unfold GameState.isTok
+    rw [lookup]
+    split <;> cases s.obj? id <;> rfl
+  have loose : t.looseP = s.looseP := by
+    funext id
+    unfold GameState.looseP
+    rw [lookup, board]
+    split <;> cases s.obj? id <;> rfl
+  have atField : t.unitsAt = s.unitsAt := by
+    funext field
+    unfold GameState.unitsAt
+    rw [zone]
+    apply List.filter_congr
+    intro id _
+    unfold GameState.isAt
+    rw [unit, lookup]
+    split <;> cases s.obj? id <;> rfl
+  have controller (id : ObjId) : (t.obj? id).map Object.controller = (s.obj? id).map Object.controller := by
+    rw [lookup]
+    split <;> cases s.obj? id <;> rfl
+  have players : t.unitsOf = s.unitsOf := by
+    funext p field
+    simp only [GameState.unitsOf, GameState.isControlledBy, atField, controller]
+  have control : t.controlOf = s.controlOf := by
+    funext id
+    unfold GameState.controlOf
+    rw [lookup]
+    split <;> cases s.obj? id <;> rfl
+  have contest (id : ObjId) : (t.obj? id).bind Object.contested = (s.obj? id).bind Object.contested := by
+    rw [lookup]
+    split <;> cases s.obj? id <;> rfl
+  have damage : t.dmgC = s.dmgC := by
+    unfold GameState.dmgC
+    rw [board]
+    apply List.countP_congr
+    intro id _
+    rw [lookup]
+    split <;> cases s.obj? id <;> rfl
+  have fighting : ∀ field, t.fightingAt field = s.fightingAt field := combat
+  unfold GameState.cleanupMeasure GameState.cLoose GameState.cLost GameState.cStale GameState.cNew
+  have pot : t.pot = s.pot := rfl
+  have tokens : t.tokC = s.tokC := by
+    simp only [GameState.tokC, GameState.nbZones, GameState.playerCount, config, zone, tok]
+  simp only [GameState.lostControl, GameState.staleContest, GameState.newContest, pot, tokens,
+    damage, fields, loose, board, control, contest, players, fighting, atField, controller]
 
 private theorem continuing_observer (s : GameState) (events : List Event)
     {frame : Frame} (notTrigger : ∀ q, frame ≠ .triggers q)

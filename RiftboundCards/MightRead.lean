@@ -50,8 +50,21 @@ theorem step_priority_pass_ending {s : Riftbound.GameState} {p : Riftbound.Playe
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
   exact Riftbound.step_priority_pass_ending wf (mightReads_of_registered cards) pending legal
 
-/-- A legal ordinary Pass reaches Awaken, an earlier decision or immediate Add, or the end of
-the stack, with the registered cards and the Battlefield token used after a concession. -/
+/-- A legal ordinary Pass with the registered cards resolves all immediate Adds during
+Ending and reaches a player decision, the end of the stack, or Begin Turn. -/
+theorem step_priority_pass_ending_with_adds {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true ∨ t.pending = [.beginTurn]) ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  exact Riftbound.step_priority_pass_ending_with_adds wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) pending legal
+
+/-- A legal ordinary Pass resolves Ending's immediate Adds and reaches Awaken, an earlier
+decision, or the end of the stack, including after a free-for-all concession. -/
 theorem step_priority_pass_to_awaken {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
     (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
     (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
@@ -62,8 +75,8 @@ theorem step_priority_pass_to_awaken {s : Riftbound.GameState} {p : Riftbound.Pl
   exact Riftbound.step_priority_pass_to_awaken wf (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) pending legal
 
-/-- With the registered cards, Awaken can proceed to Beginning or to a player decision.
-An earlier immediate Add during Ending still hands off to its own resolver. -/
+/-- With the registered cards, a legal ordinary Pass resolves Ending's immediate Adds and
+proceeds through Awaken to Beginning, an earlier decision, or the end of the stack. -/
 theorem step_priority_pass_through_awaken {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
     (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
     (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :

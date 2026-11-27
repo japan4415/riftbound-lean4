@@ -318,17 +318,21 @@ private theorem poolAndFactsReads (s : GameState) (pools : Std.ExtTreeMap Nat Ru
 
 private theorem poolsMap_reads {f : RunePool → RunePool} (s : GameState) (players : List PlayerId)
     (unchanged : ∀ pool, (f pool).spent = pool.spent) :
-    SameMightReads s (poolsMap f s players) ∧ (poolsMap f s players).cards = s.cards := by
+    SameMightReads s (poolsMap f s players) ∧ (poolsMap f s players).cards = s.cards ∧
+      (poolsMap f s players).objects = s.objects ∧ (poolsMap f s players).zones = s.zones := by
   have shape := poolsMap_onlyPools f s players
   have spent := poolsMap_spent unchanged s players
   have projected : ∀ p, ((poolsMap f s players).pools.getD p.n RunePool.empty).spent =
       (s.poolOf p).spent := spent
   have reads := poolAndFactsReads s (poolsMap f s players).pools s.turnFx rfl projected (fun _ => rfl)
   have cards := congrArg GameState.cards shape
-  exact ⟨shape.symm ▸ reads, cards⟩
+  have objects := congrArg GameState.objects shape
+  have zones := congrArg GameState.zones shape
+  exact ⟨shape.symm ▸ reads, cards, objects, zones⟩
 
 private theorem poolsAddAny_reads (k : Nat) (s : GameState) (players : List PlayerId) :
-    SameMightReads s (poolsAddAny k s players) ∧ (poolsAddAny k s players).cards = s.cards := by
+    SameMightReads s (poolsAddAny k s players) ∧ (poolsAddAny k s players).cards = s.cards ∧
+      (poolsAddAny k s players).objects = s.objects ∧ (poolsAddAny k s players).zones = s.zones := by
   let t := poolsAddAny k s players
   have shape := poolsAddAny_onlyPoolsAndFx k s players
   have facts : t.turnFx.filter (fun f => f.kind != .gearMana) = s.turnFx.filter (fun f => f.kind != .gearMana) :=
@@ -339,23 +343,27 @@ private theorem poolsAddAny_reads (k : Nat) (s : GameState) (players : List Play
     poolsAddAny_read k s players (fun f gear => by simp [beq_iff_eq.mp gear])
   have reads := poolAndFactsReads s t.pools t.turnFx facts (poolsAddAny_spent k s players) buffs
   have cards := congrArg GameState.cards shape
-  exact ⟨shape.symm ▸ reads, cards⟩
+  have objects := congrArg GameState.objects shape
+  have zones := congrArg GameState.zones shape
+  exact ⟨shape.symm ▸ reads, cards, objects, zones⟩
 
 private theorem addOutcome_reads {s t : GameState} {events : List Event} {players : Option (List PlayerId)}
     {amount : Option Nat} (gain : Nat → List PlayerId → GameState)
-    (preserved : ∀ count who, SameMightReads s (gain count who) ∧ (gain count who).cards = s.cards)
+    (preserved : ∀ count who, SameMightReads s (gain count who) ∧ (gain count who).cards = s.cards ∧
+      (gain count who).objects = s.objects ∧ (gain count who).zones = s.zones)
     (run : players.bind (fun who => amount.map (fun count => (gain count who, ([] : List Event)))) =
-      some (t, events)) : SameMightReads s t ∧ t.cards = s.cards ∧ events = [] := by
+      some (t, events)) : SameMightReads s t ∧ t.cards = s.cards ∧ t.objects = s.objects ∧ t.zones = s.zones ∧ events = [] := by
   obtain ⟨who, _, selected⟩ := Option.bind_eq_some_iff.mp run
   obtain ⟨count, _, equal⟩ := Option.map_eq_some_iff.mp selected
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj equal
-  exact ⟨(preserved count who).1, (preserved count who).2, rfl⟩
+  obtain ⟨reads, cards, objects, zones⟩ := preserved count who
+  exact ⟨reads, cards, objects, zones, rfl⟩
 
 /-- Successful resource-only Add primitives emit no rule events and keep the inputs to Might. -/
-theorem applyPrim_add_reads {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {pr : Prim}
+theorem applyPrim_add_geometry {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {pr : Prim}
     (accepts : (Effect.prim pr).isTriggerAdd = true) {t : GameState} {events : List Event}
     (applied : applyPrim s p src env pr = some (t, events)) :
-    SameMightReads s t ∧ t.cards = s.cards ∧ events = [] := by
+    SameMightReads s t ∧ t.cards = s.cards ∧ t.objects = s.objects ∧ t.zones = s.zones ∧ events = [] := by
   cases pr <;> try (simp [Effect.isTriggerAdd] at accepts; done)
   case addEnergy who n only =>
     cases who <;> cases only <;> simp [Effect.isTriggerAdd] at accepts
@@ -376,6 +384,15 @@ theorem applyPrim_add_reads {s : GameState} {p : PlayerId} {src : ObjId} {env : 
     | some d =>
       exact addOutcome_reads (fun k ps => poolsMap (·.addPower d k) s ps)
         (fun _ ps => poolsMap_reads s ps (fun pool => by cases d <;> rfl)) applied
+
+
+/-- Successful Add primitives preserve Might reads and card definitions and emit no rule events. -/
+theorem applyPrim_add_reads {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {pr : Prim}
+    (accepts : (Effect.prim pr).isTriggerAdd = true) {t : GameState} {events : List Event}
+    (applied : applyPrim s p src env pr = some (t, events)) :
+    SameMightReads s t ∧ t.cards = s.cards ∧ events = [] := by
+  obtain ⟨reads, cards, _, _, noEvents⟩ := applyPrim_add_geometry accepts applied
+  exact ⟨reads, cards, noEvents⟩
 
 /-- An instruction's skipped notice has no effects on the observer. -/
 theorem withTriggers_skipped (s : GameState) (source : ObjId) :

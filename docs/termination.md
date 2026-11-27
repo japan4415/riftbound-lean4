@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズ、ターンの更新、Awaken を経て、次のプレイヤー判断か Beginning の直前まで追える。証明の範囲は §3〜§3m に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、ターンの更新と Awaken を経て、次のプレイヤー判断か Beginning の直前まで追える。証明の範囲は §3〜§3n に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -68,7 +68,7 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 - [`ControlWork.lean`](../Riftbound/Invariant/ControlWork.lean) は、順次実行、条件分岐、変数束縛、`repeatN`、`forEach`、`eachPlayer` の有限性を、本体となる効果の有限性から導く。繰り返し回数と対象の数は実行時の値を使う。どの効果も、先行する効果が更新した状態で実行する。XP の獲得と資源を加える効果にも適用できる。
 - [`insertDetectedTriggers_addWork`](../Riftbound/Invariant/AddWork.lean) は、イベント処理が先に積む即時 Add の全件について、使用記録と効果のルール処理が有限であることを示す。その後には通常の誘発と元の処理が続く。
 - [`RiftboundCards.advance_detectedTriggers`](../RiftboundCards/MightRead.lean) は、登録済みカードで、検出済みの即時 Add を実際の `advance` ですべて解決し、先頭に通常の誘発キューがあれば続けて処理することを示す。使用回数の記録と資源の追加では、新たな準備・疲労や Might の観測が起きない。任意ドメインの Power を追加するときに整理する Gear 専用の記録、条件分岐、実行できずスキップしたイベントも扱う。
-- 終了フェイズ全体では、即時 Add を消費した後に再開する Cleanup と Expiration の反復を合わせて評価する必要がある。
+- 終了フェイズで実際に検出した即時 Add と、再開する Cleanup・Expiration を合わせた停止は §3n に示す。
 
 ### 3d. 通常の誘発キューと再度の観測（上限と条件を証明済み）
 
@@ -128,13 +128,19 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 [`RiftboundCards.step_priority_pass_to_awaken`](../RiftboundCards/MightRead.lean) は、合法な Pass から続けて、終了フェイズの先頭処理が `beginTurn` に達した場合に次のターンへの移行を追う。時計が決着を要求すれば `beginTurn` の1ステップで試合が終わる。プレイを続ける場合はターン番号と手番を更新し、Awaken から Main の優先権までのフレームを用意する。
 
-ターンをまたいで Might のしきい値を越え、通常の誘発が積まれたときは、Awaken の処理より先にプレイヤー判断へ到達する。終了フェイズ中に先に積まれた即時 Add は、そこで解決に引き継ぐ。Awaken に到達した場合は §3m につながる。
+ターンをまたいで Might のしきい値を越え、通常の誘発が積まれたときは、Awaken の処理より先にプレイヤー判断へ到達する。終了フェイズ中に積まれた即時 Add は、ターンをまたぐ前に §3n の証明で解決する。Awaken に到達した場合は §3m につながる。
 
 ### 3m. Awaken と準備完了による誘発
 
 [`db_awakenTriggersAreOrdinary`](../RiftboundCards/MightObservation.lean) は、Awaken 開始と準備完了の誘発が、解決時に即時 Add を参照しないことを `decide` で確かめる。印刷された定義、ユニット化した Gear、装備からコピーした効果文、付与された能力が検出する誘発を、実際の能力番号で照合する。Might がしきい値を越えた場合も、§3g の検査と組み合わせて通常のキューに限られることを示した。
 
-[`RiftboundCards.step_priority_pass_through_awaken`](../RiftboundCards/MightRead.lean) は、合法な Pass から実際の Awaken を処理し、誘発があれば次のプレイヤー判断、なければ元の Beginning 以下のフレームに到達することを示す。Beginning に進む場合は、ゲーム状態の構造とカードデータが保たれる。時間切れによる決着や終了フェイズで先に生じた判断・即時 Add にも、そこまでのイベントと残りの fuel を保持して引き継ぐ。
+[`RiftboundCards.step_priority_pass_through_awaken`](../RiftboundCards/MightRead.lean) は、合法な Pass から実際の Awaken を処理し、誘発があれば次のプレイヤー判断、なければ元の Beginning 以下のフレームに到達することを示す。Beginning に進む場合は、ゲーム状態の構造とカードデータが保たれる。終了フェイズ中の即時 Add はそこで解決する。時間切れによる決着や途中のプレイヤー判断に至る場合も、発行したイベントと残りの fuel を保つ。
+
+### 3n. 即時 Add を含む終了フェイズの停止
+
+[`RiftboundCards.step_priority_pass_ending_with_adds`](../RiftboundCards/MightRead.lean) は、通常の優先権での合法な Pass から、終了フェイズの開始時と Cleanup 中に観測された即時 Add を実際のエンジンで解決する。Add が追加した資源を消去する Expiration も含めて、次のプレイヤー判断、空のスタック、次のターンの開始のいずれかに有限回で着く。通常の誘発で Chain が開く場合も、その判断点までの手数とイベントを保持する。
+
+続く Cleanup と Expiration は、残っている Expiration の数、Cleanup が使う盤面の測度、期限切れにする状態の有無、残っている Cleanup の数を、この順に比較する。盤面を変える Cleanup は即時 Add が資源を増やしても盤面の測度が減る。盤面を変えない Cleanup は自身のフレームを消費する。Expiration は自身のフレームを消費するか、次の Expiration を積む前に期限切れにする状態を消去する。この証明を §3l と §3m の定理にも接続した。
 
 ## 4. 進め方の案（単位に分ける）
 
@@ -142,7 +148,7 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成と、観測まで含めた即時 Add の処理は証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | ドローと誘発キューの上限、連続する Cleanup と Expiration の停止は証明済み。観測が追加した作業と後続フレームを合わせた証明が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | ドローと誘発キューの上限、即時 Add を含む終了フェイズから Awaken までの停止は証明済み。Beginning 以降と各作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。
