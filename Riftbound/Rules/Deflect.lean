@@ -63,17 +63,22 @@ theorem totalPower_takeOne {p : RunePool} (h : 0 < p.totalPower) :
   obtain ⟨_, paid⟩ := takeOne_paid h
   exact totalPower_takeBucket paid
 
+/-- The canonical deduction can always be witnessed by an exact source allocation. -/
+theorem takeN_realizesBuckets : ∀ (n : Nat) (p : RunePool), n ≤ p.totalPower →
+    ∃ sources : List PowerBucket, sources.length = n ∧ p.takeBuckets sources = some (p.takeN n)
+  | 0, p, _ => ⟨[], rfl, rfl⟩
+  | n + 1, p, budget => by
+    have available : 0 < p.totalPower := by omega
+    obtain ⟨first, used⟩ := takeOne_paid available
+    have remaining := totalPower_takeBucket used
+    obtain ⟨sources, length, paid⟩ := takeN_realizesBuckets n p.takeOne (by omega)
+    exact ⟨first :: sources, by simp [length], by simp [takeN, takeBuckets, used, paid]⟩
+
 /-- **Taking `n` Power takes exactly `n`** when the Pool has that much. -/
-theorem total_takeN : ∀ (n : Nat) (p : RunePool), n ≤ p.totalPower →
-    (p.takeN n).total + n = p.total
-  | 0, p, _ => by simp [takeN]
-  | n + 1, p, h => by
-    have h0 : 0 < p.totalPower := by omega
-    have h1 := totalPower_takeOne h0
-    have h2 := total_takeOne h0
-    have h3 := total_takeN n p.takeOne (by omega)
-    simp only [takeN]
-    omega
+theorem total_takeN (n : Nat) (p : RunePool) (budget : n ≤ p.totalPower) :
+    (p.takeN n).total + n = p.total := by
+  obtain ⟨sources, length, paid⟩ := takeN_realizesBuckets n p budget
+  simpa only [length] using total_takeBuckets paid
 
 end RunePool
 

@@ -200,6 +200,81 @@ theorem totalPower_takeBucket {p q : RunePool} {bucket : PowerBucket} {amount : 
   unfold RunePool.total at total
   omega
 
+/-- Spend one Power from each listed source, including repeated uses of a source. -/
+def takeBuckets (p : RunePool) : List PowerBucket → Option RunePool
+  | [] => some p
+  | source :: rest => (p.takeBucket source 1).bind (fun next => next.takeBuckets rest)
+
+/-- An explicit allocation accounts for every use of each source separately. -/
+theorem powerIn_takeBuckets {p q : RunePool} {sources : List PowerBucket}
+    (paid : p.takeBuckets sources = some q) (bucket : PowerBucket) :
+    q.powerIn bucket + sources.count bucket = p.powerIn bucket := by
+  induction sources generalizing p with
+  | nil =>
+    have same : p = q := Option.some.inj paid
+    simp [same]
+  | cons source rest ih =>
+    cases one : p.takeBucket source 1 with
+    | none => simp [takeBuckets, one] at paid
+    | some next =>
+      have left : next.takeBuckets rest = some q := by simpa [takeBuckets, one] using paid
+      have first := powerIn_takeBucket one bucket
+      have remaining := ih left
+      by_cases same : source = bucket
+      · subst source
+        simp only [List.count_cons_self, ite_true] at *
+        omega
+      · have different := Ne.symm same
+        simp only [List.count_cons_of_ne same, different, ite_false] at first ⊢
+        omega
+
+/-- An allocation fits the Pool exactly when each source can cover its recorded uses. -/
+theorem takeBuckets_isSome_iff (p : RunePool) (sources : List PowerBucket) :
+    (p.takeBuckets sources).isSome = true ↔ ∀ bucket, sources.count bucket ≤ p.powerIn bucket := by
+  constructor
+  · intro existsPaid bucket
+    obtain ⟨q, paid⟩ := Option.isSome_iff_exists.mp existsPaid
+    have balanced := powerIn_takeBuckets paid bucket
+    omega
+  · induction sources generalizing p with
+    | nil => intro _; rfl
+    | cons source rest ih =>
+      intro budget
+      have available := budget source
+      simp only [List.count_cons_self] at available
+      cases first : p.takeBucket source 1 with
+      | none => have impossible := (takeBucket_eq_none p source 1).mp first; omega
+      | some next =>
+        simp only [takeBuckets, first, Option.bind_some]
+        apply ih
+        intro bucket
+        have before := budget bucket
+        have after := powerIn_takeBucket first bucket
+        by_cases same : source = bucket
+        · subst source
+          simp only [List.count_cons_self, ite_true] at before after
+          omega
+        · have different := Ne.symm same
+          simp only [List.count_cons_of_ne same, different, ite_false] at before after
+          omega
+
+/-- Spending the listed units removes exactly one unit of total resources per entry. -/
+theorem total_takeBuckets {p q : RunePool} {sources : List PowerBucket}
+    (paid : p.takeBuckets sources = some q) : q.total + sources.length = p.total := by
+  induction sources generalizing p with
+  | nil =>
+    have same : p = q := Option.some.inj paid
+    simp [same]
+  | cons source rest ih =>
+    cases first : p.takeBucket source 1 with
+    | none => simp [takeBuckets, first] at paid
+    | some next =>
+      have left : next.takeBuckets rest = some q := by simpa [takeBuckets, first] using paid
+      have one := total_takeBucket first
+      have more := ih left
+      simp only [List.length_cons]
+      omega
+
 /-- What a payment takes out of the Pool: Energy, and one Power for each domain listed
 (CR 357.1, 445). The domains are the ones the player chose for `[A]` symbols. -/
 structure Payment where
