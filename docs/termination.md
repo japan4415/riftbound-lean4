@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。証明の範囲は §3〜§3f に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果と即時 Add が実行するルール処理の有限性も示した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれない。証明の範囲は §3〜§3g に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -89,6 +89,12 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 [`advance_ending_expiration`](../Riftbound/Invariant/ExpirationWork.lean) は、終了フェイズの開始から、実際の `workStep` で進む Cleanup と Expiration が有限回で区切れることを示す。途中から同じ処理を追うときは `advance_expiration_work` を使える。観測で積まれた誘発キューや即時 Add が先頭に来た場合は、その処理に移る時点までを証明する。
 
 リセットはダメージ・スタン・期限付き効果・資源プール・ターン中の記録を、再度の Expiration が不要な状態にする。そこから Cleanup が進んでも、対象になる状態を作り直すことはない。Might のしきい値を越えたときなどの観測も、ターン中の記録を復活させない。測度は Expiration フレームの個数の2倍に、リセットが必要なら1を足した値を先に比べ、それが同じときは Cleanup の測度を使う。
+
+### 3g. Might のしきい値と即時 Add
+
+[`db_mightTriggersAreOrdinary`](../RiftboundCards/MightObservation.lean) は、登録済みのカードとトークンすべてについて、Might を監視する能力番号から即時 Add が解決されないことを `decide` で確かめる。Gear がユニットになって能力番号が変わる場合も、解決側が参照する元の定義と照合する。
+
+[`workStep_expireTurn_mightOrdinary` と `workStep_triggers_mightOrdinary`](../Riftbound/Invariant/MightObservation.lean) は、条件を満たすデータベースで、実際の Expiration と通常の誘発確定が Might の観測で積む作業が通常の誘発キューに限られることを示す。Cleanup が別の種類のイベントから積む作業と、通常の誘発が新たな観測を繰り返す場合は、全体の停止証明に残る。
 
 ## 4. 進め方の案（単位に分ける）
 

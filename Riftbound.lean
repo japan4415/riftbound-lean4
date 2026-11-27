@@ -78,6 +78,7 @@ public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.DrawWork
 public import Riftbound.Invariant.TriggerWork
+public import Riftbound.Invariant.MightObservation
 public import Riftbound.Invariant.Draw
 public import Riftbound.Invariant.LimitedDraw
 public import Riftbound.Tournament.Format

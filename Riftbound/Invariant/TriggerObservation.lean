@@ -136,6 +136,14 @@ theorem mightyEvents_recordTurnEvent {s t : GameState} {event : Event}
     current.recordTurnEvent facts event = facts := by
   cases mightyEvents_notice member <;> rfl
 
+/-- A Might transition reports either a newly Mighty Unit or a numeric threshold crossing. -/
+theorem mightyEvents_cases {s t : GameState} {event : Event}
+    (member : event ∈ s.mightyEvents t) :
+    (∃ id, event = .becameMighty id) ∨ (∃ id threshold, event = .mightReached id threshold) := by
+  cases mightyEvents_notice member with
+  | mighty id => exact Or.inl ⟨id, rfl⟩
+  | reached id threshold => exact Or.inr ⟨id, threshold, rfl⟩
+
 private theorem foldl_mightNotices {α : Type} (update : α → Event → α)
     (inert : ∀ a e, MightNotice e → update a e = a) (start : α)
     (events : List Event) (notices : ∀ e ∈ events, MightNotice e) :
@@ -198,6 +206,14 @@ private theorem withMightNotices (s : GameState) (events : List Event)
   · cases s.detect events <;> simp [active]
   · simp [active]
 
+/-- Observing a Might transition only updates the pending stack through the detector. -/
+theorem withMightyEvents (before after : GameState) :
+    let detected := after.detect (before.mightyEvents after)
+    after.withTriggers (before.mightyEvents after) =
+      if after.phase != .setup && after.pending.all (fun f => !f.isSetup) && !detected.isEmpty
+      then { after with pending := insertDetectedTriggers after detected after.pending } else after :=
+  withMightNotices after _ (fun _ h => mightyEvents_notice h)
+
 /-- An ordinary trigger step can cause new trigger work only through observed Might crossings.
 The resulting batch comes from the real detector. These observations neither alter the turn's
 history nor award points, and the work step itself emits no events. -/
@@ -220,7 +236,7 @@ theorem workStep_triggers_observed (s : GameState) (wf : s.WF) (queue : List Pen
     change s.exhaustionEvents next none ++ s.mightyEvents next ++ [] ++ [] = _
     simp only [noExhaust, List.nil_append, List.append_nil]
   simp only [workStep, pending, microStep, raw, Option.map_some, transitions, List.nil_append]
-  rw [withMightNotices next (s.mightyEvents next) (fun _ h => mightyEvents_notice h)]
+  rw [withMightyEvents s next]
 
 end Riftbound
 
