@@ -2267,6 +2267,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Unit や Gear を戻す追加コストは、プレイするカードが盤面に出る前に支払う。カードを効果によってプレイする場合も同じ順序になる。宣言時に確定した支払いを維持し、Ready で出るかは支払い後の盤面で判定する。Firebrand Raider を戻して Ekko, Ingenious をプレイした場合、Ekko は Exhaust して出る（CR 357、359.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### 移動誘発が参照する行き先
+
+- Fae Porter と Irresistible Faefolk は移動先の戦場を誘発に記録する。Flash で元の Unit が Base に戻っても、選んだ Unit は最初の戦場へ移動する。Fae Porter は確定時に Chaos Power を支払い、自分がコントロールする Unit を選ぶ。2枚を `full` とし、全1,103枚中600枚が実装済みとなった。[公式総合ルール 359.3.f.3、383.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

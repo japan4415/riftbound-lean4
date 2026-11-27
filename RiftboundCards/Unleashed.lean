@@ -3244,13 +3244,14 @@ def UNL_112.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Irresistible Faefolk. -/
+/-- Irresistible Faefolk can move an enemy Unit to the Battlefield it moved to. -/
 def UNL_112 : CardDef :=
   { UNL_112.meta with
-    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
-      (.of [] (.may (.prim (.move (Selector.one .enemy .anywhere [.ofType .unit])
-        (.at_ (.locationOf .self)))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .moveToBattlefield with optional := true }
+      (.of [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        (.prim (.move (.slot 0) (.at_
+          (.all .any .atBattlefield [.ofType .battlefield, .atEventBattlefield none]))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-113
 /--

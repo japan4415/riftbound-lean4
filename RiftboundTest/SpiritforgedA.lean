@@ -1461,15 +1461,24 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s4, _) ← put s3 s.you "SFD-030" .base
   return s3.mightNow o == (s1.mightNow o).map (· + 2) && s4.mightNow o == s3.mightNow o
 
--- Fae Porter (SFD-125): when it moves to a battlefield, pay 1 Chaos to move another unit there
+-- Fae Porter chooses and pays during finalization. Flash moves the source, while its ability
+-- still moves the chosen Unit to the original destination.
 #guard tsf fun s => do
-  let (s1, p) ← putAt s s.me "SFD-125" s.bf0
-  let (s2, u) ← put s1 s.me "OGN-051" .base
-  let a ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)]
-  let b ← fire (s2.fund s.me 0) [.standardMoved p (some s.bf0)]
-  let c ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)] { yes := false }
-  return (a.obj? u).any (·.loc == some s.bf0) && (a.poolOf s.me).chaos == 0 &&
-    (b.obj? u).any (·.loc.isNone) && (c.obj? u).any (·.loc.isNone) && p != u
+  let p := s.me
+  let field := s.bf0
+  let (s, porter) ← put ((s.control p field).fund p 2 0 0 0 0 1) p "SFD-125" .base
+  let (s, unit) ← put s p "OGN-051" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (offered, _) ← (step 100 s ⟨.player p, .standardMove porter (.battlefield field)⟩).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [unit] (.pay [])⟩
+  let (paid, events) ← (step 100 offered accept).toOption
+  let (declined, _) ← (step 100 offered ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let returned ← cast paid p flash ⟨2, []⟩ [porter]
+  return (legalActions offered).contains accept && events.contains (.chosenByAbility p unit) &&
+    (paid.poolOf p).chaos == 0 && paid.where? unit == some (.player p .base) &&
+    (declined.poolOf p).chaos == 1 && declined.where? unit == some (.player p .base) &&
+    !(step 100 (offered.fund p 2) accept).isOk && returned.countIn p .base "SFD-125" == 1 &&
+    (returned.unitsAtOf field p).contains unit
 
 -- Overzealous Fan (SFD-128): when it defends, may kill itself to move an attacker to its base
 #guard tsf fun s => do
@@ -4353,16 +4362,13 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return (r2.obj? ir).any (·.mightMods.length == 1) && (r2.obj? ir).any (·.loc.isNone) &&
     (r.obj? ir).any (·.mightMods.isEmpty)
 
--- Pickpocket can kill a Gold token (it prints no cost: Energy cost 0); Fae Porter pays nothing when
--- there is no other unit to move
+-- Pickpocket can kill a Gold token with no printed cost (Energy cost 0).
 #guard tsf fun s => do
   let (s1, p) ← put s s.me "SFD-074" .hand
   let (s2, _) ← applyCreate s1 s.you p {} "Gold" (.const 1) .atBase false
   let g ← (s2.zone (.player s.you .base)).find? (fun o => (s2.cardDef? o).any (·.name == "Gold"))
   let a ← play s2 s.me p [] { pick := fun ts => ts == [g] }
-  let (t1, f) ← putAt s s.me "SFD-125" s.bf0
-  let alone ← fire (t1.fund s.me 0 0 0 0 0 1) [.standardMoved f (some s.bf0)]
-  return (a.obj? g).isNone && (alone.poolOf s.me).chaos == 1
+  return (a.obj? g).isNone
 
 -- Perched Grimwyrm needs a battlefield the player conquered, not one it only held
 #guard tsf fun s => do

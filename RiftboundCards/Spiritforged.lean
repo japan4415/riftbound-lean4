@@ -3672,17 +3672,15 @@ def SFD_125.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fae Porter. -/
+/-- Fae Porter pays Chaos Power to move a Unit its controller controls to the recorded destination. -/
 def SFD_125 : CardDef :=
   { SFD_125.meta with
-
-    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
-      (.of [] (.ifThen (.and (.canPay ⟨0, [.domain .chaos]⟩)
-          (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])))
-        (.may (.seqOf [.prim (.pay ⟨0, [.domain .chaos]⟩),
-          .prim (.move (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])
-            (.at_ .self))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { Trigger.onSelf .moveToBattlefield with optional := true, cost := .pay ⟨0, [.domain .chaos]⟩ }
+      (.of [.targetOf .one .you .anywhere [.ofType .unit]]
+        (.prim (.move (.slot 0) (.at_
+          (.all .any .atBattlefield [.ofType .battlefield, .atEventBattlefield none]))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-126
 /--

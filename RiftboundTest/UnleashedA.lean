@@ -911,6 +911,26 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   return arrived.xpOf p == s.xpOf p + 2 && (arrived.unitsAtOf field p).contains root &&
     returned.xpOf p == arrived.xpOf p && returned.countIn p .base "UNL-127" == 1
 
+-- Irresistible Faefolk chooses its enemy before other players can react. Flash moves the source
+-- back to Base and the chosen enemy still moves to the recorded Battlefield.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, fae) ← put (s.control p field) p "UNL-112" .base
+  let (s, friend) ← put s p "OGN-049" .base
+  let (s, foe) ← put s q "OGN-049" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (offered, _) ← (step 100 s ⟨.player p, .standardMove fae (.battlefield field)⟩).toOption
+  let target (unit : ObjId) : Action := ⟨.player p, .putTrigger 0 [unit] (.pay [])⟩
+  let (queued, events) ← (step 100 offered (target foe)).toOption
+  let (declined, _) ← (step 100 offered ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let resolved ← play queued p flash [fae]
+  return (legalActions offered).contains (target foe) && !(step 100 offered (target friend)).isOk &&
+    events.contains (.chosenByAbility p foe) && queued.where? foe == some (.player q .base) &&
+    declined.where? foe == some (.player q .base) && (resolved.unitsAtOf field q).contains foe &&
+    resolved.countIn p .base "UNL-112" == 1
+
 -- Nilah can Accelerate and use Ganking. Each move earns XP, while playing her does not.
 #guard tun fun s => do
   let p := s.me
