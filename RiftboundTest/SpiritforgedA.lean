@@ -603,12 +603,26 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     (play s5 s.me c [s.bf0, w]).isNone && (play s5 s.me c [s.bf0, lo, lo]).isNone &&
     (play s5 s.me c []).isNone
 
--- Simian Ancestor (SFD-047): when buffed, it readies
-#guard tsf fun s => do
-  let (s1, u) ← put s s.me "SFD-047" .base
-  let s2 := s1.tire u
-  let r ← fire s2 [.buffed u]
-  return s2.tired u == some true && r.tired u == some false
+-- Simian Ancestor readies when its controller buffs it, even in a team game.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, unit) ← put (teamMain labState) p "SFD-047" .base
+  let exhausted := s.tire unit
+  let buff (giver : PlayerId) := applyPrim exhausted giver unit {} (.buff .self)
+  let (own, ownEvents) ← buff p
+  let (ally, allyEvents) ← buff mate
+  let (enemy, enemyEvents) ← buff foe
+  let ownDone ← fire own ownEvents
+  let allyDone ← fire ally allyEvents
+  let enemyDone ← fire enemy enemyEvents
+  let (twice, repeated) ← applyPrim ownDone p unit {} (.buff .self)
+  return ownEvents == [.buffedBy unit p] && allyEvents == [.buffedBy unit mate] &&
+    enemyEvents == [.buffedBy unit foe] && ownDone.tired unit == some false &&
+    allyDone.tired unit == some true && enemyDone.tired unit == some true &&
+    (allyDone.obj? unit).any (·.buffed) && (enemyDone.obj? unit).any (·.buffed) &&
+    repeated.isEmpty && (twice.obj? unit).any (·.buffed)
 
 -- Janna, Savior (SFD-053), at a battlefield when played: heal my units here, and move an enemy
 -- unit from here to its base
@@ -947,7 +961,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, u) ← put s s.me "SFD-047" .base
   let (s2, o) ← put s1 s.me "OGN-051" .base
   let s3 := s2.tire u
-  let r ← fire s3 [.buffed o]
+  let r ← fire s3 [.buffedBy o s.me]
   return r.tired u == some true
 -- (review) Piercing Light: with no other unit, the first unit is not hit twice
 #guard tsf fun s => do

@@ -260,19 +260,21 @@ theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {}) :
   · exact Safe.refl s
 
 /-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
-def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
+def buffObj (s : GameState) (id : ObjId) (giver : Option PlayerId := none) : GameState × List Event :=
+  let event := giver.elim (Event.buffed id) (Event.buffedBy id)
   match s.obj? id with
   | some o =>
     -- a Unit that can have any number of buffs gets one more
     if o.buffed && (s.activeMods id).contains .anyBuffs then
-      (s.modObj id (fun o => { o with extraBuffs := o.extraBuffs + 1 }), [Event.buffed id])
+      (s.modObj id (fun o => { o with extraBuffs := o.extraBuffs + 1 }), [event])
     else
       (s.modObj id (fun o => { o with buffed := true }),
-        if o.buffed then [] else [Event.buffed id])
+        if o.buffed then [] else [event])
   | none => (s, [])
 
 /-- Buffing is a safe change. -/
-theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 := by
+theorem buffObj_safe (s : GameState) (id : ObjId) (giver : Option PlayerId := none) :
+    Safe s (buffObj s id giver).1 := by
   unfold buffObj
   split
   · split <;> exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
@@ -3818,7 +3820,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p)) (some p)))
     | _, _ => none
   | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env)
-  | .buff sel => onSelected s p src env sel buffObj
+  | .buff sel => onSelected s p src env sel (fun t id => buffObj t id (some p))
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
   | .gainXP ps n =>
@@ -4047,7 +4049,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | double sel => exact onSelected_safe doubleObj_safe h
   | grantActivation sel grant => exact onSelected_safe (grantActivationObj_safe grant) h
   | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
-  | buff sel => exact onSelected_safe buffObj_safe h
+  | buff sel => exact onSelected_safe (fun t id => buffObj_safe t id (some p)) h
   | empower sel => exact onSelected_safe (empowerObj_safe p) h
   | disempower sel => exact onSelected_safe disempowerObj_safe h
   | gainXP ps n =>

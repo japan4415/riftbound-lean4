@@ -2365,6 +2365,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Poro Snax は能力の宣言で自身をキルしてから Chain に能力を置き、解決時にカードを引く。Premonition は相手の Spell に応答でき、先に解決して自身の席だけが3枚引く。Feral Strength、Frigid Touch、Punch First、Lonely Poro、Honest Broker を合わせて7枚を `full` とし、全1,103枚中692枚を実装済みとした。
 
+### Buff を行った席
+
+- Simian Ancestor は自身を支配する席が Buff したときに誘発する。Mistfall は自身を支配する席が味方の Unit を Buff したとき、Body の Power を払い Gear を Exhaust する選択を誘発の確定時に出す。リプレイでは Buff を行った席も照合できる。2枚を `full` とし、全1,103枚中694枚を実装済みとした。[公式総合ルール 412.4、702.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

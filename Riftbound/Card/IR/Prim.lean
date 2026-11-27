@@ -331,6 +331,8 @@ inductive TriggerEvent where
   | ready
   /-- The object gets a buff. -/
   | buff
+  /-- This ability's controller buffs the object. -/
+  | buffByYou
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
   /-- The player looks at this card on the top of their Main Deck (and does not draw it). -/

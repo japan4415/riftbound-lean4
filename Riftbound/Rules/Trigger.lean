@@ -738,6 +738,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | some o =>
       triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff
     | none => []
+  | .buffedBy u giver =>
+    match s.obj? u with
+    | some o =>
+      triggersOfMatching s u o.controller (fun event =>
+        event == .buff || (event == .buffByYou && giver == o.controller)) ++
+      watchersOf s u o.controller .buff ++
+      (watchersOf s u o.controller .buffByYou).filter (·.controller == giver)
+    | none => []
   | .readied u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .ready ++ watchersOf s u o.controller .ready

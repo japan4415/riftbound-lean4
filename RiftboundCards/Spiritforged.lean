@@ -1367,8 +1367,8 @@ def SFD_047.meta : CardDef :=
 def SFD_047 : CardDef :=
   { SFD_047.meta with
 
-    abilities := [.triggered (.onSelf .buff) (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered (.onSelf .buffByYou) (.of [] (.prim (.ready .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-048
 /--

@@ -647,6 +647,8 @@ def eventJson : Event → String
         | .channel => "channel" | .draw => "draw" | .main => "main" | .ending => "ending"))]
   | .stunned o => jobj [("t", jstr "stunned"), ("target", toString o.n)]
   | .buffed o => jobj [("t", jstr "buffed"), ("target", toString o.n)]
+  | .buffedBy o p =>
+    jobj [("t", jstr "buffed"), ("target", toString o.n), ("player", toString p.n)]
   | .becameMighty o => jobj [("t", jstr "became_mighty"), ("unit", toString o.n)]
   | .mightReached o n => jobj [("t", jstr "might_reached"), ("unit", toString o.n),
       ("threshold", toString n)]

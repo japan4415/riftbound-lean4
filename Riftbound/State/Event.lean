@@ -78,6 +78,8 @@ inductive Event where
   | stunned (target : ObjId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
+  /-- This player buffed the object (CR 412.4, 702.2.a). -/
+  | buffedBy (target : ObjId) (player : PlayerId)
   /-- A Unit became Mighty: its Might was below 5 and is 5 or more now. -/
   | becameMighty (u : ObjId)
   /-- A Unit crossed a specified Might threshold from below (CR 383). -/

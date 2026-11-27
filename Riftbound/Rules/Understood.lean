@@ -591,7 +591,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .firstCardResolved | .firstPermanentHere | .delayedPlay | .delayedEnd => t.subject == .self
       | .stun => true | .discard => true | .ready => true | .exhaust => true
       | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)
-      | .buff => true
+      | .buff | .buffByYou => true
       | .becomeMighty | .mightAtLeast _ => true
       | .mightReducedByYou => t.subject != .self
       | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ | .linkedDamageKill => t.subject == .self

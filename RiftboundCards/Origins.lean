@@ -4105,12 +4105,10 @@ def OGN_152.meta : CardDef :=
 def OGN_152 : CardDef :=
   { OGN_152.meta with
     abilities := [.triggered
-      { event := .buff, subject := Selector.all .you .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.ifThen (.canPay ⟨0, [.domain .body]⟩)
-          (.may (.seqOf [.prim (.pay ⟨0, [.domain .body]⟩), .prim (.exhaust .self),
-            .prim (.ready (.slot 0))])) .nop) .nop)) .unlimited],
-    status := .drafted }
+      { event := .buffByYou, subject := Selector.all .friendly .anywhere [.ofType .unit],
+        optional := true, cost := .pay ⟨0, [.domain .body]⟩ true }
+      (.of [] (.prim (.ready (.slot 0)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-153
 /--

@@ -4208,20 +4208,45 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let (s3, foe) ← put s2 s.you "OGN-136" .base
   let funded := (s3.tire u).fund s.me 0 (body := 1)
-  let (a, ev) := buffObj funded u
+  let (a, ev) := buffObj funded u (some s.me)
+  let (choosing, _) ← (advance 100 (a.withTriggers ev) []).toOption
+  let accepted ← (legalFrameActions choosing).find? (fun act =>
+    match act.kind with | .putTrigger _ _ (.pay ..) => true | _ => false)
+  let (queued, _) ← (step 100 choosing accepted).toOption
   let yes ← fire a ev { yes := true }
   let no ← fire a ev { yes := false }
-  let (b, ev2) := buffObj (funded.buff u) u
+  let (b, ev2) := buffObj (funded.buff u) u (some s.me)
   let again ← fire b ev2 { yes := true }
-  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe
+  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe (some s.me)
   let theirs ← fire c ev3 { yes := true }
-  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u
+  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u (some s.me)
   let broke ← fire d ev4 { yes := true }
-  let (e, ev5) := buffObj ((funded.tire g)) u
+  let (e, ev5) := buffObj (funded.tire g) u (some s.me)
   let spent ← fire e ev5 { yes := true }
+  let (f, ev6) := buffObj funded u (some s.you)
+  let rival ← fire f ev6 { yes := true }
   return yes.tired u == some false && yes.tired g == some true && (yes.poolOf s.me).body == 0 &&
     no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
-    broke.tired u == some true && spent.tired u == some true
+    broke.tired u == some true && spent.tired u == some true && rival.tired u == some true &&
+    queued.tired u == some true && queued.tired g == some true && (queued.poolOf s.me).body == 0 &&
+    !(queued.zone .chain).isEmpty
+
+-- Mistfall can ready a teammate's buffed Unit when the Gear's controller performed the buff.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let game := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let main := { game with phase := .main, active := some p, pending := [.priority p],
+                           turnOrder := Mode.teamTurnOrder true }
+  let (s, gear) ← put main p "OGN-152" .base
+  let (s, target) ← put s mate "OGN-136" .base
+  let start := (s.tire target).fund p 0 (body := 1)
+  let (a, ownEvents) ← applyPrim start p target {} (.buff .self)
+  let (b, allyEvents) ← applyPrim start mate target {} (.buff .self)
+  let accepted ← fire a ownEvents
+  let untriggered ← fire b allyEvents
+  return accepted.tired target == some false && accepted.tired gear == some true &&
+    untriggered.tired target == some true && untriggered.tired gear == some false
 
 -- Ember Monk (OGN-167): when I play a card from Hidden (a unit or a spell), it gets +2 Might this
 -- turn; playing from the hand does not
