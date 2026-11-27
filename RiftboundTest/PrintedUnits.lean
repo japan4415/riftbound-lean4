@@ -170,10 +170,13 @@ private meta def printedRecruit (code : String) : Bool := inLab fun s => do
     (advance 100 { played with active := some who, pending := [.phase .beginning, .priority who] }
       []).toOption
   let (opponentTurn, _) ← beginning s.you
-  let (ownTurn, events) ← beginning p
+  let (waiting, _) ← beginning p
+  let (response, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let (ownTurn, events) ← (step 100 response ⟨.player s.you, .pass⟩).toOption
   return model.might == printed.might && model.keywords == printed.keywords &&
     played.mightNow token == some (3 : Int) && played.tired token == some false &&
-    opponentTurn.countIn p .base model.id.code == 1 && ownTurn.countIn p .base model.id.code == 0 &&
+    opponentTurn.countIn p .base model.id.code == 1 && waiting.inPlay.contains token &&
+    ownTurn.countIn p .base model.id.code == 0 &&
     events.any (fun | .died _ owner => owner == p | _ => false)
 
 -- Voracious Gromp earns XP when it helps score, once for either kind of scoring.

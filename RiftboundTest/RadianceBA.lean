@@ -146,7 +146,7 @@ open Riftbound
     paid.countIn p .banishment "RAD-020" == 1 && paid.inPlay.contains ally &&
     settled.any (fun | .banished player _ _ => player == q | _ => false)).getD false
 
--- Temporary is a Kill at the beginning of the turn and can be replaced before it occurs.
+-- Temporary can be replaced after the players pass priority and before its Kill occurs.
 #guard (lab.bind fun s => do
   let p := s.me
   let field := s.bf0
@@ -155,11 +155,13 @@ open Riftbound
   let marked := s.modObj mord (fun unit =>
     { unit with tempKws := [({ keyword := .temporary }, .never)] })
   let before := { marked with pending := [.phase .beginning, .priority p] }
-  let (asked, _) ← (advance 100 before []).toOption
+  let (waiting, _) ← (advance 100 before []).toOption
+  let (response, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let (asked, _) ← (step 100 response ⟨.player s.you, .pass⟩).toOption
   let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
   let (saved, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return victim == mord && cost == ally && asked.inPlay.contains ally &&
+  return waiting.inPlay.contains mord && victim == mord && cost == ally && asked.inPlay.contains ally &&
     (saved.zone (.player p .base)).contains mord && saved.countIn p .trash "V0" == 1).getD false
 
 -- Mordekaiser can sacrifice a second copy, which can spend its own replacement on a third Unit.

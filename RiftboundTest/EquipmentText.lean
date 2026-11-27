@@ -12,8 +12,14 @@ open Riftbound
 private meta def testBoard (test : GameState → Option Bool) : Bool :=
   (lab.bind test).getD false
 
-private meta def startBeginning (s : GameState) (p : PlayerId) : Option (GameState × List Event) :=
-  (advance 100 { s with active := some p, pending := [.phase .beginning, .priority p] } []).toOption
+private meta def startBeginning (s : GameState) (p : PlayerId) : Option (GameState × List Event) := do
+  let (waiting, events) ←
+    (advance 100 { s with active := some p, pending := [.phase .beginning, .priority p] } []).toOption
+  let .chainPass first _ :: _ := waiting.pending | some (waiting, events)
+  let (response, firstEvents) ← (step 100 waiting ⟨.player first, .pass⟩).toOption
+  let .chainPass second _ :: _ := response.pending | none
+  let (settled, secondEvents) ← (step 100 response ⟨.player second, .pass⟩).toOption
+  return (settled, events ++ firstEvents ++ secondEvents)
 
 -- The Unleashed FAQ covers Spinning Axe with printed Temporary and with Temporary from Turn to
 -- Dust. Exercise both through the Beginning Phase dispatcher, including the actual death event.
