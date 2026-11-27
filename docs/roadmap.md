@@ -2259,6 +2259,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Apprentice Smith は公開した山札の一番上が Gear なら正式な Draw として手札に加え、それ以外は Recycle する。Traveling Merchant はディスカードを先に選んでから引く。
 - Stellacorn Herder は移動ごとに1枚引き、Treasure Hunter は移動ごとに Exhaust した Gold を出す。Gold の消費と Power の追加も検証した。Nilah, Joyful Ascetic は戦場間の Ganking を含め、移動ごとに1 XPを得る。6枚を `full` とし、全1,103枚中598枚が実装済みになった。
 
+### 2対2で味方の Unit を使う追加コスト
+
+- Ki Burst と Life from Stone はチームメイトの Ready Unit を Exhaust して支払える。Parallel Convergence と Ekko, Ingenious はチームメイトがコントロールする Unit も選べ、支払い時にオーナーの手札へ戻す。Starry-Eyed Songstress の割引でもチームメイトの Ready Unit を使える。呪文の対象は追加コストとは別に記録する。[公式総合ルール 355.10.c、415.4、740.1.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

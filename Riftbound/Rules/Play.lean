@@ -518,9 +518,9 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
     controlled && (s.cardDef? t).any (fun d => d.hasType .unit &&
         (d.tags.any (fun g => g.name == "Bird" || g.name == "Cat" || g.name == "Dog" ||
           g.name == "Poro")))
-  | .returnUnit => controlled && (s.cardDef? t).any (·.hasType .unit)
+  | .returnUnit => friendly && (s.cardDef? t).any (·.hasType .unit)
   | .killUnit | .killUnitForTarget => friendly && (s.cardDef? t).any (·.hasType .unit)
-  | .exhaustUnit => controlled &&
+  | .exhaustUnit => friendly &&
       ((s.cardDef? t).any (·.hasType .unit) && (s.obj? t).any (fun o => !o.exhausted))
   | .killUnitOrGear => friendly && (s.cardDef? t).any (fun d => d.hasType .unit || d.hasType .gear)
   | .spendXP n =>
