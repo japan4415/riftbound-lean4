@@ -3486,7 +3486,38 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return ((a.obj? bf).bind (·.contested)) == some s.me &&
     ((s4.obj? bf).bind (·.contested)).isNone
 -- Guardian Angel (SFD-051): if the unit it is attached to would die, the Angel dies instead; the
--- unit is healed, exhausted and recalled (the Angel adds 1 Might: 3 + 1)
+-- Unit survives and reports Heal, Exhaust, and Recall in that order.
+#guard tsf fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, unit) ← putAt (s.control p bf) p "OGN-006" bf
+  let (s, card) ← put s p "SFD-051" .hand
+  let played ← play s p card
+  let gear ← played.inBase p "SFD-051"
+  let suited ← activate played p gear 0 [unit] ⟨0, [.calm]⟩
+  let hit := (dealObj 4 suited unit (some s.you)).1
+  let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
+  let trashed ← saved.firstOf p .trash "SFD-051"
+  let replaced := events.filter (fun
+    | .died .. | .healed .. | .exhausted .. | .recalled .. | .standardMoved .. => true
+    | _ => false)
+  return (suited.obj? gear).any (·.attached == some unit) && suited.mightNow unit == some 4 &&
+    (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted && o.loc.isNone) &&
+    saved.where? unit == some (.player p .base) && saved.damageMarks[unit.n]?.isNone &&
+    replaced == [.died trashed p, .healed unit 4, .exhausted unit, .recalled unit]
+
+-- Soraka uses the same healing and exhaustion at Base, where the Unit already stands.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, _) ← put s p "SFD-173" .base
+  let (s, unit) ← put s p "OGN-006" .base
+  let hit := (dealObj 3 s unit (some s.you)).1
+  let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
+  return saved.where? unit == some (.player p .base) && saved.damageMarks[unit.n]?.isNone &&
+    (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted) &&
+    events == [.healed unit 3, .exhausted unit]
+
+-- The Angel also saves the attached Unit from a direct Kill, but stays attached after a nonlethal hit.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, u) ← putAt s1 s.me "OGN-006" bf

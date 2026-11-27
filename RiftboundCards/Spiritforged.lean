@@ -1496,7 +1496,7 @@ def SFD_051 : CardDef :=
   { SFD_051.meta with
 
     grants := [.passive .always [.diesInsteadGear]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-052
 /--

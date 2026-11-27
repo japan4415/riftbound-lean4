@@ -370,8 +370,14 @@ private theorem recallFx_noAttach (ex : Bool) (s : GameState) (id : ObjId) :
 
 private theorem completeDeathSave_noAttach (s : GameState) (id : ObjId) (mark : Option TurnEffect)
     (p : PlayerId) (clear : Bool) : NoAttach (completeDeathSave s id mark p clear).2 := by
-  change NoAttach ([] ++ (recallFx true (s.modObj id (fun o => { o with damage := 0 })) id).2)
-  exact recallFx_noAttach true _ _
+  have healed : NoAttach (healAllOn s id).2 := by
+    intro gear unit
+    unfold healAllOn
+    dsimp only
+    split <;> simp
+  let recalled := recallFx false (healAllOn s id).1 id
+  exact ((NoAttach.nil.append healed).append (setExhausted_noAttach true recalled.1 id)).append
+    (recallFx_noAttach false _ _)
 
 private theorem killOrSaveFrom_noAttach (root : ObjId) (fuel : Nat) (s : GameState) (id : ObjId)
     (used : List (ObjId × Bool)) : NoAttach (killOrSaveFrom root fuel s id used).2 := by

@@ -8,6 +8,15 @@ public import Riftbound.Rules.Passive
 
 namespace Riftbound
 
+/-- Heal all marked damage, recording the amount cleared (CR 419). -/
+def healAllOn (s : GameState) (id : ObjId) : GameState × List Event :=
+  (s.modObj id healObj, match (s.obj? id).map (·.damage) with
+    | some (n + 1) => [Event.healed id (n + 1)]
+    | _ => [])
+
+theorem healAllOn_safe (s : GameState) (id : ObjId) : Safe s (healAllOn s id).1 :=
+  Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
+
 /-- Send an object to the zone `k` of its owner. Nothing happens if it is not on a zone. -/
 def sendObj (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List Event :=
   match s.obj? id with
@@ -621,9 +630,11 @@ def GameState.deathSaveMark (s : GameState) (id : ObjId) (sacrifice : Bool)
 and recalled. -/
 def saveUnitCore (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=
   let k := match g with | some g => killObj s g | none => (s, [])
-  let h := k.1.modObj id (fun o => { o with damage := 0 })
-  let r := recallFx true h id
-  (r.1, k.2 ++ r.2)
+  let healed := healAllOn k.1 id
+  let recalled := recallFx false healed.1 id
+  -- Recall preserves readiness, so the Exhaust event can precede the Recall event as instructed.
+  let exhausted := setExhausted true recalled.1 id
+  (exhausted.1, k.2 ++ healed.2 ++ exhausted.2 ++ recalled.2)
 
 /-- Saving a Unit is a safe change. -/
 theorem saveUnitCore_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
@@ -633,9 +644,8 @@ theorem saveUnitCore_safe (s : GameState) (id : ObjId) (g : Option ObjId) :
     cases g with
     | none => exact Safe.refl s
     | some g => exact killObj_safe s g
-  have hm := Safe.modObj (match g with | some g => killObj s g | none => (s, [])).1 id
-    (f := fun o => { o with damage := 0 }) (fun _ => rfl) (fun _ => rfl)
-  exact hk.trans (hm.trans (recallFx_safe true _ id))
+  exact hk.trans ((healAllOn_safe _ id).trans
+    ((recallFx_safe false _ id).trans (setExhausted_safe true _ id)))
 
 /-- The Unit is saved, and the note that it has been saved is made (what saves it once is used up). -/
 def saveUnit (s : GameState) (id : ObjId) (g : Option ObjId) : GameState × List Event :=

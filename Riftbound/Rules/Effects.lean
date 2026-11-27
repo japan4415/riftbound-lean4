@@ -103,18 +103,6 @@ theorem healOne_safe (n : Nat) (s : GameState) (id : ObjId) : Safe s (healOne n 
   · exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
   · exact Safe.refl s
 
-/-- Heal the damage currently marked on the Unit, recording only damage actually cleared. -/
-def healAllOn (s : GameState) (id : ObjId) : GameState × List Event :=
-  match (s.obj? id).map (·.damage) with
-  | some (n + 1) => healOne (n + 1) s id
-  | _ => (s, [])
-
-theorem healAllOn_safe (s : GameState) (id : ObjId) : Safe s (healAllOn s id).1 := by
-  unfold healAllOn
-  split
-  · exact healOne_safe _ _ _
-  · exact Safe.refl s
-
 /-- A spell or an ability cannot ready the Units and Gear of the opponents of a player who has a
 passive ability that says so. -/
 def readyBlocked (s : GameState) (id : ObjId) : Bool :=

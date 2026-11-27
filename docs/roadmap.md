@@ -2203,6 +2203,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Janna, Savior の誘発を確定するとき、同じ場所から Base に移す敵 Unit を最大1体選ぶ。対象を選ばずに回復でき、選んだ対象が解決時に無効なら、その対象の移動だけを行わない。[Spiritforged 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
 - 解決時に Janna と同じ場所で支配している Unit のダメージをすべて除き、取り除いた量を記録する。Janna, Savior を `full` とし、全1,103枚中564枚を実装済みにした（CR 419）。[カード実装状況](coverage.md)
 
+### Guardian Angel の身代わりと回復順
+
+- Guardian Angel を装備した Unit が死ぬ場合、その Gear が代わりに死ぬ。Unit は回復、消耗、Recall の順に処理される。実際に取り除いたダメージ量を記録し、Recall では Standard Move のイベントを発生させない（CR 373、419、456、825）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Soraka などで Base にいる Unit を救った場合は、回復と消耗を記録する。Guardian Angel を `full` とし、全1,103枚中565枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

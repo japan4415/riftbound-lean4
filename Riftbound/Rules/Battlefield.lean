@@ -471,7 +471,8 @@ def cleanupKillCore (s : GameState) (u : ObjId) : GameState × List Event :=
         (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
       let healed := s.modObj u (fun o => { o with damage := 0, exhausted := true })
       let p := ((s.obj? u).map (·.controller)).getD ⟨0⟩
-      (finishDeathSave healed u p (s.deathSaveMark u false none), [])
+      let events := (healAllOn s u).2 ++ (setExhausted true s u).2
+      (finishDeathSave healed u p (s.deathSaveMark u false none), events)
     else killObj s u
   | none => killObj s u
 
