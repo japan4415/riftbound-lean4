@@ -5473,7 +5473,7 @@ def OGN_202 : CardDef :=
       { event := .discard, subject := Selector.all .you .anywhere [] }
       (.of [] (.seqOf [.prim (.ready .self), .grant .self (.mightPlus .it (.const 1)) .thisTurn]))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-203
 /--
@@ -6435,7 +6435,7 @@ def OGN_238 : CardDef :=
   { OGN_238.meta with
     abilities := [.triggered (.onSelf .attack)
       (.of [.targetOf .one .enemy .here [.ofType .unit]] (.prim (.stun (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-239
 /--
@@ -6819,9 +6819,10 @@ def OGN_251.meta : CardDef :=
 def OGN_251 : CardDef :=
   { OGN_251.meta with
     abilities := [.triggered
-      { event := .at_ .beginning, condition := .cmp .le (.handSize .you) (.const 1) }
-      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+      { event := .at_ .beginning }
+      (.of [] (.ifThen (.cmp .le (.handSize .you) (.const 1))
+        (.prim (.draw .you (.const 1))) .nop)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED OGN-252
 /--

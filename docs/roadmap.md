@@ -2426,6 +2426,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Noxus Saboteur は同じ Battlefield にある敵の伏せ札の公開を防ぐ。Brynhir Thundersong の効果は敵が伏せ札から Unit や Spell をプレイする場合にも適用する。Basic Rune の起動は許される。
 - Katarina, Reckless は自身の支配者が Hide したときに Ready になり、伏せ札からのプレイが解決したときに敵の Unit にダメージを与える。Rumble, Scrapper は自身の支配者の Mech だけを強化し、自分の Hold で Mech を出す。Sacred Shears と合わせて5枚を確認し、全1,103枚中744枚を `full` とした。
 
+### 手札の確認時点と Gear の起動
+
+- Loose Cannon は自分の Beginning Phase に誘発し、解決するときに手札の枚数を確認する。Jinx, Rebel は同じ処理で複数枚を捨てても1回だけ Ready になり、Might が1増える。[Unleashed 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- Leona, Determined は攻撃した場所にいる敵の Unit を対象にする。Royal Entourage は自分や相手の Legend を Ready または Exhaust にできる。Prize of Progress はコストで Gear 自体を破壊する起動も検出する。5枚を確認し、全1,103枚中749枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

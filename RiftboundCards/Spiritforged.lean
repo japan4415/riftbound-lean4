@@ -1147,7 +1147,7 @@ def SFD_039 : CardDef :=
       (.of [] (.eitherOf (EffectList.ofList
         [.prim (.ready (Selector.one .any .inLegendZone [])),
          .prim (.exhaust (Selector.one .any .inLegendZone []))]))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-040
 /--
@@ -2195,7 +2195,7 @@ def SFD_075 : CardDef :=
 
     abilities := [.triggered (.onSelf .useGearAbility)
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-076
 /--

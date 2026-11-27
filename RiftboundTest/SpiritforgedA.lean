@@ -2989,6 +2989,20 @@ meta def effectOf (code : String) : Option EffectDef :=
   return a.mightNow u == (s3.mightNow u).map (· + 1) && b.mightNow u == s3.mightNow u &&
     c.mightNow u == s3.mightNow u
 
+-- A Gear that kills itself as a cost still activated a Gear ability on the Board.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, prize) ← put s p "SFD-075" .base
+  let (s, rival) ← put s q "SFD-075" .base
+  let (s, g) ← put s p "SFD-046" .base
+  let (s, h) ← put s p "SFD-042" .base
+  let equipped ← activate s p h 0 [prize] ⟨0, [.calm]⟩
+  let sacrificed ← activate equipped p g 1 [] ⟨1, [.calm]⟩
+  return (sacrificed.obj? g).isNone && sacrificed.countIn p .trash "SFD-046" == 1 &&
+    sacrificed.mightNow prize == (equipped.mightNow prize).map (· + 1) &&
+    sacrificed.mightNow rival == s.mightNow rival
+
 -- Legion Quartermaster (SFD-044): a friendly gear returns to its owner's hand when it is played
 #guard tsf fun s => do
   let (s1, q) ← put s s.me "SFD-044" .hand

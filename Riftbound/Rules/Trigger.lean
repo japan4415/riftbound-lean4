@@ -616,6 +616,15 @@ def GameState.firstPermanentHereTriggers (s : GameState) (p : PlayerId) (id : Ob
     else []
   | none => []
 
+/-- A Board Gear may already have left the Board while paying its activation cost. -/
+def GameState.activatedBoardGear (s : GameState) (source : ObjId) : Bool :=
+  match s.obj? source with
+  | some _ => source ∈ s.inPlay && (s.cardDef? source).any (·.hasType .gear)
+  | none => s.objects.toList.any (fun (id, object) =>
+      object.leftBoard && object.formerId == some source &&
+        ((object.lastAttachmentCopy.map (·.card)).bind s.cards.find? <|> s.cardDef? ⟨id⟩).any
+          (·.hasType .gear))
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .exhaustBatch who objects beforeMove => s.exhaustionTriggers who objects beforeMove
@@ -840,7 +849,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .spendBuff else [])
   | .activated p src _ baseEnergy =>
     -- an ability of a gear on the Board (not Hide, not the play of a hidden gear)
-    let gearUse := if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
+    let gearUse := if s.activatedBoardGear src then
         s.inPlay.flatMap (fun u =>
           if (s.obj? u).any (·.controller == p) then triggersOf s u p .useGearAbility else [])
       else []

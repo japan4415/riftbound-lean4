@@ -760,6 +760,33 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.stunned) == some true && (a.obj? f).map (·.stunned) == some false &&
     (a.obj? l).map (·.stunned) == some false && (b.obj? e).map (·.stunned) == some false
 
+-- Leona's attack can Stun either enemy seat at the Battlefield. A teammate is friendly.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, other) ← putBf s q "OGN-276"
+  let (s, leona) ← putAt s p "OGN-238" field
+  let (s, ally) ← putAt s mate "OGN-001" field
+  let (s, left) ← putAt s q "OGN-001" field
+  let (s, right) ← putAt s r "OGN-001" field
+  let (s, elsewhere) ← putAt s q "OGN-001" other
+  let combat := [.combatStarted field p]
+  let choices ← firePicks s combat
+  let stunned ← fire s combat { pick := (· == [right]) }
+  return choices.contains left && choices.contains right && !choices.contains ally &&
+    !choices.contains elsewhere && (stunned.obj? right).any (·.stunned) &&
+    !(stunned.obj? ally).any (·.stunned) && s.kwAmount leona .shield == 1
+
 -- Ahri (OGN-119): -2 Might to an enemy unit here, to a minimum of 1, when she attacks or defends
 #guard t fun s => do
   let (s1, _) ← putAt s s.me "OGN-119" s.bf0
@@ -1243,6 +1270,23 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.mightNow j == (s5.mightNow j).map (· + 1) && b.mightNow j == s5.mightNow j &&
     b.tired j == some true
 
+-- A single whole-hand discard answers the trigger once for each player's own Jinx.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mine) ← put s p "OGN-202" .base
+  let (s, opposing) ← put s q "OGN-202" .base
+  let retainTwo (s : GameState) (seat : PlayerId) :=
+    s.setZone (.player seat .hand) ((s.zone (.player seat .hand)).take 2)
+  let ready := retainTwo (retainTwo ((s.tire mine).tire opposing) p) q
+  let (s, spell) ← put ready p "OGN-201" .hand
+  let action : Action := ⟨.player p, .playCard spell ⟨3, [.chaos]⟩ []⟩
+  let (chain, _) ← (step 100 (s.fund p 3 (chaos := 1)) action).toOption
+  let resolved := settleChain {} 24 chain
+  return resolved.tired mine == some false && resolved.tired opposing == some false &&
+    resolved.mightNow mine == (s.mightNow mine).map (· + 1) &&
+    resolved.mightNow opposing == (s.mightNow opposing).map (· + 1)
+
 -- Radiant Dawn: friendly Units can be buffed after its controller Stuns an enemy.
 #guard t fun s => do
   let (s1, _) ← put s s.me "OGN-261" .legendZone
@@ -1558,6 +1602,26 @@ meta def t (f : GameState → Option Bool) : Bool :=
     let s3 := settleChain {} 12 s2
     return es.contains (.phaseStarted s.me .beginning) && s3.handN s.me == one.handN s.me + 1
   | .error _ => none
+
+-- Loose Cannon checks hand size at resolution, after reactions can change it.
+#guard t fun s => do
+  let p := s.me
+  let (s, _) ← put s p "OGN-251" .legendZone
+  let hand := s.zone (.player p .hand)
+  let first ← hand[0]?
+  let second ← hand[1]?
+  let queue (cards : List ObjId) : Option GameState := do
+    let state := s.setZone (.player p .hand) cards
+    let triggered := state.withTriggers [.phaseStarted p .beginning]
+    return (← (advance 100 triggered []).toOption).1
+  let fromTwo ← queue [first, second]
+  let fromOne ← queue [first]
+  let (gained, _) ← put fromOne p "OGN-001" .hand
+  let reduced := fromTwo.setZone (.player p .hand) [first]
+  let reduced := settleChain {} 12 reduced
+  let gained := settleChain {} 12 gained
+  return fromTwo.zone .chain != [] && fromOne.zone .chain != [] &&
+    reduced.handN p == 2 && gained.handN p == 2
 
 -- The Arena's Greatest (OGN-290) and Obelisk of Power (OGN-284): in each player's first Beginning
 -- Phase, that player gains 1 point / channels 1 rune; not in the second
