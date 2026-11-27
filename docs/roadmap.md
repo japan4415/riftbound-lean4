@@ -2412,6 +2412,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 敵の Unit がいる場所への Ambush を Rengar, Trophy Hunter に適用する。通常の配置先と Reaction の両方でこの許可を確認する。Dauntless Vanguard の配置先にも敵の Unit が必要になる。[Unleashed 公式訂正](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) [公式総合ルール 822.1.d](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Arachnoid Horror は同じ場所に他の味方 Unit がいない敵を探す。チームメイトもこの配置の許可を使える。敵の Unit に付いた Gear があっても、Unit が一人かどうかの判定は変わらない。[公式総合ルール 740.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### 追加費用、戦闘と開始フェイズ
+
+- Clockwork Keeper は追加の Calm Power を選んで払ったときに引く。Yasuo, Remorseful の誘発は、解決時の自身の Might と所在地、誘発自体の支配者を使う。Lee Sin, Ascetic の Shield は防御中だけ働き、複数の Buff を置ける。[公式総合ルール 359.3.f、814](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Mushroom Pouch は自分が伏せ札を持つ自分の Beginning Phase に引く。Buhru Captain は引く、Buff する、見送るの3通りを選べる。Yordle Explorer は自身の支配者が印刷の Power 費用2以上のカードをプレイすると引く。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

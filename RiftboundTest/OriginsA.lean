@@ -792,6 +792,27 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.damage) == (s2.mightNow y).map Int.toNat && (s2.mightNow y).isSome &&
     (b.obj? e).map (·.damage) == some 4
 
+-- Yasuo's target must still be an enemy Unit here when the trigger resolves (CR 359.3.f.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, yasuo) ← putAt s p "OGN-076" field
+  let (s, foe) ← putAt s q "OGN-116" field
+  let (s, outside) ← put s q "OGN-116" .base
+  let offered := insertTriggers (s.detect [.combatStarted field p]) (below s.pending)
+  let (waiting, _) ← (advance 100 { s with pending := offered } []).toOption
+  let choice ← (legalFrameActions waiting).find? (fun answer => match answer.kind with
+    | .putTrigger _ [target] (.pay ..) => target == foe
+    | _ => false)
+  let (chain, _) ← (step 100 waiting choice).toOption
+  let relocated := settleChain {} 12 (recallFx false chain yasuo).1
+  let newAlly := settleChain {} 12 (chain.modObj foe (fun unit => { unit with controller := p }))
+  let stolenSource := settleChain {} 12 (chain.modObj yasuo (fun unit => { unit with controller := q }))
+  return waiting.trigPicks == [foe] && (relocated.obj? yasuo).any (·.loc.isNone) &&
+    (relocated.obj? foe).any (·.damage == 0) && (newAlly.obj? foe).any (·.damage == 0) &&
+    (stolenSource.obj? foe).any (·.damage == 6) && (stolenSource.obj? outside).any (·.damage == 0)
+
 -- Dune Drake (OGN-131): +2 Might when it attacks, only if a ready enemy unit is here
 #guard t fun s => do
   let (s1, d) ← putAt s s.me "OGN-131" s.bf0
@@ -2572,6 +2593,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire s2 [.phaseStarted s.me .beginning]
   let b ← fire s1 [.phaseStarted s.me .beginning]
   return a.handN s.me == s2.handN s.me + 1 && b.handN s.me == s1.handN s.me
+
+-- A teammate's Hidden card does not give the Pouch's controller the Beginning Phase draw.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let initial := GameState.empty { labState.config with mode := .teamDuel } labState.cards
+  let (s, field) ← putBf initial p "OGN-275"
+  let (s, _) ← put s p "OGN-101" .base
+  let (s, _) ← put s p "OGN-001" .mainDeck
+  let (s, hiddenAlly) ← put s ally "OGN-135" .hidden
+  let s := s.modObj hiddenAlly (fun o => { o with hiddenAt := some field })
+  let (both, ownHidden) ← put s p "OGN-135" .hidden
+  let both := both.modObj ownHidden (fun o => { o with hiddenAt := some field })
+  let onlyAlly ← fire s [.phaseStarted p .beginning]
+  let ownTurn ← fire both [.phaseStarted p .beginning]
+  let allyTurn ← fire both [.phaseStarted ally .beginning]
+  return onlyAlly.handN p == 0 && ownTurn.handN p == 1 && allyTurn.handN p == 0 &&
+    ownTurn.handN ally == 0
 
 -- Sona (OGN-073): ready 4 of my runes at the end of my turn while she is at a battlefield
 #guard t fun s => do
@@ -4932,6 +4971,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (three.addTurnFx s.me .buffsExtraMight).mightNow lee == base.map (· + 6) &&
     (buffObj one lee).2 == [Event.buffed lee] && (buffObj s2 other).2 == [Event.buffed other] &&
     (three.obj? lee).map (fun o => (Object.cleared o).extraBuffs) == some 0
+
+-- Lee Sin's Shield adds Might only while he defends.
+#guard t fun s => do
+  let (s, lee) ← putAt s s.me "OGN-078" s.bf0
+  let might := s.mightNow lee
+  return (s.inCombatAt s.bf0 s.you).mightNow lee == might.map (· + 1) &&
+    (s.inCombatAt s.bf0 s.me).mightNow lee == might
 
 -- Caitlyn, Patrolling (OGN-068): she must be assigned combat damage last; exhaust: deal damage
 -- equal to her Might to a unit at a battlefield, only while she is at a battlefield

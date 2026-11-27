@@ -1190,7 +1190,7 @@ def OGN_044 : CardDef :=
     additionalCost := some ⟨0, [.domain .calm]⟩,
     abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-045
 /--
@@ -2070,7 +2070,7 @@ def OGN_076 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [.targetOf .one .enemy .here [.ofType .unit]]
         (.prim (.deal (.slot 0) (.mightOf .self)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-077
 /--
@@ -2124,7 +2124,7 @@ def OGN_078 : CardDef :=
   { OGN_078.meta with
     abilities := [.passive .always [.anyBuffs],
       .activated [.exhaustSelf] .normal (.of [] (.prim (.buff .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-079
 /--
@@ -2717,9 +2717,9 @@ def OGN_101 : CardDef :=
   { OGN_101.meta with
     abilities := [.triggered
       { event := .at_ .beginning,
-        condition := .cmp .ge (.count (Selector.all .friendly .inHidden [])) (.const 1) }
+        condition := .hasHidden }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-102
 /--

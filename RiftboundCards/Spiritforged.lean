@@ -2693,7 +2693,7 @@ def SFD_091 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [] (.may (.eitherOf (EffectList.ofList
         [.prim (.draw .you (.const 1)), .prim (.buff .self)])))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-092
 /--
@@ -2926,7 +2926,7 @@ def SFD_100 : CardDef :=
     abilities := [.triggered
       { event := .play, subject := Selector.all .you .anywhere [.powerCost .ge (.const 2)] }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-101
 /--
