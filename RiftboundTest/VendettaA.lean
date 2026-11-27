@@ -3178,6 +3178,7 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let paidDone := settleChain {} 12 paid
   let unpaidDone := settleChain {} 12 unpaid
   return paidEvents.contains (.discarded p discarded true) && paidEvents.contains (.played p item) &&
+    paidEvents.idxOf (.discarded p discarded true) < paidEvents.idxOf (.moved zed item (.player p .base)) &&
     (paid.obj? item).any (·.discardPaid) && (paid.locate hand).isNone && (unpaid.locate hand).isSome &&
     paidDone.countNamed p .base "Shadow Clone" == 1 && unpaidDone.countNamed p .base "Shadow Clone" == 0 &&
     paidDone.countIn p .hand "VEN-071" == 1 && unpaidDone.countIn p .hand "VEN-071" == 1
