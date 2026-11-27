@@ -1171,7 +1171,7 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayInspection := do
   let initial := ReplayPosition.fromState (← input.initial db config)
   let schedule := input.observationSchedule
-  let mut pending ← ReplayObservation.checkAt schedule 0 initial.state
+  let mut pending ← ReplayObservation.checkAt schedule 0 initial.state []
   let mut history := [initial]
   let mut checkpoint := 0
   let mut missing := none
@@ -1180,8 +1180,8 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     if let .unknown description := answer then
       missing := some description
       break
-    let (_, next, _) ← input.advance history answer (checkpoint + 1) fuel
-    pending ← ReplayObservation.checkAt pending (checkpoint + 1) next.state
+    let (_, next, events) ← input.advance history answer (checkpoint + 1) fuel
+    pending ← ReplayObservation.checkAt pending (checkpoint + 1) next.state events
     history := next :: history
     checkpoint := checkpoint + 1
     exact := exact && next.answerExact
@@ -1236,7 +1236,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
   let s ← input.initial db config
-  let mut pending ← ReplayObservation.checkAt input.observationSchedule 0 s
+  let mut pending ← ReplayObservation.checkAt input.observationSchedule 0 s []
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
@@ -1244,7 +1244,7 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
     let (action, next, events) ← input.advance history answer (index + 1) fuel
-    pending ← ReplayObservation.checkAt pending (index + 1) next.state
+    pending ← ReplayObservation.checkAt pending (index + 1) next.state events
     exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
     let legacyPlays := if upgradePermanentChoices then

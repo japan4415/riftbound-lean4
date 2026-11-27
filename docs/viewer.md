@@ -160,6 +160,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
 
 - `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。
+- `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。
 
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
 

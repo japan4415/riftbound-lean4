@@ -1280,6 +1280,36 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     command("record", source, archive, error="observation is beyond the last answer")
 
 
+def check_public_events(folder: Path, command: Callable[..., str], saved: dict, view: dict) -> None:
+    inputs = deepcopy(saved["input"])
+    game = inputs["games"][0]
+    opening = next(step for step in view["games"][0]["steps"]
+                   if sum(event["t"] == "drew" for event in step["events"]) == 8)
+    draws = [event["player"] for event in opening["events"] if event["t"] == "drew"]
+    first, second = draws[0], draws[-1]
+    assert first != second and draws == [first] * 4 + [second] * 4
+    observed_draws = [{"drew": {"seat": {"n": first}}}, {"drew": {"seat": {"n": second}}}]
+    fact = {"eventsInOrder": {"events": observed_draws}}
+    game["observations"] = [{"checkpoint": opening["i"], "facts": [fact]}]
+    source = folder / "events-input.json"
+    archive = folder / "events-archive.json"
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", source, archive)) == saved["summary"]
+    assert json.loads(command("verify", archive)) == saved["summary"]
+    assert inspect_game(folder, command, inputs, 1)["checkedObservations"] == 1
+    recorded = json.loads(archive.read_bytes())
+    assert recorded["games"][0]["checkpoints"] == saved["games"][0]["checkpoints"]
+
+    observed_draws.reverse()
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    mismatch = f'checkpoint {opening["i"]}: observation: public events: expected in order'
+    command("record", source, archive, error=mismatch)
+    inspect_game(folder, command, inputs, 1, error=mismatch)
+    fact["eventsInOrder"]["events"] = [observed_draws[-1]] * 5
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error=mismatch)
+
+
 def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, elimination: dict, bo1: dict,
               team_matches: dict[str, tuple[dict, list[int]]], penalties: dict, corrections: dict,
               private_rewinds: dict, timeline_rewinds: dict) -> None:
@@ -1315,6 +1345,7 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     assert view["cardsFullyChecked"] and not any(saved["games"][0]["summary"]["uncheckedCards"])
     check_duel_inspection(folder, command, saved, view)
     check_duel_observations(folder, command, saved, view)
+    check_public_events(folder, command, saved, view)
 
     group_archive = folder / "group-move-archive.json"
     group_archive.write_text(json.dumps(group_move), encoding="utf-8")

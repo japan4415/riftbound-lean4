@@ -36,6 +36,34 @@ structure ReplayObservedUnitAttachments where
   attached : List CardId
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- Public events that can be identified without card faces or engine object IDs. -/
+inductive ReplayPublicEvent where
+  /-- The seat drew one card. -/
+  | drew (seat : PlayerId)
+  /-- The seat discarded one card. -/
+  | discarded (seat : PlayerId)
+  /-- The seat recycled one or more cards. -/
+  | recycled (seat : PlayerId)
+  /-- The seat finalized playing a card. -/
+  | playedCard (seat : PlayerId)
+  /-- The seat played one token. -/
+  | playedToken (seat : PlayerId)
+  /-- The seat burned out. -/
+  | burnedOut (seat : PlayerId)
+  /-- The seat gained the given number of points. -/
+  | pointsGained (seat : PlayerId) (points : Nat)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+private def ReplayPublicEvent.ofEngineEvent : Event → Option ReplayPublicEvent
+  | .drew p => some (.drew p)
+  | .discarded p .. => some (.discarded p)
+  | .recycled p => some (.recycled p)
+  | .played p _ => some (.playedCard p)
+  | .tokenPlayed p _ => some (.playedToken p)
+  | .burnedOut p => some (.burnedOut p)
+  | .pointsGained p n => some (.pointsGained p n)
+  | _ => none
+
 /-- A fact observed at a game checkpoint, expressed without engine-generated object IDs. -/
 inductive ReplayObservationFact where
   /-- The turn number. -/
@@ -68,6 +96,8 @@ inductive ReplayObservationFact where
       (units : List ReplayObservedUnitAttachments)
   /-- The named seat could see these card faces in the zone at this checkpoint. -/
   | visibleZoneContains (viewer : PlayerId) (zone : Zone) (cards : List CardId)
+  /-- These public events occurred in order during the answer that reached this checkpoint. -/
+  | eventsInOrder (events : List ReplayPublicEvent)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Facts from a source such as a scoreboard, video frame or independent game log. -/
@@ -147,7 +177,7 @@ private def ReplayObservedUnitAttachments.sorted (group : ReplayObservedUnitAtta
     ReplayObservedUnitAttachments :=
   { group with attached := group.attached.mergeSort (fun a b => a.code ≤ b.code) }
 
-private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState) :
+private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState) (events : List Event) :
     Except String Unit := do
   match fact with
   | .turn number => checkFactValue "turn" number s.turn
@@ -191,6 +221,10 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     observeSeat s viewer
     let visible := (← observeZone s zone (some viewer)).filterMap id
     checkCardSet s!"{zoneLabel zone} faces visible to seat {viewer.n}" cards visible true
+  | .eventsInOrder expected =>
+    let actual := events.filterMap ReplayPublicEvent.ofEngineEvent
+    unless decide (expected.Sublist actual) do
+      throw s!"public events: expected in order {(toJson expected).compress}, replayed {(toJson actual).compress}"
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
     match expected, s.result with
@@ -201,11 +235,11 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
 
 /-- Validate the observations at this position and advance an ordered observation schedule. -/
 def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : Nat)
-    (s : GameState) : Except String (List ReplayObservation) := do
+    (s : GameState) (events : List Event := []) : Except String (List ReplayObservation) := do
   let (observed, pending) := schedule.span (fun observation => observation.checkpoint == checkpoint)
   for observation in observed do
     let source := observation.source?.map (fun label => s!" ({(toJson label).compress})") |>.getD ""
-    let check := observation.facts.forM (fun fact => fact.check s)
+    let check := observation.facts.forM (fun fact => fact.check s events)
     check.mapError (fun error => s!"checkpoint {checkpoint}: observation{source}: {error}")
   return pending
 
