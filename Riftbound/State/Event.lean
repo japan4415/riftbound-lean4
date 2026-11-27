@@ -76,6 +76,8 @@ inductive Event where
   | phaseStarted (p : PlayerId) (ph : Phase)
   /-- An object was stunned (CR 424). -/
   | stunned (target : ObjId)
+  /-- This player stunned the object (CR 412.4, 424). -/
+  | stunnedBy (target : ObjId) (player : PlayerId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
   /-- This player buffed the object (CR 412.4, 702.2.a). -/

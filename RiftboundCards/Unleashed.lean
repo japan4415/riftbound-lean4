@@ -1657,9 +1657,11 @@ def UNL_055.meta : CardDef :=
 def UNL_055 : CardDef :=
   { UNL_055.meta with
     abilities := [.triggered
-      { event := .stun, subject := Selector.all .enemy .anywhere [.ofType .unit, .onBattlefield] }
-      (.of [] (.may (.prim (.move .self (.at_ (.slot 0)))))) .unlimited],
-    status := .drafted }
+      { event := .stunByYou, subject := Selector.all .enemy .anywhere [.ofType .unit, .onBattlefield],
+        optional := true }
+      (.of [] (.prim (.move .self (.at_
+        (.all .any .atBattlefield [.ofType .battlefield, .atEventBattlefield none]))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-056
 /--

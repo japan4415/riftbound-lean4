@@ -91,6 +91,8 @@ inductive ReplayPublicEvent where
   | playedToken (seat : PlayerId)
   /-- This seat added a Buff to a Unit. -/
   | buffedUnit (seat : PlayerId)
+  /-- This seat Stunned a Unit. -/
+  | stunnedUnit (seat : PlayerId)
   /-- The seat burned out. -/
   | burnedOut (seat : PlayerId)
   /-- The seat gained the given number of points. -/
@@ -104,6 +106,7 @@ private def ReplayPublicEvent.ofEngineEvent : Event → Option ReplayPublicEvent
   | .played p _ => some (.playedCard p)
   | .tokenPlayed p _ => some (.playedToken p)
   | .buffedBy _ p => some (.buffedUnit p)
+  | .stunnedBy _ p => some (.stunnedUnit p)
   | .burnedOut p => some (.burnedOut p)
   | .pointsGained p n => some (.pointsGained p n)
   | _ => none

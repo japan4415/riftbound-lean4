@@ -1585,10 +1585,10 @@ def OGN_059.meta : CardDef :=
 def OGN_059 : CardDef :=
   { OGN_059.meta with
     abilities := [.triggered
-      { event := .stun, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+      { event := .stunByYou, subject := Selector.all .enemy .anywhere [.ofType .unit] }
       (.of [] (.seqOf [.prim (.ready .self), .grant .self (.mightPlus .it (.const 1)) .thisTurn]))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-060
 /--

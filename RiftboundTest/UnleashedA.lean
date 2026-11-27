@@ -1002,6 +1002,36 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   return held.xpOf p == s.xpOf p + 1 && conquered.xpOf p == s.xpOf p + 1 &&
     held.xpOf s.you == s.xpOf s.you && conquered.xpOf s.you == s.xpOf s.you
 
+-- Vex offers the optional trigger for her controller's Stun and remembers its Battlefield.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, field) ← putBf (unleashedTeamMain labState) foe "OGN-275"
+  let (s, vex) ← put s p "UNL-055" .base
+  let (s, enemy) ← putAt (s.control foe field) foe "OGN-136" field
+  let (s, homeEnemy) ← put s foe "OGN-136" .base
+  let applyStun (state : GameState) (seat : PlayerId) (unit : ObjId) :=
+    applyPrim state seat vex { slots := [.obj unit] } (.stun (.slot 0))
+  let (stunned, events) ← applyStun s p enemy
+  let (allied, allyEvents) ← applyStun s mate enemy
+  let (atHome, homeEvents) ← applyStun s p homeEnemy
+  let (still, repeated) ← applyStun stunned p enemy
+  let [trigger] := stunned.detect events | none
+  let departed := (moveByEffect foe none (stunned.withTriggers events) enemy).1
+  let (offered, _) ← (advance 100 departed []).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (queued, _) ← (step 100 offered accept).toOption
+  let (skipped, _) ← (step 100 offered decline).toOption
+  let moved := settleChain {} 16 queued
+  return events == [.stunnedBy enemy p] && trigger.source == vex &&
+    trigger.eventBattlefields == some [field] && (allied.detect allyEvents).isEmpty &&
+    (atHome.detect homeEvents).isEmpty && repeated.isEmpty && still.hereOf enemy == some field &&
+    (legalFrameActions offered).contains accept && (legalFrameActions offered).contains decline &&
+    moved.hereOf vex == some field && moved.hereOf enemy == none &&
+    skipped.hereOf vex == none && moved.hasKw vex .tank && moved.kwAmount vex .shield == 1
+
 -- Yuumi's combat trigger chooses another Unit of her own controller at that Battlefield.
 #guard tun fun labState => do
   let p : PlayerId := ⟨0⟩

@@ -389,6 +389,8 @@ structure ReplayCheckpoint where
   playStamps? : Option (List (Option Nat)) := none
   /-- Zero-based event positions and the seats responsible for recorded buffs. -/
   buffAttributions? : Option (List (Nat × PlayerId)) := none
+  /-- Zero-based event positions and the seats responsible for recorded stuns. -/
+  stunAttributions? : Option (List (Nat × PlayerId)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -634,15 +636,23 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
     match event with
     | .buffedBy _ p => some (index, p)
     | _ => none
+  let stuns := events.zipIdx.filterMap fun (event, index) =>
+    match event with
+    | .stunnedBy _ p => some (index, p)
+    | _ => none
   { state := toString (hash (reprStr legacy))
-    events := events.map (fun | .buffedBy id _ => .buffed id | event => event)
+    events := events.map fun
+      | .buffedBy id _ => .buffed id
+      | .stunnedBy id _ => .stunned id
+      | event => event
     chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n)))
     damageMarks? := some (s.damageMarks.toList.map (fun (id, marks) =>
       (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount)))))
     playEnergy? := some (s.playLog.map (·.energyPaid))
     playPhysical? := some (s.playLog.map (fun play => play.physical.map PhysId.n))
     playStamps? := some (s.playLog.map (·.stamp))
-    buffAttributions? := some buffs }
+    buffAttributions? := some buffs
+    stunAttributions? := if stuns.isEmpty then none else some stuns }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1300,6 +1310,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
       throw s!"checkpoint {index}: play finalization timestamps differ"
     if witness.buffAttributions?.any (fun buffs => actual.buffAttributions? != some buffs) then
       throw s!"checkpoint {index}: buff responsibilities differ"
+    if witness.stunAttributions?.any (fun stuns => actual.stunAttributions?.getD [] != stuns) then
+      throw s!"checkpoint {index}: stun responsibilities differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint))

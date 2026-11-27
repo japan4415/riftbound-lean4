@@ -167,7 +167,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。
 - `chainOrder` の `items` には、Chain の一番上から順に全項目を入れる。Spell は `{"spell":{"controller":{"n":0},"card":{"code":"SFD-087"}}}`、能力は `{"ability":{"controller":{"n":1},"source":{"code":"SFD-046"}}}` とする。能力の発生元が盤面を離れた後も照合できる。
 - `hiddenAt` は、`seat` の伏せ札のうち、`owner` が持ち込んだコード `field` の Battlefield にある枚数 `count` を照合する。公開された伏せ札の位置と枚数から記録できる。
-- `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`buffedUnit`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。
+- `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`buffedUnit`、`stunnedUnit`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。
 
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
 
@@ -188,7 +188,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 `playStamps` は同じ履歴順に、プレイを確定した時点の内部タイムスタンプを照合する。「次にプレイするカード」に効く効果がどのプレイまで有効だったかを確認できる。
 
-`buffAttributions` は、Buff を実行した席と、その入力で発行されたイベント列における0始まりの位置を照合する。旧アーカイブも元の Buff イベントを使って再照合できる。
+`buffAttributions` は、Buff を実行した席と、その入力で発行されたイベント列における0始まりの位置を照合する。旧アーカイブも元の Buff イベントを使って再照合できる。 `stunAttributions` は同じ形式で Stun の実行席を照合する。
 
 再生内容が変わった場合は、最初に差が出たゲーム番号と手番号が分かる。保存形式やルールの版が異なる場合は、記録時に使った実行ファイルで照合する。
 

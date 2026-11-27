@@ -2382,6 +2382,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Yuumi, Magical Cat が攻撃または防御するときは、同じ Battlefield にいる自身の支配者の別の Unit に +3 Might と Tank をターン終了まで与える。Lillia, Protector of Dreams の Tank とトークンのプレイも自身の支配者のものに限る。Master Yi, Unstoppable は到達した最も高い段階の費用軽減を使い、XP 16 で敵から選ばれなくなる。Downstage Dramatics は Reaction で割り込み、Repeat を払うと2枚引く。4枚を確認し、全1,103枚中704枚を `full` とした。
 
+### Stun を行った席
+
+- Eclipse Herald と Vex, Mocking は、自身の支配者が敵の Unit を Stun したときに誘発する。Vex の選択は誘発を確定する時点で行い、Stun された Unit が移動しても、その時点の Battlefield を移動先として使う。リプレイでは Stun を行った席を記録する。2枚を確認し、全1,103枚中706枚を `full` とした。[公式総合ルール 383.3.a、412.4、424](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

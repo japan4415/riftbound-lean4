@@ -1094,16 +1094,22 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? ha).map (·.buffed) == some false && a.handN s.me == s2.handN s.me - 1 &&
     (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s3.handN s.me - 1
 
--- Eclipse Herald (OGN-059) and Radiant Dawn (OGN-261): when an enemy unit is stunned
+-- Eclipse Herald readies and gains Might when its controller is the seat stunning the enemy.
 #guard t fun s => do
   let (s1, h) ← put s s.me "OGN-059" .base
   let (s2, c) ← put s1 s.me "OGN-225" .hand
   let (s3, e) ← put s2 s.you "OGN-001" .base
   let (s4, f) ← put s3 s.me "OGN-001" .base
   let a ← play (s4.tire h) s.me c [] { pick := fun ts => ts.contains e }
-  let b ← fire (s4.tire h) [.stunned f]
+  let b ← fire (s4.tire h) [.stunnedBy f s.me]
+  let opposing ← fire (s4.tire h) [.stunnedBy e s.you]
+  let (expired, _) ← microStep { a with pending := [.expireTurn] }
   return a.tired h == some false && a.mightNow h == (s4.mightNow h).map (· + 1) &&
-    b.tired h == some true && b.mightNow h == s4.mightNow h
+    b.tired h == some true && b.mightNow h == s4.mightNow h &&
+    opposing.tired h == some true && opposing.mightNow h == s4.mightNow h &&
+    expired.mightNow h == s4.mightNow h
+
+-- Radiant Dawn grants a Buff to a friendly Unit following the enemy's Stun.
 #guard t fun s => do
   let (s1, _) ← put s s.me "OGN-261" .legendZone
   let (s2, c) ← put s1 s.me "OGN-225" .hand

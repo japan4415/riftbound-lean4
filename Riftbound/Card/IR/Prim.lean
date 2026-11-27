@@ -325,6 +325,8 @@ inductive TriggerEvent where
   | discard
   /-- The object is stunned. -/
   | stun
+  /-- The ability's controller stunned the subject (CR 412.4). -/
+  | stunByYou
   /-- The object becomes exhausted while on the Board (CR 415). -/
   | exhaust
   /-- This ability's controller exhausts at least this many friendly Units at once (CR 415). -/

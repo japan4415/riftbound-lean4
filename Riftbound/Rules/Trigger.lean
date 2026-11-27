@@ -754,6 +754,15 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o => triggersOf s u o.controller .stun ++ watchersOf s u o.controller .stun
     | none => []
+  | .stunnedBy u actor =>
+    match s.obj? u with
+    | some o =>
+      let fields := some o.loc.toList
+      let self := if actor == o.controller then triggersOf s u o.controller .stunByYou fields else []
+      let watched := (watchersOf s u o.controller .stunByYou).filter (·.controller == actor)
+      triggersOf s u o.controller .stun ++ watchersOf s u o.controller .stun ++
+        self ++ watched.map (fun trigger => { trigger with eventBattlefields := fields })
+    | none => []
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>

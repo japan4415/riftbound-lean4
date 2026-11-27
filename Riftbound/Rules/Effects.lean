@@ -243,15 +243,17 @@ theorem replaceChosenHarm_safe (env : Env) {apply : GameState → ObjId → Game
   · exact h s id
 
 /-- An already stunned object produces no new stun event or replacement (CR 424, 370). -/
-def stunObj (s : GameState) (id : ObjId) (env : Env := {}) : GameState × List Event :=
+def stunObj (s : GameState) (id : ObjId) (env : Env := {})
+    (actor : Option PlayerId := none) : GameState × List Event :=
   if (s.obj? id).any (! ·.stunned) then
     replaceChosenHarm env (fun t target =>
-      (t.modObj target (fun o => { o with stunned := true }), [Event.stunned target])) s id
+      let event := actor.elim (Event.stunned target) (Event.stunnedBy target)
+      (t.modObj target (fun o => { o with stunned := true }), [event])) s id
   else (s, [])
 
 /-- Stunning is a safe change. -/
-theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {}) :
-    Safe s (stunObj s id env).1 := by
+theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {})
+    (actor : Option PlayerId := none) : Safe s (stunObj s id env actor).1 := by
   unfold stunObj
   split
   · exact replaceChosenHarm_safe env (fun t target =>
@@ -3819,7 +3821,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     | some (x :: _), some (y :: _) =>
       some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p)) (some p)))
     | _, _ => none
-  | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env)
+  | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env (some p))
   | .buff sel => onSelected s p src env sel (fun t id => buffObj t id (some p))
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
@@ -4047,7 +4049,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
             show Safe s r0.1
             exact onSelected_safe (fun t u => moveByEffect_safe _ _ t u p) hr0
           · simp at h
-  | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env) h
+  | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env (some p)) h
   | detach sel => exact onSelected_safe detachObj_safe h
   | double sel => exact onSelected_safe doubleObj_safe h
   | grantActivation sel grant => exact onSelected_safe (grantActivationObj_safe grant) h
