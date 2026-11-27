@@ -1041,9 +1041,9 @@ theorem saveUnitCore_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u 
   have hwf2 : ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).WF :=
     GameState.wf_modObj hwf1 _ _
   have h3 := sendHome_pot_le hwf2 hu2
-  unfold saveUnitCore recallFx
-  dsimp only
-  simp only [if_true, setExhausted_pot]
+  change (setExhausted true
+    (sendHome ((killObj s g).1.modObj u (fun o => { o with damage := 0 })) u).1 u).1.pot < s.pot
+  rw [setExhausted_pot]
   omega
 
 /-- Saving a unit with no Equipment to die instead (Soraka), healing, exhausting and recalling it
@@ -1064,9 +1064,8 @@ theorem saveUnitCore_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       cases ho
       exact hc o' h1
   have h3 := sendHome_pot_lt hwf2 hb2 hc2
-  unfold saveUnitCore recallFx
-  dsimp only
-  simp only [if_true, setExhausted_pot]
+  change (setExhausted true (sendHome (s.modObj u healObj) u).1 u).1.pot < s.pot
+  rw [setExhausted_pot]
   rw [pot_modObj] at h3
   exact h3
 
