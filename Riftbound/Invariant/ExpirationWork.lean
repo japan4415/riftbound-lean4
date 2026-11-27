@@ -1058,41 +1058,6 @@ private theorem cleanup_cycle_routes (s : GameState) (rest : List Frame) (wf : s
           exact ⟨by simpa only [suffix.noPriority (s := s), idle] using suffix,
             Or.inr (Or.inr (by simp only [suffix.noPriority (s := s), idle]))⟩
 
-private theorem linkedCleanup_withTriggers_pending (s : GameState) :
-    (s.withTriggers [.linkedDamageCleanupDone]).pending = s.pending := by
-  have noScore : s.eventWinner [.linkedDamageCleanupDone] = none := by
-    rw [eventWinner_of_noWin s _ rfl]
-    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
-  have noDelay : s.delayedPlayTriggers [.linkedDamageCleanupDone] = [] := by
-    unfold GameState.delayedPlayTriggers
-    split
-    · rfl
-    · apply List.flatMap_eq_nil_iff.mpr
-      intro note _
-      split
-      · simp [GameState.matchesDelayedPlay]
-      · rfl
-  let recorded := s.recordTurnEvents [.linkedDamageCleanupDone]
-  have plays : recorded.playLog = s.playLog := by
-    simp [recorded, GameState.recordTurnEvents, GameState.recordPlayEvent]
-  have first : recorded.cardResolutionTriggers s = [] := by simp [GameState.cardResolutionTriggers, plays]
-  have detect : recorded.detect [.linkedDamageCleanupDone] [] (some s.turnFx) = [] := by
-    have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
-      List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
-    simp [GameState.detect, GameState.deathGroupWatchers, GameState.stunGroupWatchers, GameState.trimLimits,
-      GameState.firstSpellFieldTriggers, detectOne, empty]
-  unfold GameState.withTriggers
-  rw [noScore]
-  change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
-      (recorded.cardResolutionTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone] ++
-        s.delayedDamageTriggers [.linkedDamageCleanupDone])
-      (some s.turnFx) with
-      | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })
-    else recorded).pending = s.pending
-  have noDamage : s.delayedDamageTriggers [.linkedDamageCleanupDone] = [] := rfl
-  simp only [first, noDelay, noDamage, List.nil_append, detect, ite_self]
-  rfl
-
 private theorem settled_cleanup_pending (s : GameState) (rest : List Frame) (wf : s.WF)
     (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest) :
     let raw := { s with pending := rest }
@@ -1123,7 +1088,8 @@ private theorem settled_cleanup_pending (s : GameState) (rest : List Frame) (wf 
   · rw [withTriggers_nil]
   · rw [withTriggers_nil]
   · split
-    · exact linkedCleanup_withTriggers_pending raw
+    · rw [linkedCleanup_withTriggers_recorded raw]
+      rfl
     · rw [withTriggers_nil]
   · rw [withTriggers_nil]
 

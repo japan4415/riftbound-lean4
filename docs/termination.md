@@ -234,7 +234,9 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 ### 3ad. 最後の Cleanup から通常の優先権へ
 
-盤面が Cleanup の不動点に達しているとき、先頭の Cleanup を取り除いてもその条件を保つ。常在効果で致死判定や勝利に必要な点数が変わる場合も、登録カードで使う読み取り条件を確認する。次が通常の優先権だけで、Showdown の開始も連動ダメージの終了通知も残っていなければ、`advance` は1ステップで優先権を返す。Main に入った直後にこの条件が成り立てば、Main 開始のイベントを保ったまま合計2ステップで優先権に着く。盤面が不動点に達する前や、通知によって追加の処理が生じる経路の一般証明は残る。[ObservedCleanupWork.lean](../Riftbound/Invariant/ObservedCleanupWork.lean) [TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
+盤面が Cleanup の不動点に達していて、残りが通常の優先権一つで Showdown を開かない場合、`advance` は1ステップで優先権を返す。連動ダメージの終了通知は履歴を更新する。登録カードで使う読み取り条件の範囲では、その更新で致死判定や勝利に必要な点数が変わらず、Cleanup の不動点を保つ。[ObservedCleanupWork.lean](../Riftbound/Invariant/ObservedCleanupWork.lean)
+
+`advance_main_to_preparedDecision` は、標準の Main の開始時点から、実際の `advance` がイベント列を返して成功するだけの fuel が存在することを示す。開始時に盤面処理が残っていても、Cleanup と即時 Add を経て、確認済みの通常の優先権、Showdown、誘発などの入力、または試合終了で止まる。Main の直後に盤面が整い、追加の処理が発生しない場合には、開始イベントを保ったまま2ステップで優先権に着く。[TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
 
 ## 4. 進め方の案（単位に分ける）
 

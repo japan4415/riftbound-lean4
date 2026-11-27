@@ -21,17 +21,98 @@ private theorem find?_agree {α : Type} (items : List α) (first second : α →
     simp only [List.find?_cons, agree x List.mem_cons_self,
       ih (fun y member => agree y (List.mem_cons_of_mem _ member))]
 
+/-- Finishing linked damage updates the history without adding an ability to the stack. -/
+theorem linkedCleanup_withTriggers_recorded (s : GameState) :
+    s.withTriggers [.linkedDamageCleanupDone] = s.recordTurnEvents [.linkedDamageCleanupDone] := by
+  have noScore : s.eventWinner [.linkedDamageCleanupDone] = none := by
+    rw [eventWinner_of_noWin s _ rfl]
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
+  have noDelay : s.delayedPlayTriggers [.linkedDamageCleanupDone] = [] := by
+    unfold GameState.delayedPlayTriggers
+    split
+    · rfl
+    · apply List.flatMap_eq_nil_iff.mpr
+      intro note _
+      split
+      · simp [GameState.matchesDelayedPlay]
+      · rfl
+  let recorded := s.recordTurnEvents [.linkedDamageCleanupDone]
+  have plays : recorded.playLog = s.playLog := by
+    simp [recorded, GameState.recordTurnEvents, GameState.recordPlayEvent]
+  have first : recorded.cardResolutionTriggers s = [] := by simp [GameState.cardResolutionTriggers, plays]
+  have detect : recorded.detect [.linkedDamageCleanupDone] [] (some s.turnFx) = [] := by
+    have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
+      List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
+    simp [GameState.detect, GameState.deathGroupWatchers, GameState.stunGroupWatchers, GameState.trimLimits,
+      GameState.firstSpellFieldTriggers, detectOne, empty]
+  unfold GameState.withTriggers
+  rw [noScore]
+  change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
+      (recorded.cardResolutionTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone] ++
+        s.delayedDamageTriggers [.linkedDamageCleanupDone])
+      (some s.turnFx) with
+      | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })
+    else recorded) = recorded
+  have noDamage : s.delayedDamageTriggers [.linkedDamageCleanupDone] = [] := rfl
+  simp only [first, noDelay, noDamage, List.nil_append, detect, ite_self]
+
+private def linkedDamageNote (note : TurnFx) : Bool :=
+  match note.kind with
+  | .linkedDamageDeath .. => true
+  | _ => false
+
+private def keepAfterLinkedDamage (note : TurnFx) : Bool :=
+  match note.kind with
+  | .linkedDamageDeath .. => false
+  | _ => true
+
+private theorem filter_withoutLinkedDamage (s : GameState) (test : TurnFx → Bool)
+    (ignores : ∀ note, linkedDamageNote note = true → test note = false) :
+    (s.turnFx.filter keepAfterLinkedDamage).filter test = s.turnFx.filter test := by
+  rw [List.filter_filter]
+  apply List.filter_congr
+  intro note _
+  have complement : keepAfterLinkedDamage note = !linkedDamageNote note := by
+    cases kind : note.kind <;> simp [keepAfterLinkedDamage, linkedDamageNote, kind]
+  rw [complement]
+  cases linked : linkedDamageNote note
+  · simp
+  · simp [ignores note linked]
+
+private theorem withoutLinkedDamage_reads (s : GameState) :
+    SameMightReads s { s with turnFx := s.turnFx.filter keepAfterLinkedDamage } := by
+  let next := { s with turnFx := s.turnFx.filter keepAfterLinkedDamage }
+  have buffs (p : PlayerId) :
+      (next.fxOf p).filter (· == .buffsExtraMight) = (s.fxOf p).filter (· == .buffsExtraMight) := by
+    rw [buffEffects, buffEffects]
+    apply congrArg (List.map TurnFx.kind)
+    apply filter_withoutLinkedDamage
+    intro note linked
+    cases kind : note.kind <;> simp_all [linkedDamageNote]
+  have bonus : next.buffBonus = s.buffBonus := by
+    funext id
+    have lookup : next.obj? id = s.obj? id := rfl
+    simp only [GameState.buffBonus, lookup, buffs]
+  have facts : next.turnFx.filter (fun note => note.kind.isMightReadFact) =
+      s.turnFx.filter (fun note => note.kind.isMightReadFact) := by
+    apply filter_withoutLinkedDamage
+    intro note linked
+    cases kind : note.kind <;> simp_all [linkedDamageNote, TurnEffect.isMightReadFact]
+  exact { SameMightReads.refl s with buffBonus := bonus, turnFacts := facts }
+
 /-- Removing the active Cleanup frame does not make the board unsettled. In particular it
 preserves the lethal test for each unit, including previously attributed damage. -/
-theorem GameState.Settled.pop_cleanup {s : GameState} {rest : List Frame} (settled : s.Settled)
-    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest) :
-    ({ s with pending := rest } : GameState).Settled := by
-  let next := { s with pending := rest }
+private theorem GameState.Settled.pop_cleanup_core {s : GameState} {rest : List Frame}
+    (settled : s.Settled) (wf : s.WF) (database : MightRead.database s.cards)
+    (pending : s.pending = .cleanup :: rest) (notes : List TurnFx)
+    (facts : SameMightReads s { s with turnFx := notes }) :
+    ({ s with pending := rest, turnFx := notes } : GameState).Settled := by
+  let next := { s with pending := rest, turnFx := notes }
   have combat : next.combatNow = s.combatNow := by
     unfold GameState.combatNow
     rw [pending]
     rfl
-  have reads : SameMightReads s next := (SameMightReads.refl s).replacePending rest combat
+  have reads : SameMightReads s next := facts.replacePending rest combat
   have fights (field : ObjId) : next.fightingAt field = s.fightingAt field := by
     unfold GameState.fightingAt
     rw [pending]
@@ -133,14 +214,19 @@ theorem GameState.Settled.pop_cleanup {s : GameState} {rest : List Frame} (settl
   change cleanupStep next = none
   simp [cleanupStep, token, detached, legend, step0]
 
-/-- When a settled Cleanup has no Showdown or linked-damage notification to dispatch, it
-returns to neutral priority in one work step without preparation scheduling another Cleanup. -/
-theorem advance_settledCleanup_to_priority {s : GameState} {p : PlayerId} {seen : List Event} (wf : s.WF)
+/-- Taking a Cleanup frame off a settled board preserves its fixed point. -/
+theorem GameState.Settled.pop_cleanup {s : GameState} {rest : List Frame} (settled : s.Settled)
+    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest) :
+    ({ s with pending := rest } : GameState).Settled :=
+  settled.pop_cleanup_core wf database pending s.turnFx (SameMightReads.refl s)
+
+private theorem settledCleanup_priority_step {s : GameState} {p : PlayerId} (wf : s.WF)
     (database : MightRead.database s.cards) (pending : s.pending = [.cleanup, .priority p])
-    (settled : s.Settled) (noShowdown : s.stagedShowdowns [.priority p] = [])
-    (noLinks : s.turnFx.any (fun f => match f.kind with
-      | .linkedDamageDeath .. => true | _ => false) = false) :
-    advance 1 s seen = .ok ({ s with pending := [.priority p] }, seen) := by
+    (settled : s.Settled) (noShowdown : s.stagedShowdowns [.priority p] = []) :
+    let raw := { s with pending := [.priority p] }
+    let next := raw.withTriggers (s.workTransitionEvents raw)
+    workStep s = some (next, []) ∧ next.pending = [.priority p] ∧ next.Settled ∧
+      (s.turnFx.any linkedDamageNote = false → next = raw) := by
   let next := { s with pending := [.priority p] }
   have deathGroup : cleanupDeathGroup s = [] := by
     unfold cleanupDeathGroup
@@ -181,39 +267,81 @@ theorem advance_settledCleanup_to_priority {s : GameState} {p : PlayerId} {seen 
     dsimp only
     rw [empty]
     rfl
-  have notices : s.workTransitionEvents next = [] := by
-    simp [GameState.workTransitionEvents, pending, next, noExhaust, mighty, GameState.mightReductionEvents]
-    intro note member
-    have absent := (List.any_eq_false.mp noLinks) note member
-    cases kind : note.kind <;> simp_all
-  have work : workStep s = some (next, []) := by
-    simp only [workStep, pending, microStep, microStep0, raw, Option.map_some,
-      List.nil_append, notices, withTriggers_nil]
-  have ready : next.Settled := settled.pop_cleanup wf database pending
-  have prepared : next.preparePriority = next := by
-    have nextStack : next.pending = [.priority p] := rfl
-    simp [GameState.preparePriority, nextStack, ready.1, ready.2]
-  have stop : next.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
-    rw [prepared]
+  have notices : s.workTransitionEvents next =
+      (if s.turnFx.any linkedDamageNote then [.linkedDamageCleanupDone] else []) := by
+    simp [GameState.workTransitionEvents, pending, next, noExhaust, mighty,
+      GameState.mightReductionEvents, linkedDamageNote] <;> rfl
+  refine ⟨?_, ?_⟩
+  · simp only [workStep, pending, microStep, microStep0, raw, Option.map_some, List.nil_append]
     rfl
+  · change (next.withTriggers (s.workTransitionEvents next)).pending = [.priority p] ∧
+      (next.withTriggers (s.workTransitionEvents next)).Settled ∧
+      (s.turnFx.any linkedDamageNote = false → next.withTriggers (s.workTransitionEvents next) = next)
+    rw [notices]
+    cases links : s.turnFx.any linkedDamageNote
+    · simp only [Bool.false_eq_true, ↓reduceIte, withTriggers_nil]
+      exact ⟨rfl, settled.pop_cleanup wf database pending, fun _ => trivial⟩
+    · simp only [↓reduceIte, linkedCleanup_withTriggers_recorded]
+      refine ⟨rfl, ?_, by simp⟩
+      have recorded : next.recordTurnEvents [.linkedDamageCleanupDone] =
+          (if s.phase == .setup then next
+           else { next with turnFx := s.turnFx.filter keepAfterLinkedDamage }) := by
+        cases phase : s.phase <;>
+          simp [GameState.recordTurnEvents, GameState.recordPlayEvent, GameState.recordTurnEvent,
+            next, phase, Frame.isSetup] <;> rfl
+      rw [recorded]
+      split
+      · exact settled.pop_cleanup wf database pending
+      · exact settled.pop_cleanup_core wf database pending _ (withoutLinkedDamage_reads s)
+
+private theorem preparedPriority_of_settled {s : GameState} {p : PlayerId} {rest : List Frame}
+    (stack : s.pending = .priority p :: rest) (settled : s.Settled) :
+    s.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  simp [GameState.preparePriority, stack, settled.1, settled.2, Frame.isWork]
+
+/-- When a settled Cleanup has no Showdown to open, it returns to prepared neutral priority
+in one work step, including when it clears linked-damage notes. -/
+theorem advance_settledCleanup_to_preparedPriority {s : GameState} {p : PlayerId} (wf : s.WF)
+    (database : MightRead.database s.cards) (pending : s.pending = [.cleanup, .priority p])
+    (settled : s.Settled) (noShowdown : s.stagedShowdowns [.priority p] = []) :
+    ∃ t, AdvancePrefix s t 1 [] ∧ t.pending = [.priority p] ∧ t.Settled := by
+  obtain ⟨work, stack, ready, _⟩ := settledCleanup_priority_step wf database pending settled noShowdown
+  refine ⟨_, ?_, stack, ready⟩
+  exact (show AdvancePrefix _ _ 0 [] from fun fuel before => by simp).prepend pending rfl work
+
+/-- Without a linked-damage notification the only change when returning to neutral priority
+is the removal of the settled Cleanup frame. -/
+theorem advance_settledCleanup_to_priority {s : GameState} {p : PlayerId} {seen : List Event} (wf : s.WF)
+    (database : MightRead.database s.cards) (pending : s.pending = [.cleanup, .priority p])
+    (settled : s.Settled) (noShowdown : s.stagedShowdowns [.priority p] = [])
+    (noLinks : s.turnFx.any (fun f => match f.kind with
+      | .linkedDamageDeath .. => true | _ => false) = false) :
+    advance 1 s seen = .ok ({ s with pending := [.priority p] }, seen) := by
+  obtain ⟨work, _, _, unchanged⟩ := settledCleanup_priority_step wf database pending settled noShowdown
+  rw [unchanged noLinks] at work
+  let next := { s with pending := [.priority p] }
   have zero : AdvancePrefix next next 0 [] := by intro fuel before; simp
+  have stop := preparedPriority_of_settled (s := next) (p := p) rfl
+    (settled.pop_cleanup wf database pending)
   simpa only [List.append_nil] using (zero.prepend pending rfl work).finish stop seen
 
 private theorem cleanupFrame_route (s : GameState) (rest : List Frame) (wf : s.WF)
     (pending : s.pending = .cleanup :: rest) :
     let raw := (cleanupFrame s rest).1
-    raw.pending.head?.all (fun f => !f.isWork) = true ∨ raw.pending = rest ∨
+    (raw.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ p tail, raw.pending ≠ .priority p :: tail)) ∨
+      (raw.pending = rest ∧ s.Settled ∧ s.stagedShowdowns rest = []) ∨
       (raw.pending = .cleanup :: rest ∧ MeasLt raw.cleanupMeasure s.cleanupMeasure) := by
   have reinstall (t : GameState) (safe : Safe s t) : { t with pending := .cleanup :: rest } = t := by
     rw [← safe.same.pending.trans pending]
   unfold cleanupFrame
   cases winner : s.winner with
-  | some p => exact Or.inl rfl
+  | some p => exact Or.inl ⟨rfl, by intro q tail equality; cases equality⟩
   | none =>
     cases choice : cleanupDeathBanishChoice s with
     | some r =>
       obtain ⟨src, player, first, other⟩ := r
-      exact Or.inl rfl
+      exact Or.inl ⟨rfl, by intro q tail equality; cases equality⟩
     | none =>
       cases group : cleanupResolveDeathGroup s with
       | some r =>
@@ -231,21 +359,35 @@ private theorem cleanupFrame_route (s : GameState) (rest : List Frame) (wf : s.W
           exact cleanupStep_lt wf one
         | none =>
           cases staged : s.stagedShowdowns rest with
-          | nil => exact Or.inr (Or.inl rfl)
+          | nil => exact Or.inr (Or.inl ⟨rfl, ⟨winner, one⟩, rfl⟩)
           | cons entry more =>
             obtain ⟨bf, player⟩ := entry
             dsimp only
-            split <;> exact Or.inl rfl
+            split <;> exact Or.inl ⟨rfl, by intro q tail equality; cases equality⟩
 
-/-- Resolve Cleanup and every immediate Add it detects, including when it opens a decision.
-Ordinary triggers waiting behind Cleanup stay in the continuation tracked by `keeps`. -/
-theorem advance_cleanup_with_adds {s : GameState} {rest : List Frame} (wf : s.WF)
+private theorem insertTriggers_ne_singletonPriority (queue : List PendTrigger) (frames : List Frame)
+    (p : PlayerId) : insertTriggers queue frames ≠ [.priority p] := by
+  cases frames with
+  | nil => simp [insertTriggers]
+  | cons frame tail =>
+    unfold insertTriggers
+    split
+    · rename_i resolution
+      intro h
+      rw [List.cons.injEq] at h
+      rw [h.1] at resolution
+      cases resolution
+    · split <;> simp
+
+/-- Resolve Cleanup and its immediate Adds. If the continuation is a single neutral
+priority frame, the dispatcher reaches it only after preparing the board. -/
+theorem advance_cleanup_with_adds_prepared {s : GameState} {rest : List Frame} (wf : s.WF)
     (reads : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest)
     (keeps : List Frame → Prop) (base : keeps rest)
     (insertion : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      (t.pending.head?.all (fun f => !f.isWork) = true ∨
-        (keeps t.pending ∧ t.WF ∧ t.cards = s.cards)) := by
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
+        (keeps t.pending ∧ t.WF ∧ t.cards = s.cards ∧ ∀ p, t.pending ≠ [.priority p])) := by
   revert wf reads rest
   apply (InvImage.wf GameState.cleanupMeasure MeasLt.wf).induction s
   intro state ih rest wellFormed reads pending base
@@ -261,41 +403,72 @@ theorem advance_cleanup_with_adds {s : GameState} {rest : List Frame} (wf : s.WF
   have path := observedPath.prepend pending rfl work
   have cards : mid.cards = state.cards := observedCards.trans known
   have positive : 0 < used + 1 := by omega
-  rcases cleanupFrame_route state rest wellFormed pending with decision | resume | ⟨repeatStack, decreases⟩
+  rcases cleanupFrame_route state rest wellFormed pending with
+    ⟨decision, nonpriority⟩ | ⟨resume, settled, noShowdown⟩ | ⟨repeatStack, decreases⟩
   · obtain ⟨t, later, finished, stopped⟩ :=
-      advance_observed_decision mid raw.1.pending midWF (cards ▸ reads) observedStack decision
+      advance_observed_prepared_decision mid raw.1.pending midWF (cards ▸ reads) observedStack
+        decision nonpriority
     exact ⟨t, used + 1 + later, raw.2 ++ events, by omega,
       by simpa only [List.append_nil] using path.append finished, Or.inl stopped⟩
-  · change raw.1.pending = rest at resume
-    rw [resume] at observedStack
-    generalize stack : mid.pending = frames at observedStack
-    cases observedStack with
-    | empty => exact ⟨mid, _, _, positive, path, Or.inl (by rw [stack]; rfl)⟩
-    | resume => exact ⟨mid, _, _, positive, path, Or.inr ⟨stack.symm ▸ base, midWF, cards⟩⟩
-    | queue q nonempty =>
-      exact ⟨mid, _, _, positive, path, Or.inr ⟨stack.symm ▸ insertion rest base q nonempty, midWF, cards⟩⟩
+  · by_cases neutral : ∃ p, rest = [.priority p]
+    · obtain ⟨p, rfl⟩ := neutral
+      obtain ⟨t, finished, stack, ready⟩ :=
+        advance_settledCleanup_to_preparedPriority wellFormed reads pending settled noShowdown
+      exact ⟨t, 1, [], by decide, finished, Or.inl (preparedPriority_of_settled stack ready)⟩
+    · change raw.1.pending = rest at resume
+      rw [resume] at observedStack
+      generalize stack : mid.pending = frames at observedStack
+      cases observedStack with
+      | empty =>
+        have idle : mid.preparePriority.pending.head?.all (fun f => !f.isWork) = true :=
+          GameState.prepared_idle_of_nonpriority (by rw [stack]; rfl) (by simp [stack])
+        exact ⟨mid, _, _, positive, path, Or.inl idle⟩
+      | resume =>
+        exact ⟨mid, _, _, positive, path, Or.inr ⟨stack.symm ▸ base, midWF, cards,
+          fun p h => neutral ⟨p, stack.symm.trans h⟩⟩⟩
+      | queue q nonempty =>
+        exact ⟨mid, _, _, positive, path, Or.inr ⟨stack.symm ▸ insertion rest base q nonempty,
+          midWF, cards, fun p h => insertTriggers_ne_singletonPriority q rest p (stack.symm.trans h)⟩⟩
   · change raw.1.pending = .cleanup :: rest at repeatStack
     rw [repeatStack] at observedStack
     have again (tail : List Frame) (stack : mid.pending = .cleanup :: tail) (track : keeps tail) :
         ∃ t used events, 0 < used ∧ AdvancePrefix state t used events ∧
-          (t.pending.head?.all (fun f => !f.isWork) = true ∨
-            (keeps t.pending ∧ t.WF ∧ t.cards = state.cards)) := by
+          (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
+            (keeps t.pending ∧ t.WF ∧ t.cards = state.cards ∧ ∀ p, t.pending ≠ [.priority p])) := by
       have same := measured (by rw [stack]; simp)
       have smaller : InvImage MeasLt GameState.cleanupMeasure mid state := by
         change MeasLt mid.cleanupMeasure state.cleanupMeasure
         rw [same]
         exact decreases
-      obtain ⟨t, later, emitted, _, finished, stopped | ⟨lastStack, lastWF, lastCards⟩⟩ :=
+      obtain ⟨t, later, emitted, _, finished, stopped | ⟨lastStack, lastWF, lastCards, other⟩⟩ :=
         ih mid smaller midWF (cards ▸ reads) stack track
       · exact ⟨t, used + 1 + later, (raw.2 ++ events) ++ emitted, by omega, path.append finished,
           Or.inl stopped⟩
       · exact ⟨t, used + 1 + later, (raw.2 ++ events) ++ emitted, by omega, path.append finished,
-          Or.inr ⟨lastStack, lastWF, lastCards.trans cards⟩⟩
+          Or.inr ⟨lastStack, lastWF, lastCards.trans cards, other⟩⟩
     generalize stack : mid.pending = frames at observedStack
     cases observedStack with
-    | empty => exact ⟨mid, _, _, positive, path, Or.inl (by rw [stack]; rfl)⟩
+    | empty =>
+      have idle : mid.preparePriority.pending.head?.all (fun f => !f.isWork) = true :=
+        GameState.prepared_idle_of_nonpriority (by rw [stack]; rfl) (by simp [stack])
+      exact ⟨mid, _, _, positive, path, Or.inl idle⟩
     | resume => exact again rest stack base
     | queue q nonempty => exact again (insertTriggers q rest) stack (insertion rest base q nonempty)
+
+/-- Resolve Cleanup and every immediate Add it detects. Ordinary triggers waiting behind
+Cleanup stay in the continuation tracked by `keeps`. -/
+theorem advance_cleanup_with_adds {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = .cleanup :: rest)
+    (keeps : List Frame → Prop) (base : keeps rest)
+    (insertion : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (keeps t.pending ∧ t.WF ∧ t.cards = s.cards)) := by
+  obtain ⟨t, used, events, positive, path, prepared | ⟨track, sound, cards, _⟩⟩ :=
+    advance_cleanup_with_adds_prepared wf reads pending keeps base insertion
+  · exact ⟨t, used, events, positive, path,
+      Or.inl (by simpa only [GameState.preparePriority_of_idle prepared] using prepared)⟩
+  · exact ⟨t, used, events, positive, path, Or.inr ⟨track, sound, cards⟩⟩
 
 end Riftbound
 

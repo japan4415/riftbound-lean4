@@ -157,34 +157,57 @@ theorem advance_observed_to_boundary (raw : GameState) (notices : List Event)
     exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append later,
       Or.inl (by simp [decisionStack, decision])⟩
 
-/-- An observer may put ordinary triggers ahead of a decision. Finish that queue if necessary
-so that the actual dispatcher reaches a decision or an empty stack. -/
-theorem advance_observed_decision (s : GameState) (rest : List Frame) (wf : s.WF)
+/-- An idle stack that does not start with neutral priority survives preparation as-is. -/
+theorem GameState.prepared_idle_of_nonpriority {s : GameState}
+    (idle : s.pending.head?.all (fun frame => !frame.isWork) = true)
+    (nonpriority : ∀ p tail, s.pending ≠ .priority p :: tail) :
+    s.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, tail, stack, _, _⟩
+  · simpa only [unchanged] using idle
+  · exact (nonpriority p tail stack).elim
+
+private theorem advance_observed_decision_core (s : GameState) (rest : List Frame) (wf : s.WF)
     (reads : MightRead.database s.cards) (route : ObservedWorkStack rest s.pending)
     (boundary : rest.head?.all (fun frame => !frame.isWork) = true) :
     ∃ t used, AdvancePrefix s t used [] ∧
-      t.pending.head?.all (fun frame => !frame.isWork) = true := by
-  have done (stop : s.pending.head?.all (fun frame => !frame.isWork) = true) :
+      t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+      ((∀ p tail, rest ≠ .priority p :: tail) →
+        t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true) := by
+  have done (stop : s.pending.head?.all (fun frame => !frame.isWork) = true)
+      (nonpriority : (∀ p tail, rest ≠ .priority p :: tail) → ∀ p tail, s.pending ≠ .priority p :: tail) :
       ∃ t used, AdvancePrefix s t used [] ∧
-        t.pending.head?.all (fun frame => !frame.isWork) = true :=
-    ⟨s, 0, by intro fuel prior; simp, stop⟩
+        t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+        ((∀ p tail, rest ≠ .priority p :: tail) →
+          t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true) :=
+    ⟨s, 0, by intro fuel prior; simp, stop, fun same =>
+      GameState.prepared_idle_of_nonpriority stop (nonpriority same)⟩
   generalize stack : s.pending = frames at route
   cases route with
-  | empty => exact done (by rw [stack]; rfl)
-  | resume => exact done (stack.symm ▸ boundary)
+  | empty => exact done (by rw [stack]; rfl) (by simp [stack])
+  | resume =>
+    exact done (stack.symm ▸ boundary) (fun nonpriority p tail equality =>
+      nonpriority p tail (stack.symm.trans equality))
   | queue queue nonempty =>
     have lead (h : s.pending = .triggers queue :: rest) :
         ∃ t used, AdvancePrefix s t used [] ∧
-          t.pending.head?.all (fun frame => !frame.isWork) = true := by
-      obtain ⟨t, used, _, _, _, path, decisionStack, decision⟩ :=
-        advance_triggers_to_decision s wf queue rest h reads (Or.inl nonempty)
-      exact ⟨t, used, path, by simp [decisionStack, decision]⟩
+          t.pending.head?.all (fun frame => !frame.isWork) = true ∧
+          ((∀ p tail, rest ≠ .priority p :: tail) →
+            t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true) := by
+      obtain ⟨t, used, _, _, _, path, decisionStack, decision, ready⟩ :=
+        advance_triggers_to_preparedDecision s wf queue rest h reads (Or.inl nonempty)
+      exact ⟨t, used, path, by simp [decisionStack, decision], fun _ => ready⟩
     cases rest with
     | nil => exact lead stack
     | cons f tail =>
       have decision : f.isWork = false := by simpa using boundary
       by_cases outstanding : f.isResolution = true
-      · exact done (by rw [stack]; simp [insertTriggers, outstanding, decision])
+      · have left : s.pending = f :: insertTriggers queue tail := by
+          simp only [stack, insertTriggers, outstanding, ↓reduceIte]
+        apply done (by simp [left, decision])
+        intro _ p after equal
+        rw [left, List.cons.injEq] at equal
+        rw [equal.1] at outstanding
+        cases outstanding
       · apply lead
         rw [stack]
         apply insertTriggers_front
@@ -194,6 +217,25 @@ theorem advance_observed_decision (s : GameState) (rest : List Frame) (wf : s.WF
         intro q impossible
         cases impossible
         contradiction
+
+/-- Resolve any ordinary triggers the observer put before a decision. -/
+theorem advance_observed_decision (s : GameState) (rest : List Frame) (wf : s.WF)
+    (reads : MightRead.database s.cards) (route : ObservedWorkStack rest s.pending)
+    (boundary : rest.head?.all (fun frame => !frame.isWork) = true) :
+    ∃ t used, AdvancePrefix s t used [] ∧
+      t.pending.head?.all (fun frame => !frame.isWork) = true := by
+  obtain ⟨t, used, path, stop, _⟩ := advance_observed_decision_core s rest wf reads route boundary
+  exact ⟨t, used, path, stop⟩
+
+/-- A non-neutral decision is ready after observation and resolution of its ordinary queue. -/
+theorem advance_observed_prepared_decision (s : GameState) (rest : List Frame) (wf : s.WF)
+    (reads : MightRead.database s.cards) (route : ObservedWorkStack rest s.pending)
+    (boundary : rest.head?.all (fun frame => !frame.isWork) = true)
+    (nonpriority : ∀ p tail, rest ≠ .priority p :: tail) :
+    ∃ t used, AdvancePrefix s t used [] ∧
+      t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true := by
+  obtain ⟨t, used, path, _, ready⟩ := advance_observed_decision_core s rest wf reads route boundary
+  exact ⟨t, used, path, ready nonpriority⟩
 
 /-- A work continuation, possibly with a nonempty queue of ordinary triggers. -/
 def TriggerWorkTail (rest frames : List Frame) : Prop :=

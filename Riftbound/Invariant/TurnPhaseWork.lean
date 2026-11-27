@@ -93,12 +93,13 @@ theorem expiration_clears_spentPower {s next : GameState} {rest : List Frame}
   obtain ⟨rfl, _⟩ := step
   exact ⟨rfl, rfl⟩
 
-/-- Main sets the new phase, clears the Rune Pool and runs Cleanup. The engine then waits at
-priority, a Showdown, an ordinary trigger choice or another decision, or finishes the game. -/
-theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
+/-- Main sets the phase and clears the Rune Pool. The actual dispatcher settles Cleanup,
+handles the observed triggers and either finishes the game or reaches a prepared decision. -/
+theorem advance_main_to_preparedDecision {s : GameState} {p : PlayerId} (wf : s.WF)
     (reads : MightRead.database s.cards) (pending : s.pending = [.phase .main, .priority p]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      t.pending.head?.all (fun f => !f.isWork) = true := by
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      advance used s [] = .ok (t, events) := by
   let rest := [Frame.priority p]
   let raw := { s with
     phase := .main
@@ -118,24 +119,42 @@ theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
   have insertion (frames : List Frame) (track : TriggerWorkTail rest frames)
       (q : List PendTrigger) (ne : q ≠ []) : TriggerWorkTail rest (insertTriggers q frames) :=
     track.insert head q ne
+  suffices completed : ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true by
+    obtain ⟨t, count, emitted, ran, trace, ready⟩ := completed
+    exact ⟨t, count, emitted, ran, trace, ready,
+      by simpa only [List.nil_append] using trace.finish ready []⟩
   have finish (tail : List Frame) (stack : mid.pending = .cleanup :: tail) (track : TriggerWorkTail rest tail) :
       ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-        t.pending.head?.all (fun f => !f.isWork) = true := by
-    obtain ⟨t, elapsed, later, _, cleanup, stop | ⟨waiting, afterWF, afterCards⟩⟩ :=
-      advance_cleanup_with_adds midWF (cards ▸ reads) stack (TriggerWorkTail rest) track insertion
+        t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+    obtain ⟨t, elapsed, later, _, cleanup, stop | ⟨waiting, afterWF, afterCards, nonpriority⟩⟩ :=
+      advance_cleanup_with_adds_prepared midWF (cards ▸ reads) stack (TriggerWorkTail rest) track insertion
     · exact ⟨t, used + elapsed, events ++ later, by omega, path.append cleanup, stop⟩
-    · obtain ⟨u, queued, triggers, decision | ⟨normal, _, _⟩⟩ :=
-        advance_trigger_tail t rest afterWF (afterCards ▸ cards ▸ reads) waiting
-      · exact ⟨u, used + elapsed + queued, _, by omega,
+    · rcases waiting with resumed | ⟨queue, nonempty, queued⟩
+      · exact (nonpriority p resumed).elim
+      · obtain ⟨u, steps, _, _, _, triggers, _, _, decision⟩ :=
+          advance_triggers_to_preparedDecision t afterWF queue rest queued
+            (afterCards ▸ cards ▸ reads) (Or.inl nonempty)
+        exact ⟨u, used + elapsed + steps, _, by omega,
           by simpa only [List.append_nil] using (path.append cleanup).append triggers, decision⟩
-      · exact ⟨u, used + elapsed + queued, _, by omega,
-          by simpa only [List.append_nil] using (path.append cleanup).append triggers, by rw [normal]; rfl⟩
   change ObservedWorkStack (.cleanup :: rest) mid.pending at route
   generalize stack : mid.pending = frames at route
   cases route with
-  | empty => exact ⟨mid, used, events, positive, path, by rw [stack]; rfl⟩
+  | empty =>
+    exact ⟨mid, used, events, positive, path,
+      GameState.prepared_idle_of_nonpriority (by rw [stack]; rfl) (by simp [stack])⟩
   | resume => exact finish rest stack (Or.inl rfl)
   | queue q nonempty => exact finish _ stack (insertion rest (Or.inl rfl) q nonempty)
+
+/-- The standard Main transition has a finite prefix ending at an answer or empty stack. -/
+theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = [.phase .main, .priority p]) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨t, used, events, positive, trace, ready, _⟩ :=
+    advance_main_to_preparedDecision wf reads pending
+  exact ⟨t, used, events, positive, trace,
+    by simpa only [GameState.preparePriority_of_idle ready] using ready⟩
 
 /-- When entering Main leaves only a settled Cleanup followed by neutral priority, the
 actual dispatcher returns priority in two work steps and retains Main's phase event. -/

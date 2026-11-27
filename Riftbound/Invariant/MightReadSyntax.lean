@@ -12,6 +12,16 @@ the Board or a player's Trash, without counting objects on the Chain.
 
 @[expose] public section
 
+namespace Riftbound
+
+/-- Facts that supported passive conditions may read. The other kinds are bookkeeping
+for spending Gear-only Power and following a linked death through Cleanup. -/
+def TurnEffect.isMightReadFact : TurnEffect → Bool
+  | .gearMana | .linkedDamageDeath .. => false
+  | _ => true
+
+end Riftbound
+
 namespace Riftbound.MightRead
 
 /-- Places supported by the invariance proof for Might-related selectors. -/
@@ -48,7 +58,7 @@ def amount : Amount → Bool
 /-- Conditions supported by the proof for a Might-related passive ability. -/
 def condition : Condition → Bool
   | .always | .discardedThisTurn | .spentOnSpell .. => true
-  | .noted kind => kind != .gearMana
+  | .noted kind => kind.isMightReadFact
   | .and a b => condition a && condition b
   | .cmp _ a b => amount a && amount b
   | .empowered sel | .exists sel => selector sel

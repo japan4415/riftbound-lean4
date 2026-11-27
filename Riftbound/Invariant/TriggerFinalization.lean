@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Trigger
+public import Riftbound.Invariant.MightReadSyntax
 
 /-!
 # Board reads during automatic trigger finalization
@@ -460,9 +461,9 @@ structure SameMightReads (before after : GameState) : Prop where
   unitsAtOf : after.unitsAtOf = before.unitsAtOf
   /-- The current turn. -/
   turn : after.turn = before.turn
-  /-- Turn facts other than the bookkeeping for Gear-only Power. -/
-  turnFacts : after.turnFx.filter (fun note => note.kind != .gearMana) =
-    before.turnFx.filter (fun note => note.kind != .gearMana)
+  /-- Turn facts that the supported reads may consult. -/
+  turnFacts : after.turnFx.filter (fun note => note.kind.isMightReadFact) =
+    before.turnFx.filter (fun note => note.kind.isMightReadFact)
   /-- Power already spent by each player. -/
   powerSpent : ∀ p, (after.poolOf p).powerSpent = (before.poolOf p).powerSpent
   /-- Each player's experience. -/

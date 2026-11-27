@@ -17,18 +17,14 @@ theorem old_of_zone {s : GameState} (wf : s.WF) {z : Zone} {id : ObjId}
     (member : id ∈ s.zone z) : id.n < s.nextId :=
   wf.lt_nextId id (GameState.mem_zoneIds (GameState.zone_valid_of_mem wf member) member)
 
-/-- Gear-only funding notes do not affect the turn's earlier Power spending. -/
+/-- Bookkeeping for Gear-only funding and linked deaths does not affect earlier Power spending. -/
 private theorem spendingBeforeMain_filter (notes : List TurnFx) (p : PlayerId) (turn : Nat) :
-    ((notes.filter (·.kind != .gearMana)).filterMap (·.spendingBeforeMain p turn)) =
+    ((notes.filter (fun note => note.kind.isMightReadFact)).filterMap (·.spendingBeforeMain p turn)) =
       notes.filterMap (·.spendingBeforeMain p turn) := by
-  induction notes with
-  | nil => rfl
-  | cons first rest ih =>
-    by_cases gear : first.kind = .gearMana
-    · have ignored : first.spendingBeforeMain p turn = none := by
-        simp [TurnFx.spendingBeforeMain, gear]
-      simp [gear, ignored, ih]
-    · simp [gear, List.filterMap_cons, ih]
+  rw [List.filterMap_filter]
+  apply congrArg (List.filterMap · notes)
+  funext note
+  cases kind : note.kind <;> simp [TurnEffect.isMightReadFact, TurnFx.spendingBeforeMain, kind]
 
 /-- Every object on the Board has an existing identifier. -/
 theorem old_inPlay {s : GameState} (wf : s.WF) {id : ObjId}
@@ -384,25 +380,28 @@ theorem amount_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldSelf
 termination_by structural amount
 
 omit same in
-private theorem any_ignore_gear (notes : List TurnFx) (test : TurnFx → Bool)
-    (disjoint : ∀ note, note.kind == .gearMana → test note = false) :
-    (notes.filter (fun note => note.kind != .gearMana)).any test = notes.any test := by
+private theorem any_readFacts (notes : List TurnFx) (test : TurnFx → Bool)
+    (disjoint : ∀ note, note.kind.isMightReadFact = false → test note = false) :
+    (notes.filter (fun note => note.kind.isMightReadFact)).any test = notes.any test := by
   rw [List.any_filter]
   apply congrArg (List.any notes)
   funext note
-  by_cases gear : (note.kind == .gearMana) = true
-  · simp [bne, gear, disjoint note gear]
-  · simp [bne, gear]
+  cases readable : note.kind.isMightReadFact
+  · simp [disjoint note readable]
+  · simp
 
-private theorem turnFact_eq (p : PlayerId) (kind : TurnEffect) (notGear : kind ≠ .gearMana) :
+private theorem turnFact_eq (p : PlayerId) (kind : TurnEffect) (readable : kind.isMightReadFact = true) :
     t.turnFx.any (fun note => note.turn == t.turn && note.who == p && note.kind == kind) =
       s.turnFx.any (fun note => note.turn == s.turn && note.who == p && note.kind == kind) := by
   rw [same.turn]
   let test := fun note : TurnFx => note.turn == s.turn && note.who == p && note.kind == kind
-  have disjoint (note : TurnFx) (gear : note.kind == .gearMana) : test note = false := by
-    have different : TurnEffect.gearMana ≠ kind := Ne.symm notGear
-    simp [test, beq_iff_eq.mp gear, different]
-  rw [← any_ignore_gear t.turnFx test disjoint, ← any_ignore_gear s.turnFx test disjoint, same.turnFacts]
+  have disjoint (note : TurnFx) (ignored : note.kind.isMightReadFact = false) : test note = false := by
+    have different : note.kind ≠ kind := by
+      intro eq
+      rw [eq, readable] at ignored
+      contradiction
+    simp [test, different]
+  rw [← any_readFacts t.turnFx test disjoint, ← any_readFacts s.turnFx test disjoint, same.turnFacts]
 
 /-- A passive condition supported by the Might check reads the same result in both states. -/
 theorem condition_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldSelf : self.n < s.nextId)
@@ -412,10 +411,9 @@ theorem condition_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldS
   case always => rfl
   case discardedThisTurn =>
     simpa only [Condition.eval, Bool.and_comm, Bool.and_left_comm, Bool.and_assoc] using
-      congrArg some (same.turnFact_eq p .cardDiscarded (by intro h; cases h))
+      congrArg some (same.turnFact_eq p .cardDiscarded rfl)
   case noted kind =>
-    have notGear : kind ≠ .gearMana := by simpa using supported
-    exact congrArg some (same.turnFact_eq p kind notGear)
+    exact congrArg some (same.turnFact_eq p kind supported)
   case spentOnSpell cost => exact same.spentOnSpell p self env cost
   case and a b =>
     simp only [Condition.eval, condition_eq wf p env oldSelf a supported.1,

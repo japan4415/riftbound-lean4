@@ -254,8 +254,8 @@ private theorem poolsAddAny_onlyPoolsAndFx (k : Nat) (s : GameState) (players : 
 
 private theorem poolAndFactsReads (s : GameState) (pools : Std.ExtTreeMap Nat RunePool)
     (notes : List TurnFx)
-    (turnFacts : notes.filter (fun note => note.kind != .gearMana) =
-      s.turnFx.filter (fun note => note.kind != .gearMana))
+    (turnFacts : notes.filter (fun note => note.kind.isMightReadFact) =
+      s.turnFx.filter (fun note => note.kind.isMightReadFact))
     (powerSpent : ∀ p, (pools.getD p.n RunePool.empty).powerSpent = (s.poolOf p).powerSpent)
     (buffFacts : ∀ p, notes.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p)) =
       s.turnFx.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p))) :
@@ -293,8 +293,9 @@ private theorem poolsAddAny_reads (k : Nat) (s : GameState) (players : List Play
       (poolsAddAny k s players).objects = s.objects ∧ (poolsAddAny k s players).zones = s.zones := by
   let t := poolsAddAny k s players
   have shape := poolsAddAny_onlyPoolsAndFx k s players
-  have facts : t.turnFx.filter (fun f => f.kind != .gearMana) = s.turnFx.filter (fun f => f.kind != .gearMana) :=
-    poolsAddAny_read k s players (fun f gear => by simp [beq_iff_eq.mp gear])
+  have facts : t.turnFx.filter (fun f => f.kind.isMightReadFact) =
+      s.turnFx.filter (fun f => f.kind.isMightReadFact) :=
+    poolsAddAny_read k s players (fun f gear => by simp [beq_iff_eq.mp gear, TurnEffect.isMightReadFact])
   have buffs (p : PlayerId) :
       t.turnFx.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p)) =
       s.turnFx.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p)) :=
