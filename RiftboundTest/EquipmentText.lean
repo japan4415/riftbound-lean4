@@ -1,5 +1,7 @@
 module
 
+import RiftboundDriver.ReplayObservation
+meta import RiftboundDriver.ReplayObservation
 import RiftboundTest.CardLab
 meta import RiftboundTest.CardLab
 
@@ -11,6 +13,23 @@ open Riftbound
 
 private meta def testBoard (test : GameState → Option Bool) : Bool :=
   (lab.bind test).getD false
+
+-- The replay can distinguish two copies of a Unit carrying different attachment groups.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, host) ← put s p "OGN-051" .base
+  let (s, _) ← put s p "OGN-051" .base
+  let (s, dirk) ← put s p "SFD-009" .base
+  let (s, gear) ← put s p "SFD-042" .base
+  let board := (attachTo host (attachTo host s dirk).1 gear).1
+  let unit := cid "OGN-051"
+  let first := cid "SFD-009"
+  let second := cid "SFD-042"
+  let observed (groups : List RiftboundDriver.ReplayObservedUnitAttachments) :=
+    RiftboundDriver.ReplayObservation.checkAt
+      [⟨1, none, [.unitAttachments p .base groups]⟩] 1 board
+  return (observed [⟨unit, []⟩, ⟨unit, [second, first]⟩]).isOk &&
+    !(observed [⟨unit, [first]⟩, ⟨unit, [second]⟩]).isOk
 
 private meta def startBeginning (s : GameState) (p : PlayerId) : Option (GameState × List Event) := do
   let (waiting, events) ←

@@ -301,6 +301,7 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     unit_states = [{"card": card, "exhausted": unit in after["exhausted"], "damage": marked.get(unit, 0)}
                    for unit, card in zip(unit_ids, unit_cards)]
     assert unit_states
+    unit_attachments = [{"unit": card, "attached": []} for card in unit_cards]
     field_ref = {"owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"},
                  "controller": {"n": 2}}
     inputs["game"]["observations"] = [{"checkpoint": index, "source": "after the concession",
@@ -310,6 +311,9 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
         {"unitStates": {"controller": {"n": 2}, "place": {"battlefield": {
             "owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"}}},
             "units": list(reversed(unit_states))}},
+        {"unitAttachments": {"controller": {"n": 2}, "place": {"battlefield": {
+            "owner": field_owner, "field": {"code": "TKN-ConcessionBattlefield"}}},
+            "units": unit_attachments}},
         {"score": {"seat": {"n": 2}, "points": 1}},
     ]}]
     observation_source.write_text(json.dumps(inputs), encoding="utf-8")
@@ -320,6 +324,11 @@ def check_war_concession_cli(folder: Path, command: Callable[..., str]) -> None:
     command("record-ffa", observation_source, observation_archive,
             error=f"seat 2 Units at Battlefield TKN-ConcessionBattlefield from seat {field_owner['n']}")
     unit_states[0]["damage"] -= 1
+    unit_attachments[0]["attached"].append({"code": "SFD-009"})
+    observation_source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record-ffa", observation_source, observation_archive,
+            error=f"seat 2 Units at Battlefield TKN-ConcessionBattlefield from seat {field_owner['n']} attachments")
+    unit_attachments[0]["attached"].clear()
     field_ref["controller"] = {"n": 0}
     observation_source.write_text(json.dumps(inputs), encoding="utf-8")
     command("record-ffa", observation_source, observation_archive,

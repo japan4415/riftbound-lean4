@@ -28,6 +28,14 @@ structure ReplayObservedUnit where
   damage : Nat
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The visible cards attached to one observed Unit. -/
+structure ReplayObservedUnitAttachments where
+  /-- The Unit's visible card or token code. -/
+  unit : CardId
+  /-- The visible codes of all attached objects, including duplicate copies. -/
+  attached : List CardId
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A fact observed at a game checkpoint, expressed without engine-generated object IDs. -/
 inductive ReplayObservationFact where
   /-- The turn number. -/
@@ -55,6 +63,9 @@ inductive ReplayObservationFact where
   | clockCalled (called : Bool)
   /-- The observed game result, or none while the game was ongoing. -/
   | result (result : Option GameResult)
+  /-- The attachment groups on all Units of one controller at the given public place. -/
+  | unitAttachments (controller : PlayerId) (place : ReplayUnitPlace)
+      (units : List ReplayObservedUnitAttachments)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Facts from a source such as a scoreboard, video frame or independent game log. -/
@@ -113,6 +124,23 @@ private def observeBattlefield (s : GameState) (owner : PlayerId) (field : CardI
   let [id] := ids | throw s!"Battlefield {field.code} from seat {owner.n} must identify one active Battlefield"
   return id
 
+private def observeUnitsAt (s : GameState) (controller : PlayerId) (place : ReplayUnitPlace) :
+    Except String (String × List ObjId) := do
+  observeSeat s controller
+  match place with
+  | .base =>
+    let ids := (s.zone (.player controller .base)).filter
+      (fun id => s.isUnit id && s.isControlledBy controller id)
+    pure (s!"seat {controller.n} Units at Base", ids)
+  | .battlefield owner field => do
+    let id ← observeBattlefield s owner field
+    pure (s!"seat {controller.n} Units at Battlefield {field.code} from seat {owner.n}",
+      s.unitsOf controller id)
+
+private def ReplayObservedUnitAttachments.sorted (group : ReplayObservedUnitAttachments) :
+    ReplayObservedUnitAttachments :=
+  { group with attached := group.attached.mergeSort (fun a b => a.code ≤ b.code) }
+
 private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : GameState) :
     Except String Unit := do
   match fact with
@@ -135,21 +163,24 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     let units := (s.unitsOf controller id).filterMap (fun unit => (s.obj? unit).bind (·.kind.cardId?))
     checkCardSet s!"seat {controller.n} Units at Battlefield {field.code} from seat {owner.n}" cards units
   | .unitStates controller place expected =>
-    observeSeat s controller
-    let (label, ids) ← match place with
-      | .base =>
-        let ids := (s.zone (.player controller .base)).filter
-          (fun id => s.isUnit id && s.isControlledBy controller id)
-        pure (s!"seat {controller.n} Units at Base", ids)
-      | .battlefield owner field => do
-        let id ← observeBattlefield s owner field
-        pure (s!"seat {controller.n} Units at Battlefield {field.code} from seat {owner.n}", s.unitsOf controller id)
+    let (label, ids) ← observeUnitsAt s controller place
     let actual : List ReplayObservedUnit := ids.filterMap fun id => do
       let o ← s.obj? id
       let card ← o.kind.cardId?
       return ⟨card, o.exhausted, o.damage⟩
     unless decide (expected.Perm actual) do
       checkFactValue label expected actual
+  | .unitAttachments controller place expected =>
+    let (label, ids) ← observeUnitsAt s controller place
+    let actual : List ReplayObservedUnitAttachments := ids.filterMap fun id => do
+      let unit ← (s.obj? id).bind (·.kind.cardId?)
+      let attached := s.inPlay.filterMap fun object => do
+        let attached ← s.obj? object
+        if attached.attached == some id then attached.kind.cardId? else none
+      return ⟨unit, attached⟩
+    unless decide ((expected.map ReplayObservedUnitAttachments.sorted).Perm
+        (actual.map ReplayObservedUnitAttachments.sorted)) do
+      checkFactValue s!"{label} attachments" expected actual
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
     match expected, s.result with
