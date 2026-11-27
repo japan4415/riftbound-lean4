@@ -107,6 +107,7 @@ public import Riftbound.Tournament.Sideboard
 public import Riftbound.Tournament.FirstPlayer
 public import Riftbound.Tournament.LoopDetect
 public import Riftbound.Tournament.OrderedReferences
+public import Riftbound.Tournament.PlayHistoryReferences
 
 /-!
 # Riftbound
