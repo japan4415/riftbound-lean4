@@ -266,7 +266,7 @@ def Condition.understood : Condition → Bool
   | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => s.understood
   | .empowered s => s.understood
   | .leftEmpowered => true
-  | .fewerRunesThanOpponent | .canPay _ => true
+  | .fewerRunesThanOpponent | .opponentNearVictory _ | .canPay _ => true
   | .enemyUnitDied => true
   | .marked _ => true
   | .fromHidden => true

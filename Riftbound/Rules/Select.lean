@@ -1347,6 +1347,9 @@ def Condition.eval (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) :
   | .fewerRunesThanOpponent =>
     let own := (s.runesOf p).length
     some (s.players.any (fun q => q != p && own < (s.runesOf q).length))
+  | .opponentNearVictory distance =>
+    some (s.pickOrder.any (fun q =>
+      !s.config.mode.sameSide p q && decide (s.victoryBase ≤ s.pointsOf q + distance)))
   | .canPay c => some ((s.payNow p self c).isSome || (s.runePlan p self c).isSome)
   | .diedWith e =>
     -- the object a watching ability is about, or (an ability of the dead card itself) the card

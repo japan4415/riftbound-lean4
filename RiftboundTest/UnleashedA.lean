@@ -24,6 +24,37 @@ private meta def testSpell (code : String) (energy : Nat) : CardDef :=
   { id := cid code, name := code, types := [.spell], cost := some ⟨energy, []⟩,
     spellEffect := some (.of [] .nop), status := .full }
 
+-- Poppy checks every opponent at entry, including one later in the FFA turn order.
+#guard tun fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .ffa4 }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let opponent ← s.pickOrder.getLast?
+  let (s, poppy) ← put s p "UNL-116" .hand
+  let beyond := s.gainPoints opponent (s.victoryScore - 4)
+  let within := beyond.gainPoints opponent 1
+  let low ← play beyond p poppy
+  let high ← play within p poppy
+  let lowId ← low.firstOf p .base "UNL-116"
+  let highId ← high.firstOf p .base "UNL-116"
+  return opponent != p && low.tired lowId == some true && low.xpOf p == 0 &&
+    high.tired highId == some false && high.xpOf p == 3
+
+-- The Attack and Defend rewards are offered when exactly one enemy Unit was present.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, hunter) ← putAt s p "UNL-143" bf
+  let (one, _) ← putAt s q "OGN-051" bf
+  let (two, _) ← putAt one q "OGN-051" bf
+  let detects (board : GameState) (attacker : PlayerId) : Bool :=
+    (board.detect [.combatStarted bf attacker]).any (·.source == hunter)
+  let resolved ← fire one [.combatStarted bf p]
+  return detects one p && detects one q && !detects two p && !detects two q &&
+    resolved.xpOf p == one.xpOf p + 2 && resolved.mightNow hunter == (one.mightNow hunter).map (· + 2)
+
 -- A second cheaper Spell cannot borrow the Energy spent on the first one to ready Revna.
 #guard tun fun s => do
   let p := s.me

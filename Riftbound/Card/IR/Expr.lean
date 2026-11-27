@@ -394,6 +394,8 @@ inductive Condition where
   | iControlHere
   /-- The point being scored comes from this source. -/
   | scoreFrom (src : ScoreSource)
+  /-- At least one opponent is within the given number of points of the Victory Score. -/
+  | opponentNearVictory (distance : Nat)
 deriving DecidableEq, Repr, Hashable
 
 end

@@ -3369,10 +3369,9 @@ def UNL_116.meta : CardDef :=
 /-- Poppy. -/
 def UNL_116 : CardDef :=
   { UNL_116.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge (.points .opponent) (.sub .victoryScore (.const 3)))
-        (.seqOf [.prim (.ready .self), .prim (.gainXP .you (.const 3))]) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .play, condition := .opponentNearVictory 3 }
+      (.of [] (.seqOf [.prim (.ready .self), .prim (.gainXP .you (.const 3))])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-117
 /--
@@ -4128,17 +4127,14 @@ def UNL_143.meta : CardDef :=
 
 /-- Kha'Zix. -/
 def UNL_143 : CardDef :=
+  let isolated := Condition.cmp .eq (.count (Selector.all .enemy .here [.ofType .unit])) (.const 1)
+  let reward := EffectDef.of [] (.seqOf [
+    .grant .self (.mightPlus .it (.const 2)) .thisTurn, .prim (.gainXP .you (.const 2))])
   { UNL_143.meta with
     abilities := [
-      .triggered (.onSelf .attack)
-        (.of [] (.ifThen (.cmp .eq (.count (Selector.all .enemy .here [.ofType .unit])) (.const 1))
-          (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn,
-            .prim (.gainXP .you (.const 2))]) .nop)) .unlimited,
-      .triggered (.onSelf .defend)
-        (.of [] (.ifThen (.cmp .eq (.count (Selector.all .enemy .here [.ofType .unit])) (.const 1))
-          (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn,
-            .prim (.gainXP .you (.const 2))]) .nop)) .unlimited],
-    status := .drafted }
+      .triggered { event := .attack, condition := isolated } reward .unlimited,
+      .triggered { event := .defend, condition := isolated } reward .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-144
 /--
