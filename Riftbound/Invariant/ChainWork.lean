@@ -196,6 +196,23 @@ theorem advance_finish_chain_to_boundary {s : GameState} {item : ObjId}
     advance_finish_chain_to_decision wf reads pending tracks front waits
   exact ⟨t, used, events, path, .decision stop⟩
 
+/-- Run the certified programs above an item's Finish and follow the remaining Chain work. -/
+theorem advance_chain_runs_to_decision {s : GameState} {item : ObjId} {body original : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : ResolutionPrefix body (ResolutionPrefix [.finishSpell item] (TriggerWorkTail original)) s.pending)
+    (finite : ∀ f ∈ body, Frame.FiniteRun f)
+    (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : original.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨mid, used, events, path, stop | ⟨⟨tail, ready, queued⟩, midWF, cards⟩⟩ :=
+    advance_run_frames wf reads pending finite (fun _ tracked q ne => tracked.insert
+      (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ kept added nonempty => kept.insert front added nonempty) q ne)
+  · exact ⟨mid, used, events, path, stop⟩
+  · obtain ⟨t, later, emitted, finished, stop⟩ :=
+      advance_finish_chain_to_decision midWF (cards ▸ reads) ready queued front decision
+    exact ⟨t, used + later, events ++ emitted, path.append finished, stop⟩
+
 /-- The top item's effects, Finish, optional Recycle and Cleanup are finite when its Run frames
 terminate under observation. Resolve subsequent deferred declarations before returning. -/
 theorem advance_chain_resolution_to_decision {s : GameState} {item : ObjId} {rest : List Frame}
@@ -219,12 +236,9 @@ theorem advance_chain_resolution_to_decision {s : GameState} {item : ObjId} {res
   have base : ResolutionPrefix body finishes raw.pending := ⟨_, rfl, ⟨rest, rfl, Or.inl rfl⟩⟩
   have finish (tracks : ResolutionPrefix body finishes mid.pending) :
       ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
-    obtain ⟨t, more, emitted, resolved, stop | ⟨⟨tail, finishStack, seen⟩, tWF, tCards⟩⟩ :=
-      advance_run_frames midWF (cards ▸ reads) tracks runs inserts
-    · exact ⟨t, used + more, events ++ emitted, by omega, path.append resolved, stop⟩
-    · obtain ⟨u, elapsed, _, settled, stop⟩ :=
-        advance_finish_chain_to_decision tWF (tCards ▸ cards ▸ reads) finishStack seen front decision
-      exact ⟨u, used + more + elapsed, _, by omega, (path.append resolved).append settled, stop⟩
+    obtain ⟨t, more, emitted, resolved, stop⟩ :=
+      advance_chain_runs_to_decision midWF (cards ▸ reads) tracks runs front decision
+    exact ⟨t, used + more, events ++ emitted, by omega, path.append resolved, stop⟩
   generalize stack : mid.pending = pendingFrames at route
   cases route with
   | empty => exact ⟨mid, used, events, positive, path, by rw [stack]; rfl⟩
@@ -302,7 +316,8 @@ def chainPassWorkSupported (s : GameState) (p : PlayerId) (rest : List Frame) : 
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   ((resolveFrames initial rest).takeWhile isRunFrame).all runFrameSupported
 
-private theorem runFrameSupported_finite {f : Frame} (supported : runFrameSupported f = true) :
+/-- Every accepted Run frame carries the observed termination proof for its program. -/
+theorem runFrameSupported_finite {f : Frame} (supported : runFrameSupported f = true) :
     f.FiniteRun := by
   cases f <;> try (simp [runFrameSupported] at supported; done)
   exact ⟨_, _, _, _, rfl, EffectList.observedFinite_of_supported _ supported⟩

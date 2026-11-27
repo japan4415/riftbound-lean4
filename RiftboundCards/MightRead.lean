@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.ChainAnswerWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
@@ -143,6 +144,15 @@ theorem step_assignDone_to_decision {s : Riftbound.GameState} {bf : Riftbound.Ob
       pending legal decision front
   exact ⟨t, used, events, stopped,
     fun extra => Riftbound.step_mono finished (Nat.le_add_right _ extra)⟩
+
+/-- With the registered cards, a checked answer to a Chain effect advances to the next
+decision or game end. Additional fuel preserves the state and the emitted events. -/
+theorem step_chainAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.chainAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
+  Riftbound.step_chainAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
 
 /-- For registered cards, check the top item's actual Run programs and follow the final
 Chain Pass through deferred limited Spell declarations to a decision. -/

@@ -13,6 +13,48 @@ has a proof for the observed dispatcher, including any earlier player decision.
 
 namespace Riftbound
 
+/-- Record the chosen player whose Banish replaces a death, then resume the effect. -/
+theorem Effect.ObservedFinite.chooseDeathBanisher (unit : ObjId) (banisher : PlayerId) :
+    (Effect.chooseDeathBanisher unit banisher).ObservedFinite :=
+  Effect.SingleRun.observed (fun s _ _ _ _ =>
+    ⟨s.addTurnFxOn banisher unit .chosenDeathBanisher, [], rfl⟩)
+
+/-- Record the chosen Gear that saves the Unit. -/
+theorem Effect.ObservedFinite.chooseDeathGear (unit gear : ObjId) :
+    (Effect.chooseDeathGear unit gear).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ =>
+    ⟨s.addTurnFxOn p unit (.chosenDeathGear gear), [], rfl⟩)
+
+/-- Record the chosen free death replacement. -/
+theorem Effect.ObservedFinite.chooseDeathFree (unit : ObjId) (source : Option ObjId) :
+    (Effect.chooseDeathFree unit source).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ =>
+    ⟨s.addTurnFxOn p unit (.chosenDeathFree source), [], rfl⟩)
+
+/-- Record whether the selected sacrifice replaces the death. -/
+theorem Effect.ObservedFinite.recordDeathSacrifice (unit : ObjId) (cost : Option ObjId) :
+    (Effect.recordDeathSacrifice unit cost).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ =>
+    ⟨s.addTurnFxOn p unit (.deathSacrificeChoice cost), [], rfl⟩)
+
+/-- Record which Unit will be handled first in a group of deaths. -/
+theorem Effect.ObservedFinite.recordDeathOrder (group : List ObjId) (unit : ObjId) :
+    (Effect.recordDeathOrder group unit).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ => ⟨s.addTurnFxOn p unit (.deathOrder group), [], rfl⟩)
+
+/-- Record a replacement chosen after an earlier death in the same group. -/
+theorem Effect.ObservedFinite.recordDeathReselection (group earlier : List ObjId) (unit : ObjId)
+    (choice : DeathDecision) : (Effect.recordDeathReselection group earlier unit choice).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ =>
+    ⟨s.addTurnFxOn p unit (.deathReselection group earlier choice), [], rfl⟩)
+
+/-- Record the choice made during the Kill required by another replacement. -/
+theorem Effect.ObservedFinite.recordNestedDeathDecision (root : ObjId) (used : List (ObjId × Bool))
+    (unit : ObjId) (choice : DeathDecision) (groupScope : Option (List ObjId × List ObjId)) :
+    (Effect.recordNestedDeathDecision root used unit choice groupScope).ObservedFinite :=
+  Effect.SingleRun.observed (fun s p _ _ _ =>
+    ⟨s.addTurnFxOn p unit (.nestedDeathDecision root used choice groupScope), [], rfl⟩)
+
 mutual
 
 /-- Check the effect constructors for which the observed dispatcher has a termination proof. -/
@@ -21,7 +63,10 @@ def Effect.observedWorkSupported : Effect → Bool
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
   | .prim (.deal ..) | .prim (.exchangeDamage ..) | .prim (.markOn ..) | .grant ..
   | .splitDamage .. | .splitUnitDamage .. | .applySplitDamage .. | .applyUnitSplitDamage ..
-  | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage .. => true
+  | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage ..
+  | .chooseDeathBanisher .. | .chooseDeathGear .. | .chooseDeathFree ..
+  | .recordDeathSacrifice .. | .recordDeathOrder .. | .recordDeathReselection ..
+  | .recordNestedDeathDecision .. => true
   | .seq program => program.observedWorkSupported
   | .eitherOf (.cons only .nil) => only.observedWorkSupported
   | .eitherOf _ => true
@@ -94,6 +139,14 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case resolveEffectDamage batch hit => exact .resolveDamage batch hit
   case chooseDamageReplacement batch hit replacement => exact .chooseDamage batch hit replacement
   case orderCombatDamage target chosen remaining => exact .orderCombatDamage target chosen remaining
+  case chooseDeathBanisher unit banisher => exact .chooseDeathBanisher unit banisher
+  case chooseDeathGear unit gear => exact .chooseDeathGear unit gear
+  case chooseDeathFree unit source => exact .chooseDeathFree unit source
+  case recordDeathSacrifice unit cost => exact .recordDeathSacrifice unit cost
+  case recordDeathOrder group unit => exact .recordDeathOrder group unit
+  case recordDeathReselection group earlier unit choice => exact .recordDeathReselection group earlier unit choice
+  case recordNestedDeathDecision root used unit choice scope =>
+    exact .recordNestedDeathDecision root used unit choice scope
 termination_by structural effect
 
 /-- A supported program is finite through the real observer. -/

@@ -178,13 +178,19 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 Chain の検査はこれらの命令と、一時的な Might などの付与、ターン中の効果の記録を扱う。Combat で死亡置換を求めるダメージも同じ定理を使う。毎回の Run で実際の盤面を参照し、選択やイベントの発生順を保持する。[RunWork.lean](../Riftbound/Invariant/RunWork.lean)
 
+### 3u. Chain の効果に対する回答
+
+`chainAnswerWorkSupported` は、任意効果の承諾・辞退、効果の分岐、対象選択に答えたとき、実際に積まれる Run 命令列を調べる。現在の項目を終えるフレームと、その後の入力または空のスタックを確認する。その前で待つ通常の誘発キューも扱う。[ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean)
+
+検査を通った合法手は、回答とイベント観測を行い、選ばれた処理から次の決定点か試合終了に進む。配分やダメージ置換、死亡置換の回答を扱い、対象選択のイベントを含む実際のイベント列を保つ。登録カード用の定理は、4人戦の投了後を含め、fuel を増やしても結果が一致することを示す。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成、観測まで含めた即時 Add、直接・相互・振り分けダメージは証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。残る入力や効果と作業フレームの合成が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass、対応する Chain の最後の Pass、Chain の対応する効果への回答、Showdown の最後の Pass と割り当て確定から次の決定点までの停止は証明済み。残る入力や効果と作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。
