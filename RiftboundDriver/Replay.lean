@@ -120,6 +120,10 @@ inductive ReplayCardPickKind where
   | runeExhaust
   /-- Recycle a Basic Rune to add Power. -/
   | runeRecycle
+  /-- Exhaust a Basic Rune to fund a trigger. -/
+  | triggerRuneExhaust
+  /-- Recycle a Basic Rune to fund a trigger. -/
+  | triggerRuneRecycle
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- A recorded location used to tell two copies of an offered card apart. -/
@@ -218,6 +222,8 @@ inductive ReplayAbilityKind where
   | activated
   /-- An immediate Add ability other than the Basic Rune abilities. -/
   | add
+  /-- A non-Rune Add ability selected while funding a trigger. -/
+  | triggerAdd
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- An activation transcribed using the source's code and declared objects. -/
@@ -384,6 +390,8 @@ private def ReplayCardPick.fromActionWithObject? (s : GameState) (action : Actio
     | .choose id => some (.chooseObject, id)
     | .runeAbility id .exhaust => some (.runeExhaust, id)
     | .runeAbility id .recycle => some (.runeRecycle, id)
+    | .triggerAdd (.rune id false) => some (.triggerRuneExhaust, id)
+    | .triggerAdd (.rune id true) => some (.triggerRuneRecycle, id)
     | _ => none
   let card ← replayCardCode s id
   return ({ seat, kind, card }, id)
@@ -518,10 +526,16 @@ private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
     | throw s!"seat {play.seat.n} has no legal play of {play.source.card.code} with the recorded declaration"
   return (action, matching.length == 1)
 
-/-- Describe a legal Chain activation or an immediate Add using printed card identities. -/
+/-- Describe a legal activation or a declared Add using printed card identities. -/
 def ReplayAbilityUse.fromAction? (s : GameState) (action : Action) : Option ReplayAbilityUse := do
   let .player seat := action.actor | none
   let reference := ReplayCardReference.ofObject? s
+  let add (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) : Option ReplayAbilityUse := do
+    let source ← reference id
+    return {
+      seat, kind, source, ability, targets := [], payment? := some payment
+      costObject? := costObject.bind reference }
   match action.kind with
   | .activate id ability payment targets discards playerTarget? costBanisher? costObject =>
     let source ← reference id
@@ -532,11 +546,9 @@ def ReplayAbilityUse.fromAction? (s : GameState) (action : Action) : Option Repl
       seat, kind := .activated, source, ability, targets, payment? := some payment.base
       discards? := some discards, playerTarget?, costBanisher?, costObject? := costObject.bind reference
       deflectPayment? := deflect }
-  | .manaAbility id ability payment costObject =>
-    let source ← reference id
-    return {
-      seat, kind := .add, source, ability, targets := [], payment? := some payment
-      costObject? := costObject.bind reference }
+  | .manaAbility id ability payment costObject => add .add id ability payment costObject
+  | .triggerAdd (.ability id ability energy power costObject) =>
+    add .triggerAdd id ability ⟨energy, power⟩ costObject
   | _ => none
 
 private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameState) :
@@ -546,6 +558,11 @@ private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameSt
     activation.kind == kind && activation.ability == ability && activation.source.matches s id &&
       activation.payment?.all (· == payment) &&
       activation.costObject?.all (fun reference => costObject.any (reference.matches s))
+  let add (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) :=
+    fitsSourceAndPrice kind id ability payment costObject && activation.targets.isEmpty &&
+      activation.discards?.all List.isEmpty && activation.playerTarget?.isNone &&
+      activation.costBanisher?.isNone && activation.deflectPayment?.isNone
   let matching := (legalFrameActions s).filter fun action =>
     action.actor == .player activation.seat && match action.kind with
     | .activate id ability payment targets discards targetPlayer costBanisher costObject =>
@@ -555,10 +572,9 @@ private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameSt
         activation.playerTarget?.all (some · == targetPlayer) &&
         activation.costBanisher?.all (some · == costBanisher) &&
         activation.deflectPayment?.all (some · == s.activationDeflectSources activation.seat id ability targets payment)
-    | .manaAbility id ability payment costObject =>
-      fitsSourceAndPrice .add id ability payment costObject && activation.targets.isEmpty &&
-        activation.discards?.all List.isEmpty && activation.playerTarget?.isNone &&
-        activation.costBanisher?.isNone && activation.deflectPayment?.isNone
+    | .manaAbility id ability payment costObject => add .add id ability payment costObject
+    | .triggerAdd (.ability id ability energy power costObject) =>
+      add .triggerAdd id ability ⟨energy, power⟩ costObject
     | _ => false
   let some action := matching.head?
     | throw s!"seat {activation.seat.n} has no legal ability {activation.ability} on {activation.source.card.code} with the recorded declaration"

@@ -92,13 +92,19 @@ open Riftbound RiftboundDriver
   let (s, ally) ← put s p "VEN-014" .base
   let (s, _) ← putAt (s.control p s.bf0) p "VEN-014" s.bf0
   let (s, sage) ← put (s.fund p 0) p "UNL-093" .base
-  let s := s.modObj sage (fun o => { o with exhausted := false })
+  let (s, rune) ← put s p "OGN-007" .base
+  let s := (s.modObj sage (fun o => { o with exhausted := false })).modObj rune
+    (fun o => { o with exhausted := false })
   let awaiting := { s with pending := [.discard p 1] }
   let (offered, _) ← (step 100 awaiting ⟨.player p, .discardPick mother⟩).toOption
   let prepare : Action := ⟨.player p, .prepareTrigger 0 [ally] (.pay [])⟩
   let decline : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
   let (locked, _) ← (step 100 offered prepare).toOption
-  let (funded, _) ← (step 100 locked ⟨.player p, .triggerAdd (.ability sage 0 0 [])⟩).toOption
+  let useSage : Action := ⟨.player p, .triggerAdd (.ability sage 0 0 [])⟩
+  let useRune : Action := ⟨.player p, .triggerAdd (.rune rune false)⟩
+  let namedSage ← ReplayAbilityUse.fromAction? locked useSage
+  let namedRune ← ReplayCardPick.fromAction? locked useRune
+  let (funded, _) ← (step 100 locked useSage).toOption
   let finalize : Action := ⟨.player p, .putTrigger 0 [ally]⟩
   let namedPrepare ← ReplayTriggerUse.fromAction? offered prepare
   let namedDecline ← ReplayTriggerUse.fromAction? offered decline
@@ -109,6 +115,9 @@ open Riftbound RiftboundDriver
   let decoded ← (Lean.fromJson? (Lean.toJson (answer namedFinalize)) : Except String ReplayAnswer).toOption
   return namedPrepare.stage == .prepare && namedPrepare.source == cid "VEN-094" &&
     namedDecline.stage == .decline && namedFinalize.stage == .finalize &&
+    namedSage.kind == .triggerAdd && namedRune.kind == .triggerRuneExhaust &&
+    ((ReplayAnswer.observedAbilityUse namedSage).resolveAt locked 2).toOption == some (useSage, true) &&
+    ((ReplayAnswer.observedCardPick namedRune).resolveAt locked 2).toOption == some (useRune, true) &&
     ((answer namedPrepare).resolveAt offered 1).toOption == some (prepare, true) &&
     ((answer namedDecline).resolveAt offered 1).toOption == some (decline, true) &&
     (decoded.resolveAt funded 3).toOption == some (finalize, true) &&
@@ -117,6 +126,27 @@ open Riftbound RiftboundDriver
     ((ReplayAnswer.inferredTriggerUse namedFinalize "ability seen after payment").resolveAt funded 3).toOption ==
       some (finalize, false) &&
     (settleChain {} 12 resolved).mightNow ally == some 4 : Option Bool).getD false
+
+-- Two delayed triggers from a departed Spell can be distinguished by the damaged Units.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, decree) ← put s p "OGN-221" .hand
+  let (s, ally) ← put s p "OGN-001" .base
+  let (s, foe) ← put s s.you "OGN-116" .base
+  let registered ← play s p decree
+  let (damaged, events) := dealAll registered [(ally, 1), (foe, 1)]
+  let (waiting, _) ← (advance 100 (damaged.withTriggers events) []).toOption
+  let first : Action := ⟨.player p, .putTrigger 0 []⟩
+  let second : Action := ⟨.player p, .putTrigger 1 []⟩
+  let a ← ReplayTriggerUse.fromAction? waiting first
+  let b ← ReplayTriggerUse.fromAction? waiting second
+  let resolve (trigger : ReplayTriggerUse) := (ReplayAnswer.observedTriggerUse trigger).resolveAt waiting 1
+  return a.source == cid "OGN-221" && b.source == a.source &&
+    a.sourceObject?.isNone && b.sourceObject?.isNone &&
+    a.subject?.isSome && b.subject?.isSome && a.subject? != b.subject? &&
+    (resolve a).toOption == some (first, true) && (resolve b).toOption == some (second, true) &&
+    (resolve { a with subject? := none }).toOption.any (!·.2) : Option Bool).getD false
 
 /-- The trace of the demo game, or the error text. -/
 meta def traceOf (seed turns : Nat) : String :=
