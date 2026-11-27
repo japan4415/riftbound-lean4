@@ -433,6 +433,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
     -- a buffed enemy unit is not counted
     enemy.mightNow u == two.mightNow u
 
+-- Its battlefield bonus includes a teammate there, and applies only at a Battlefield.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, sett) ← putAt s p "OGN-240" field
+  let (s, teammate) ← putAt s ally "OGN-136" field
+  let (s, atBase) ← put s p "OGN-240" .base
+  let (s, other) ← put s p "OGN-136" .base
+  let buffed := (s.buff teammate).buff other
+  return buffed.mightNow sett == some 6 && buffed.mightNow atBase == some 5 &&
+    buffed.hasKw sett .tank
+
 -- Lee Sin (OGN-151): other buffed friendly units at my battlefield have +2 Might
 #guard t fun s => do
   let (s1, u) ← putAt s s.me "OGN-151" s.bf0
@@ -879,6 +893,18 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let t ← a.firstOf s.me .base "OGN-197"
   return a.mightNow t == some 4 && (a.mapObjects endTurnObj).mightNow t == some 1
 
+-- Hidden also plays Teemo, putting him at the hiding Battlefield and granting Might.
+#guard t fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, teemo) ← put s p "OGN-197" .hand
+  let hidden ← activate (s.control p field) p teemo 1 [field] ⟨0, [.fury]⟩
+  let card ← hidden.firstOf p .hidden "OGN-197"
+  let revealed ← activate { hidden with turn := hidden.turn + 1 } p card 2
+  let entered ← (revealed.unitsOf p field).find? (fun id =>
+    (revealed.cardDef? id).any (·.id == cid "OGN-197"))
+  return revealed.mightNow entered == some 4 && (revealed.mapObjects endTurnObj).mightNow entered == some 1
+
 -- Fight or Flight (OGN-168): a unit at a battlefield goes to its base; one at a base cannot
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-168" .hand
@@ -1213,6 +1239,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← play s4 s.me c
   -- Kadregrin itself (Might 9) is Mighty and counts
   return a.handN s.me == s1.handN s.me - 1 + 1 && b.handN s.me == s4.handN s.me - 1 + 2
+
+-- The draw counts the acting seat's Mighty Units, including Kadregrin, in 2v2.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let empty := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { empty with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, kadregrin) ← put s p "OGN-038" .hand
+  let (s, _) ← put s ally "OGN-001" .base
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let entered ← play s p kadregrin
+  return entered.countIn p .base "OGN-038" == 1 && entered.handN p == 1 && entered.handN ally == 0
 
 -- Fiora (OGN-232): Deflect, Ganking and Shield only while she is Mighty (Might 4, buffed 5)
 #guard t fun s => do
@@ -2750,8 +2794,13 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s2, big) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, small) ← putAt s2 s.you "OGN-136" s.bf0
   let (s4, mine) ← put s3 s.me "OGN-001" .base
-  let a ← play s4 s.me c
-  return a.mightNow big == some 2 && a.mightNow small == some 1 && a.mightNow mine == some 5
+  let (s5, other) ← put s4 s.you "OGN-001" .base
+  let a ← play s5 s.me c
+  let accelerated ← cast (s5.rich s.me) s.me c ⟨8, [.mind, .mind]⟩
+  let ready ← accelerated.firstOf s.me .base "OGN-116"
+  return a.mightNow big == some 2 && a.mightNow small == some 1 &&
+    a.mightNow mine == some 5 && a.mightNow other == some 2 &&
+    (a.mapObjects endTurnObj).mightNow big == some 5 && accelerated.tired ready == some false
 
 -- Kog'Maw, Caustic (OGN-190): when it dies, 4 damage to every unit at its battlefield
 -- (Challenge: Kog'Maw deals 1 to the unit of Might 7 and takes 7)
@@ -3038,6 +3087,21 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
       [.damaged unit 3, .damaged unit 3] &&
     (settled.obj? unit).any (fun o => o.damage == 6) &&
     (settled.obj? other).any (fun o => o.damage == 0)
+
+-- Discipline can target an enemy Unit. If it leaves the Board before resolution,
+-- the independent instruction still draws for the caster.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, discipline) ← put s p "OGN-058" .hand
+  let (s, foe) ← put s q "OGN-136" .base
+  let buffed ← play s p discipline [foe]
+  let opened ← castOpen s p discipline [foe]
+  let (changed, returned) ← moveObj opened foe (.player q .hand)
+  let finished := settleChain {} 12 changed
+  return buffed.mightNow foe == some 4 && (buffed.mapObjects endTurnObj).mightNow foe == some 2 &&
+    buffed.handN p == s.handN p && finished.handN p == s.handN p &&
+    finished.locate returned == some (.player q .hand) && finished.countIn p .trash "OGN-058" == 1
 
 -- Wind Wall (OGN-064): counter a spell on the Chain (Confront would draw 1)
 #guard t fun s => do

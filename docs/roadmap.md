@@ -2348,6 +2348,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Draven, Showboat は2v2でチームの得点を参照する。Raging Firebrand の値引きは次の Spell まで残り、Kai'Sa, Survivor は Accelerate を払った場合に Ready で登場し、自身の Battlefield の Conquer で引く。Wielder of Water は単独で攻撃・防御するときに強化される。Sprite Call は Hidden からも Ready の Sprite を Base に出し、Vengeance は両陣営の Unit を対象にできる。6枚を `full` とし、全1,103枚中668枚を実装済みとした。
 
+### Origins のプレイ時効果と誘発条件
+
+- Kadregrin the Infernal はプレイした席が支配する Mighty Unit を数える。Sett, Kingpin は自身が Battlefield にいる場合だけ、同じ Battlefield にいる味方の Buff 付き Unit を数える。Discipline は対象を失っても独立したドローを実行する。Wind Wall、Ahri, Alluring、Thousand-Tailed Watcher、Mobilize、Qiyana, Victorious、Scrapheap、Teemo, Scout を合わせて10枚を `full` とし、全1,103枚中678枚を実装済みとした（CR 359.3.e、491.8.c、491.8.e）。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
