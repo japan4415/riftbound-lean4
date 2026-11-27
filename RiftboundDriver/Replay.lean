@@ -1744,6 +1744,14 @@ def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
                     knownCards := trackedInPrivateZones state known, knownDeckCards }
   return (action, position, events)
 
+/-- A replay answer that could be applied but was not uniquely observed. -/
+structure ReplayUncertainAnswer where
+  /-- The 1-based answer number in the inspected game. -/
+  answer : Nat
+  /-- The explanation supplied by the input, or none when several legal answers fit. -/
+  evidence : Option String
+deriving ToJson
+
 /-- The reproducible prefix up to the first unknown answer, or the end of supplied answers. -/
 structure ReplayInspection where
   /-- The last successfully applied answer, or 0 for the initial state. -/
@@ -1752,6 +1760,12 @@ structure ReplayInspection where
   missing : Option String
   /-- Whether every answer in the inspected prefix and its setup was uniquely observed. -/
   exact : Bool
+  /-- Earlier games whose setup or inputs were not uniquely observed. These are 1-based. -/
+  inexactEarlierGames : List Nat := []
+  /-- The available evidence for the current game's declared opening order. -/
+  openingOrderEvidence : Option ReplayOpeningOrderEvidence := none
+  /-- Applied answers whose sources were inferred or matched multiple legal choices. -/
+  inexactAnswers : Array ReplayUncertainAnswer := #[]
   /-- The last state on the reconstructed timeline. -/
   position : ReplayPosition
   /-- The first-player choice at the optional Best of 1 setup boundary. -/
@@ -1767,6 +1781,19 @@ structure ReplayInspection where
   /-- The number of observations for later checkpoints in this game. -/
   pendingObservations : Nat
 
+private def ReplayAnswer.inferenceEvidence : ReplayAnswer → Option String
+  | .inferred _ text | .inferredChance _ text | .inferredCardPick _ text | .inferredStandardMove _ text
+  | .inferredGroupMove _ text | .inferredCardPlay _ text | .inferredAbilityUse _ text
+  | .inferredTriggerUse _ text => some text
+  | _ => none
+
+/-- Attribute prefix uncertainty inherited from fully replayed games to those games. -/
+def ReplayInspection.withEarlierGames (inspection : ReplayInspection) (games : Array RecordedGame) :
+    ReplayInspection :=
+  let inexact := games.toList.zipIdx.filterMap fun (game, index) =>
+    if game.summary.exact then none else some (index + 1)
+  { inspection with exact := inspection.exact && inexact.isEmpty, inexactEarlierGames := inexact }
+
 /-- Run the recorded prefix without inventing a choice for an unknown answer. -/
 def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayInspection := do
@@ -1776,7 +1803,7 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut history := [initial]
   let mut checkpoint := 0
   let mut missing := none
-  let mut exact := input.openingOrderEvidence?.isNone
+  let mut inexactAnswers := #[]
   for answer in input.answers do
     if let .unknown description := answer then
       missing := some description
@@ -1788,10 +1815,13 @@ def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
       (history.head?.map (·.state))
     history := next :: history
     checkpoint := checkpoint + 1
-    exact := exact && next.answerExact
+    if !next.answerExact then
+      inexactAnswers := inexactAnswers.push ⟨index, answer.inferenceEvidence⟩
   let position := history.headD initial
   return {
-    checkpoint, missing, exact, position, chooser := input.chooser,
+    checkpoint, missing, position, chooser := input.chooser, inexactAnswers,
+    exact := input.openingOrderEvidence?.isNone && inexactAnswers.isEmpty,
+    openingOrderEvidence := input.openingOrderEvidence?,
     checkedObservations := schedule.length - pending.length,
     pendingObservations := pending.length,
     bo1Initiative := input.awaitsBo1Initiative position.state,

@@ -318,8 +318,7 @@ private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : Replay
           | .loserChooses p => (some p, none)
           | .chance => (inspection.chooser, none)
           else (inspection.chooser, none)
-        return .inl { inspection with
-          chooser, forcedFirst, exact := inspection.exact && games.all (·.summary.exact) }
+        return .inl { inspection.withEarlierGames games with chooser, forcedFirst }
       | .inr recorded =>
         usedFields := used
         penaltyFields := penaltyFields ++ recorded.penaltyBattlefields

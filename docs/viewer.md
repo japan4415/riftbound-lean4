@@ -149,6 +149,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 指定したゲームより前はゲームの終了まで照合する。指定したゲームでは `answers` が尽きるか、最初の `unknown` に達するまで再生する。調査中はマッチ全体の `ending` を省略できる。2v2 では調べるゲームの `battlefields`、`points`、`ending`、`timed` も省略できる。
 
 - `checkpoint` は適用済みの手番号。初期状態は0。`nextAnswer` は次に入力する手番号で、ゲーム終了時は `null`。`missing` は `unknown` に記録した説明、`exactPrefix` は再生済みの手と初期順序が確定しているかを表す。
+- `inexactAnswers` は、調べているゲームで適用した手のうち、元ログから一意に決まらなかった手を示す。`answer` は1始まりの手番号で、推定入力には元の説明が `evidence` に入る。コードなどの指定に複数の合法手が一致した場合は `evidence` が `null` になる。初期順序を推定した場合は `openingOrderEvidence` に説明が入り、先行ゲームの不確定さは `inexactEarlierGames` にゲーム番号で出る。
 - `state` に盤面とオブジェクトID、`choices` に現在の決定点で入力できる操作が出る。元の対戦で行われた操作を確認し、対応する `answer` を `answers` に入れる。`decision` が `cardOrder` のときは、カードの集合から観測した並びを作る。
 - この出力は転記者向けで、全席の手札や山札を含む。試合全体を照合するときは、結果と未記入の操作をそろえてから `record`、`record-team` または `record-ffa` を実行する。
 

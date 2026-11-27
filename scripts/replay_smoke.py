@@ -1115,9 +1115,12 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     with_code = inspect_game(folder, command, unfinished, 1)
     assert with_code["state"] == by_id_pick["state"]
     assert with_code["exactPrefix"] == (len(matching) == 1)
+    ambiguous = [] if len(matching) == 1 else [{"answer": 9, "evidence": None}]
+    assert with_code["inexactAnswers"] == ambiguous
     game["answers"][-1] = {"inferredCardPick": {"choice": code_choice, "evidence": "later shown"}}
     inferred_pick = inspect_game(folder, command, unfinished, 1)
     assert inferred_pick["state"] == by_id_pick["state"] and not inferred_pick["exactPrefix"]
+    assert inferred_pick["inexactAnswers"] == [{"answer": 9, "evidence": "later shown"}]
 
     code_input = folder / "bo1-by-card-code.json"
     code_archive = folder / "bo1-by-card-code-archive.json"
@@ -1143,6 +1146,10 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     command("view", code_archive, trace)
     from_codes = json.loads(trace.read_bytes())
     assert from_codes["games"][0]["steps"] == steps and not from_codes["exact"]
+    coded_inspection = inspect_game(folder, command, inputs, 1)
+    assert coded_inspection["inexactAnswers"] == [
+        {"answer": index, "evidence": None} for index in range(5, 9)
+    ]
 
     outcome = by_code[0]["observedChance"]["outcome"]
     game["answers"] = [{"inferredChance": {"outcome": outcome, "evidence": "visible at first score"}}, *tape[1:]]
@@ -1305,7 +1312,9 @@ def check_duel_inspection(folder: Path, command: Callable[..., str], saved: dict
 
     first["answers"][0] = {"inferred": {"action": first_answers[0]["observed"]["action"],
                                         "evidence": "deck camera"}}
-    assert not inspect_game(folder, command, inputs, 2)["exactPrefix"]
+    inherited = inspect_game(folder, command, inputs, 2)
+    assert not inherited["exactPrefix"]
+    assert inherited["inexactEarlierGames"] == [1] and inherited["inexactAnswers"] == []
     first["answers"] = saved["input"]["games"][0]["answers"]
     finished = inspect_game(folder, command, inputs, 1)
     assert finished["nextAnswer"] is None and finished["decision"] is None and not finished["choices"]
@@ -1625,6 +1634,10 @@ def check_cli(folder: Path, saved: dict, setup: dict, group_move: dict, eliminat
     order_trace = folder / "team-opening-order-trace.json"
     order_game = {**team_game, "openingOrderEvidence": {"inferred": {"evidence": "later turns show the order"}}}
     order_record = {**team_record, "games": [order_game]}
+    order_inspection = inspect_game(folder, command, order_record, 1, "-team")
+    assert not order_inspection["exactPrefix"]
+    assert order_inspection["openingOrderEvidence"] == order_game["openingOrderEvidence"]
+    assert order_inspection["inexactAnswers"] == [] and order_inspection["inexactEarlierGames"] == []
     order_input.write_text(json.dumps(order_record), encoding="utf-8")
     order_summary = json.loads(command("record-team", order_input, order_archive))
     assert order_summary == {**summary, "exact": False}

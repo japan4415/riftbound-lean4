@@ -343,7 +343,7 @@ private def runTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
         pure (.inr (state, false, evidence, used, decks))
     match ← next.mapError (fun error => s!"team game {index + 1}: {error}") with
     | .inl inspection =>
-      return .inl { inspection with exact := inspection.exact && recorded.all (·.summary.exact) }
+      return .inl (inspection.withEarlierGames recorded)
     | .inr (m, gameTimed, evidence, fields, decks) =>
       state := m
       if let some game := evidence then recorded := recorded.push game
