@@ -10,6 +10,89 @@ public import Riftbound.Invariant.BeginningWork
 
 namespace Riftbound
 
+private theorem sumMainSpending (p : PlayerId) (turn stamp : Nat)
+    (entries : List (Nat × RunePool))
+    (unique : entries.Pairwise (fun a b => ¬ compare a.1 b.1 = .eq)) :
+    ((entries.filterMap (fun ((seat, pool) : Nat × RunePool) =>
+      if pool.powerSpent == 0 then none else some ({
+        who := ⟨seat⟩, turn, stamp, kind := .powerSpentBeforeMain pool.powerSpent } : TurnFx))).filterMap (fun note => note.spendingBeforeMain p turn)).sum =
+      ((entries.lookup p.n).getD RunePool.empty).powerSpent := by
+  cases p with
+  | mk seat =>
+    induction entries with
+    | nil => rfl
+    | cons entry entries ih =>
+      obtain ⟨q, pool⟩ := entry
+      have nodup := List.pairwise_cons.mp unique
+      by_cases same : seat = q
+      · subst q
+        have missing : entries.lookup seat = none := by
+          apply List.lookup_eq_none_iff.mpr
+          intro entry member
+          have different : seat ≠ entry.1 := by
+            intro equal
+            exact nodup.1 entry member (by simp [equal])
+          simpa using different
+        have zero := ih nodup.2
+        rw [missing] at zero
+        change _ = 0 at zero
+        by_cases positive : pool.powerSpent = 0
+        · simp [positive] at zero ⊢
+          exact zero
+        · simp [positive, TurnFx.spendingBeforeMain] at zero ⊢
+          exact zero
+      · have different : (seat == q) = false := by simpa using same
+        have other : (⟨q⟩ : PlayerId) ≠ ⟨seat⟩ := by simp [Ne.symm same]
+        by_cases positive : pool.powerSpent = 0
+        · simpa [positive, List.lookup_cons, different] using ih nodup.2
+        · simpa [positive, List.lookup_cons, different, other, TurnFx.spendingBeforeMain] using ih nodup.2
+
+/-- Main Phase clears available resources and carries every seat's spent Power into the turn history. -/
+theorem mainPhase_preserves_spentPower {s next : GameState} {rest : List Frame}
+    {events : List Event} (pending : s.pending = .phase .main :: rest)
+    (step : microStep0 s = some (next, events)) (p : PlayerId) :
+    next.poolOf p = RunePool.empty ∧ next.powerSpentBeforeMain p =
+      s.powerSpentBeforeMain p + (s.poolOf p).powerSpent := by
+  simp only [microStep0, pending, Option.some.injEq, Prod.mk.injEq] at step
+  obtain ⟨rfl, _⟩ := step
+  constructor
+  · rfl
+  · simp only [GameState.mainPhasePowerNotes, GameState.powerSpentBeforeMain,
+      List.filterMap_append, List.sum_append, Nat.add_left_cancel_iff]
+    rw [sumMainSpending p s.turn s.nextTimestamp _ Std.ExtTreeMap.distinct_keys_toList]
+    rw [GameState.poolOf, Std.ExtTreeMap.getD_eq_getD_getElem?]
+    congr 2
+    cases value : s.pools[p.n]? with
+    | none =>
+      apply List.lookup_eq_none_iff.mpr
+      intro entry present
+      obtain ⟨key, pool⟩ := entry
+      have different : p.n ≠ key := by
+        intro equal
+        subst key
+        rw [Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some] at present
+        simp [value] at present
+      simpa using different
+    | some pool =>
+      cases found : s.pools.toList.lookup p.n with
+      | none =>
+        have member := Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some.mpr value
+        simpa using (List.lookup_eq_none_iff.mp found) (p.n, pool) member
+      | some foundPool =>
+        obtain ⟨before, after, split, _⟩ := List.lookup_eq_some_iff.mp found
+        have member : (p.n, foundPool) ∈ s.pools.toList := by simp [split]
+        rw [Std.ExtTreeMap.mem_toList_iff_getElem?_eq_some, value] at member
+        rw [Option.some.inj member]
+
+/-- Ending the turn discards all available resources and both parts of its Power spending history. -/
+theorem expiration_clears_spentPower {s next : GameState} {rest : List Frame}
+    {events : List Event} (pending : s.pending = .expireTurn :: rest)
+    (step : microStep0 s = some (next, events)) (p : PlayerId) :
+    next.poolOf p = RunePool.empty ∧ next.powerSpentBeforeMain p = 0 := by
+  simp only [microStep0, pending, Option.some.injEq, Prod.mk.injEq] at step
+  obtain ⟨rfl, _⟩ := step
+  exact ⟨rfl, rfl⟩
+
 /-- Main sets the new phase, clears the Rune Pool and runs Cleanup. The engine then waits at
 priority, a Showdown, an ordinary trigger choice or another decision, or finishes the game. -/
 theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)

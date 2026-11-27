@@ -2433,6 +2433,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 ### 同じターンの Power 支払いの集計
 
+- Lean で、Main Phase への移行が任意の席の支払い履歴を過不足なく引き継ぎ、ターン終了が所持資源と支払い履歴を消去することを証明した。[TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
 - Deflect と Accelerate で払った Power は、そのターンの支払いに含める。Main Phase の開始で Rune Pool を空にするときは、それまでに支払った量を席ごとに引き継ぐ。Sivir, Mercenary は同じターンに自身の支配者が払った量を参照する。リプレイでは支払いの合計を照合できる。[公式総合ルール 167、316.3、809](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Viktor, Leader は味方の Unit が同時に死亡すれば1体ずつ数え、自身も同じ処理で死亡した場合は誘発しない。Rhasa the Sunderer は自身のプレイヤーの Trash で値引きを算出する。Darius, Trifarian と Ancient Warmonger はそれぞれ同じ Battlefield の味方と敵を確認する。Yasuo, Windrider、Fiora, Victorious、Gearhead、Fae Dragon を含む9枚を確認し、全1,103枚中758枚を `full` とした。[公式総合ルール 383.2.c.2](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
