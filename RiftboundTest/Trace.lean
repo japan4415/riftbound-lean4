@@ -66,7 +66,7 @@ meta def traceOf (seed turns : Nat) : String :=
   let s := s.setPool s.me
     { energy := 1, unitEnergy := 2, spellEnergy := 3, mind := 4, order := 5, any := 6 }
   let check (facts : List ReplayObservationFact) :=
-    (ReplayObservation.checkAt [⟨7, some "Pool on screen", facts⟩] 7 s).isOk
+    (ReplayObservation.checkAt [{ checkpoint := 7, source? := some "Pool on screen", facts }] 7 s).isOk
   return check [.poolResource s.me .energy 1, .poolResource s.me .unitEnergy 2,
       .poolResource s.me .spellEnergy 3, .poolResource s.me (.domainPower .mind) 4,
       .poolResource s.me (.domainPower .order) 5, .poolResource s.me .anyPower 6,
@@ -88,7 +88,7 @@ meta def traceOf (seed turns : Nat) : String :=
   let s := gainXPOf 3 s p
   let card := cid "OGN-051"
   let check (facts : List ReplayObservationFact) :=
-    (ReplayObservation.checkAt [⟨1, none, facts⟩] 1 s).isOk
+    (ReplayObservation.checkAt [{ checkpoint := 1, facts }] 1 s).isOk
   return check [.xp p 3, .xp s.you 0, .markedUnits p .base .buffed [card, card],
       .markedUnits p .base .stunned [card], .markedUnits s.you .base .buffed []] &&
     !check [.xp p 2] && !check [.markedUnits p .base .buffed [card]] &&

@@ -144,6 +144,8 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 ゲームの入力に `observations` を指定する。1対1 と 2v2 は `games[]`、FFA は `game` に置く。`checkpoint` は適用した操作の数で、初期状態は0。映像の時刻やログの行番号は省略可能な `source` に記録できる。
 
+手番号を範囲でしか特定できない場合は、最初の候補を `checkpoint`、最後の候補を `through` に入れる。両端を含む範囲で、同じチェックポイントですべての `facts` が一致すれば照合が通る。再生が途中の場合、範囲内でまだ一致していない観測は `inspect` の `pendingObservations` に残る。`exactPrefix` は手と初期順序の確かさを示す。
+
 ```json
 {
   "observations": [

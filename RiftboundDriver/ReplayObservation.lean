@@ -160,13 +160,21 @@ deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Facts from a source such as a scoreboard, video frame or independent game log. -/
 structure ReplayObservation where
-  /-- The number of applied answers at the moment of observation. Zero is the initial state. -/
+  /-- The earliest possible number of applied answers. Zero is the initial state. -/
   checkpoint : Nat
   /-- An optional source label, such as a timestamp in the match video. -/
   source? : Option String := none
   /-- The facts visible at the selected checkpoint. -/
   facts : List ReplayObservationFact
+  /-- If the source could not identify the exact answer count, the last eligible checkpoint. -/
+  through? : Option Nat := none
 deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- Reject a window that ends before its first eligible checkpoint. -/
+def ReplayObservation.checkWindow (observation : ReplayObservation) : Except String Unit := do
+  if let some last := observation.through? then
+    if last < observation.checkpoint then
+      throw s!"checkpoint {observation.checkpoint}: observation window ends before it starts ({last})"
 
 private def checkFactValue {α : Type} [DecidableEq α] [ToJson α]
     (label : String) (expected actual : α) : Except String Unit :=
@@ -321,12 +329,21 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
 /-- Validate the observations at this position and advance an ordered observation schedule. -/
 def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : Nat)
     (s : GameState) (events : List Event := []) : Except String (List ReplayObservation) := do
-  let (observed, pending) := schedule.span (fun observation => observation.checkpoint == checkpoint)
-  for observation in observed do
+  let (eligible, later) := schedule.span (fun observation => observation.checkpoint <= checkpoint)
+  let mut unmatched := []
+  for observation in eligible do
     let source := observation.source?.map (fun label => s!" ({(toJson label).compress})") |>.getD ""
-    let check := observation.facts.forM (fun fact => fact.check s events)
-    check.mapError (fun error => s!"checkpoint {checkpoint}: observation{source}: {error}")
-  return pending
+    let errorPrefix := s!"checkpoint {checkpoint}: observation{source}"
+    let last := observation.through?.getD observation.checkpoint
+    if last < checkpoint then throw s!"{errorPrefix}: its last eligible checkpoint was {last}"
+    if let .error reason := observation.facts.forM (fun fact => fact.check s events) then
+      if checkpoint < last then
+        unmatched := observation :: unmatched
+      else if observation.through?.isSome then
+        throw s!"{errorPrefix}: no match in checkpoints {observation.checkpoint} through {last}: {reason}"
+      else
+        throw s!"{errorPrefix}: {reason}"
+  return unmatched.reverse ++ later
 
 end RiftboundDriver
 

@@ -1305,6 +1305,25 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     inspection = inspect_game(folder, command, inputs, 1)
     assert inspection["checkedObservations"] == 2 and inspection["pendingObservations"] == 0
 
+    ranged = deepcopy(inputs)
+    observed = ranged["games"][0]["observations"]
+    observed[0].update(checkpoint=index - 2, through=index + 1)
+    observed.append({"checkpoint": index - 1, "facts": [{"score": {"seat": p0, "points": 0}}]})
+    ranged_source = folder / "observation-window-input.json"
+    ranged_archive = folder / "observation-window-archive.json"
+    ranged_source.write_text(json.dumps(ranged), encoding="utf-8")
+    assert json.loads(command("record", ranged_source, ranged_archive)) == saved["summary"]
+    assert json.loads(command("verify", ranged_archive)) == saved["summary"]
+    assert json.loads(ranged_archive.read_bytes())["games"][0]["checkpoints"] == recorded["games"][0]["checkpoints"]
+    short = deepcopy(ranged)
+    short["games"][0]["answers"] = game["answers"][:index - 1]
+    progress = inspect_game(folder, command, short, 1)
+    assert progress["checkedObservations"] == 2 and progress["pendingObservations"] == 1
+    observed[0]["through"] = index - 1
+    inspect_game(folder, command, ranged, 1, error=f"no match in checkpoints {index - 2} through {index - 1}")
+    observed[0]["through"] = index - 3
+    inspect_game(folder, command, ranged, 1, error="observation window ends before it starts")
+
     mismatch = f'game 1: checkpoint {index}: observation ("00:03:21"): seat 0 score'
     first_score["points"] += 1
     source.write_text(json.dumps(inputs), encoding="utf-8")

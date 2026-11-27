@@ -555,8 +555,10 @@ structure GameInputs where
   observations? : Option (List ReplayObservation) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
-private def GameInputs.observationSchedule (input : GameInputs) : List ReplayObservation :=
-  (input.observations?.getD []).mergeSort (fun a b => a.checkpoint <= b.checkpoint)
+private def GameInputs.observationSchedule (input : GameInputs) : Except String (List ReplayObservation) := do
+  let observations := input.observations?.getD []
+  observations.forM ReplayObservation.checkWindow
+  return observations.mergeSort (fun a b => a.checkpoint <= b.checkpoint)
 
 /-- Rules pinned by a saved recording. -/
 structure ReplayRules where
@@ -1461,7 +1463,7 @@ structure ReplayInspection where
 def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String ReplayInspection := do
   let initial := ReplayPosition.fromState (← input.initial db config)
-  let schedule := input.observationSchedule
+  let schedule ← input.observationSchedule
   let mut pending ← ReplayObservation.checkAt schedule 0 initial.state []
   let mut history := [initial]
   let mut checkpoint := 0
@@ -1533,7 +1535,8 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
   let s ← input.initial db config
-  let mut pending ← ReplayObservation.checkAt input.observationSchedule 0 s []
+  let schedule ← input.observationSchedule
+  let mut pending ← ReplayObservation.checkAt schedule 0 s []
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
   let mut checkpoints := #[initial]
@@ -1552,7 +1555,10 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     checkpoints := checkpoints.push witness
     history := next :: history
   if let some observation := pending.head? then
-    throw s!"checkpoint {observation.checkpoint}: observation is beyond the last answer ({input.answers.size})"
+    if observation.checkpoint > input.answers.size then
+      throw s!"checkpoint {observation.checkpoint}: observation is beyond the last answer ({input.answers.size})"
+    else
+      throw s!"checkpoint {observation.checkpoint}: observation window had no match before the last answer ({input.answers.size})"
   let some final := history.head? | throw "the final checkpoint is missing"
   return {
     input, eliminationConfig? := replayEliminationConfig config, checkpoints,

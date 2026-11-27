@@ -27,7 +27,7 @@ private meta def testBoard (test : GameState → Option Bool) : Bool :=
   let second := cid "SFD-042"
   let observed (groups : List RiftboundDriver.ReplayObservedUnitAttachments) :=
     RiftboundDriver.ReplayObservation.checkAt
-      [⟨1, none, [.unitAttachments p .base groups]⟩] 1 board
+      [{ checkpoint := 1, facts := [.unitAttachments p .base groups] }] 1 board
   return (observed [⟨unit, []⟩, ⟨unit, [second, first]⟩]).isOk &&
     !(observed [⟨unit, [first]⟩, ⟨unit, [second]⟩]).isOk
 
