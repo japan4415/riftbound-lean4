@@ -44,6 +44,27 @@ inductive ReplayChainItem where
   | ability (controller : PlayerId) (source : CardId)
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- One publicly recorded resource in a seat's Pool. -/
+inductive ReplayPoolResource where
+  /-- Unrestricted Energy. -/
+  | energy
+  /-- Energy available only for Units. -/
+  | unitEnergy
+  /-- Energy available only for Spells. -/
+  | spellEnergy
+  /-- Power already assigned to a domain. -/
+  | domainPower (domain : Domain)
+  /-- Power that can pay any domain. -/
+  | anyPower
+deriving DecidableEq, Repr, ToJson, FromJson
+
+private def ReplayPoolResource.amount (pool : RunePool) : ReplayPoolResource → Nat
+  | .energy => pool.energy
+  | .unitEnergy => pool.unitEnergy
+  | .spellEnergy => pool.spellEnergy
+  | .domainPower domain => pool.get domain
+  | .anyPower => pool.any
+
 /-- Public events that can be identified without card faces or engine object IDs. -/
 inductive ReplayPublicEvent where
   /-- The seat drew one card. -/
@@ -85,6 +106,8 @@ inductive ReplayObservationFact where
   | active (seat : Option PlayerId)
   /-- The points shown for a seat, including its shared score in team games. -/
   | score (seat : PlayerId) (points : Nat)
+  /-- The observed balance of one resource in the seat's Pool. -/
+  | poolResource (seat : PlayerId) (resource : ReplayPoolResource) (amount : Nat)
   /-- The size of a visible zone, including face-down cards or abilities on the Chain. -/
   | zoneCount (zone : Zone) (count : Nat)
   /-- All face-up card codes in a public zone, with duplicate copies and in any order. -/
@@ -207,6 +230,10 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
   | .score seat points =>
     observeSeat s seat
     checkFactValue s!"seat {seat.n} score" points (s.pointsOf seat)
+  | .poolResource seat resource amount =>
+    observeSeat s seat
+    checkFactValue s!"seat {seat.n} Pool {(toJson resource).compress}" amount
+      (resource.amount (s.poolOf seat))
   | .zoneCount zone count =>
     checkFactValue s!"{zoneLabel zone} count" count (← observeZone s zone).length
   | .zoneCards zone cards => checkCardSet (zoneLabel zone) cards (← publicCards s zone)

@@ -2,6 +2,8 @@ module
 
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
+import RiftboundDriver.ReplayObservation
+meta import RiftboundDriver.ReplayObservation
 import RiftboundTest.CardLab
 meta import RiftboundTest.CardLab
 
@@ -57,6 +59,21 @@ meta def traceOf (seed turns : Nat) : String :=
     let (after, _) := stateJson (gained.spendXP ⟨0⟩ 1) seen
     return (before.splitOn "\"xp\":[3,2]").length == 2 &&
       (after.splitOn "\"xp\":[2,2]").length == 2 : Option Bool).getD false
+
+-- Each observed balance uses its own resource kind and the specified seat's Pool.
+#guard (do
+  let s ← lab
+  let s := s.setPool s.me
+    { energy := 1, unitEnergy := 2, spellEnergy := 3, mind := 4, order := 5, any := 6 }
+  let check (facts : List ReplayObservationFact) :=
+    (ReplayObservation.checkAt [⟨7, some "Pool on screen", facts⟩] 7 s).isOk
+  return check [.poolResource s.me .energy 1, .poolResource s.me .unitEnergy 2,
+      .poolResource s.me .spellEnergy 3, .poolResource s.me (.domainPower .mind) 4,
+      .poolResource s.me (.domainPower .order) 5, .poolResource s.me .anyPower 6,
+      .poolResource s.you .energy 0] &&
+    !check [.poolResource s.you .spellEnergy 3] &&
+    !check [.poolResource s.me (.domainPower .fury) 4] &&
+    !check [.poolResource ⟨s.playerCount⟩ .energy 0] : Option Bool).getD false
 
 -- A token already known to the viewer changes identity in `copies`, using its original ID.
 #guard (do
