@@ -418,7 +418,8 @@ private def confirmTeamGame (observation : TeamGameRecord) (played : RecordedGam
   return some normalized
 
 private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
-    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat) :
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat)
+    (upgradePermanentChoices : Bool := false) :
     Except String (Sum ReplayInspection RecordedTeamMatch) := do
   if input.seats != TeamSeats.standard then
     throw "engine inputs number the first team's A/B seats 0 and 1 and the other team's seats 2 and 3"
@@ -429,7 +430,7 @@ private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
       | none => replay.record db config
       | some saved => do
         if saved.input != replay then throw "the saved game inputs differ"
-        saved.checkEvidence db config 100 refreshCoverage
+        saved.checkEvidence db config 100 refreshCoverage upgradePermanentChoices
     let result ← confirmTeamGame game recorded input.seats config
     pure (result, some recorded)) inspectAt
   match progress with
@@ -437,9 +438,10 @@ private def playTeamMatchProgress (input : TeamMatchRecord) (db : CardDB)
   | .inr (summary, games) => return .inr { rules := ReplayRules.current db, input, games, summary }
 
 private def playTeamMatch (input : TeamMatchRecord) (db : CardDB)
-    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false)
+    (upgradePermanentChoices : Bool := false) :
     Except String RecordedTeamMatch := do
-  match ← playTeamMatchProgress input db expected refreshCoverage none with
+  match ← playTeamMatchProgress input db expected refreshCoverage none upgradePermanentChoices with
   | .inr saved => return saved
   | .inl _ => throw "unexpected inspection while recording a team match"
 
@@ -468,6 +470,7 @@ private def RecordedTeamMatch.checkArchive (saved : RecordedTeamMatch) (db : Car
   else if saved.rules != rules then throw "the replay format, rules or card definitions differ"
   let refreshCoverage := saved.rules.cards != rules.cards
   let replay ← playTeamMatch saved.input db (some saved.games) refreshCoverage
+    (allowCardUpdate && saved.rules.upgradesPermanentChoices rules)
   let summary := if refreshCoverage then
     { saved.summary with uncheckedCards := replay.summary.uncheckedCards }
     else saved.summary

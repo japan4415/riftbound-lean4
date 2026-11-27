@@ -2191,6 +2191,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Battlefield を指定する手では、配置先と追加コストに使うカードを別々に選ぶ。Cruel Patron は必須の Kill を支払い、Skystrike Squadron は Gear の返却を選んだときに減額される。配置先や追加コストのオブジェクトは、呪文による対象選択として記録しない（CR 355、356、357）。
 - Stalking Wolf は、自分の最後の Unit が支払いに使うペットである Battlefield に Ambush できる。Chain への Reaction、Base へのプレイ、効果によるプレイを確認した。Stalking Wolf を `full` とし、全1,103枚中562枚を実装済みにした（CR 822）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/) · [カード実装状況](coverage.md)
+- 旧形式のリプレイは `revalidate` で更新できる。盤面の指紋とイベント列を照合し、実際にプレイした Unit や Gear の配置先・追加コストを呪文の対象として記録していた場合だけ、その注記を取り除く。
 
 ## M10: 完了判定（original.md の最終目的）
 

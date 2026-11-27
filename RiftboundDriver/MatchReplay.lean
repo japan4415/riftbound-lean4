@@ -245,7 +245,8 @@ def concludeReplayMatch (state : MatchState) (timed : Bool) (ending : ReplayMatc
   | _, _, _ => throw "the stated match ending disagrees with the game results"
 
 private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
-    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat) :
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool) (inspectAt : Option Nat)
+    (upgradePermanentChoices : Bool := false) :
     Except String (Sum ReplayInspection RecordedMatch) := do
   if input.config.mode != Mode.duel then throw "a replayable Duel match requires the 1v1 mode"
   if input.winsRequired != 1 && input.winsRequired != 2 then throw "invalid number of wins required"
@@ -292,7 +293,7 @@ private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : Replay
           Sum.inr <$> (match expected.bind (·[index]?) with
             | some saved => do
               if saved.input != game then throw "the saved game input differs"
-              saved.checkEvidence db config input.fuel refreshCoverage
+              saved.checkEvidence db config input.fuel refreshCoverage upgradePermanentChoices
             | none => game.record db config input.fuel)
       let summary := match played with
         | .inl inspection => inspection.summary game.decks
@@ -339,9 +340,10 @@ private def runMatchProgress (input : MatchInputs) (db : CardDB) (rules : Replay
   } }
 
 private def runMatch (input : MatchInputs) (db : CardDB) (rules : ReplayRules)
-    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false) :
+    (expected : Option (Array RecordedGame)) (refreshCoverage : Bool := false)
+    (upgradePermanentChoices : Bool := false) :
     Except String RecordedMatch := do
-  match ← runMatchProgress input db rules expected refreshCoverage none with
+  match ← runMatchProgress input db rules expected refreshCoverage none upgradePermanentChoices with
   | .inr saved => return saved
   | .inl _ => throw "unexpected inspection while recording a match"
 
@@ -370,6 +372,7 @@ private def RecordedMatch.checkArchive (saved : RecordedMatch) (db : CardDB)
   else if saved.rules != rules then throw "the replay format, rules edition or card definitions differ"
   let refreshCoverage := saved.rules.cards != rules.cards
   let actual ← runMatch saved.input db rules (some saved.games) refreshCoverage
+    (allowCardUpdate && saved.rules.upgradesPermanentChoices rules)
   let summary := if refreshCoverage then
     { saved.summary with cardsFullyChecked := actual.summary.cardsFullyChecked }
     else saved.summary

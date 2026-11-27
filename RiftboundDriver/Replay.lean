@@ -301,11 +301,16 @@ deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Rules metadata for replays produced by this driver. -/
 def ReplayRules.current (db : CardDB) : ReplayRules :=
-  ⟨1, coreRulesVersion, tournamentRulesVersion, toString (hash (reprStr db))⟩
+  ⟨2, coreRulesVersion, tournamentRulesVersion, toString (hash (reprStr db))⟩
+
+/-- Schema 1 could label a permanent's destination or cost as a Spell target. -/
+def ReplayRules.upgradesPermanentChoices (saved current : ReplayRules) : Bool :=
+  saved.schema == 1 && current.schema == 2
 
 /-- A revalidation can compare fingerprints only within the same format and rule editions. -/
 def ReplayRules.checkEditions (saved current : ReplayRules) : Except String Unit := do
-  unless saved.schema == current.schema && saved.core == current.core &&
+  unless (saved.schema == current.schema || saved.upgradesPermanentChoices current) &&
+      saved.core == current.core &&
       saved.tournament == current.tournament do
     throw "the replay format or rules editions differ"
 
@@ -1187,19 +1192,36 @@ def ReplayInspection.summary (inspection : ReplayInspection) (decks : ReplayDeck
   ReplayGameResult.fromState inspection.position.state decks inspection.position.fields.reverse
     inspection.exact
 
+/-- Reconstruct only the obsolete choices of a permanent actually played by this declaration.
+Schema 1 inserted them immediately after that play, before later effects and Cleanup. -/
+private def legacyPermanentChoices (events : List Event) (a : Action) : List Event := Id.run do
+  let .player p := a.actor | return events
+  let .playCard card _ targets .. := a.kind | return events
+  let some entered := events.findSome? (fun
+    | .moved old new (.player owner .base) => if old == card && owner == p then some new else none
+    | _ => none) | return events
+  let played := Event.played p entered
+  let earlier := events.takeWhile (· != played)
+  match events.drop earlier.length with
+  | [] => return events
+  | event :: later => return earlier ++ [event] ++ targets.map (Event.chosenBySpell p) ++ later
+
 private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
-    (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do
+    (index : Nat) (actual : ReplayCheckpoint) (legacyPlays : List Action := []) : Except String Unit := do
   if let some witnesses := expected then
     let some witness := witnesses[index]? | throw s!"checkpoint {index}: missing evidence"
     if witness.state != actual.state then throw s!"checkpoint {index}: state fingerprint differs"
-    if witness.events != actual.events then throw s!"checkpoint {index}: events differ"
+    if witness.events != actual.events &&
+        !legacyPlays.any (fun action => legacyPermanentChoices actual.events action == witness.events) then
+      throw s!"checkpoint {index}: events differ"
     if witness.chosenChampions?.any (fun registered => actual.chosenChampions? != some registered) then
       throw s!"checkpoint {index}: Chosen Champion identities differ"
     if witness.damageMarks?.any (fun marked => actual.damageMarks? != some marked) then
       throw s!"checkpoint {index}: damage marks differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
-    (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
+    (fuel : Nat) (expected : Option (Array ReplayCheckpoint))
+    (upgradePermanentChoices : Bool := false) : Except String RecordedGame := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
   let s ← input.initial db config
@@ -1210,11 +1232,15 @@ private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
   let mut history := [ReplayPosition.fromState s]
   let mut exact := input.openingOrderEvidence?.isNone
   for (answer, index) in input.answers.toList.zipIdx do
-    let (_, next, events) ← input.advance history answer (index + 1) fuel
+    let (action, next, events) ← input.advance history answer (index + 1) fuel
     pending ← ReplayObservation.checkAt pending (index + 1) next.state
     exact := exact && next.answerExact
     let witness := ReplayCheckpoint.capture next.state events
-    checkCheckpoint expected (index + 1) witness
+    let legacyPlays := if upgradePermanentChoices then
+        action.toList ++ ((history.head?.map (·.state.pending)).getD []).filterMap
+          (fun | .resumeCost saved => some saved | _ => none)
+      else []
+    checkCheckpoint expected (index + 1) witness legacyPlays
     checkpoints := checkpoints.push witness
     history := next :: history
   if let some observation := pending.head? then
@@ -1231,10 +1257,11 @@ def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
 
 /-- Replay one game against its saved evidence, recomputing coverage when the card table changes. -/
 def RecordedGame.checkEvidence (saved : RecordedGame) (db : CardDB) (config : GameConfig)
-    (fuel : Nat) (refreshCoverage : Bool := false) : Except String RecordedGame := do
+    (fuel : Nat) (refreshCoverage : Bool := false) (upgradePermanentChoices : Bool := false) :
+    Except String RecordedGame := do
   if saved.eliminationConfig? != replayEliminationConfig config then
     throw "the saved single-elimination clock procedure differs"
-  let actual ← runGame saved.input db config fuel (some saved.checkpoints)
+  let actual ← runGame saved.input db config fuel (some saved.checkpoints) upgradePermanentChoices
   let summary := if refreshCoverage then
     { saved.summary with uncheckedCards := actual.summary.uncheckedCards }
     else saved.summary
@@ -1299,6 +1326,7 @@ private def RecordedFreeForAll.checkArchive (saved : RecordedFreeForAll) (db : C
   let game ← (do
     let game ← saved.game.checkEvidence db (← freeForAllConfig saved.mode) saved.fuel
       (refreshCoverage := saved.rules.cards != rules.cards)
+      (upgradePermanentChoices := allowCardUpdate && saved.rules.upgradesPermanentChoices rules)
     requireFinishedFreeForAll game.summary
     pure game).mapError (fun error => s!"game 1: {error}")
   return { saved with rules, game }

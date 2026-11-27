@@ -1101,6 +1101,14 @@ def check_revalidation(folder: Path, command: Callable[..., str], archive: Path,
     assert json.loads(command("verify" + suffix, renewed)) == summary
     assert archive.read_bytes() == original
 
+    if not suffix:
+        legacy = json.loads(original)
+        legacy["rules"]["schema"] = 1
+        stale.write_text(json.dumps(legacy), encoding="utf-8")
+        command("verify", stale, error="card definitions differ")
+        assert json.loads(command("revalidate", stale, renewed)) == summary
+        assert json.loads(renewed.read_bytes()) == json.loads(original)
+
     game = old["game"] if suffix == "-ffa" else old["games"][0]
     index, checkpoint = next((index, checkpoint) for index, checkpoint in enumerate(game["checkpoints"])
                              if checkpoint["events"])
