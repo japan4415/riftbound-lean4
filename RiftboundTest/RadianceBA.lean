@@ -22,10 +22,12 @@ open Riftbound
   let (asked, _) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
   let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
-  let (saved, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, events) ← (step 100 asked answer).toOption
   let charged := saved.modObj mord (fun unit => { unit with damage := 8 })
   let (done, _) ← (advance 100 { charged with pending := [.cleanup, .priority p] } []).toOption
-  return controller == p && victim == mord && cost == ally &&
+  return cleanupAnswerWorkSupported asked answer && saved.pending == [.priority p] &&
+    controller == p && victim == mord && cost == ally &&
     (saved.zone (.player p .base)).contains mord && saved.tired mord == some true &&
     (saved.obj? mord).any (fun unit => unit.damage == 0 && unit.loc.isNone) &&
     saved.countIn p .trash "V0" == 1 && saved.inPlay.contains foe &&

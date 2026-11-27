@@ -249,16 +249,22 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
 -- The Standard Move's exhaustion triggers are put on the Chain before its movement triggers.
 #guard radianceCase fun s => do
   let p := s.me
-  let (s, oracle) ← put s p "RAD-053" .base
-  let (s, lulu) ← putAt s p "RAD-110" s.bf0
-  let exhausted := s.tire oracle
-  let events := [.standardMoved lulu (some s.bf0)] ++ s.exhaustionEvents exhausted (some p) true
-  let triggers := exhausted.detect events
-  let (stacked, frames) := triggersStep exhausted triggers []
+  let field := s.bf0
+  let (s, oracle) ← put (s.control p field) p "RAD-053" .base
+  let (s, lulu) ← put s p "RAD-110" .base
+  let send (t : GameState) (kind : ActionKind) := (step 100 t ⟨.player p, kind⟩).toOption
+  let (group, _) ← send s (.startGroupMove (.battlefield field) Cost.zero)
+  let (one, _) ← send group (.choose lulu)
+  let (both, _) ← send one (.choose oracle)
+  let (stacked, events) ← send both (.decide true)
   let first ← (stacked.zone .chain).head?
-  return (stacked.obj? first).any (fun o => match o.kind with
-    | .chainAbility _ _ source => source == oracle | _ => false) &&
-    (match frames with | [.triggers [next]] => next.source == lulu | _ => false)
+  let .triggerOrder who next [] [] _ :: .priority _ :: _ := stacked.pending | none
+  let source := (stacked.obj? first).bind (fun obj => match obj.kind with
+    | .chainAbility _ _ src => some src | _ => none)
+  return who == p && (source.bind stacked.cardDef?).any (·.id == cid "RAD-053") &&
+    (stacked.cardDef? next.source).any (·.id == cid "RAD-110") &&
+    (events.filterMap (fun | .standardMoved id _ => (stacked.cardDef? id).map (·.id) | _ => none)) ==
+      [cid "RAD-110", cid "RAD-053"]
 
 -- Inspiring Seraphine needs three friendly Units exhausted by her controller in one instruction.
 -- Declining at finalization saves the once-per-turn use.

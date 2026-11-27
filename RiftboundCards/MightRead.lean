@@ -3,6 +3,7 @@ module
 public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.PlayDeclarationWork
+public import Riftbound.Invariant.MovementWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
@@ -194,6 +195,71 @@ theorem step_playCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : R
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
   Riftbound.step_playCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered Standard Move reaches a decision, including through Cleanup and its observers. -/
+theorem step_standardMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {u : Riftbound.ObjId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .standardMove u dest pay⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .standardMove u dest pay⟩ = .ok (t, events) :=
+  Riftbound.step_standardMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- A registered group move opens its unit selection. -/
+theorem step_startGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .startGroupMove dest pay⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .startGroupMove dest pay⟩ = .ok (t, events) :=
+  Riftbound.step_startGroupMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- Selecting another unit for a registered group move reaches a decision. -/
+theorem step_chooseGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {u : Riftbound.ObjId}
+    {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose u⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose u⟩ = .ok (t, events) :=
+  Riftbound.step_chooseGroupMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- Cancelling a registered group move returns to a waiting decision. -/
+theorem step_cancelGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide false⟩) (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide false⟩ = .ok (t, events) :=
+  Riftbound.step_cancelGroupMove_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- A confirmed registered group move advances through Cleanup to a decision. -/
+theorem step_confirmGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide true⟩) (decision : Riftbound.isOrdinaryDecisionTail rest = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide true⟩ = .ok (t, events) :=
+  Riftbound.step_confirmGroupMove_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- A registered choice among staged Battlefields advances to the next decision. -/
+theorem step_chooseShowdown_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {bf : Riftbound.ObjId}
+    {first : Riftbound.ObjId × Riftbound.PlayerId} {more : List (Riftbound.ObjId × Riftbound.PlayerId)}
+    {rest : List Riftbound.Frame} (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chooseShowdown p first more :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose bf⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose bf⟩ = .ok (t, events) :=
+  Riftbound.step_chooseShowdown_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- A checked answer before Cleanup with the registered cards advances to a decision. -/
+theorem step_cleanupAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.cleanupAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = .ok (t, events) :=
+  Riftbound.step_cleanupAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
 
 /-- A checked choice or chance order can resume straight to an ordinary decision. -/
 theorem step_decisionRunAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}

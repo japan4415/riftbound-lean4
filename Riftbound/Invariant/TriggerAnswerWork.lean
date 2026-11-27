@@ -106,21 +106,6 @@ theorem step_putTrigger_to_decision {s : GameState} {p : PlayerId} {first : Pend
     exact ran.finish stop before
   exact ⟨t, used, _, stop, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
 
-private theorem step_observed_action_waits {s raw : GameState} {a : Action} {notices : List Event}
-    (legal : Legal s a) (ordinary : a.kind ≠ .concede)
-    (noCost : s.actionDeathCostChoice a = none) (applied : applyFrame0 s a = some (raw, notices))
-    (wf : raw.WF) (reads : MightRead.database raw.cards)
-    (waiting : raw.pending.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = .ok (t, events) := by
-  apply step_observed_frame_to_decision legal noCost ordinary applied wf reads
-  intro next observed safe checked stack
-  obtain ⟨mid, used, added, entered, midWF, cards, route⟩ :=
-    advance_observed_work next observed safe checked
-  obtain ⟨t, more, run, stop⟩ :=
-    advance_observed_decision mid next.pending midWF (cards ▸ checked) route (stack.symm ▸ waiting)
-  exact ⟨t, used + more, added, by simpa only [List.append_nil] using entered.append run, stop⟩
-
 /-- Preparing a funded trigger opens the resource choice window. -/
 theorem step_prepareTrigger_to_decision {s : GameState} {p : PlayerId} {first : PendTrigger}
     {group others : List PendTrigger} {rest : List Frame}

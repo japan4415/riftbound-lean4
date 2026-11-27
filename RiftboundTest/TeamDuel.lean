@@ -322,10 +322,11 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
   let s ← put s opponent b
   let onlyNoncombat := s.stagedShowdowns [.priority current]
   let s ← put s ally b
-  let (choice, opening) := cleanupFrame s [.priority current]
+  let (choice, opening) ← (advance 1 { s with pending := [.cleanup, .priority current] } []).toOption
   let select (p : PlayerId) (field : ObjId) : Action := ⟨.player p, .choose field⟩
-  let (resolved, events) ← (step 100 choice (select current b)).toOption
-  return onlyNoncombat == [(b, opponent)] && opening.isEmpty &&
+  let (resolved, events) ← (step 0 choice (select current b)).toOption
+  let (extraFuel, replayed) ← (step 100 choice (select current b)).toOption
+  return resolved.pending == extraFuel.pending && events == replayed && onlyNoncombat == [(b, opponent)] && opening.isEmpty &&
     (legalFrameActions choice).contains (select current a) &&
     (legalFrameActions choice).contains (select current b) &&
     (step 100 choice (select ally b)).toOption.isNone &&

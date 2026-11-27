@@ -69,6 +69,7 @@ public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.ChainAnswerWork
 public import Riftbound.Invariant.TriggerAnswerWork
 public import Riftbound.Invariant.PlayDeclarationWork
+public import Riftbound.Invariant.MovementWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.Progress

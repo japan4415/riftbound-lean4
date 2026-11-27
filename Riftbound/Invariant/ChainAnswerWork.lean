@@ -46,6 +46,31 @@ theorem advance_observed_chain_runs_to_decision (raw : GameState) (notices : Lis
   | resume => exact run (stack.symm ▸ base)
   | queue q ne => exact run (stack.symm ▸ base.insert (fun f member => (finite f member).isResolution) insertFinish q ne)
 
+/-- Process the event observers and the Run prefix, then follow a retained continuation if
+no decision interrupts it. -/
+theorem advance_observed_run_prefix_then (raw : GameState) (notices : List Event)
+    {body : List Frame} {keeps : List Frame → Prop}
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (base : ResolutionPrefix body keeps raw.pending) (finite : ∀ f ∈ body, f.FiniteRun)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail))
+    (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → keeps t.pending →
+      ∃ u used events, AdvancePrefix t u used events ∧ u.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨mid, entered, early, path, midWF, cards, route⟩ := advance_observed_work raw notices wf reads
+  have run (now : ResolutionPrefix body keeps mid.pending) : ∃ t used events,
+      AdvancePrefix (raw.withTriggers notices) t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
+    obtain ⟨after, elapsed, later, done, stop | ⟨tail, safe, known⟩⟩ :=
+      advance_run_frames midWF (cards ▸ reads) now finite inserted
+    · exact ⟨after, entered + elapsed, early ++ later, path.append done, stop⟩
+    · obtain ⟨t, used, events, resumed, stop⟩ := resume after safe (known ▸ cards ▸ reads) tail
+      exact ⟨t, entered + elapsed + used, (early ++ later) ++ events, (path.append done).append resumed, stop⟩
+  generalize stack : mid.pending = frames at route
+  cases route with
+  | empty => exact ⟨mid, entered, early, path, by rw [stack]; rfl⟩
+  | resume => exact run (stack.symm ▸ base)
+  | queue q ne => exact run (stack.symm ▸ base.insert (fun f h => (finite f h).isResolution) inserted q ne)
+
 /-- Run observed programs, handle their ordinary trigger queue, and resume the supplied
 continuation if no decision interrupts it. -/
 theorem advance_observed_runs_then (raw : GameState) (notices : List Event) {body rest : List Frame}
@@ -57,28 +82,13 @@ theorem advance_observed_runs_then (raw : GameState) (notices : List Event) {bod
       ∃ u used events, AdvancePrefix t u used events ∧ u.pending.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
       t.pending.head?.all (fun f => !f.isWork) = true := by
-  have keep (tail : List Frame) (tracked : TriggerWorkTail rest tail)
-      (q : List PendTrigger) (ne : q ≠ []) : TriggerWorkTail rest (insertTriggers q tail) :=
-    tracked.insert front q ne
-  obtain ⟨mid, entered, early, path, midWF, cards, route⟩ := advance_observed_work raw notices wf reads
-  have run (now : ResolutionPrefix body (TriggerWorkTail rest) mid.pending) : ∃ t used events,
-      AdvancePrefix (raw.withTriggers notices) t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
-    obtain ⟨after, elapsed, later, done, stop | ⟨tail, safe, known⟩⟩ :=
-      advance_run_frames midWF (cards ▸ reads) now finite keep
-    · exact ⟨after, entered + elapsed, early ++ later, path.append done, stop⟩
-    · obtain ⟨ready, queued, queuePath, stop | ⟨atRest, readyWF, readyCards⟩⟩ :=
-        advance_trigger_tail after rest safe (known ▸ cards ▸ reads) tail
-      · exact ⟨ready, entered + elapsed + queued, early ++ later,
-          by simpa only [List.append_nil] using (path.append done).append queuePath, stop⟩
-      · obtain ⟨t, used, events, resumed, stop⟩ :=
-          resume ready readyWF (readyCards ▸ known ▸ cards ▸ reads) atRest
-        exact ⟨t, entered + elapsed + queued + used, (early ++ later) ++ events,
-          by simpa only [List.append_nil] using ((path.append done).append queuePath).append resumed, stop⟩
-  generalize stack : mid.pending = frames at route
-  cases route with
-  | empty => exact ⟨mid, entered, early, path, by rw [stack]; rfl⟩
-  | resume => exact run (stack.symm ▸ base)
-  | queue q ne => exact run (stack.symm ▸ base.insert (fun f h => (finite f h).isResolution) keep q ne)
+  apply advance_observed_run_prefix_then raw notices wf reads base finite (fun _ track q ne => track.insert front q ne)
+  intro state safe known tail
+  obtain ⟨ready, queued, queuePath, stop | ⟨atRest, readyWF, readyCards⟩⟩ :=
+    advance_trigger_tail state rest safe known tail
+  · exact ⟨ready, queued, [], queuePath, stop⟩
+  · obtain ⟨t, used, events, resumed, stop⟩ := resume ready readyWF (readyCards ▸ known) atRest
+    exact ⟨t, queued + used, events, by simpa only [List.nil_append] using queuePath.append resumed, stop⟩
 
 /-- Lift the observed work after a raw decision to the declared action. Surcharge
 payment preserves the card database and the pending frames. -/
@@ -127,6 +137,23 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
     simp only [step, ite_eq_left legal, declared]
     exact path.finish stopped before
   exact ⟨t, used, _, stopped, fun extra => step_mono finished (Nat.le_add_right _ extra)⟩
+
+/-- Run action observers and any ordinary trigger queue when the raw action is already
+waiting at a decision. -/
+theorem step_observed_action_waits {s raw : GameState} {a : Action} {notices : List Event}
+    (legal : Legal s a) (ordinary : a.kind ≠ .concede)
+    (noCost : s.actionDeathCostChoice a = none) (applied : applyFrame0 s a = some (raw, notices))
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (waiting : raw.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = .ok (t, events) := by
+  apply step_observed_frame_to_decision legal noCost ordinary applied wf reads
+  intro next observed safe checked stack
+  obtain ⟨mid, used, added, entered, midWF, cards, route⟩ :=
+    advance_observed_work next observed safe checked
+  obtain ⟨t, more, run, stop⟩ :=
+    advance_observed_decision mid next.pending midWF (cards ▸ checked) route (stack.symm ▸ waiting)
+  exact ⟨t, used + more, added, by simpa only [List.append_nil] using entered.append run, stop⟩
 
 /-- The three effect decisions that resume with a Run program. -/
 def isChainEffectAnswer (s : GameState) (a : Action) : Bool :=
