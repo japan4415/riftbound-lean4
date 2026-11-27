@@ -597,6 +597,220 @@ theorem GameState.rankedZoneReferences_iff {s t : GameState} (players : s.player
       exact rightRanking.backward_forward id (known id present)
     _ = _ := List.map_id _
 
+private theorem Pos.insert_map_pair (pos : Pos) {left right : List ObjId}
+    {leftId rightId : ObjId} {f g : ObjId → Nat}
+    (lists : left.map f = right.map g) (paired : f leftId = g rightId) :
+    (pos.insert leftId left).map f = (pos.insert rightId right).map g := by
+  cases pos <;> simp [Pos.insert, paired, lists, List.map_take, List.map_drop]
+
+/-- Adding objects at the same insertion point in corresponding states preserves the
+ranked zone projection, even when their fresh identifiers differ. -/
+theorem GameState.rankedZoneReferences_afterAdd {s t s' t' : GameState}
+    {leftObject rightObject : Object} {leftId rightId : ObjId} {zone : Zone} {pos : Pos}
+    (left : s.WF) (right : t.WF) (players : s.playerCount = t.playerCount)
+    (same : s.rankedZoneReferences = t.rankedZoneReferences)
+    (leftAdded : addObject s leftObject zone pos = some (s', leftId))
+    (rightAdded : addObject t rightObject zone pos = some (t', rightId)) :
+    s'.rankedZoneReferences = t'.rankedZoneReferences := by
+  obtain ⟨rename, zones⟩ := (GameState.rankedZoneReferences_iff players).mp same
+  let after := rename.extendAfterAdd left right leftAdded rightAdded
+  have leftCount : s'.playerCount = s.playerCount :=
+    congrArg (fun cfg => cfg.mode.players) (addObject_sameMeta leftAdded).config
+  have rightCount : t'.playerCount = t.playerCount :=
+    congrArg (fun cfg => cfg.mode.players) (addObject_sameMeta rightAdded).config
+  have oldMap (z : Zone) (valid : z ∈ allZones s.playerCount) :
+      (s.zone z).map (after.forward ∘ ObjId.n) = (t.zone z).map ObjId.n := by
+    rw [← zones z valid, List.map_map]
+    apply List.map_congr_left
+    intro id member
+    have known : id.n ∈ s.zoneIds.map ObjId.n :=
+      List.mem_map.mpr ⟨id, GameState.mem_zoneIds valid member, rfl⟩
+    have earlier := Nat.ne_of_lt (OrderedReferenceBijection.zoneReferences_belowCounter left id.n known)
+    simp [after, OrderedReferenceBijection.extendAfterAdd, OrderedReferenceBijection.extendZoneReferences,
+      OrderedReferenceBijection.congrSupport, OrderedReferenceBijection.extendFresh, earlier]
+  refine GameState.rankedZoneReferences_eq (leftCount.trans (players.trans rightCount.symm)) after ?_
+  intro z valid
+  have before : z ∈ allZones s.playerCount := by simpa only [leftCount] using valid
+  rw [List.map_map]
+  by_cases moved : z = zone
+  · subst z
+    have leftZone : s'.zone zone = pos.insert leftId (s.zone zone) := by
+      obtain ⟨_, rfl, rfl⟩ := addObject_spec leftAdded
+      exact GameState.zone_setZone_self _ _ _
+    have rightZone : t'.zone zone = pos.insert rightId (t.zone zone) := by
+      obtain ⟨_, rfl, rfl⟩ := addObject_spec rightAdded
+      exact GameState.zone_setZone_self _ _ _
+    rw [leftZone, rightZone]
+    exact pos.insert_map_pair (oldMap zone before)
+      (rename.extendAfterAdd_newObject left right leftAdded rightAdded)
+  · rw [addObject_zone_other leftAdded moved, addObject_zone_other rightAdded moved]
+    exact oldMap z before
+
+private theorem map_erase_reference {ids : List ObjId} {removed : ObjId} (f : ObjId → Nat)
+    (reflects : ∀ id ∈ ids, f id = f removed → id = removed) :
+    (ids.erase removed).map f = (ids.map f).erase (f removed) := by
+  induction ids with
+  | nil => rfl
+  | cons id later ih =>
+    by_cases same : id = removed
+    · subst id
+      simp
+    · have distinct : f id ≠ f removed := fun equal => same (reflects id (by simp) equal)
+      simp [same, distinct, ih (fun other member => reflects other (by simp [member]))]
+
+private theorem map_zone_erase_pair {s t : GameState} {source : Zone} {leftId rightId : ObjId}
+    (rename : OrderedReferenceBijection (s.zoneIds.map ObjId.n) (t.zoneIds.map ObjId.n))
+    (valid : source ∈ allZones s.playerCount) (member : leftId ∈ s.zone source)
+    (preMap : (s.zone source).map (rename.forward ∘ ObjId.n) = (t.zone source).map ObjId.n)
+    (paired : rename.forward leftId.n = rightId.n) :
+    ((s.zone source).erase leftId).map (rename.forward ∘ ObjId.n) =
+      ((t.zone source).erase rightId).map ObjId.n := by
+  rw [map_erase_reference (rename.forward ∘ ObjId.n), map_erase_reference ObjId.n]
+  · rw [preMap]
+    exact congrArg ((t.zone source |>.map ObjId.n).erase) paired
+  · intro id _ sameId
+    exact congrArg ObjId.mk sameId
+  · intro id present sameId
+    have known (obj : ObjId) (present : obj ∈ s.zone source) :
+        obj.n ∈ s.zoneIds.map ObjId.n :=
+      List.mem_map.mpr ⟨obj, GameState.mem_zoneIds valid present, rfl⟩
+    have original := congrArg rename.backward sameId
+    change rename.backward (rename.forward id.n) = rename.backward (rename.forward leftId.n) at original
+    rw [rename.backward_forward _ (known id present),
+      rename.backward_forward _ (known leftId member)] at original
+    exact congrArg ObjId.mk original
+
+/-- Deleting corresponding objects preserves the ranked projection, including when the deletion
+changes the rank of other objects. -/
+theorem GameState.rankedZoneReferences_afterRemove {s t s' t' : GameState}
+    {leftId rightId : ObjId} (left : s.WF) (right : t.WF) (players : s.playerCount = t.playerCount)
+    (rename : OrderedReferenceBijection (s.zoneIds.map ObjId.n) (t.zoneIds.map ObjId.n))
+    (zones : ∀ z ∈ allZones s.playerCount,
+      ((s.zone z).map ObjId.n).map rename.forward = (t.zone z).map ObjId.n)
+    (paired : rename.forward leftId.n = rightId.n)
+    (leftRemoved : removeObj s leftId = some s') (rightRemoved : removeObj t rightId = some t') :
+    s'.rankedZoneReferences = t'.rankedZoneReferences := by
+  obtain ⟨source, valid, member, leftShape⟩ := removeObj_spec leftRemoved
+  obtain ⟨target, targetValid, targetMember, rightShape⟩ := removeObj_spec rightRemoved
+  have mappedMember : rightId.n ∈ ((s.zone source).map ObjId.n).map rename.forward :=
+    List.mem_map.mpr ⟨leftId.n, List.mem_map.mpr ⟨leftId, member, rfl⟩, paired⟩
+  rw [zones source valid] at mappedMember
+  obtain ⟨other, otherMember, otherId⟩ := List.mem_map.mp mappedMember
+  have otherIsRight : other = rightId := by cases other; cases rightId; simp_all
+  have rightMember : rightId ∈ t.zone source := otherIsRight ▸ otherMember
+  have sameLocation := (GameState.locate_eq right targetValid targetMember).symm.trans
+    (GameState.locate_eq right (players ▸ valid) rightMember)
+  have joined : target = source := Option.some.inj sameLocation
+  subst target
+  let after := rename.restrictAfterRemove left right paired leftRemoved rightRemoved
+  have leftCount : s'.playerCount = s.playerCount :=
+    congrArg (fun cfg => cfg.mode.players) (removeObj_sameMeta leftRemoved).config
+  have rightCount : t'.playerCount = t.playerCount :=
+    congrArg (fun cfg => cfg.mode.players) (removeObj_sameMeta rightRemoved).config
+  refine GameState.rankedZoneReferences_eq (leftCount.trans (players.trans rightCount.symm)) after ?_
+  intro zone postValid
+  have before : zone ∈ allZones s.playerCount := by simpa only [leftCount] using postValid
+  change ((s'.zone zone).map ObjId.n).map rename.forward = (t'.zone zone).map ObjId.n
+  have preMap : (s.zone zone).map (rename.forward ∘ ObjId.n) = (t.zone zone).map ObjId.n := by
+    simpa only [List.map_map] using zones zone before
+  rw [List.map_map]
+  by_cases affected : zone = source
+  · subst zone
+    have leftZone : s'.zone source = (s.zone source).erase leftId := by
+      rw [leftShape]
+      exact GameState.zone_setZone_self _ _ _
+    have rightZone : t'.zone source = (t.zone source).erase rightId := by
+      rw [rightShape]
+      exact GameState.zone_setZone_self _ _ _
+    rw [leftZone, rightZone]
+    exact map_zone_erase_pair rename valid member preMap paired
+  · have leftZone : s'.zone zone = s.zone zone := by
+      rw [leftShape]
+      exact GameState.zone_setZone_ne _ affected _
+    have rightZone : t'.zone zone = t.zone zone := by
+      rw [rightShape]
+      exact GameState.zone_setZone_ne _ affected _
+    rw [leftZone, rightZone]
+    exact preMap
+
+private theorem MoveSpec.zone_after {s s' : GameState} {id id' : ObjId} {pos : Pos} {src dst : Zone}
+    (moved : MoveSpec s s' id id' pos src dst) (zone : Zone) :
+    s'.zone zone = if zone = dst then pos.insert id' (s.zone dst)
+      else if zone = src then (s.zone src).erase id else s.zone zone := by
+  change s'.zones.getD zone.key [] = _
+  rw [moved.zones]
+  exact GameState.zone_move moved.ne _ _ _
+
+/-- A paired move through the same source, destination, and insertion position preserves
+the ranked contents of all zones. The two moves may keep their identifiers or both allocate
+new ones. -/
+theorem GameState.rankedZoneReferences_afterMove {s t s' t' : GameState}
+    {leftId rightId leftNew rightNew : ObjId} {source destination leftRequest rightRequest : Zone}
+    {pos : Pos} (left : s.WF) (right : t.WF) (players : s.playerCount = t.playerCount)
+    (rename : OrderedReferenceBijection (s.zoneIds.map ObjId.n) (t.zoneIds.map ObjId.n))
+    (zones : ∀ z ∈ allZones s.playerCount,
+      ((s.zone z).map ObjId.n).map rename.forward = (t.zone z).map ObjId.n)
+    (paired : rename.forward leftId.n = rightId.n)
+    (leftMoved : moveObj s leftId leftRequest pos = some (s', leftNew))
+    (rightMoved : moveObj t rightId rightRequest pos = some (t', rightNew))
+    (leftMove : MoveSpec s s' leftId leftNew pos source destination)
+    (rightMove : MoveSpec t t' rightId rightNew pos source destination)
+    (retained : leftNew = leftId ↔ rightNew = rightId) :
+    s'.rankedZoneReferences = t'.rankedZoneReferences := by
+  let leftReferences := s.zoneIds.map ObjId.n
+  have continued :
+      ∃ after : OrderedReferenceBijection (s'.zoneIds.map ObjId.n) (t'.zoneIds.map ObjId.n),
+        after.forward leftNew.n = rightNew.n ∧
+          ∀ n ∈ leftReferences, n ≠ leftId.n → after.forward n = rename.forward n := by
+    by_cases kept : leftNew = leftId
+    · have other := retained.mp kept
+      subst leftNew
+      subst rightNew
+      exact ⟨rename.keepAfterMove left right leftMoved rightMoved, paired, fun _ _ _ => rfl⟩
+    · have other : rightNew ≠ rightId := fun eq => kept (retained.mpr eq)
+      let after := rename.replaceAfterMove left right paired leftMoved rightMoved kept other
+      exact ⟨after, rename.replaceAfterMove_forward left right paired leftMoved rightMoved kept other⟩
+  obtain ⟨after, pairedNew, remains⟩ := continued
+  have leftCount : s'.playerCount = s.playerCount := congrArg (fun cfg => cfg.mode.players) leftMove.config
+  have rightCount : t'.playerCount = t.playerCount := congrArg (fun cfg => cfg.mode.players) rightMove.config
+  have preMap (zone : Zone) (valid : zone ∈ allZones s.playerCount) :
+      (s.zone zone).map (rename.forward ∘ ObjId.n) = (t.zone zone).map ObjId.n := by
+    simpa only [List.map_map] using zones zone valid
+  have leftMap {zone : Zone} (valid : zone ∈ allZones s.playerCount) {ids : List ObjId}
+      (others : ∀ id ∈ ids, id ∈ s.zone zone ∧ id ≠ leftId) :
+      ids.map (after.forward ∘ ObjId.n) = ids.map (rename.forward ∘ ObjId.n) := by
+    apply List.map_congr_left
+    intro id present
+    obtain ⟨located, different⟩ := others id present
+    have known : id.n ∈ leftReferences :=
+      List.mem_map.mpr ⟨id, GameState.mem_zoneIds valid located, rfl⟩
+    exact remains _ known (fun equal => different (congrArg ObjId.mk equal))
+  have otherZone {zone : Zone} (valid : zone ∈ allZones s.playerCount) (different : zone ≠ source) :
+      (s.zone zone).map (after.forward ∘ ObjId.n) = (t.zone zone).map ObjId.n := by
+    rw [leftMap valid]
+    · exact preMap zone valid
+    · intro id member
+      exact ⟨member, fun eq => different
+        (GameState.zone_unique left leftMove.src_mem valid leftMove.id_mem (eq ▸ member))⟩
+  refine GameState.rankedZoneReferences_eq (leftCount.trans (players.trans rightCount.symm)) after ?_
+  intro zone postValid
+  have valid : zone ∈ allZones s.playerCount := by simpa only [leftCount] using postValid
+  rw [List.map_map, leftMove.zone_after, rightMove.zone_after]
+  by_cases dest : zone = destination
+  · subst zone
+    simp only [ite_true]
+    exact pos.insert_map_pair (otherZone valid (Ne.symm leftMove.ne)) pairedNew
+  · simp only [dest, ite_false]
+    by_cases src : zone = source
+    · subst zone
+      simp only [ite_true]
+      have unique := GameState.zone_nodup left valid
+      rw [leftMap valid (fun id member => ⟨(unique.mem_erase_iff.mp member).2,
+        (unique.mem_erase_iff.mp member).1⟩)]
+      exact map_zone_erase_pair rename valid leftMove.id_mem (preMap source valid) paired
+    · simp only [src, ite_false]
+      exact otherZone valid src
+
 end Riftbound
 
 end
