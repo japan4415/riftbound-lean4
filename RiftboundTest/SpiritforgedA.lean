@@ -795,13 +795,22 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 -- Sunken Temple (SFD-218): conquer here with a Mighty unit, pay 1: draw 1
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-218"
-  let (s2, _) ← putAt s1 s.me "OGN-001" bf
+  let (s2, mighty) ← putAt s1 s.me "OGN-001" bf
   let (t2, _) ← putAt s1 s.me "OGN-051" bf
   let a ← fire (s2.rich s.me) [.scored s.me bf true]
   let b ← fire (t2.rich s.me) [.scored s.me bf true]
   let c ← fire (s2.fund s.me 0) [.scored s.me bf true]
+  let funded := s2.fund s.me 1
+  let es := [Event.scored s.me bf true]
+  let (waiting, _) ← (advance 100
+    { funded with pending := insertTriggers (funded.detect es) funded.pending } []).toOption
+  let (paid, _) ← (step 100 waiting ⟨.player s.me, .putTrigger 0 [] (.pay [])⟩).toOption
+  let weakened := (setBaseMight 1 paid mighty).1
+  let resolved := settleChain {} 12 weakened
   return a.handN s.me == s2.handN s.me + 1 && (a.poolOf s.me).energy + 1 == 12 &&
-    b.handN s.me == t2.handN s.me && c.handN s.me == s2.handN s.me
+    b.handN s.me == t2.handN s.me && c.handN s.me == s2.handN s.me &&
+    (paid.poolOf s.me).energy == 0 && paid.handN s.me == funded.handN s.me &&
+    (paid.zone .chain).length == 1 && resolved.handN s.me == funded.handN s.me + 1
 
 -- The Papertree (SFD-219): when its player holds here, each player channels 1 rune exhausted
 #guard tsf fun s => do
@@ -916,6 +925,22 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
       (s1.zone (.player p .base)).all (· != r))
   return (fresh a s.me).length == 1 && (fresh a s.me).all (fun r => a.tired r == some true) &&
     (fresh a s.you).all (fun r => a.tired r == some true)
+
+-- Papertree channels for all four seats; shared scoring does not merge their Rune Decks.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let opening ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let start ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) opening).toOption
+  let p := start.me
+  let (s, bf) ← putBf start p "SFD-219"
+  let (scored, _, events) := scoreBf (s.control p bf) p bf false
+  let after ← fire scored events
+  return s.players.all (fun seat =>
+    let runes := Zone.player seat .runeDeck
+    let base := Zone.player seat .base
+    let newRunes := (after.zone base).filter (fun r => !(s.zone base).contains r)
+    (after.zone runes).length + 1 == (s.zone runes).length &&
+      newRunes.length == 1 && newRunes.all (fun r => after.tired r == some true))
 
 -- (review) Treasure Hoard and Draven's Gold token are exhausted; the cost is exactly 1
 #guard tsf fun s => do
@@ -3517,6 +3542,40 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     pw (use near) == some ((s3.poolOf s.me).energy + 1, (s3.poolOf s.me).any + 1) &&
     pw (use far) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1) &&
     pw (use s3) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1)
+
+-- A teammate's Hold uses each Legend's own controller and pays each optional cost separately.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let opening ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let start ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) opening).toOption
+  let p := start.me
+  let ally ← start.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← start.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, chem) ← put start p "SFD-201" .legendZone
+  let (s, gloom) ← put s ally "UNL-193" .legendZone
+  let (s, bf) ← putBf s ally "OGN-275"
+  let (s, _) ← putAt s ally "UNL-087" bf
+  let (s, allyGold) ← put s ally "SFD-T03" .base
+  let highScore := s.gainPoints ally (s.victoryScore - 3)
+  let (scored, _, events) := scoreBf (s.control ally bf) ally bf false
+  let triggers := scored.detect events
+  let (waiting, _) ← (advance 100
+    { scored with pending := insertTriggers triggers (below scored.pending) } []).toOption
+  let hold := settleChain {} 32 waiting
+  let skip := settleChain { yes := false } 32 waiting
+  let foe ← fire s [.scored enemy bf false]
+  let conquest ← fire s [.scored ally bf true]
+  let gold (after : GameState) := after.countIn p .base "SFD-T03"
+  let spawned ← hold.firstOf p .base "SFD-T03"
+  let highHold := hold.gainPoints ally (hold.victoryScore - 3)
+  return triggers.countP (fun t => t.source == chem && t.controller == p) == 1 &&
+    triggers.countP (fun t => t.source == gloom && t.controller == ally) == 2 &&
+    gold hold == 1 && hold.tired chem == some true && hold.tired spawned == some true &&
+    hold.tired gloom == some true && hold.handN ally == s.handN ally + 1 &&
+    hold.handN p == s.handN p && highHold.manaBonus p spawned == 1 &&
+    highScore.manaBonus ally allyGold == 0 &&
+    [skip, foe, conquest].all (fun after =>
+      gold after == 0 && after.handN ally == s.handN ally && after.tired gloom == some false)
 
 -- Marai Spire (SFD-211) and Ezreal, Prodigy (SFD-149): optional additional costs cost less
 #guard tsf fun s => do

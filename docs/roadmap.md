@@ -2150,6 +2150,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - 誘発は、イベントに記録された席をもとに陣営を判定する。「味方」は2v2のチームメイトも含み、「敵」は相手チームに限る。「あなた」が行う操作を条件とするカードは本人に限る（CR 491.8.e, 740.1）。Chemtech Cask は本人が対戦相手のターンに呪文をプレイしたときに誘発する。
 - Altar of Memories は消耗を済ませてから、解決時に引いたカードも含めて自分の手札から戻すカードを選ぶ。Battle Mistress は同時に複数の敵 Unit が死んだ場合に1回だけ誘発する。Relentless Storm と Fresh Beans は条件を満たす Unit トークンのプレイも見る。
 
+### Hold・Conquer の誘発（2026-11-27）
+
+- Chem-Baroness と Gloomist は、本人か味方の Hold で誘発する。消耗を払う席と効果を受ける席は、その能力のコントローラー。Blue Sentinel が増やすのは Hold を行った席の誘発で、味方の誘発は増えない（CR 383.3, 491.8）。
+- Hall of Legends、Sunken Temple、Treasure Hoard は、能力を確定するときに Energy を払う（CR 383.3.b.1）。Sunken Temple は Conquer 時の Might を判定し、解決までにその Unit の Might が下がっても引く。
+- The Papertree は2v2でも全席がそれぞれの山札から Rune を1枚ずつ消耗状態で出す。以上6枚を `full` にした。
+
 ### M8a の実装の記録（2026-11-24）: Spiritforged 27 — 対象の選びを、選ぶ時点で絞る
 
 - **あとの選びは、前の選びを見る**: `Choice.candidatesAfter` / `targetsOkAfter` / `targetTuplesAfter`。2 つ目の対象の候補は、1 つ目の対象を `slot 0` として読める（`Filter.sameAs (.slot 0)` など）。以前は、違反する組を選ぶと、何も起きなかった。いまは、遊べない（`targetsOk` が偽）。

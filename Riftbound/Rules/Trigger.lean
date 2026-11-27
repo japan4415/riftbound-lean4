@@ -695,18 +695,21 @@ def detectOne (s : GameState) : Event → List PendTrigger
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
     let atField (src : ObjId) (event : TriggerEvent) := triggersOf s src p event (some [bf])
+    let event := if conquer then TriggerEvent.conquer else .hold
+    let watched := (watchersOf s bf p event).map (fun t => { t with eventBattlefields := some [bf] })
+    let (own, others) := watched.partition (fun t => t.controller == p)
     let eff :=
       (s.trigUnitsAt bf p).flatMap
-        (fun u => atField u (if conquer then .conquer else .hold) ++
+        (fun u => atField u event ++
           atField u .scored ++
           -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
           (if s.holdIsConquer u then atField u (if conquer then .hold else .conquer)
            else [])) ++
       (s.zone (.player p .legendZone)).flatMap
         (fun l => atField l (if conquer then .youConquer else .youHold)) ++
-      atField bf (if conquer then .youConquer else .youHold)
-    -- the effects fire one more time if a unit there says so
-    eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
+      atField bf (if conquer then .youConquer else .youHold) ++ own
+    -- Extra effects from scoring here belong to the scorer, even if a teammate also triggers.
+    eff ++ (if s.scoreExtra p bf conquer then eff else []) ++ others ++
     -- what the opponents of the player who scores wait for
     s.passiveSources.flatMap (fun u =>
       match s.obj? u with

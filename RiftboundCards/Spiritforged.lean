@@ -5923,14 +5923,13 @@ def SFD_201.meta : CardDef :=
 /-- Chem-Baroness. -/
 def SFD_201 : CardDef :=
   { SFD_201.meta with
-
-    abilities := [.triggered (.onSelf .youHold)
-        (.of [] (.ifThen (.matches .self .ready)
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-          .nop)) .unlimited,
+    abilities := [.triggered
+        { event := .hold, subject := Selector.all .friendly .anywhere [.ofType .battlefield],
+          optional := true, cost := .exhaustSelf }
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
       .passive (.cmp .ge (.points .you) (.sub .victoryScore (.const 3)))
-        [.manaExtraEnergy (Selector.all .friendly .anywhere [.named "Gold"]) (.const 1)]],
-    status := .drafted }
+        [.manaExtraEnergy (Selector.all .you .anywhere [.named "Gold"]) (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED SFD-202
 /--
@@ -6159,12 +6158,9 @@ def SFD_210.meta : CardDef :=
 /-- Hall of Legends. -/
 def SFD_210 : CardDef :=
   { SFD_210.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .prim (.ready (Selector.one .friendly .inLegendZone []))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youConquer, optional := true, cost := .energy 1 }
+      (.of [] (.prim (.ready (Selector.one .you .inLegendZone [])))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-211
 /--
@@ -6346,13 +6342,12 @@ def SFD_218.meta : CardDef :=
 /-- Sunken Temple. -/
 def SFD_218 : CardDef :=
   { SFD_218.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
-          (.exists (Selector.all .friendly .here [.ofType .unit, .mighty])))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .youConquer,
+        condition := .exists (Selector.all .you .here [.ofType .unit, .mighty]),
+        optional := true, cost := .energy 1 }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-219
 /--
@@ -6371,10 +6366,9 @@ def SFD_219.meta : CardDef :=
 /-- The Papertree. -/
 def SFD_219 : CardDef :=
   { SFD_219.meta with
-
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.prim (.channel .eachPlayer (.const 0) (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-220
 /--
@@ -6393,12 +6387,9 @@ def SFD_220.meta : CardDef :=
 /-- Treasure Hoard. -/
 def SFD_220 : CardDef :=
   { SFD_220.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.create "Gold" (.const 1) .atBase false)]))
-        .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youConquer, optional := true, cost := .energy 1 }
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-221
 /--

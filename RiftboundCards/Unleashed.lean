@@ -5607,10 +5607,11 @@ def UNL_193.meta : CardDef :=
 /-- Gloomist. -/
 def UNL_193 : CardDef :=
   { UNL_193.meta with
-    abilities := [.triggered (.onSelf .youHold)
-      (.of [] (.ifThen .legendReady (.may (.seqOf [.prim (.exhaust .self),
-        .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .hold, subject := Selector.all .friendly .anywhere [.ofType .battlefield],
+        optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-194
 /--

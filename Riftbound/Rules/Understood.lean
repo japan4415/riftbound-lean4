@@ -617,7 +617,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .revealedFromDeck => true
       | .playToken => true
       | .scored => t.subject == .self
-      | .conquer => t.subject == .self | .hold => t.subject == .self
+      | .conquer | .hold => true
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
       | _ => false) &&
