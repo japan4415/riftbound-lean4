@@ -1047,6 +1047,23 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
     assert inspection["decision"] == {"kind": "bo1Sideboard", "answer": "bo1Sideboard"}
     assert inspection["nextAnswer"] == 4
 
+    game["answers"] = tape[:8]
+    inspection = inspect_game(folder, command, unfinished, 1)
+    code_choices = [choice for choice in inspection["choices"] if "answerByCode" in choice]
+    by_code_pick = code_choices[0]["answerByCode"]
+    code_choice = by_code_pick["observedCardPick"]["choice"]
+    assert code_choice["seat"] == p1 and code_choice["kind"] == "mulligan"
+    matching = [choice for choice in code_choices if choice["answerByCode"] == by_code_pick]
+    game["answers"].append(matching[0]["answer"])
+    by_id_pick = inspect_game(folder, command, unfinished, 1)
+    game["answers"][-1] = by_code_pick
+    with_code = inspect_game(folder, command, unfinished, 1)
+    assert with_code["state"] == by_id_pick["state"]
+    assert with_code["exactPrefix"] == (len(matching) == 1)
+    game["answers"][-1] = {"inferredCardPick": {"choice": code_choice, "evidence": "later shown"}}
+    inferred_pick = inspect_game(folder, command, unfinished, 1)
+    assert inferred_pick["state"] == by_id_pick["state"] and not inferred_pick["exactPrefix"]
+
     code_input = folder / "bo1-by-card-code.json"
     code_archive = folder / "bo1-by-card-code-archive.json"
     raw_archive = json.loads(archive.read_bytes())

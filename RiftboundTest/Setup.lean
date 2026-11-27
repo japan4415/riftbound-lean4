@@ -48,6 +48,44 @@ meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDec
     check (.chanceRecycleTrash p first [second, other]) [b, a] [other, second] true
   : Option Bool).getD false
 
+-- A card code answers only the recorded seat's current choice. Copies remain ambiguous.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let a := cid "V0"
+  let b := cid "V1"
+  let pool := GameState.empty cfg db
+  let hand := Zone.player p .hand
+  let deck := Zone.player p .mainDeck
+  let add (s : GameState) (code : CardId) (z : Zone) := addObject s (newCard db s p code) z .bottom
+  let (s, first) ← add pool a hand
+  let (s, _) ← add s a hand
+  let (s, other) ← add s b hand
+  let (s, peek) ← add s b deck
+  let (s, _) ← add s a deck
+  let state (frame : Frame) := { s with pending := [frame] }
+  let check (frame : Frame) (kind : ReplayCardPickKind) (card : CardId)
+      (expected : ActionKind) (exact : Bool) :=
+    match (ReplayAnswer.observedCardPick ⟨p, kind, card⟩).resolveAt (state frame) 1 with
+    | .ok (action, unique) =>
+      action == ⟨.player p, expected⟩ && unique == exact && decide (Legal (state frame) action)
+    | .error _ => false
+  let mulligan := state (.mulligan p 0)
+  let choice : ReplayCardPick := ⟨p, .mulligan, b⟩
+  let predict : Frame := .predict p 1 peek [] [] []
+  return check (.mulligan p 0) .mulligan a (.mulliganPick first) false &&
+    check (.discard p 1) .discard b (.discardPick other) true &&
+    check predict .predictTop b (.predictPick peek false) true &&
+    check predict .predictRecycle b (.predictPick peek true) true &&
+    ((ReplayAnswer.observedCardPick ⟨q, .mulligan, b⟩).resolveAt mulligan 2).isOk == false &&
+    ((ReplayAnswer.observedCardPick choice).resolveAt (state (.mulligan p 2)) 2).isOk == false &&
+    ((ReplayAnswer.observedCardPick ⟨p, .predictTop, a⟩).resolveAt (state predict) 2).isOk == false &&
+    ((ReplayAnswer.inferredCardPick choice " ").resolveAt mulligan 2).isOk == false &&
+    match (ReplayAnswer.inferredCardPick choice "later shown").resolveAt mulligan 2 with
+    | .ok (action, exact) => action.kind == .mulliganPick other && !exact
+    | .error _ => false
+  : Option Bool).getD false
+
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
 
 meta def finished (seed : Nat) : Option GameState :=

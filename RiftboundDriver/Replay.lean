@@ -102,6 +102,28 @@ inductive ReplayChance where
   | battlefield (card : CardId)
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The decision a transcription answers by card code. -/
+inductive ReplayCardPickKind where
+  /-- Set one opening hand card aside. -/
+  | mulligan
+  /-- Discard one card from hand. -/
+  | discard
+  /-- Return a Predict card to the top of the deck. -/
+  | predictTop
+  /-- Recycle a Predict card. -/
+  | predictRecycle
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A card chosen by a recorded player, identified by its visible card code. -/
+structure ReplayCardPick where
+  /-- The player who made the choice. -/
+  seat : PlayerId
+  /-- The specific decision being answered. -/
+  kind : ReplayCardPickKind
+  /-- The printed identity of the card selected. -/
+  card : CardId
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
@@ -112,6 +134,10 @@ inductive ReplayAnswer where
   | observedChance (outcome : ReplayChance)
   /-- The chance outcome by card code was reconstructed from incomplete observations. -/
   | inferredChance (outcome : ReplayChance) (evidence : String)
+  /-- The seat, decision and chosen card code were observed. -/
+  | observedCardPick (choice : ReplayCardPick)
+  /-- The chosen card code was inferred from incomplete observations. -/
+  | inferredCardPick (choice : ReplayCardPick) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
   /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
@@ -145,6 +171,8 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
   | .inferred a evidence => checkInference index evidence *> pure a
   | .observedChance _ | .inferredChance _ _ =>
     throw s!"answer {index}: a chance outcome by card code needs the current game state"
+  | .observedCardPick _ | .inferredCardPick _ _ =>
+    throw s!"answer {index}: a card pick by code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
   | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
   | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
@@ -153,6 +181,26 @@ def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String A
 
 private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
   (s.obj? id).bind (·.kind.cardId?)
+
+/-- Describe a hand or Predict pick in the full replay transcription. -/
+def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option ReplayCardPick := do
+  let .player seat := action.actor | none
+  let (kind, id) ← match action.kind with
+    | .mulliganPick id => some (.mulligan, id)
+    | .discardPick id => some (.discard, id)
+    | .predictPick id false => some (.predictTop, id)
+    | .predictPick id true => some (.predictRecycle, id)
+    | _ => none
+  let card ← replayCardCode s id
+  return ⟨seat, kind, card⟩
+
+private def ReplayCardPick.resolve (choice : ReplayCardPick) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter (fun action =>
+    ReplayCardPick.fromAction? s action == some choice)
+  let some action := matching.head?
+    | throw s!"seat {choice.seat.n} has no legal {reprStr choice.kind} pick of {choice.card.code}"
+  return (action, matching.length == 1)
 
 /-- Data needed to transcribe the currently pending random decision. -/
 inductive ReplayChanceDecision where
@@ -202,11 +250,17 @@ def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat)
     Except String (Action × Bool) := do
   let resolveChance (outcome : ReplayChance) :=
     (outcome.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolvePick (choice : ReplayCardPick) :=
+    (choice.resolve s).mapError (fun error => s!"answer {index}: {error}")
   match answer with
   | .observedChance outcome => resolveChance outcome
   | .inferredChance outcome evidence =>
     checkInference index evidence
     return ((← resolveChance outcome).1, false)
+  | .observedCardPick choice => resolvePick choice
+  | .inferredCardPick choice evidence =>
+    checkInference index evidence
+    return ((← resolvePick choice).1, false)
   | _ =>
     return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
 

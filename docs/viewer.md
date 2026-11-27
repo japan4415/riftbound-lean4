@@ -113,6 +113,8 @@ Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"
 現物まで特定できる場合は `observed` でIDを指定できる。
 `exact` は操作と2v2・War の初期手番順をどこまで特定できたかを示す。カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。`uncheckedCards` はゲームごとに、各席が登録した `full` 未満のカードを示す。
 
+マリガン、捨て札、Predict の選択は `{"observedCardPick":{"choice":{"seat":{"n":0},"kind":"mulligan","card":{"code":"OGN-001"}}}}` のように、選択した席とカードのコードで記録できる。`kind` は `mulligan`、`discard`、`predictTop`、`predictRecycle` のいずれか。該当する合法手が1つならその手を適用する。同じコードのカードを複数選べる場合は列挙順の最初を採用し、`exact: false` になる。後から推定した選択は `inferredCardPick` の `choice` と `evidence` に記録する。これらの手は `inspect` の候補欄にも `answerByCode` として出る。
+
 ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
 
 Sealed や Draft のサイドボードを照合する場合は、`limitedPools` に各席が受け取ったカードの ID を、同じカードの枚数も含めて登録する。ゲームごとに選んだデッキを `games[].decks.limited.decks` に記録する。Basic Rune はプール外から持ち込める。ブランクの Battlefield は `{"code":"TKN-LimitedBlank"}` で表す。
