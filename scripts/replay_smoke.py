@@ -1151,6 +1151,34 @@ def check_bo1_cli(folder: Path, setup: dict, command: Callable[..., str]) -> Non
         {"answer": index, "evidence": None} for index in range(5, 9)
     ]
 
+    # A source that tracks the starting positions distinguishes even identical card codes.
+    positioned = by_code.copy()
+    for index in range(4, 8):
+        game["answers"] = positioned[:index]
+        unshuffled = inspect_game(folder, command, inputs, 1)["decision"]["cards"]
+        candidates = {entry["object"]["n"]: entry for entry in unshuffled}
+        assert [entry["position"] for entry in unshuffled] == list(range(len(unshuffled)))
+        ids = tape[index]["observed"]["action"]["kind"]["arrange"]["order"]
+        placement = [{"before": candidates[obj["n"]]["position"],
+                      "card": candidates[obj["n"]]["card"]} for obj in ids]
+        positioned[index] = {"observedChance": {"outcome": {"cardOrderByPosition": {"cards": placement}}}}
+    game["answers"] = positioned
+    code_input.write_text(json.dumps(inputs), encoding="utf-8")
+    assert json.loads(command("record", code_input, code_archive)) == summary
+    assert json.loads(command("verify", code_archive)) == summary
+    assert json.loads(code_archive.read_bytes())["games"][0]["checkpoints"] == raw_archive["games"][0]["checkpoints"]
+    assert inspect_game(folder, command, inputs, 1)["inexactAnswers"] == []
+
+    selection = positioned[4]["observedChance"]["outcome"]["cardOrderByPosition"]["cards"]
+    original = selection[0].copy()
+    selection[0]["before"] = selection[1]["before"]
+    inspect_game(folder, command, inputs, 1, error="answer 5: the recorded card order repeats a source position")
+    selection[0]["before"] = len(selection)
+    inspect_game(folder, command, inputs, 1, error="answer 5: source position")
+    selection[0] = {**original, "card": {"code": "wrong-card"}}
+    inspect_game(folder, command, inputs, 1, error="does not hold the recorded card code")
+    selection[0] = original
+
     outcome = by_code[0]["observedChance"]["outcome"]
     game["answers"] = [{"inferredChance": {"outcome": outcome, "evidence": "visible at first score"}}, *tape[1:]]
     code_input.write_text(json.dumps(inputs), encoding="utf-8")

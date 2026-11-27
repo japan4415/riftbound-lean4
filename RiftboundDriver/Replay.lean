@@ -94,10 +94,20 @@ structure JudgeTimelineRewind where
   unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
-/-- A chance outcome reported by card code instead of the engine's object IDs. -/
+/-- One card in a recorded permutation, identified by its pre-permutation position. -/
+structure ReplayPositionedCard where
+  /-- Zero-based position in the pending sequence before it is reordered. -/
+  before : Nat
+  /-- The card code independently witnessed at that position. -/
+  card : CardId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A chance outcome reported without the engine's object IDs. -/
 inductive ReplayChance where
   /-- Complete output order of the cards in the pending random permutation. -/
   | cardOrder (cards : List CardId)
+  /-- Complete output order when the source tracked distinct copies by position. -/
+  | cardOrderByPosition (cards : List ReplayPositionedCard)
   /-- The Battlefield selected by a random draw. -/
   | battlefield (card : CardId)
 deriving DecidableEq, Repr, ToJson, FromJson
@@ -696,6 +706,61 @@ def ReplayChanceDecision.pending (s : GameState) : Option ReplayChanceDecision :
   | some .chanceTurnOrder => some .turnOrder
   | _ => none
 
+/-- Resolve one witnessed position in the sequence before the random permutation. -/
+def ReplayPositionedCard.resolve (read : ObjId → Option CardId) (candidates : List ObjId)
+    (entry : ReplayPositionedCard) : Except String ObjId :=
+  match candidates[entry.before]? with
+  | none => .error s!"source position {entry.before} is outside the pending card order"
+  | some id =>
+    if read id == some entry.card then .ok id
+    else .error s!"source position {entry.before} does not hold the recorded card code"
+
+/-- Renaming the candidate objects and their lookup preserves the positional evidence. -/
+theorem ReplayPositionedCard.resolve_rename (entry : ReplayPositionedCard)
+    (candidates : List ObjId) (rename : ObjId → ObjId) (read renamed : ObjId → Option CardId)
+    (agrees : ∀ id, renamed (rename id) = read id) :
+    entry.resolve renamed (candidates.map rename) = (entry.resolve read candidates).map rename := by
+  simp only [resolve, List.getElem?_map]
+  cases found : candidates[entry.before]? with
+  | none => rfl
+  | some id =>
+    simp only [Option.map_some, agrees]
+    split <;> rfl
+
+/-- Check the original positions and card codes in the declared output order. -/
+def ReplayPositionedCard.resolveOrder (cards : List ReplayPositionedCard)
+    (read : ObjId → Option CardId) (candidates : List ObjId) : Except String (List ObjId) :=
+  if cards.length != candidates.length then
+    .error s!"the card order has {cards.length} cards but needs {candidates.length}"
+  else if decide (cards.map (·.before)).Nodup then
+    cards.mapM (resolve read candidates)
+  else .error "the recorded card order repeats a source position"
+
+/-- Changing engine IDs while keeping the before-order and face lookup preserves the result. -/
+theorem ReplayPositionedCard.resolveOrder_rename (cards : List ReplayPositionedCard)
+    (candidates : List ObjId) (rename : ObjId → ObjId) (read renamed : ObjId → Option CardId)
+    (agrees : ∀ id, renamed (rename id) = read id) :
+    resolveOrder cards renamed (candidates.map rename) =
+      (resolveOrder cards read candidates).map (List.map rename) := by
+  simp only [resolveOrder, List.length_map]
+  split
+  · rfl
+  · rename_i lengthMatches
+    split
+    · rename_i distinct
+      clear lengthMatches distinct
+      induction cards with
+      | nil => rfl
+      | cons entry rest ih =>
+        rw [List.mapM_cons, List.mapM_cons, entry.resolve_rename candidates rename read renamed agrees]
+        cases h : entry.resolve read candidates with
+        | error reason => rfl
+        | ok id =>
+          cases more : rest.mapM (resolve read candidates) with
+          | error reason => simp [ih, more, Except.map, bind, Except.bind]
+          | ok ids => simp [ih, more, Except.map, bind, Except.bind, pure, Except.pure]
+    · rfl
+
 private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
     Except String (Action × Bool) := do
   match outcome, ReplayChanceDecision.pending s with
@@ -716,6 +781,10 @@ private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
       remaining := remaining.erase id
     return (⟨.chance, .arrange order.reverse⟩, decide cards.Nodup)
   | .cardOrder _, _ => throw "no random card order is pending"
+  | .cardOrderByPosition cards, some (.cardOrder candidates) => do
+    let order ← ReplayPositionedCard.resolveOrder cards (replayCardCode s) candidates
+    return (⟨.chance, .arrange order⟩, true)
+  | .cardOrderByPosition _, _ => throw "no random card order is pending"
 
 /-- Resolve a replay answer at the decision it answers. The flag records whether the
 input uniquely determines the choice and contains no explicit inference. -/

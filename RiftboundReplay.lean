@@ -76,7 +76,9 @@ private def inspectionJson (number : Nat) (inspection : ReplayInspection) : Exce
     Json.mkObj [("kind", toJson "bo1Sideboard"), ("answer", toJson ReplayAnswer.bo1Sideboard)]
     else match chance with
     | some (.cardOrder candidates) =>
-      Json.mkObj [("kind", toJson "cardOrder"), ("cards", toJson (candidates.map (Json.mkObj ∘ candidate)))]
+      let cards := candidates.zipIdx.map fun (id, index) =>
+        Json.mkObj (candidate id ++ [("position", toJson index)])
+      Json.mkObj [("kind", toJson "cardOrder"), ("cards", toJson cards)]
     | some (.battlefield seat candidates) =>
       let cards := candidates.zipIdx.map fun (id, index) =>
         let answer := ReplayAnswer.observed ⟨.chance, .pick index⟩

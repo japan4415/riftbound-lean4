@@ -111,6 +111,7 @@ Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"
 
 同じコードの現物を区別できない場合、シャッフル前の並びから未使用の現物を順に割り当て、`exact: false` を記録する。
 現物まで特定できる場合は `observed` でIDを指定できる。
+元ログで並べ替え前の位置から現物を追える場合は、内部IDの代わりに `observedChance` の `outcome` に `cardOrderByPosition` を使える。`cards` に結果の順番で `{"before":2,"card":{"code":"OGN-001"}}` のように並べる。`before` は並べ替え前の候補列の先頭を0とした位置で、`inspect` では `decision.cards[].position` に出る。全候補を一度ずつ指定し、各位置のカードコードが一致する必要がある。同じコードの現物を位置で区別できれば、その手を一意に照合できる。
 `exact` は操作と2v2・War の初期手番順をどこまで特定できたかを示す。カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。`uncheckedCards` はゲームごとに、各席が登録した `full` 未満のカードを示す。
 
 マリガン、捨て札、Predict、戦闘ダメージの割り当て、効果の途中などで提示された対象の選択は `{"observedCardPick":{"choice":{"seat":{"n":0},"kind":"mulligan","card":{"code":"OGN-001"}}}}` のように、選択した席とカードのコードで記録できる。`kind` は `mulligan`、`discard`、`predictTop`、`predictRecycle`、`assignDamage`、`chooseObject` のいずれか。該当する合法手が1つならその手を適用する。同じコードのカードを複数選べる場合は列挙順の最初を採用し、`exact: false` になる。後から推定した選択は `inferredCardPick` の `choice` と `evidence` に記録する。これらの手は `inspect` の候補欄にも `answerByCode` として出る。
