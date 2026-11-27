@@ -1,7 +1,7 @@
 module
 
 public import Riftbound.Invariant.ObservedCleanupWork
-public import Riftbound.Invariant.RunWork
+public import Riftbound.Invariant.DamageWork
 public import Riftbound.Invariant.Step
 
 /-!
@@ -168,41 +168,6 @@ theorem advance_combat_after_damage {s : GameState} {bf : ObjId} {att : PlayerId
   apply (advance_combat_leading drawWF drawReads atDrawEnd).then drawReads
   intro finishState finishWF finishReads atFinish
   exact advance_combat_finish finishWF finishReads atFinish base inserted
-
-/-- A combat damage order is recorded immediately or, if more than one distinct replacement
-remains, asks its controller to pick the next replacement. -/
-theorem Effect.ObservedFinite.orderCombatDamage (target : ObjId)
-    (chosen remaining : List DamageReplacement) :
-    (Effect.orderCombatDamage target chosen remaining).ObservedFinite := by
-  intro s p src env more rest keeps wf reads pending base inserted
-  let options := remaining.eraseDupsBy DamageReplacement.sameChoice
-  let choose := fun r => Effect.orderCombatDamage target (r :: chosen) (remaining.erase r)
-  by_cases multiple : 1 < options.length
-  · have optionsShape : ∃ a b tail, options = a :: b :: tail := by
-      cases shape : options with
-      | nil => simp [shape] at multiple
-      | cons a tail =>
-        cases tail with
-        | nil => simp [shape] at multiple
-        | cons b tail => exact ⟨a, b, tail, rfl⟩
-    obtain ⟨a, b, tail, offered⟩ := optionsShape
-    let choices := EffectList.ofList (options.map choose)
-    let live := env.withMight s.mightTable
-    have begin : AdvanceTo s (RunContinuation p src (.cons (.eitherOf choices) more) keeps) := by
-      apply advance_run_rule wf reads pending ?_ (fun _ threaded q ne => threaded.insert inserted q ne)
-      simp only [runEffect, Effect.pickSel?, runEffect1, orderCombatDamageStep, ← show
-        options = remaining.eraseDupsBy DamageReplacement.sameChoice from rfl, multiple, ite_true]
-      exact ⟨live, rest, rfl, base⟩
-    apply begin.then reads
-    intro next safe checked reached
-    obtain ⟨newEnv, tailStack, stack, _⟩ := reached
-    apply advance_run_decision safe checked stack
-    simp only [choices, offered, List.map_cons, EffectList.ofList, runEffect, Effect.pickSel?, runEffect1]
-    cases tail <;> rfl
-  · apply advance_run_rule wf reads pending ?_ (fun _ threaded q ne => threaded.insert inserted q ne)
-    simp only [runEffect, Effect.pickSel?, runEffect1, orderCombatDamageStep, ← show
-      options = remaining.eraseDupsBy DamageReplacement.sameChoice from rfl, ite_eq_right multiple]
-    exact ⟨_, rest, rfl, base⟩
 
 private theorem damageOrderFrames_finite (s : GameState) (bf : ObjId) (att side : PlayerId)
     {f : Frame} (member : f ∈ damageOrderFrames s bf att side) : f.FiniteRun := by
@@ -510,74 +475,6 @@ theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : Pla
   simp only [step, ite_eq_left (show Legal s action from legal), declaration]
   exact path.finish stop result.2
 
-private theorem damageAmount_incoming (choice : DamageReplacement) (batch : EffectDamageBatch) (amount : Nat) :
-    (choice.applyAmount batch amount).1.incoming = batch.incoming := by
-  unfold DamageReplacement.applyAmount
-  split
-  · rfl
-  · cases choice <;> rfl
-
-private theorem combatPreview_incoming (s : GameState) (u : ObjId) (raw : Nat) (batch : EffectDamageBatch) :
-    (s.combatDamagePreview u raw batch).1.incoming = batch.incoming := by
-  let applyOne : EffectDamageBatch × Nat → DamageReplacement → EffectDamageBatch × Nat :=
-    fun (now, amount) replacement =>
-      match replacement with
-      | .prevent idx value => (.prevent idx (value - now.spentOn idx) : DamageReplacement).applyAmount now amount
-      | .shield idx => if now.spentOn idx == 0 then replacement.applyAmount now amount else (now, amount)
-      | .double => replacement.applyAmount now amount
-  have one (start : EffectDamageBatch × Nat) (replacement : DamageReplacement) :
-      (applyOne start replacement).1.incoming = start.1.incoming := by
-    obtain ⟨now, amount⟩ := start
-    cases replacement with
-    | double => exact damageAmount_incoming .double now amount
-    | prevent idx value => exact damageAmount_incoming (.prevent idx (value - now.spentOn idx)) now amount
-    | shield idx =>
-      change (if now.spentOn idx == 0 then (DamageReplacement.shield idx).applyAmount now amount
-        else (now, amount)).1.incoming = now.incoming
-      split
-      · exact damageAmount_incoming (.shield idx) now amount
-      · rfl
-  have fold (replacements : List DamageReplacement) (start : EffectDamageBatch × Nat) :
-      (replacements.foldl applyOne start).1.incoming = start.1.incoming := by
-    induction replacements generalizing start with
-    | nil => rfl
-    | cons first later ih =>
-      exact (ih (applyOne start first)).trans (one start first)
-  exact fold (s.combatReplacements u) (batch, raw)
-
-private theorem combatDamageBatch_incoming (s : GameState) (hits : List (ObjId × Nat)) :
-    (combatDamageBatch s hits).incoming = [] := by
-  unfold combatDamageBatch
-  generalize initialEq : ({ controller := none, incoming := [] } : EffectDamageBatch) = initial
-  have noIncoming : initial.incoming = [] := initialEq ▸ rfl
-  clear initialEq
-  induction hits generalizing initial with
-  | nil => exact noIncoming
-  | cons hit rest ih =>
-    obtain ⟨u, raw⟩ := hit
-    simp only [List.foldl_cons]
-    apply ih
-    split
-    · exact noIncoming
-    · split
-      · exact noIncoming
-      · split <;> exact (combatPreview_incoming _ _ _ _).trans noIncoming
-
-private theorem Effect.ObservedFinite.combatDamageResolved (batch : EffectDamageBatch)
-    (incoming : batch.incoming = []) :
-    (Effect.resolveEffectDamage batch none).ObservedFinite := by
-  intro s p src env more rest keeps wf reads pending base inserted
-  cases choice : batch.resolved.reverse.findSome? (damageDeathChoice s) with
-  | none =>
-    apply advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
-    simp only [runEffect, Effect.pickSel?, runEffect1, resolveEffectDamageStep, incoming, choice]
-    exact ⟨_, rest, rfl, base⟩
-  | some data =>
-    obtain ⟨u, controller, first, other⟩ := data
-    apply advance_run_decision wf reads pending
-    simp only [runEffect, Effect.pickSel?, runEffect1, resolveEffectDamageStep, incoming, choice]
-    rfl
-
 private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat) :
     (Effect.endCombatDamage excess).ObservedFinite :=
   Effect.SingleRun.observed (fun s p _ _ _ => ⟨recordCombatDamage s p excess, [], rfl⟩)
@@ -587,7 +484,7 @@ private theorem assignDoneStep_work_cases (s : GameState) (bf : ObjId) (att side
     (∃ q assigned history, s.assignFrame bf att q history = some assigned ∧
       (assignDoneStep s bf att side acc done rest).1 =
         { s with pending := combatAssignmentChoices s bf q ++ assigned :: rest }) ∨
-    (∃ batch excess, batch.incoming = [] ∧
+    (∃ batch excess,
       (assignDoneStep s bf att side acc done rest).1 = { s with
         pending := Frame.run att bf {} (.cons (.resolveEffectDamage batch none) (.cons (.endCombatDamage excess) .nil)) ::
           .cleanup :: .combatResolve bf att :: rest }) ∨
@@ -602,7 +499,7 @@ private theorem assignDoneStep_work_cases (s : GameState) (bf : ObjId) (att side
     · simp at hf
   · right
     split
-    · exact Or.inl ⟨_, _, combatDamageBatch_incoming s _, rfl⟩
+    · exact Or.inl ⟨_, _, rfl⟩
     · exact Or.inr ⟨_, (commitEffectDamage_safe s _).trans (recordCombatDamage_safe _ _ _), rfl⟩
 
 private theorem applyDeclaredAction_assignDone {s : GameState} {bf : ObjId} {att side : PlayerId}
@@ -640,14 +537,14 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
   have pendingEq : next.pending = result.1.pending := safe.pending_eq
   have casesRaw := assignDoneStep_work_cases s bf att side acc done tail
   have resultWF : result.1.WF := by
-    rcases casesRaw with ⟨_, _, _, _, h⟩ | ⟨_, _, _, h⟩ | ⟨r, safe, h⟩ <;>
+    rcases casesRaw with ⟨_, _, _, _, h⟩ | ⟨_, _, h⟩ | ⟨r, safe, h⟩ <;>
       change result.1 = _ at h <;> rw [h]
     · exact wf.congr rfl rfl rfl rfl
     · exact wf.congr rfl rfl rfl rfl
     · exact (safe.wf wf).congr rfl rfl rfl rfl
   have nextWF : next.WF := safe.wf resultWF
   have resultCards : result.1.cards = s.cards := by
-    rcases casesRaw with ⟨_, _, _, _, h⟩ | ⟨_, _, _, h⟩ | ⟨r, safe, h⟩ <;>
+    rcases casesRaw with ⟨_, _, _, _, h⟩ | ⟨_, _, h⟩ | ⟨r, safe, h⟩ <;>
       change result.1 = _ at h <;> rw [h]
     have cards := congrArg GameState.cards safe.same
     exact cards
@@ -675,7 +572,7 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
     exact advance_combat_damage_to_cleanup safe checked ready base insertTail
   have work : AdvanceTo (next.withTriggers notices) resume := by
     rcases casesRaw with ⟨q, assigned, history, ready, atChoice⟩ |
-      ⟨batch, excess, incoming, atDamage⟩ | ⟨r, safe, atCleanup⟩
+      ⟨batch, excess, atDamage⟩ | ⟨r, safe, atCleanup⟩
     · let choices := combatAssignmentChoices s bf q ++ assigned :: tail
       have base : TriggerWorkTail choices next.pending := Or.inl
         (pendingEq.trans (congrArg GameState.pending atChoice))
@@ -704,7 +601,7 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
       intro t safe checked tracked
       obtain ⟨env, tail, atRun, ready⟩ := tracked
       have finite : program.ObservedFinite :=
-        .cons (.combatDamageResolved batch incoming) (.cons (.endCombatDamage excess) .nil)
+        .cons (.resolveDamage batch none) (.cons (.endCombatDamage excess) .nil)
       exact (advance_run_program safe checked atRun finite waiting ready insertWaiting).then checked proceed
     · have stack : next.pending = .cleanup :: .combatResolve bf att :: tail :=
         pendingEq.trans (congrArg GameState.pending atCleanup)
