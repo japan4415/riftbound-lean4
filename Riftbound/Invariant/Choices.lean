@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Engine.Step
+public import Riftbound.Invariant.Step
 
 /-!
 # Player decisions during resolution (I18)
@@ -213,6 +213,37 @@ theorem playMark_declaredOptionalCosts (s : GameState) (p : PlayerId) (card : Ob
     let mark := s.playMark p card pay targets directCast flow pick
     mark.paid = printed ∧ mark.extraPaid = repeats := by
   simp [GameState.playMark, declared]
+
+/-- On every frame that permits a direct play, the optional discard leaves the other choices and
+timing of that play unchanged (CR 355.1, 357.1, 423.3). -/
+theorem legalFrame_playDiscard_iff {s : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {targets : List ObjId} {flow : Option Cost} {pick : SpellPick}
+    {discard : Option ObjId} :
+    LegalFrame s ⟨.player p, .playCard c pay targets flow discard pick⟩ ↔
+      LegalFrame s ⟨.player p, .playCard c pay targets flow none pick⟩ ∧
+        s.playDiscardOk p c discard = true := by
+  cases stack : s.pending with
+  | nil => simp [LegalFrame, stack]
+  | cons frame rest =>
+    cases frame <;> simp (config := { contextual := true })
+      [LegalFrame, stack, GameState.playDiscardOk, and_assoc]
+
+/-- Given any listed play, the player can decline the optional discard or replace it with any
+legal hand card. Every such choice is listed without offering the card being played (I18). -/
+theorem legalActions_playDiscardChoices {s : GameState} {p : PlayerId} {c : ObjId}
+    {pay : RunePool.Payment} {targets : List ObjId} {flow : Option Cost} {pick : SpellPick}
+    {original discard : Option ObjId}
+    (offered : ⟨.player p, .playCard c pay targets flow original pick⟩ ∈ legalActions s) :
+    (⟨.player p, .playCard c pay targets flow discard pick⟩ ∈ legalActions s) ↔
+      discard ∈ s.playDiscards p c := by
+  have legal := ((legalActions_iff _ _).mp offered).1
+  have unpaid := (legalFrame_playDiscard_iff.mp (legal.frame (by simp))).1
+  rw [legalActions_iff, GameState.mem_playDiscards]
+  constructor
+  · intro available
+    exact (legalFrame_playDiscard_iff.mp (available.1.frame (by simp))).2
+  · intro allowed
+    exact ⟨⟨legal.1, .inl (legalFrame_playDiscard_iff.mpr ⟨unpaid, allowed⟩)⟩, rfl⟩
 
 end Riftbound
 
