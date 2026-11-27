@@ -1218,7 +1218,9 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     public = {obj: info["card"] for row in steps[:index + 1] for obj, info in row["state"]["new"].items()}
     base_cards = [{"code": public[str(obj)]} for obj in reversed(state["zones"]["p0.base"])]
     first_score = {"seat": p0, "points": state["points"][0]}
-    assert base_cards and first_score["points"] > 0
+    hand_cards = [{"code": public[str(obj)]} for obj in state["zones"]["p0.hand"][:1]]
+    assert base_cards and hand_cards and first_score["points"] > 0
+    visible_hand = {"viewer": p0, "zone": hand, "cards": hand_cards}
     game["observations"] = [
         {"checkpoint": index, "source": "00:03:21", "facts": [
             {"score": first_score}, {"turn": {"number": state["turn"]}},
@@ -1226,6 +1228,7 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
             {"clockCalled": {"called": False}}, {"result": {"result": None}},
             {"zoneCount": {"zone": hand, "count": len(state["zones"].get("p0.hand", []))}},
             {"zoneCards": {"zone": base, "cards": base_cards}},
+            {"visibleZoneContains": visible_hand},
             {"zoneContains": {"zone": base, "cards": base_cards[:1]}},
         ]},
         {"checkpoint": 0, "facts": [{"turn": {"number": 0}}]},
@@ -1257,6 +1260,11 @@ def check_duel_observations(folder: Path, command: Callable[..., str], saved: di
     command("verify", archive, error=mismatch)
     command("revalidate", archive, folder / "bad-revalidated.json", error=mismatch)
     first_score["points"] -= 1
+
+    visible_hand["viewer"] = {"n": 1}
+    source.write_text(json.dumps(inputs), encoding="utf-8")
+    command("record", source, archive, error="faces visible to seat 1")
+    visible_hand["viewer"] = p0
 
     facts = game["observations"][0]["facts"]
     remembered = facts.pop()

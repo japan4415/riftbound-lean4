@@ -66,6 +66,8 @@ inductive ReplayObservationFact where
   /-- The attachment groups on all Units of one controller at the given public place. -/
   | unitAttachments (controller : PlayerId) (place : ReplayUnitPlace)
       (units : List ReplayObservedUnitAttachments)
+  /-- The named seat could see these card faces in the zone at this checkpoint. -/
+  | visibleZoneContains (viewer : PlayerId) (zone : Zone) (cards : List CardId)
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Facts from a source such as a scoreboard, video frame or independent game log. -/
@@ -105,9 +107,13 @@ private def zoneLabel : Zone → String
   | .battlefieldZone => "Battlefield Zone"
   | .chain => "Chain"
 
-private def observeZone (s : GameState) (zone : Zone) : Except String (List (Option CardId)) := do
+private def observeZone (s : GameState) (zone : Zone) (viewer? : Option PlayerId := none) :
+    Except String (List (Option CardId)) := do
   unless decide (zone.Valid s.playerCount) do throw s!"{zoneLabel zone} is outside the game"
-  let some faces := s.zoneCardFaces ⟨0⟩ zone | throw s!"{zoneLabel zone} is an engine-only zone"
+  let faces := match viewer? with
+    | some viewer => s.resolutionZoneCardFaces viewer zone
+    | none => s.zoneCardFaces ⟨0⟩ zone
+  let some faces := faces | throw s!"{zoneLabel zone} is an engine-only zone"
   return faces
 
 private def publicCards (s : GameState) (zone : Zone) : Except String (List CardId) := do
@@ -181,6 +187,10 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     unless decide ((expected.map ReplayObservedUnitAttachments.sorted).Perm
         (actual.map ReplayObservedUnitAttachments.sorted)) do
       checkFactValue s!"{label} attachments" expected actual
+  | .visibleZoneContains viewer zone cards =>
+    observeSeat s viewer
+    let visible := (← observeZone s zone (some viewer)).filterMap id
+    checkCardSet s!"{zoneLabel zone} faces visible to seat {viewer.n}" cards visible true
   | .clockCalled called => checkFactValue "clock called" called s.clock.isSome
   | .result expected =>
     match expected, s.result with

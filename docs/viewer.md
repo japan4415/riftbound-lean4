@@ -132,7 +132,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `state` に盤面とオブジェクトID、`choices` に現在の決定点で入力できる操作が出る。元の対戦で行われた操作を確認し、対応する `answer` を `answers` に入れる。`decision` が `cardOrder` のときは、カードの集合から観測した並びを作る。
 - この出力は転記者向けで、全席の手札や山札を含む。試合全体を照合するときは、結果と未記入の操作をそろえてから `record`、`record-team` または `record-ffa` を実行する。
 
-#### 映像や対戦ログで観測した盤面を照合する
+#### 映像や対戦ログで確認した情報を照合する
 
 ゲームの入力に `observations` を指定する。1対1 と 2v2 は `games[]`、FFA は `game` に置く。`checkpoint` は適用した操作の数で、初期状態は0。映像の時刻やログの行番号は省略可能な `source` に記録できる。
 
@@ -158,6 +158,8 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 - `unitStates` は Unit のカードコード、Exhaust の有無、与えられたダメージを照合する。`controller` に席、`place` に `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"RAD-157"}}}` を指定する。`units` にはその席がその場所でコントロールする全 Unit を `{"card":{"code":"RAD-026"},"exhausted":true,"damage":2}` の形で入れる。同名の Unit はそれぞれ記録し、並び順は問わない。
 - `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
+
+- `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。
 
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
 
