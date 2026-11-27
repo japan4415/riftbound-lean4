@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.Progress
+public import Riftbound.Invariant.PrivateChoices
 
 /-! # Checking a forced loop (TR 505)
 
@@ -37,20 +38,75 @@ theorem forcedAnswer_unique {s : GameState} {answer other : Action}
       simpa [forced] using member
     · simp at forced
 
-private theorem eraseDups_map_actions (rename : Action → Action)
-    (injective : Function.Injective rename) (actions : List Action) :
-    (actions.map rename).eraseDups = actions.eraseDups.map rename := by
-  cases actions with
-  | nil => rfl
-  | cons first rest =>
-    have equality (a b : Action) : (rename a == rename b) = (a == b) := by
-      apply Bool.eq_iff_iff.mpr
-      simpa only [beq_iff_eq] using
-        (show rename a = rename b ↔ a = b from ⟨fun h => injective h, congrArg rename⟩)
-    simp only [List.map_cons, List.eraseDups_cons, List.filter_map, Function.comp_def, equality]
-    rw [eraseDups_map_actions rename injective]
-termination_by actions.length
-decreasing_by exact Nat.lt_succ_of_le List.filter_sublist.length_le
+private theorem eraseDups_eq_single_answer {actions : List Action} {answer : Action} :
+    actions.eraseDups = [answer] ↔ answer ∈ actions ∧ ∀ other ∈ actions, other = answer := by
+  constructor
+  · intro one
+    refine ⟨List.mem_eraseDups.mp (by simp [one]), ?_⟩
+    intro other member
+    have preserved := List.mem_eraseDups.mpr member
+    simpa only [one, List.mem_singleton] using preserved
+  · rintro ⟨present, unique⟩
+    cases actions with
+    | nil => cases present
+    | cons first rest =>
+      have same := unique first (by simp)
+      subst first
+      have empty : (rest.filter (fun other => !(other == answer))) = [] := by
+        apply List.eq_nil_iff_forall_not_mem.mpr
+        intro other member
+        have ⟨inside, different⟩ := List.mem_filter.mp member
+        simp [unique other (List.mem_cons_of_mem _ inside)] at different
+      rw [List.eraseDups_cons, empty, List.eraseDups_nil]
+
+/-- A player answer is forced exactly when it is listed and every listed answer equals it.
+Finished games and chance decisions have no forced answer. -/
+theorem forcedAnswer_eq_some_iff {s : GameState} {answer : Action} :
+    forcedAnswer s = some answer ↔
+      s.result.isSome = false ∧ s.pending.head?.any Frame.isChance = false ∧
+      answer ∈ legalFrameActions s ∧ ∀ other ∈ legalFrameActions s, other = answer := by
+  have shape :
+      (match (legalFrameActions s).eraseDups with
+       | [action] => some action
+       | _ => none) = some answer ↔ (legalFrameActions s).eraseDups = [answer] := by
+    cases (legalFrameActions s).eraseDups with
+    | nil => simp
+    | cons first rest => cases rest <;> simp
+  unfold forcedAnswer
+  cases s.result.isSome <;> cases s.pending.head?.any Frame.isChance <;>
+    simp [shape, eraseDups_eq_single_answer]
+
+/-- The order of the answer list is immaterial. An action renaming only needs to be injective on
+the answers actually offered at the source decision. -/
+theorem forcedAnswer_rename_perm {s t : GameState} (rename : Action → Action)
+    (injective : ∀ ⦃a b⦄, a ∈ legalFrameActions s → b ∈ legalFrameActions s →
+      rename a = rename b → a = b)
+    (finished : s.result.isSome = t.result.isSome)
+    (chance : s.pending.head?.any Frame.isChance = t.pending.head?.any Frame.isChance)
+    (answers : (legalFrameActions t).Perm ((legalFrameActions s).map rename)) :
+    forcedAnswer t = (forcedAnswer s).map rename := by
+  have offered (a : Action) : a ∈ legalFrameActions t ↔
+      ∃ original ∈ legalFrameActions s, rename original = a :=
+    answers.mem_iff.trans List.mem_map
+  cases source : forcedAnswer s with
+  | none =>
+    cases target : forcedAnswer t with
+    | none => rfl
+    | some mapped =>
+      obtain ⟨ongoing, ordinary, listed, unique⟩ := forcedAnswer_eq_some_iff.mp target
+      obtain ⟨original, eligible, rfl⟩ := (offered mapped).mp listed
+      have prior : forcedAnswer s = some original := forcedAnswer_eq_some_iff.mpr
+        ⟨finished.trans ongoing, chance.trans ordinary, eligible, fun a member =>
+          injective member eligible (unique _ ((offered _).mpr ⟨a, member, rfl⟩))⟩
+      simp [source] at prior
+  | some answer =>
+    obtain ⟨ongoing, ordinary, eligible, unique⟩ := forcedAnswer_eq_some_iff.mp source
+    apply forcedAnswer_eq_some_iff.mpr
+    refine ⟨finished.symm.trans ongoing, chance.symm.trans ordinary,
+      (offered _).mpr ⟨answer, eligible, rfl⟩, ?_⟩
+    intro other member
+    obtain ⟨original, present, rfl⟩ := (offered other).mp member
+    exact congrArg rename (unique original present)
 
 /-- Translating all ordinary answers injectively preserves whether one answer is forced at a
 player decision. The forced answer, if there is one, is translated with the same map. -/
@@ -60,13 +116,34 @@ theorem forcedAnswer_rename {s t : GameState} (rename : Action → Action)
     (chance : s.pending.head?.any Frame.isChance = t.pending.head?.any Frame.isChance)
     (answers : legalFrameActions t = (legalFrameActions s).map rename) :
     forcedAnswer t = (forcedAnswer s).map rename := by
-  unfold forcedAnswer
-  rw [← finished, ← chance, answers, eraseDups_map_actions rename injective]
-  split
-  · rfl
-  · cases (legalFrameActions s).eraseDups with
-    | nil => rfl
-    | cons first rest => cases rest <;> rfl
+  apply forcedAnswer_rename_perm rename (fun {_ _} _ _ eq => injective eq) finished chance
+  rw [answers]
+
+/-- For an offered object choice, forcedness and its answer survive renaming the offered objects.
+The renaming can be undefined outside the candidates in this decision. -/
+theorem forcedAnswer_pickDo_rename {s t : GameState} {p : PlayerId}
+    {srcS srcT firstS firstT : ObjId} {envS envT : Env} {x y : Effect}
+    {restS restT : EffectList} {moreS moreT : List ObjId} {tailS tailT : List Frame}
+    (rename : ObjId → ObjId)
+    (hs : s.pending = .pickDo p srcS envS firstS moreS x restS :: tailS)
+    (ht : t.pending = .pickDo p srcT envT firstT moreT y restT :: tailT)
+    (finished : s.result.isSome = t.result.isSome)
+    (injective : ∀ ⦃a b⦄, a ∈ firstS :: moreS → b ∈ firstS :: moreS →
+      rename a = rename b → a = b)
+    (offered : (firstT :: moreT).Perm ((firstS :: moreS).map rename)) :
+    forcedAnswer t = (forcedAnswer s).map (Action.renameOfferedChoice rename) := by
+  have chance : s.pending.head?.any Frame.isChance = t.pending.head?.any Frame.isChance := by
+    simp [hs, ht, Frame.isChance]
+  refine forcedAnswer_rename_perm (Action.renameOfferedChoice rename) ?_ finished chance
+    (legalFrameActions_pickDo_rename rename hs ht offered)
+  intro a b first second equal
+  simp only [legalFrameActions, hs, List.mem_map] at first second
+  obtain ⟨id, member, rfl⟩ := first
+  obtain ⟨other, otherMember, rfl⟩ := second
+  have renamed : rename id = rename other := by
+    simpa only [Action.renameOfferedChoice, Action.mk.injEq, ActionKind.choose.injEq, true_and]
+      using equal
+  rw [injective member otherMember renamed]
 
 /-- Play the recorded answers, stopping if one is optional or fails to advance. -/
 def runForcedAnswers (fuel : Nat) (s : GameState) (answers : List Action) : Option GameState :=
