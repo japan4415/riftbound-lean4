@@ -3,7 +3,7 @@ module
 public import Riftbound.Rules.Pay
 
 /-!
-# Canonical flexible payments (CR 356–357)
+# Canonical flexible payments (CR 356-357)
 
 The engine enumerates domain bags in its fixed domain order. This specification describes a bag by
 choosing a number for each domain without referring to the enumeration or to its search bounds.
