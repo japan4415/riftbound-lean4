@@ -86,6 +86,8 @@ ORIGINS_PRINT_METADATA = {
 
 # Signature marks and split-domain Power symbols on Riot's Proving Grounds card images.
 PROVING_GROUNDS_PRINT_METADATA = {
+    "OGS-004": {"supertypes": ["champion"]},
+    "OGS-009": {"supertypes": ["champion"]},
     "OGS-018": {"supertypes": ["signature"], "powerOwn": True},
     "OGS-020": {"supertypes": ["signature"]},
     "OGS-022": {"supertypes": ["signature"]},
@@ -94,9 +96,12 @@ PROVING_GROUNDS_PRINT_METADATA = {
 
 # The gallery omits or mislabels these fields. Checked against its card images.
 UNLEASHED_PRINT_METADATA = {
+    "UNL-059": {"supertypes": ["champion"]},
     "UNL-086": {"supertypes": ["champion"]},
     "UNL-090": {"supertypes": ["champion"]},
+    "UNL-113": {"supertypes": ["champion"]},
     "UNL-172": {"supertypes": ["champion"]},
+    "UNL-192": {"supertypes": ["signature"], "powerOwn": True},
     "UNL-200": {"supertypes": ["signature"], "powerOwn": True},
 }
 

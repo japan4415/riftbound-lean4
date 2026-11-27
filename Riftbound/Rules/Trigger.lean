@@ -406,7 +406,14 @@ def GameState.workTransitionEvents (s s' : GameState) : List Event :=
   let who := match s.pending with
     | .run p .. :: _ => some p
     | _ => none
-  s.exhaustionEvents s' who ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
+  let damageLinks := match s.pending, s'.pending with
+    | .cleanup :: _, .cleanup :: _
+    | .cleanup :: _, .eitherDo .. :: .cleanup :: _ => []
+    | .cleanup :: _, _ =>
+      if s.turnFx.any (fun f => match f.kind with | .linkedDamageDeath .. => true | _ => false)
+      then [.linkedDamageCleanupDone] else []
+    | _, _ => []
+  s.exhaustionEvents s' who ++ s.mightyEvents s' ++ s.mightReductionEvents s' who ++ damageLinks
 
 /-- State changes during an answer. Passing Chain priority cannot change Board objects. -/
 def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Event :=
@@ -565,6 +572,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
   | .discardedTypeFor p src card idx _ =>
     match s.cards.find? card with
     | some d => triggersAmong s src p .linkedDiscardType d idx (idx + 1)
+    | none => []
+  | .killedByLinkedDamage p src card idx _ =>
+    match s.cards.find? card with
+    | some d => triggersAmong s src p .linkedDamageKill d idx (idx + 1)
     | none => []
   | .unitTokensFor p src card idx target tokens destination =>
     match s.cards.find? card with
@@ -838,6 +849,8 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.chooseDamageReplacement ..) _ _ => true
   | .eitherDo _ _ _ (.orderCombatDamage ..) _ _ => true
   | .eitherDo _ _ _ (.applySplitDamage _) _ _ => true
+  | .eitherDo _ _ _ (.applyUnitSplitDamage ..) _ _ => true
+  | .pickDo _ _ _ _ _ (.retainTargetSet _) _ => true
   | .eitherDo _ _ _ (.prim (.attachPaying ..)) _ _ => true
   | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
   | .eitherDo _ _ _ (.recordDeathSacrifice ..) _ _
@@ -1033,6 +1046,9 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
           s.recordTurnFact known p .firstUnitDeathHere (some field) dead.timestamp.n)
       | _, _ => known
     else notes
+  | .linkedDamageCleanupDone => notes.filter (fun f => match f.kind with
+      | .linkedDamageDeath .. => false
+      | _ => true)
   | _ => notes
 
 /-- Update the play and choice history before evaluating triggers. Ignore events during setup. -/

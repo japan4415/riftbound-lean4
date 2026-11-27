@@ -1768,6 +1768,7 @@ def UNL_059.meta : CardDef :=
     name := "Master Yi",
     subtitle := some "Unstoppable",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Master Yi"⟩, ⟨"Ionia"⟩],
     domains := [.calm],
     cost := some ⟨12, [.domain .calm, .domain .calm, .domain .calm]⟩,
@@ -3096,13 +3097,15 @@ def UNL_106.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Repulse. -/
+/-- Repulse counters an item that chooses this friendly Unit and no other friendly Unit. -/
 def UNL_106 : CardDef :=
   { UNL_106.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .onBattlefield],
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit, .onBattlefield],
         .targetOf .one .enemy .onChainAll [.choosesOnly (.slot 0)]]
-      (.prim (.counter (.slot 1)))),
-    status := .drafted }
+      body := .ifThen (.matches (.slot 0) .onBattlefield) (.prim (.counter (.slot 1))) .nop
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED UNL-107
 /--
@@ -3276,6 +3279,7 @@ def UNL_113.meta : CardDef :=
     name := "Master Yi",
     subtitle := some "Tempered",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Master Yi"⟩, ⟨"Ionia"⟩],
     domains := [.body],
     cost := some ⟨4, []⟩,
@@ -5572,22 +5576,25 @@ def UNL_192.meta : CardDef :=
   { id := ⟨"UNL-192"⟩,
     name := "Alpha Strike",
     types := [.spell],
+    supertypes := [.signature],
     tags := [⟨"Master Yi"⟩],
     domains := [.calm, .body],
-    cost := some ⟨3, [.any]⟩,
+    cost := some ⟨3, [.own]⟩,
     keywords := [{ keyword := .action }],
-    sets := [⟨"UNL"⟩] }  -- Power domains unknown
+    sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Alpha Strike. -/
+/-- Alpha Strike divides the chosen Unit's damage and gains XP for each actual kill. -/
 def UNL_192 : CardDef :=
   { UNL_192.meta with
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
-        .targetOf .one .enemy .atBattlefield [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 1) (.mightOf (.slot 0))),
-        .ifThen (.cmp .ge (.mightOf (.slot 0)) (.mightOf (.slot 1)))
-          (.prim (.gainXP .you (.const 1))) .nop])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
+        .targetOf (.splitByMight 0) .enemy .atBattlefield [.ofType .unit]]
+      body := .splitUnitDamage (.slot 0) (.slotsFrom 1) 0
+      recheckTargets := true },
+    abilities := [.triggered (.onSelf .linkedDamageKill)
+      (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-193
 /--

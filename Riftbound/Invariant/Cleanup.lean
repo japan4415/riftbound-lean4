@@ -1258,7 +1258,8 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hl := List.find?_some hu
     simp only [Bool.and_eq_true] at hl
     have hmem := List.mem_of_find?_eq_some hu
-    unfold cleanupKill
+    change MeasLt (cleanupKillCore s u).1.cleanupMeasure s.cleanupMeasure
+    unfold cleanupKillCore
     split
     · rename_i g hg
       split

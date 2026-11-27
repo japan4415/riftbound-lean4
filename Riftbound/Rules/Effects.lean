@@ -2327,24 +2327,75 @@ theorem orderCombatDamageStep_mem {s : GameState} {p : PlayerId} {src target : O
   dsimp only at hf
   split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
 
-/-- Record the damage dealt by one instruction and collect all its damage events together. -/
-def applyEffectDamageAmounts (s : GameState) : List (ObjId × Nat) → GameState × List Event
+/-- A death caused by the current hit, identified across its change of zone. -/
+def damageDeathObject (id : ObjId) (events : List Event) : Option ObjId :=
+  events.findSome? fun
+    | .moved old next _ =>
+      if old == id && events.any (fun | .died dead _ => dead == next | _ => false)
+      then some next else none
+    | _ => none
+
+/-- Append credit for this particular lethal death, excluding collateral deaths of replacements. -/
+def creditLinkedCleanupDeath (s : GameState) (id : ObjId) (events : List Event) : List Event :=
+  events ++ ((damageDeathObject id events).toList.flatMap fun dead =>
+    s.turnFx.filterMap (fun note => match note.kind with
+      | .linkedDamageDeath source card index =>
+        if note.turn == s.turn && note.target == some id then
+          some (.killedByLinkedDamage note.who source card index dead)
+        else none
+      | _ => none))
+
+/-- Credit a direct death, or remember a hit that may cause a death during the next Cleanup. -/
+def linkDamageHit (r : GameState × List Event) (id : ObjId) (amount : Nat)
+    (link : Option DamageKillLink) : GameState × List Event :=
+  match link with
+  | some followup =>
+    if amount == 0 then r else
+    match damageDeathObject id r.2 with
+    | some dead => (r.1, r.2 ++
+      [.killedByLinkedDamage followup.player followup.source followup.card followup.index dead])
+    | none =>
+      let kind := TurnEffect.linkedDamageDeath followup.source followup.card followup.index
+      if r.1.inPlay.contains id &&
+          !(r.1.turnFx.any (fun f => f.appliesTo r.1.turn id kind && f.who == followup.player)) then
+        (r.1.addTurnFxOn followup.player id kind, r.2)
+      else r
+  | none => r
+
+/-- Adding a damage link retains the structural invariants. -/
+theorem linkDamageHit_safe (r : GameState × List Event) (id : ObjId) (amount : Nat)
+    (link : Option DamageKillLink) : Safe r.1 (linkDamageHit r id amount link).1 := by
+  unfold linkDamageHit
+  split
+  · split
+    · exact Safe.refl _
+    · split
+      · exact Safe.refl _
+      · dsimp only
+        split
+        · exact addTurnFxOn_safe _ _ _ _
+        · exact Safe.refl _
+  · exact Safe.refl _
+
+/-- Record damage and any per-hit attribution, keeping the whole instruction's events together. -/
+def applyEffectDamageAmounts (link : Option DamageKillLink) (s : GameState) :
+    List (ObjId × Nat) → GameState × List Event
   | [] => (s, [])
   | (id, amount) :: rest =>
-    let r := if (s.obj? id).isSome then dealRemaining amount s id else (s, [])
-    let later := applyEffectDamageAmounts r.1 rest
+    let r := if (s.obj? id).isSome then linkDamageHit (dealRemaining amount s id) id amount link else (s, [])
+    let later := applyEffectDamageAmounts link r.1 rest
     (later.1, r.2 ++ later.2)
 
 /-- Recording a batch of damage preserves the game invariants. -/
-theorem applyEffectDamageAmounts_safe (s : GameState) (hits : List (ObjId × Nat)) :
-    Safe s (applyEffectDamageAmounts s hits).1 := by
+theorem applyEffectDamageAmounts_safe (link : Option DamageKillLink) (s : GameState)
+    (hits : List (ObjId × Nat)) : Safe s (applyEffectDamageAmounts link s hits).1 := by
   induction hits generalizing s with
   | nil => exact Safe.refl s
   | cons hit rest ih =>
     obtain ⟨id, amount⟩ := hit
     simp only [applyEffectDamageAmounts]
     split
-    · exact (dealRemaining_safe amount s id).trans (ih _)
+    · exact (dealRemaining_safe amount s id).trans ((linkDamageHit_safe _ _ _ _).trans (ih _))
     · exact ih s
 
 /-- Commit the spent effects and the damage in one step, after all replacement decisions. -/
@@ -2357,14 +2408,14 @@ def commitEffectDamage (s : GameState) (batch : EffectDamageBatch) : GameState �
       if spent < n then some { note with kind := .preventDamage (n - spent) } else none
     | .damagePrevented => none
     | _ => some note)
-  applyEffectDamageAmounts { s with turnFx := notes } batch.resolved.reverse
+  applyEffectDamageAmounts batch.onKill { s with turnFx := notes } batch.resolved.reverse
 
 /-- Committing the ordered damage and its replacements preserves the game invariants. -/
 theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
     Safe s (commitEffectDamage s batch).1 := by
   unfold commitEffectDamage
   dsimp only
-  apply Safe.trans _ (applyEffectDamageAmounts_safe _ _)
+  apply Safe.trans _ (applyEffectDamageAmounts_safe _ _ _)
   exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
@@ -5525,6 +5576,18 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
   match e.choices.getLast? with
   | some c =>
     match c with
+    | .target (.splitByMight _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let slots := recheckedSlots s p src targets (some e)
+      if !(slots.take fixed.length).all (fun | .obj _ => true | _ => false) then body
+      else
+        let pm := s.mightTable
+        let legal := c.candidatesAfter s p src pm fixed
+        let original := (targets.drop fixed.length).filter legal.contains
+        let total := c.targetGroupLimit s p src pm fixed original
+        let retained := if original.length ≤ total then [original] else
+          (subseqsUpTo total original).filter (fun subset => subset.length == total)
+        .cons (.retainTargetSet (retained.map (fixed ++ ·))) body
     | .target (.atOneBattlefield n) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
       let legal := c.candidatesAfter s p src s.mightTable fixed
@@ -6560,6 +6623,22 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       let choices := (damageDivisions (first :: others) available).map Effect.applySplitDamage
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
     | _ => skip
+  | .splitUnitDamage dealer targets index =>
+    match dealer.eval s p src env, targets.eval s p src env,
+        env.sourceCard <|> (s.cardDef? src).map (·.id) with
+    | some [unit], some ids, some card =>
+      match s.mightNow unit with
+      | some might =>
+        let link : DamageKillLink := ⟨src, unit, p, card, index⟩
+        let choices := (damageDivisions ids might.toNat).map (fun hits =>
+          Effect.applyUnitSplitDamage hits link)
+        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+      | none => skip
+    | _, _, _ => skip
+  | .applyUnitSplitDamage hits link =>
+    if s.damageOff then (s, [.run p src env es], []) else
+      let batch : EffectDamageBatch := { controller := none, incoming := hits, onKill := some link }
+      (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
   | .applySplitDamage hits =>
     if s.damageOff then (s, [.run p src env es], []) else
       let batch : EffectDamageBatch := {

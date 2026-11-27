@@ -235,13 +235,21 @@ def combatPriorityFields (frame : Option Frame) (yes : Bool) : List (String × S
 
 /-- Describe the allocation selected for split damage (CR 355.14). -/
 def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let hitsOf : Effect → Option (List (ObjId × Nat))
+    | .applySplitDamage hits | .applyUnitSplitDamage hits _ => some hits
+    | _ => none
   match frame with
-  | some (.eitherDo _ _ _ first@(.applySplitDamage _) other _) =>
-    match if yes then first else other with
-    | .applySplitDamage hits =>
-      [("damageDivision", jarr (hits.map (fun (unit, amount) =>
-        jobj [("unit", toString unit.n), ("amount", toString amount)])))]
-    | _ => [("moreDamageDivisions", "true")]
+  | some (.eitherDo _ _ _ first other _) =>
+    if (hitsOf first).isNone then [] else
+    let selected := if yes then first else other
+    match hitsOf selected with
+    | some hits =>
+      let source := match selected with
+        | .applyUnitSplitDamage _ link => [("damageSourceUnit", toString link.dealer.n)]
+        | _ => []
+      ("damageDivision", jarr (hits.map (fun (unit, amount) =>
+        jobj [("unit", toString unit.n), ("amount", toString amount)]))) :: source
+    | none => [("moreDamageDivisions", "true")]
   | _ => []
 
 /-- Name the affected Unit field and the choice field for a death replacement. -/
@@ -604,6 +612,10 @@ def eventJson : Event → String
   | .discardedTypeFor p source _ idx card =>
     jobj [("t", jstr "discarded_type"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("card", toString card.n)]
+  | .killedByLinkedDamage p source _ idx unit =>
+    jobj [("t", jstr "linked_damage_kill"), ("player", toString p.n),
+      ("source", toString source.n), ("index", toString idx), ("unit", toString unit.n)]
+  | .linkedDamageCleanupDone => jobj [("t", jstr "linked_damage_cleanup_done")]
   | .unitTokensFor p source _ idx target tokens destination =>
     jobj [("t", jstr "unit_tokens_for"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("target", target.elim "null" (fun id => toString id.n)),

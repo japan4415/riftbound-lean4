@@ -273,6 +273,8 @@ inductive Quantity where
   | combinedMightAtMost (limit : Nat)
   /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
   | atOneBattlefield (limit : Nat)
+  /-- From one target up to the current Might of the Unit at an earlier slot (CR 355.14). -/
+  | splitByMight (slot : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/
@@ -405,6 +407,9 @@ inductive TurnEffect where
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
+  /-- Positive damage from the referenced instruction can fire a reflexive ability
+  if the Unit dies during that Chain item's Cleanup (CR 389, 429.5.c). -/
+  | linkedDamageDeath (source : ObjId) (card : CardId) (idx : Nat)
   /-- A delayed ability fires for the next plays of the type by this player this turn
   (CR 391-393). Its source is the object named by the note. -/
   | triggerOnPlays (card : CardId) (idx : Nat) (kind : CardType) (remaining : Nat)

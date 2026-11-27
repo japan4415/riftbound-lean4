@@ -116,9 +116,8 @@ structure EffectDamageHit where
   replacements : List DamageReplacement
 deriving DecidableEq, Repr, Hashable
 
-/-- Damage from one instruction. Keep replacements and damage tentative until the whole
-instruction is ready, so simultaneous events are still observed together. -/
-structure EffectDamageBatch where
+/-- The parameters and tentative results of a simultaneous damage instruction. -/
+structure EffectDamageProgress where
   /-- Who controls damage from a Spell or Ability, or none for an exchange between Units. -/
   controller : Option PlayerId
   /-- Events waiting to have their replacements ordered. -/
@@ -128,6 +127,33 @@ structure EffectDamageBatch where
   /-- The amount consumed from each numbered turn note. -/
   spent : List (Nat × Nat) := []
 deriving DecidableEq, Repr, Hashable
+
+/-- The reflexive ability created by a death caused by this instruction. -/
+structure DamageKillLink where
+  /-- Original Chain item. -/
+  source : ObjId
+  /-- Unit dealing the damage. -/
+  dealer : ObjId
+  /-- Controller of the reflexive ability. -/
+  player : PlayerId
+  /-- Card containing the reflexive ability. -/
+  card : CardId
+  /-- Reflexive ability index. -/
+  index : Nat
+deriving DecidableEq, Repr, Hashable
+
+/-- Damage from one instruction. Damage and replacements remain tentative until the
+whole simultaneous instruction is ready. -/
+structure EffectDamageBatch extends EffectDamageProgress where
+  /-- An optional reflexive ability tied to actual deaths from the damage. -/
+  onKill : Option DamageKillLink := none
+deriving DecidableEq, Hashable
+
+/-- Keep the established checkpoint representation for damage without a linked ability. -/
+instance : Repr EffectDamageBatch where
+  reprPrec batch prec := match batch.onKill with
+    | none => reprPrec batch.toEffectDamageProgress prec
+    | some link => reprPrec (batch.toEffectDamageProgress, link) prec
 
 /-- The reflexive ability attached to a Unit token instruction (CR 375, 388-389). -/
 structure UnitTokenFollowup where
@@ -321,6 +347,10 @@ inductive Effect where
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
   /-- Divide damage among the remaining targets at resolution (CR 355.14). -/
   | splitDamage (targets : Selector) (total : Nat)
+  /-- A Unit deals its current Might in divided damage, with a reflexive ability per kill. -/
+  | splitUnitDamage (dealer targets : Selector) (onKill : Nat)
+  /-- Apply a selected division whose damage comes from a Unit (CR 418.6.b.3). -/
+  | applyUnitSplitDamage (hits : List (ObjId × Nat)) (link : DamageKillLink)
   /-- Deal the chosen damage simultaneously after replacements have been applied. -/
   | applySplitDamage (hits : List (ObjId × Nat))
   /-- Apply one selected replacement and continue with the rest. -/

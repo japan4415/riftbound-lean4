@@ -464,7 +464,7 @@ end GameState
 
 /-- What the Cleanup does to a unit with lethal damage: an Equipment or Soraka saves it, or it is
 killed (CR 323.4). -/
-def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
+def cleanupKillCore (s : GameState) (u : ObjId) : GameState × List Event :=
   -- a unit with an Equipment that dies instead (Guardian Angel) is saved, as it is by damage
   match s.deathSaver u with
   | some (some g) =>
@@ -486,9 +486,15 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     else killObj s u
   | none => killObj s u
 
+/-- Resolve a lethal death and credit any linked damage instruction. -/
+def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
+  let r := cleanupKillCore s u
+  (r.1, creditLinkedCleanupDeath s u r.2)
+
 /-- What the Cleanup does to a unit with lethal damage is a safe change. -/
 theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).1 := by
-  unfold cleanupKill
+  change Safe s (cleanupKillCore s u).1
+  unfold cleanupKillCore
   split
   · rename_i g hg
     split
@@ -655,7 +661,10 @@ def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
 
 /-- The individual death when resolving a Cleanup group. -/
 def cleanupResolveDeath (s : GameState) (victim : ObjId) : GameState × List Event :=
-  if hasNestedDeath s victim then killOrSave s victim else cleanupKill s victim
+  if hasNestedDeath s victim then
+    let r := killOrSave s victim
+    (r.1, creditLinkedCleanupDeath s victim r.2)
+  else cleanupKill s victim
 
 theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
     Safe s (cleanupResolveDeath s victim).1 := by

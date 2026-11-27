@@ -8875,6 +8875,9 @@
     "OGS"
    ],
    "subtitle": "Meditative",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -9024,6 +9027,9 @@
     "OGS"
    ],
    "subtitle": "Honed",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -17940,6 +17946,9 @@
     "UNL"
    ],
    "subtitle": "Unstoppable",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -19534,6 +19543,9 @@
     "UNL"
    ],
    "subtitle": "Tempered",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -21937,6 +21949,7 @@
    "mightBonus": null,
    "name": "Alpha Strike",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "UNL-192/219"
    ],
@@ -21944,6 +21957,9 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Master Yi"
    ],

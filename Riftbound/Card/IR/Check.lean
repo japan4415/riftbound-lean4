@@ -380,6 +380,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .fillFromPick _ => true
   | .retainTargetSet _ | .applySplitDamage _ => false
   | .splitDamage targets _ => Selector.ok c targets
+  | .splitUnitDamage dealer targets _ => Selector.ok c dealer && Selector.ok c targets
+  | .applyUnitSplitDamage .. => false
   | .remakeSpellChoices spell => Selector.ok c spell
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
@@ -446,6 +448,7 @@ def Choice.isTarget : Choice → Bool
 
 /-- A choice refers only to what is there. A target is chosen before anything else is known. -/
 def Choice.ok (earlier : Nat) : Choice → Bool
+  | .target (.splitByMight slot) _ _ fs => decide (slot < earlier) && FilterList.ok { slots := earlier } fs
   | .target _ _ _ fs => FilterList.ok { slots := earlier } fs
   | .mode _ => true
   | .xValue => true

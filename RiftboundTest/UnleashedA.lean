@@ -924,6 +924,115 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
   return rich.symbolPayments p price [] false == original &&
     (large.symbolPayments p due [] false).map (fun (_, pool) => pool.fury) == [1]
 
+-- Alpha Strike locks the targets, splits the Unit's Might across Battlefields, and
+-- earns XP on the Chain after lethal damage actually kills both Units.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, other) ← putBf s q "OGN-276"
+  let (s, dealer) ← put s p "OGN-052" .base
+  let (s, first) ← putAt s q "OGN-052" s.bf0
+  let (s, second) ← putAt s q "OGN-052" other
+  let (s, alpha) ← put s p "UNL-192" .hand
+  let ready := ((s.control q s.bf0).control q other).modObj dealer
+    (fun o => { o with baseMightThisTurn := some 3 })
+  let ready := (ready.modObj first (fun o => { o with baseMightThisTurn := some 1 })).fund p 3 0 1
+  let ready := ready.addTurnFx p (.nextSpellBonus 4)
+  let pay : RunePool.Payment := ⟨3, [.calm]⟩
+  let action : Action := ⟨.player p, .playCard alpha pay [dealer, first, second]⟩
+  let (queued, _) ← (step 100 ready action).toOption
+  let killed := settleChain {} 32 queued
+  let prevention := ready.addTurnFxOn q first (.preventDamage 1)
+  let saved := prevention.addTurnFxOn q second .saveOnce
+  let (savedQueued, _) ← (step 100 saved action).toOption
+  let spared := settleChain {} 32 savedQueued
+  let body : Action := ⟨.player p, .playCard alpha ⟨3, [.body]⟩ [dealer, first, second]⟩
+  let fury : Action := ⟨.player p, .playCard alpha ⟨3, [.fury]⟩ [dealer, first, second]⟩
+  return (legalFrameActions (ready.fund p 3 0 0 1)).contains body &&
+    !(legalFrameActions (ready.fund p 3 1)).contains fury &&
+    queued.xpOf p == s.xpOf p && killed.xpOf p == s.xpOf p + 2 &&
+    (killed.obj? first).isNone && (killed.obj? second).isNone &&
+    !(killed.turnFx.any (fun note => match note.kind with
+      | .linkedDamageDeath .. => true | _ => false)) &&
+    (spared.obj? first).any (·.damage == 0) &&
+    (spared.obj? second).any (fun o => o.loc.isNone && o.exhausted && o.damage == 0) &&
+    spared.xpOf p == s.xpOf p
+
+-- The chosen Unit is the damage source, so spell and ability damage protection
+-- does not prevent its hit (CR 418.6.b.3).
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, dealer) ← put s p "OGN-052" .base
+  let (s, hierophant) ← putAt s q "VEN-025" s.bf0
+  let s ← (List.range 7).foldlM (fun t _ =>
+    (put t q "OGN-042" .base).map Prod.fst) s
+  let (s, alpha) ← put s p "UNL-192" .hand
+  let (s, disintegrate) ← put s p "OGN-005" .hand
+  let s := (s.control q s.bf0).modObj dealer (fun o => { o with baseMightThisTurn := some 5 })
+  let spell ← cast (s.fund p 4) p disintegrate ⟨4, []⟩ [hierophant]
+  let unit ← cast (s.fund p 3 0 1) p alpha ⟨3, [.calm]⟩ [dealer, hierophant]
+  return (s.activeMods hierophant).contains .noEnemyEffectDamage &&
+    (spell.obj? hierophant).any (·.damage == 0) && (unit.obj? hierophant).isNone &&
+    unit.xpOf p == s.xpOf p + 1
+
+-- The chosen dealer can lose Might after finalization. Take exactly the maximum number of
+-- legal targets at resolution and deal the new amount to those targets (CR 355.14.h.1).
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, dealer) ← put s p "OGN-052" .base
+  let (s, first) ← putAt s q "OGN-052" field
+  let (s, second) ← putAt s q "OGN-052" field
+  let (s, third) ← putAt s q "OGN-052" field
+  let (s, alpha) ← put s p "UNL-192" .hand
+  let (s, frigid) ← put s q "SFD-066" .hand
+  let basic := ((s.control q field).fund p 3 0 1).fund q 2
+  let ready := basic.modObj dealer (fun o => { o with baseMightThisTurn := some 3 })
+  let pay : RunePool.Payment := ⟨3, [.calm]⟩
+  let action : Action := ⟨.player p, .playCard alpha pay [dealer, first, second, third]⟩
+  let (queued, _) ← (step 100 ready action).toOption
+  let (answer, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let reduced ← cast answer q frigid ⟨2, []⟩ [dealer] { obj := (· == third) }
+  return !(legalFrameActions basic).contains action &&
+    (legalFrameActions ready).contains action &&
+    [first, second].all (fun id => (reduced.obj? id).any (·.damage == 0)) &&
+    (reduced.obj? third).any (·.damage == 1) && reduced.xpOf p == s.xpOf p &&
+    !(reduced.turnFx.any (fun note => match note.kind with
+      | .linkedDamageDeath .. => true | _ => false))
+
+-- Unleashed FAQ: moving two of Alpha Strike's targets to Base preserves their
+-- targeting relationships. Leaving the Board both loses the relationships and
+-- makes Repulse legal against the spell choosing the sole remaining friendly Unit.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, dealer) ← put s p "OGN-052" .base
+  let (s, first) ← putAt s q "OGN-052" field
+  let (s, second) ← putAt s q "OGN-052" field
+  let (s, third) ← putAt s q "OGN-052" field
+  let (s, alpha) ← put s p "UNL-192" .hand
+  let (s, repulse) ← put s q "UNL-106" .hand
+  let ready := (((s.control q field).fund p 3 0 1).fund q 1 0 0 1).modObj dealer
+    (fun o => { o with baseMightThisTurn := some 3 })
+  let (queued, _) ← (step 100 ready ⟨.player p,
+    .playCard alpha ⟨3, [.calm]⟩ [dealer, first, second, third]⟩).toOption
+  let item ← (queued.zone .chain).head?
+  let (answer, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let moved := (moveByEffect q none (moveByEffect q none answer second).1 third).1
+  let (left, _) ← moveObj moved second (.player q .hand)
+  let (gone, _) ← moveObj left third (.player q .hand)
+  let counter : Action := ⟨.player q, .playCard repulse ⟨1, [.body]⟩ [first, item]⟩
+  let (stacked, _) ← (step 100 gone counter).toOption
+  let done := settleChain {} 32 stacked
+  let resolving := settleChain {} 32 moved
+  return !(legalFrameActions moved).contains counter && (legalFrameActions gone).contains counter &&
+    done.xpOf p == s.xpOf p && (done.obj? first).any (·.damage == 0) &&
+    resolving.xpOf p == s.xpOf p + 1 && (resolving.obj? first).isNone &&
+    [second, third].all (fun id => (resolving.obj? id).any (fun o => o.loc.isNone && o.damage == 0))
+
 -- Undying Legion (UNL-025): with another card played this turn, it is played from the Trash
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-111" .hand

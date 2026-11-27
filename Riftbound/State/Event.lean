@@ -32,6 +32,10 @@ inductive Event where
     (might : Nat)
   /-- An instruction discarded a card with the type required by the linked reflexive ability. -/
   | discardedTypeFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (discarded : ObjId)
+  /-- The linked damage instruction killed the Unit. -/
+  | killedByLinkedDamage (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (unit : ObjId)
+  /-- Internal expiration boundary for the Cleanup following linked damage. -/
+  | linkedDamageCleanupDone
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)

@@ -664,8 +664,13 @@ def Filter.holds (s : GameState) (self : ObjId) (env : Env) (id : ObjId) : Filte
       | _ => none
     let dobj ← s.obj? d
     let o ← s.obj? id
-    pure (o.targets.contains d && o.targets.all (fun t => t == d ||
-      !((s.obj? t).any (fun u => u.controller == dobj.controller))))
+    let targets := if o.spellPick == .plain then o.targets.take (o.targets.length - o.triggerSubject.toList.length)
+      else o.targets
+    let friendlyUnit (t : ObjId) := s.inPlay.contains t && (s.obj? t).any (fun unit =>
+      s.config.mode.sameSide dobj.controller unit.controller &&
+        ((s.cardDef? t).any (·.hasType .unit) || !unit.unitGearEffects.isEmpty))
+    pure (o.pendingSpellPlay.isNone && targets.contains d &&
+      targets.all (fun t => t == d || !friendlyUnit t))
   | .attachedTo sel => do
     -- the object the selector names: `self`, a chosen object or a variable
     let d? : Option ObjId := match sel with
@@ -1420,7 +1425,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
-  | .anyNumber | .combinedMightAtMost _ | .exactly _ => true
+  | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ => true
   | _ => false
 
 /-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
@@ -1558,7 +1563,8 @@ def Choice.simple : Choice → Bool
 
 /-- Whether a choice may be left out: a target of up to some number. -/
 def Choice.optional : Choice → Bool
-  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _ => false
+  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _
+  | .target (.splitByMight _) _ _ _ => false
   | .target q _ _ _ => q.pickable && q != .one
   | _ => false
 
@@ -1573,7 +1579,8 @@ and the objects are chosen in the order of the objects, so that a set is chosen 
 def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
   | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
-  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _ => true
+  | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _
+  | .target (.splitByMight _) _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
@@ -1705,15 +1712,17 @@ theorem Choice.mem_sortedTargetGroups {s : GameState} {p : PlayerId} {self : Obj
 
 /-- The budget may include Bonus Damage available at the chosen Battlefield (CR 355.14). -/
 def Choice.targetGroupLimit (s : GameState) (p : PlayerId) (self : ObjId)
-    (c : Choice) (group : List ObjId) : Nat :=
+    (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (group : List ObjId) : Nat :=
   match c, group with
   | .target (.atOneBattlefield n) _ _ _, first :: _ => n + s.bonusOn p self first none true
+  | .target (.splitByMight slot) _ _ _, _ =>
+    ((acc[slot]?.bind (s.mightWithCachedPassives { passMight := pm })).getD 0).toNat
   | _, _ => c.groupLimit
 
 /-- Check the minimum or exact number of objects for a target group. -/
 def Choice.groupNonemptyOk (c : Choice) (ids : List ObjId) : Bool :=
   match c with
-  | .target (.atOneBattlefield _) _ _ _ => !ids.isEmpty
+  | .target (.atOneBattlefield _) _ _ _ | .target (.splitByMight _) _ _ _ => !ids.isEmpty
   | .target (.exactly n) _ _ _ => ids.length == n
   | _ => true
 
@@ -1722,13 +1731,13 @@ def Choice.groupTargetsOk (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (ids : List ObjId) : Bool :=
   c.groupNonemptyOk ids && (c.sortedTargetGroups s p self pm acc).any (fun group =>
     decide (ids.Sublist group) &&
-      decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self group))
+      decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self pm acc group))
 
 /-- Enumerate legal target groups. -/
 def Choice.groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List (List ObjId) :=
   ((c.sortedTargetGroups s p self pm acc).flatMap (fun group =>
-    subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self group) group)).filter
+    subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self pm acc group) group)).filter
       c.groupNonemptyOk
 
 /-- Enumerating grouped targets agrees with checking the selected targets. -/

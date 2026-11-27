@@ -399,6 +399,8 @@ inductive TriggerEvent where
   | linkedBurnUnit
   /-- The linked Discard instruction discarded a card of the corresponding type. -/
   | linkedDiscardType
+  /-- A Unit was killed by the linked damage instruction (CR 389, 429.5). -/
+  | linkedDamageKill
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
   /-- A linked instruction played a group of Unit tokens (CR 388-389). -/

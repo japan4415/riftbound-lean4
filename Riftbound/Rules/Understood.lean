@@ -403,6 +403,7 @@ def Effect.understood : Effect → Bool
   | .fillSlot _ s => s.understoodPickAny
   | .remakeSpellChoices spell => spell.understood
   | .splitDamage targets _ => targets.understood
+  | .splitUnitDamage dealer targets _ => dealer.understood && targets.understood
   | .fillFromPick _ => true
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
@@ -590,7 +591,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .buff => true
       | .becomeMighty | .mightAtLeast _ => true
       | .mightReducedByYou => t.subject != .self
-      | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ => t.subject == .self
+      | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ | .linkedDamageKill => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
       | .combatStart => t.subject == .self
