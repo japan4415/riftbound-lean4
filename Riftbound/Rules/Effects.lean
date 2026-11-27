@@ -44,11 +44,14 @@ def nextParticipant (s : GameState) (p : PlayerId) : PlayerId :=
   if s.departures.seats.isEmpty then s.nextPlayer p else
     ((seatOrderAfter s.turnOrder p).find? s.participates <|> s.participatingOrder.head?).getD p
 
-/-- The seat that starts the next round of passes after a Chain item has resolved. -/
+/-- The given seat if it is still in the game, otherwise the next continuing seat (CR 652.5). -/
+def continuingFrom (s : GameState) (p : PlayerId) : PlayerId :=
+  if s.participates p then p else s.nextParticipant p
+
+/-- The controller of the next Chain item gets priority (CR 337.4, 340.4). -/
 def chainPrioritySeat (s : GameState) : PlayerId :=
-  let turnPlayer := s.active.getD ⟨0⟩
-  if s.departures.seats.isEmpty || s.participates turnPlayer then turnPlayer
-  else s.nextParticipant turnPlayer
+  let controller := ((s.zone .chain).head?.bind s.obj?).map (·.controller)
+  s.continuingFrom (controller.getD (s.active.getD ⟨0⟩))
 
 end GameState
 

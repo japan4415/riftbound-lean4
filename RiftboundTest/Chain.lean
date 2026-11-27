@@ -184,6 +184,20 @@ meta def afterReact : Option (GameState × GameState × GameState) :=
     (stepOk s6 ⟨.player q, .pass⟩).map fun s7 => (s3, s5, s7)
   | _, _ => none
 
+-- When the turn player's Reaction resolves, priority goes to the opponent whose item is next.
+#guard ((do
+  let (s, p, q, attacker, target, rival) ← scene
+  let (s, reply) ← putTok s p "T-REACT" .base
+  let first ← stepOk s ⟨.player p, .activate attacker 0 ⟨0, []⟩ [target]⟩
+  let response ← stepOk first ⟨.player p, .pass⟩
+  let middle ← stepOk response ⟨.player q, .activate rival 0 ⟨0, []⟩ [attacker]⟩
+  let answer ← stepOk middle ⟨.player q, .pass⟩
+  let newest ← stepOk answer ⟨.player p, .activate reply 0 ⟨0, []⟩ [target]⟩
+  let passing ← stepOk newest ⟨.player p, .pass⟩
+  let resumed ← stepOk passing ⟨.player q, .pass⟩
+  let item ← (resumed.zone .chain).head?.bind resumed.obj?
+  return item.controller == q && resumed.pending.head? == some (.chainPass q 0)) : Option Bool).getD false
+
 -- two items are on the Chain, the Reactor's on top; when it has resolved, the Pinger's is still
 -- there and the turn player has priority again; when both have resolved the Chain is empty (CR 340)
 #guard match scene, afterReact with

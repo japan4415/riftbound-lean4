@@ -1653,8 +1653,8 @@ def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List O
       | none => (s, [])
   | _, _ => (s, [])
 
-/-- The frames to put beneath the work after the abilities go on the Chain. The eligible seat
-that starts a Chain gets priority unless the Chain already has its priority frame (CR 340, 652.5). -/
+/-- The frames to put beneath the work after the abilities go on the Chain. When opening a
+Chain, its top item's controller gets priority (CR 337.4). -/
 def triggerFrames (s : GameState) (rest : List Frame) : List Frame :=
   match rest with
   | .chainPass .. :: _ => []

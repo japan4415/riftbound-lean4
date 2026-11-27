@@ -705,7 +705,7 @@ def Frame.afterPlayerRemoval (frame : Frame) (before after : GameState)
           if p == departing then [] else
             [.run p src env (.cons (.recycleFromTrash side (count + 1) upTo picked) rest)]
         | .recordRuneRecycle _ later picked =>
-          [.run after.chainPrioritySeat src env
+          [.run (after.continuingFrom (after.active.getD ⟨0⟩)) src env
             (.cons (.orderRuneRecycle (later.filter (fun (owner, _) => owner != departing))
               (picked.filter stillPresent)) rest)]
         | _ => if p == departing then [] else [.run p src env rest]

@@ -35,6 +35,7 @@ meta def tun (f : GameState → Option Bool) : Bool :=
   let openField := s.modObj fort (fun o => { o with control := none })
   return events.contains (.phaseStarted q .beginning) && waiting.inPlay.contains unit &&
     (waiting.obj? item).any (·.controller == p) &&
+    waiting.pending.head? == some (.chainPass p 0) &&
     (openField.battlefieldBeginningTriggers q).any (fun t => t.source == fort && t.controller == q) &&
     own.countIn p .trash "RAD-001" == 1 && (own.obj? safe).any (·.damage == 0) &&
     own.pointsOf p == s.pointsOf p && own.controlOf fort == none
