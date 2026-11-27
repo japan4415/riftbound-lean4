@@ -897,6 +897,20 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     returned.countIn p .base "TKN-Sprite" == 1 && fieldSprites.length == 1 &&
     returned.tired sprite == some true && returned.hasKw sprite .temporary
 
+-- Mister Root gains XP on a Standard Move into a Battlefield. Flash can send it back
+-- during its turn without gaining XP a second time.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, root) ← put (s.control p field) p "UNL-127" .base
+  let (s, _) ← putAt s p "OGN-049" field
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (waiting, _) ← (step 100 s ⟨.player p, .standardMove root (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 waiting
+  let returned ← play arrived p flash [root]
+  return arrived.xpOf p == s.xpOf p + 2 && (arrived.unitsAtOf field p).contains root &&
+    returned.xpOf p == arrived.xpOf p && returned.countIn p .base "UNL-127" == 1
+
 -- Smoke and Mirrors swaps units at distinct locations with Temporary. Both branches draw.
 #guard tun fun s => do
   let p := s.me

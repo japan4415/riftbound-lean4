@@ -509,7 +509,8 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
   let friendly := decide (t ∈ s.inPlay) &&
     (s.obj? t).any (fun o => s.config.mode.sameSide p o.controller)
   match k with
-  | .returnGear => controlled && (s.cardDef? t).any (·.hasType .gear)
+  -- These costs say "friendly", so they include a teammate's Gear (CR 740.1.a).
+  | .returnGear => friendly && (s.cardDef? t).any (·.hasType .gear)
   | .killGear => friendly && (s.cardDef? t).any (·.hasType .gear)
   | .exhaustLegend =>
     decide (t ∈ s.zone (.player p .legendZone)) && (s.obj? t).any (fun o => !o.exhausted)

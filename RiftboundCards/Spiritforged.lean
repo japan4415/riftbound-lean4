@@ -1119,7 +1119,7 @@ def SFD_038 : CardDef :=
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
         (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-039
 /--
@@ -1291,7 +1291,7 @@ def SFD_044 : CardDef :=
 
     -- as an additional cost to play it, a friendly gear returns to its owner's hand
     playExtra := some (.returnGear, true),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-045
 /--
@@ -3618,7 +3618,7 @@ def SFD_123 : CardDef :=
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
         (.of [] (.prim (.discard .you (.const 1)))) .unlimited,
       .triggered (.onSelf .winCombat) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-124
 /--
@@ -4021,7 +4021,7 @@ def SFD_137 : CardDef :=
 
     abilities := [.triggered { event := .move, condition := .matches .self .fromBattlefield }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-138
 /--

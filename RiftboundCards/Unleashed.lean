@@ -3672,7 +3672,7 @@ def UNL_127 : CardDef :=
   { UNL_127.meta with
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
       (.of [] (.prim (.gainXP .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-128
 /--
@@ -6366,7 +6366,7 @@ def UNL_T06.meta : CardDef :=
 /-- Reflection. -/
 def UNL_T06 : CardDef :=
   { UNL_T06.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-T08
 /--

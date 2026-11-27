@@ -2244,6 +2244,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Forbidding Waste では単独で防衛している Unit の Might が2下がる。同じ Battlefield にチームメイトの Unit がいる場合は下がらない。
 - Revna the Lorekeeper と Forgotten Library の誘発は、解決した Spell の確定時に本人が支払った Energy を調べる。同じターンに別の Spell に支払った Energy は参照しない。以上3枚を `full` とし、全1,103枚中584枚が実装済みとなった。[カード実装状況](coverage.md)
 
+### 味方の Gear を戻すコストと移動誘発
+
+- Legion Quartermaster、Spirit of the Forge、Skystrike Squadron は、2対2でチームメイトがコントロールする Gear も追加コストに使える。Gear はオーナーの手札に戻る。コストに選んだ Gear は対象として扱わない（CR 355.10.c、740.1.a）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Ribbon Dancer、Corrupt Enforcer、Harpoon Squad、Mister Root はカードごとの移動方向で誘発する。Reflection はコピー元を指定する効果と組み合わせ、コピー元のプレイ時の能力を再度誘発させない。今回の6枚を `full` とし、全1,103枚中590枚が実装済みとなった。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

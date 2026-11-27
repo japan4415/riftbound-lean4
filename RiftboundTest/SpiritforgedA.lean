@@ -2540,6 +2540,39 @@ meta def effectOf (code : String) : Option EffectDef :=
     (play s3 s.me q []).isNone && (play s3 s.me q [h]).isNone && (play s1 s.me q []).isNone &&
     a.countIn s.me .base "SFD-044" == 1
 
+-- In 2v2 a teammate's Gear can pay a friendly return cost. It goes to its owner even
+-- if the teammate controlled and wore it, and the host stays on the Board.
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, quartermaster) ← put s p "SFD-044" .hand
+  let (s, forge) ← put s p "RAD-066" .hand
+  let (s, squadron) ← put s p "RAD-075" .hand
+  let (s, host) ← put s mate "OGN-001" .base
+  let (s, borrowed) ← put s enemy "SFD-042" .base
+  let (s, rival) ← put s enemy "SFD-056" .base
+  let s := (attachTo host (setController mate s borrowed).1 borrowed).1
+  let pay : RunePool.Payment := ⟨3, []⟩
+  let action (gear : ObjId) : Action :=
+    ⟨.player p, .playCard quartermaster pay [gear] none none .plain⟩
+  let funded := s.fund p 3
+  let (paid, events) ← (step 100 funded (action borrowed)).toOption
+  let forgePaid ← play s p forge [borrowed]
+  let squadronPaid ← cast funded p squadron pay [borrowed]
+  let forged ← forgePaid.firstOf p .base "RAD-066"
+  return (legalActions funded).contains (action borrowed) &&
+    !(legalActions funded).contains (action rival) && !(step 100 funded (action rival)).isOk &&
+    paid.countIn p .base "SFD-044" == 1 && paid.countIn enemy .hand "SFD-042" == 1 &&
+    paid.countIn mate .hand "SFD-042" == 0 && paid.inPlay.contains host &&
+    events.any (fun | .moved id _ (.player owner .hand) => id == borrowed && owner == enemy | _ => false) &&
+    !events.any (fun | .chosenBySpell .. | .chosenByAbility .. => true | _ => false) &&
+    forgePaid.mightNow forged == some 6 && forgePaid.tired forged == some false &&
+    squadronPaid.countIn p .base "RAD-075" == 1 && squadronPaid.countIn enemy .hand "SFD-042" == 1
+
 /-- The first Legend of the player (the lab has one for each player). -/
 meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Option ObjId :=
   (s.zone (.player p .legendZone)).head?
