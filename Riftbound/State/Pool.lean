@@ -117,6 +117,89 @@ def totalPower (p : RunePool) : Nat :=
 /-- Everything in the Pool: Energy and Power. -/
 def total (p : RunePool) : Nat := p.energy + p.unitEnergy + p.spellEnergy + p.totalPower
 
+/-- The available Power in one actual source. -/
+def powerIn (p : RunePool) : PowerBucket → Nat
+  | .domain d => p.get d
+  | .flexible => p.any
+
+/-- Spend from exactly the named source, failing when it cannot cover the whole amount. -/
+def takeBucket (p : RunePool) (bucket : PowerBucket) (amount : Nat) : Option RunePool :=
+  if amount ≤ p.powerIn bucket then
+    some (match bucket with
+      | .domain .fury => { p with fury := p.fury - amount }
+      | .domain .calm => { p with calm := p.calm - amount }
+      | .domain .mind => { p with mind := p.mind - amount }
+      | .domain .body => { p with body := p.body - amount }
+      | .domain .chaos => { p with chaos := p.chaos - amount }
+      | .domain .order => { p with order := p.order - amount }
+      | .flexible => { p with any := p.any - amount })
+  else none
+
+/-- The selected source alone determines whether the amount can be paid. -/
+theorem takeBucket_eq_none (p : RunePool) (bucket : PowerBucket) (amount : Nat) :
+    p.takeBucket bucket amount = none ↔ p.powerIn bucket < amount := by
+  unfold takeBucket
+  split <;> simp_all
+
+/-- Deduct the amount from the chosen source while preserving each other source. -/
+theorem powerIn_takeBucket {p q : RunePool} {source : PowerBucket} {amount : Nat}
+    (paid : p.takeBucket source amount = some q) (bucket : PowerBucket) :
+    q.powerIn bucket + (if bucket = source then amount else 0) = p.powerIn bucket := by
+  unfold takeBucket at paid
+  split at paid
+  · rename_i budget
+    cases source with
+    | flexible =>
+      injection paid with eq
+      subst q
+      cases bucket with
+      | flexible =>
+        have covers : amount ≤ p.any := budget
+        simpa [powerIn] using Nat.sub_add_cancel covers
+      | domain domain => cases domain <;> simp [powerIn, get]
+    | domain source =>
+      cases source <;> injection paid with eq <;> subst q
+      all_goals
+        cases bucket with
+        | flexible => simp [powerIn]
+        | domain domain => cases domain <;> simp_all [powerIn, get] <;> omega
+  · cases paid
+
+/-- An exact Power deduction accounts for its whole amount in the Pool total. -/
+theorem total_takeBucket {p q : RunePool} {bucket : PowerBucket} {amount : Nat}
+    (paid : p.takeBucket bucket amount = some q) : q.total + amount = p.total := by
+  unfold takeBucket at paid
+  split at paid
+  · rename_i budget
+    cases bucket with
+    | domain domain =>
+      cases domain <;> simp only [powerIn, get] at budget <;> injection paid with eq <;> subst q <;>
+        simp only [total, totalPower] <;> omega
+    | flexible =>
+      simp only [powerIn] at budget
+      injection paid with eq
+      subst q
+      simp only [total, totalPower]
+      omega
+  · cases paid
+
+/-- An exact Power deduction accounts for its whole amount in the Power balance. -/
+theorem totalPower_takeBucket {p q : RunePool} {bucket : PowerBucket} {amount : Nat}
+    (paid : p.takeBucket bucket amount = some q) : q.totalPower + amount = p.totalPower := by
+  have total := total_takeBucket paid
+  have energy : p.energy + p.unitEnergy + p.spellEnergy = q.energy + q.unitEnergy + q.spellEnergy := by
+    unfold takeBucket at paid
+    split at paid
+    · cases bucket with
+      | domain domain => cases domain <;> injection paid with eq <;> subst q <;> rfl
+      | flexible =>
+        injection paid with eq
+        subst q
+        rfl
+    · cases paid
+  unfold RunePool.total at total
+  omega
+
 /-- What a payment takes out of the Pool: Energy, and one Power for each domain listed
 (CR 357.1, 445). The domains are the ones the player chose for `[A]` symbols. -/
 structure Payment where

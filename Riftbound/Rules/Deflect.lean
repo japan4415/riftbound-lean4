@@ -24,39 +24,44 @@ namespace RunePool
 /-- Take one Power out of the Pool, if there is one: Power of a domain first, Power of any domain
 last. -/
 def takeOne (p : RunePool) : RunePool :=
-  if 0 < p.fury then { p with fury := p.fury - 1 }
-  else if 0 < p.calm then { p with calm := p.calm - 1 }
-  else if 0 < p.mind then { p with mind := p.mind - 1 }
-  else if 0 < p.body then { p with body := p.body - 1 }
-  else if 0 < p.chaos then { p with chaos := p.chaos - 1 }
-  else if 0 < p.order then { p with order := p.order - 1 }
-  else if 0 < p.any then { p with any := p.any - 1 }
-  else p
+  (PowerBucket.all.findSome? (fun bucket => p.takeBucket bucket 1)).getD p
 
 /-- Take `n` Power out of the Pool, one at a time. -/
 def takeN (p : RunePool) : Nat → RunePool
   | 0 => p
   | n + 1 => (p.takeOne).takeN n
 
-/-- Taking one Power takes exactly one when there is some. -/
-theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) :
-    p.takeOne.total + 1 = p.total := by
+private theorem takeOne_paid {p : RunePool} (available : 0 < p.totalPower) :
+    ∃ bucket, p.takeBucket bucket 1 = some p.takeOne := by
   unfold takeOne
-  unfold total totalPower at *
-  split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
-    (try split) <;> simp_all <;> omega
+  cases chosen : PowerBucket.all.findSome? (fun bucket => p.takeBucket bucket 1) with
+  | some reduced =>
+    obtain ⟨bucket, _, paid⟩ := List.exists_of_findSome?_eq_some chosen
+    exact ⟨bucket, paid⟩
+  | none =>
+    have allEmpty (bucket : PowerBucket) : p.powerIn bucket < 1 :=
+      (p.takeBucket_eq_none bucket 1).mp
+        (List.findSome?_eq_none_iff.mp chosen bucket (PowerBucket.mem_all bucket))
+    have fury := allEmpty (.domain .fury)
+    have calm := allEmpty (.domain .calm)
+    have mind := allEmpty (.domain .mind)
+    have body := allEmpty (.domain .body)
+    have chaos := allEmpty (.domain .chaos)
+    have order := allEmpty (.domain .order)
+    have flexible := allEmpty .flexible
+    simp only [powerIn, get, totalPower] at *
+    omega
+
+/-- Taking one Power takes exactly one when there is some. -/
+theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) : p.takeOne.total + 1 = p.total := by
+  obtain ⟨_, paid⟩ := takeOne_paid h
+  exact total_takeBucket paid
 
 /-- Taking one Power leaves one less. -/
 theorem totalPower_takeOne {p : RunePool} (h : 0 < p.totalPower) :
     p.takeOne.totalPower + 1 = p.totalPower := by
-  have h1 := total_takeOne h
-  have h2 : p.takeOne.energy + p.takeOne.unitEnergy + p.takeOne.spellEnergy =
-      p.energy + p.unitEnergy + p.spellEnergy := by
-    unfold takeOne
-    split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
-      (try split) <;> simp
-  unfold total at h1
-  omega
+  obtain ⟨_, paid⟩ := takeOne_paid h
+  exact totalPower_takeBucket paid
 
 /-- **Taking `n` Power takes exactly `n`** when the Pool has that much. -/
 theorem total_takeN : ∀ (n : Nat) (p : RunePool), n ≤ p.totalPower →
