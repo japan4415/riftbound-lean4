@@ -44,6 +44,42 @@ theorem runEffect_eitherOf_choice (s : GameState) (p : PlayerId) (src : ObjId) (
       (s, [.eitherDo p src env first other rest], []) := by
   cases remaining <;> simp [runEffect, Effect.pickSel?, runEffect1]
 
+/-- When the next Unit token can pay for Accelerate, the interpreter asks before entering the
+batch, even when the cost was reduced to zero (CR 185.3, 356.4, 805). The first answer declines
+payment, and selecting the other branch preserves the payment or Add choices. -/
+theorem runEffect_priceUnitToken_choice (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (batch : UnitTokenBatch) (rest : EffectList) (funding : EffectAddPolicy)
+    (pay : RunePool.Payment) (active : .nextUnitAccelerate ∈ s.fxOf p)
+    (nonempty : batch.entries.isEmpty = false)
+    (offered : pay ∈ (unitTokenAccelerateCosts s p).flatMap (·.payments []))
+    (affordable : (payUnitTokenAccelerate s p pay).isSome = true ∨
+      funding.choices s p (fun t => (payUnitTokenAccelerate t p pay).isSome) ≠ []) :
+    ∃ other, runEffect s p src env (s.priceUnitToken p batch funding) rest funding =
+      (s, [.eitherDo p src env (.finishUnitTokens batch none []) other rest], []) := by
+  let offer (payment : RunePool.Payment) : Option Effect :=
+    let adds := funding.choices s p (fun t => (payUnitTokenAccelerate t p payment).isSome)
+    if !adds.isEmpty then some (.fundTokenAccelerate batch (payment.energy, payment.power) [])
+    else if (payUnitTokenAccelerate s p payment).isSome then
+      some (.finishUnitTokens batch (some (payment.energy, payment.power)) [])
+    else none
+  let payments := ((unitTokenAccelerateCosts s p).flatMap (·.payments [])).eraseDups
+  have listed : ∃ option, offer pay = some option := by
+    by_cases adds : funding.choices s p (fun t => (payUnitTokenAccelerate t p pay).isSome) = []
+    · have funded := affordable.resolve_right (fun nonemptyAdds => nonemptyAdds adds)
+      exact ⟨.finishUnitTokens batch (some (pay.energy, pay.power)) [], by simp [offer, adds, funded]⟩
+    · exact ⟨.fundTokenAccelerate batch (pay.energy, pay.power) [], by simp [offer, adds]⟩
+  obtain ⟨option, listed⟩ := listed
+  have member : option ∈ payments.filterMap offer :=
+    List.mem_filterMap.mpr ⟨pay, List.mem_eraseDups.mpr offered, listed⟩
+  have plan : s.priceUnitToken p batch funding =
+      .eitherOf (EffectList.ofList (.finishUnitTokens batch none [] :: payments.filterMap offer)) := by
+    simp [GameState.priceUnitToken, active, nonempty, payments, offer]
+  cases options : payments.filterMap offer with
+  | nil => simp [options] at member
+  | cons first more =>
+    rw [plan, options]
+    exact ⟨_, runEffect_eitherOf_choice s p src env _ first (EffectList.ofList more) rest funding⟩
+
 /-- Automatic work stops at a decision frame even with fuel left. -/
 theorem advance_waitsForDecision (fuel : Nat) {s : GameState} {events : List Event}
     {choice : Frame} {rest : List Frame} (pending : s.pending = choice :: rest)
@@ -143,6 +179,23 @@ theorem legal_eitherDecision_iff {s : GameState} {p : PlayerId} {src : ObjId} {e
     Legal s ⟨actor, .decide accept⟩ ↔
       s.result = none ∧ actor = .player p ∧ eitherOk s p src env first second accept = true := by
   simp [Legal, LegalFrame, LegalConcede, pending]
+
+/-- The acting player can always decline Accelerate at the initial Unit token choice. -/
+theorem legal_declineUnitTokenAccelerate_iff {s : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {batch : UnitTokenBatch} {other : Effect} {rest : EffectList} {tail : List Frame}
+    (actor : Actor)
+    (pending : s.pending = .eitherDo p src env (.finishUnitTokens batch none []) other rest :: tail) :
+    Legal s ⟨actor, .decide true⟩ ↔ s.result = none ∧ actor = .player p := by
+  rw [legal_eitherDecision_iff actor true pending]
+  simp [eitherOk, Effect.viable]
+
+/-- Planning Add activations for a Unit token still lets the player enter it without
+paying for Accelerate. The recorded Add choices commit only with payment (CR 805). -/
+theorem decline_mem_fundUnitTokenOptions (s : GameState) (p : PlayerId) (batch : UnitTokenBatch)
+    (pay : RunePool.Payment) (adds : List EffectAdd) (funding : EffectAddPolicy) :
+    .finishUnitTokens batch none [] ∈ fundUnitTokenOptions s p batch pay adds funding := by
+  unfold fundUnitTokenOptions
+  split <;> simp
 
 /-- An optional trigger cannot enter the automatic Add path (CR 383.3, 430.2). -/
 theorem optionalTrigger_noImmediateAdd {s : GameState} {t : PendTrigger}
