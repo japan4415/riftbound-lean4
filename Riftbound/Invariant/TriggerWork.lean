@@ -34,6 +34,16 @@ private theorem triggerFrames_stop (s : GameState) (rest : List Frame) :
     · exact .resume
     · exact .priority _ 0
 
+private theorem triggerFrames_decision (s : GameState) (rest : List Frame) (openChain : s.zone .chain ≠ []) :
+    ∃ f tail, triggerFrames s rest ++ rest = f :: tail ∧ f.isWork = false := by
+  unfold triggerFrames
+  split
+  · exact ⟨_, _, rfl, rfl⟩
+  · have nonempty : (s.zone .chain).isEmpty = false := by
+      cases zoned : s.zone .chain <;> simp_all
+    simp only [nonempty, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append]
+    exact ⟨_, _, rfl, rfl⟩
+
 private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
     (observe : ∀ (s : GameState) (queue : List PendTrigger) (rest : List Frame),
       P s → s.pending = .triggers queue :: rest →
@@ -42,16 +52,19 @@ private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
     (s : GameState) (queue : List PendTrigger) (rest : List Frame)
     (pending : s.pending = .triggers queue :: rest) :
     ∃ t used, used ≤ queue.length + 1 ∧ RawWorkPrefix s t used [] ∧
-      TriggerWorkStop rest t.pending ∧ (P s → AdvancePrefix s t used []) := by
+      TriggerWorkStop rest t.pending ∧ (P s → AdvancePrefix s t used []) ∧
+      (queue ≠ [] ∨ s.zone .chain ≠ [] → ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
   cases queue with
   | nil =>
     let next := { s with pending := triggerFrames s rest ++ rest }
     have raw : microStep0 s = some (next, []) := by
       simp only [microStep0, pending, triggersStep, next]
-    refine ⟨next, 1, Nat.le_refl _, .single pending rfl raw, triggerFrames_stop s rest, ?_⟩
-    intro before
-    exact AdvancePrefix.prepend (n := 0) pending rfl ((observe s [] rest before pending).1.trans raw)
-      (by intro fuel prior; simp)
+    refine ⟨next, 1, Nat.le_refl _, .single pending rfl raw, triggerFrames_stop s rest, ?_, ?_⟩
+    · intro before
+      exact AdvancePrefix.prepend (n := 0) pending rfl ((observe s [] rest before pending).1.trans raw)
+        (by intro fuel prior; simp)
+    · intro started
+      exact triggerFrames_decision s rest (started.resolve_left (fun no => no rfl))
   | cons first more =>
     let sameGroup (t : PendTrigger) :=
       t.controller == first.controller && t.beforeStandardMove == first.beforeStandardMove
@@ -66,14 +79,20 @@ private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
         exact ite_eq_left automatic
       have raw : microStep0 s = some (next, []) := by
         simp only [microStep0, pending, routed, next] <;> rfl
-      obtain ⟨t, used, bound, path, done, observed⟩ := rawTriggers_bound_and_observed P observe next others rest rfl
+      obtain ⟨t, used, bound, path, done, observed, decides⟩ :=
+        rawTriggers_bound_and_observed P observe next others rest rfl
       have shorter : others.length ≤ more.length := List.length_filter_le _ _
       refine ⟨t, used + 1, by simp only [List.length_cons]; omega,
-        .next pending rfl raw path, done, ?_⟩
-      intro before
-      obtain ⟨step, after⟩ := observe s (first :: more) rest before pending
-      rw [routed] at after
-      exact (observed after).prepend pending rfl (step.trans raw)
+        .next pending rfl raw path, done, ?_, ?_⟩
+      · intro before
+        obtain ⟨step, after⟩ := observe s (first :: more) rest before pending
+        rw [routed] at after
+        exact (observed after).prepend pending rfl (step.trans raw)
+      · intro _
+        apply decides (Or.inr ?_)
+        change (putTrigger s first []).zone .chain ≠ []
+        rw [putTrigger_automatic_chain]
+        exact List.cons_ne_nil _ _
     · let next := { s with pending := .triggerOrder first.controller first group others :: rest }
       have routed : triggersStep s (first :: more) rest =
           (s, [.triggerOrder first.controller first group others]) := by
@@ -81,7 +100,7 @@ private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
         exact ite_eq_right automatic
       have raw : microStep0 s = some (next, []) := by
         simp only [microStep0, pending, routed, next] <;> rfl
-      refine ⟨next, 1, by simp, .single pending rfl raw, .order .., ?_⟩
+      refine ⟨next, 1, by simp, .single pending rfl raw, .order .., ?_, fun _ => ⟨_, _, rfl, rfl⟩⟩
       intro before
       exact AdvancePrefix.prepend (n := 0) pending rfl
         ((observe s (first :: more) rest before pending).1.trans raw) (by intro fuel prior; simp)
@@ -105,7 +124,7 @@ trigger queue within its length plus one step and reaches a decision or its prio
 theorem advance_triggers_noMightWatches (s : GameState) (wf : s.WF) (queue : List PendTrigger)
     (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (watches : s.mightWatches = []) :
     ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending := by
-  obtain ⟨next, used, bound, _, done, observed⟩ := rawTriggers_bound_and_observed
+  obtain ⟨next, used, bound, _, done, observed, _⟩ := rawTriggers_bound_and_observed
     (fun t => t.WF ∧ t.mightWatches = []) (by
       intro current ts tail ⟨wellFormed, empty⟩ queued outcome
       have safe := (triggersStep_spec current ts tail).1
@@ -114,12 +133,11 @@ theorem advance_triggers_noMightWatches (s : GameState) (wf : s.WF) (queue : Lis
       exact (triggersStep_mightWatches current wellFormed ts tail).trans empty) s queue rest pending
   exact ⟨next, used, bound, observed ⟨wf, watches⟩, done⟩
 
-/-- In a checked database, the real engine processes the entire ordinary trigger queue within
-its length plus one step, even when abilities watch for changes in Might. -/
-theorem advance_triggers_checkedMight (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+private theorem advance_checked_triggers (s : GameState) (wf : s.WF) (queue : List PendTrigger)
     (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards) :
-    ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending := by
-  obtain ⟨next, used, bound, _, done, observed⟩ := rawTriggers_bound_and_observed
+    ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending ∧
+      (queue ≠ [] ∨ s.zone .chain ≠ [] → ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
+  obtain ⟨next, used, bound, _, done, observed, decides⟩ := rawTriggers_bound_and_observed
     (fun t => t.WF ∧ MightRead.database t.cards) (by
       intro current ts tail ⟨wellFormed, checked⟩ queued outcome
       have safe := (triggersStep_spec current ts tail).1
@@ -130,7 +148,26 @@ theorem advance_triggers_checkedMight (s : GameState) (wf : s.WF) (queue : List 
         exact projected
       exact ⟨workStep_triggers_sameMight current wellFormed ts tail queued checked,
         (safe.wf wellFormed).congr rfl rfl rfl rfl, cards ▸ checked⟩) s queue rest pending
-  exact ⟨next, used, bound, observed ⟨wf, database⟩, done⟩
+  exact ⟨next, used, bound, observed ⟨wf, database⟩, done, decides⟩
+
+/-- In a checked database, the real engine processes the entire ordinary trigger queue within
+its length plus one step, even when abilities watch for changes in Might. -/
+theorem advance_triggers_checkedMight (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards) :
+    ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending := by
+  obtain ⟨next, used, bound, trace, boundary, _⟩ := advance_checked_triggers s wf queue rest pending database
+  exact ⟨next, used, bound, trace, boundary⟩
+
+/-- A nonempty ordinary trigger queue, or an empty queue on an open Chain, reaches a decision
+within the queue length plus one work step in a checked database. -/
+theorem advance_triggers_to_decision (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards)
+    (started : queue ≠ [] ∨ s.zone .chain ≠ []) :
+    ∃ t used f tail, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧
+      t.pending = f :: tail ∧ f.isWork = false := by
+  obtain ⟨next, used, bound, trace, _, decides⟩ := advance_checked_triggers s wf queue rest pending database
+  obtain ⟨f, tail, left, asks⟩ := decides started
+  exact ⟨next, used, f, tail, bound, trace, left, asks⟩
 
 /-- The observed trigger work takes at most the queue length plus one step to reach the
 continuation, wait for an answer or process an observer change. -/

@@ -740,6 +740,17 @@ theorem workStep_triggers_sameMight (s : GameState) (wf : s.WF) (queue : List Pe
   intro id member
   exact ((triggersStep_sameMightReads s wf queue rest pending).mightNow_eq wf database (old_inPlay wf member)).symm
 
+/-- The ability-free Battlefield added after a concession preserves the Might read check. -/
+theorem MightRead.database_withConcessionBattlefield {db : CardDB} (checked : database db) :
+    database db.withConcessionBattlefield := by
+  unfold CardDB.withConcessionBattlefield
+  split
+  · exact checked
+  · change (db.cards ++ [concessionBattlefieldToken]).all card = true
+    have blank : card concessionBattlefieldToken = true := rfl
+    change db.cards.all card = true at checked
+    simp only [List.all_append, List.all_cons, List.all_nil, blank, checked, Bool.and_self]
+
 end Riftbound
 
 end

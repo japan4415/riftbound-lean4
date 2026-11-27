@@ -58,6 +58,24 @@ theorem AdvancePrefix.prepend {s next t : GameState} {frame : Frame} {rest : Lis
   rw [path]
   simp only [List.append_assoc]
 
+/-- Run two observed work segments in order and keep their events in order. -/
+theorem AdvancePrefix.append {s t u : GameState} {n m : Nat} {first second : List Event}
+    (initial : AdvancePrefix s t n first) (later : AdvancePrefix t u m second) :
+    AdvancePrefix s u (n + m) (first ++ second) := by
+  intro fuel seen
+  rw [Nat.add_assoc, initial, later, List.append_assoc]
+
+/-- At the end of the stack or at a decision, the steps used so far are enough for `advance`. -/
+theorem AdvancePrefix.finish {s t : GameState} {n : Nat} {events : List Event}
+    (path : AdvancePrefix s t n events) (boundary : t.pending.head?.all (fun frame => !frame.isWork) = true)
+    (before : List Event) : advance n s before = .ok (t, before ++ events) := by
+  rw [← Nat.add_zero n, path]
+  cases stack : t.pending with
+  | nil => rw [advance, stack]
+  | cons frame rest =>
+    have choice : frame.isWork = false := by simpa [stack] using boundary
+    simp only [advance, stack, choice, Bool.false_eq_true, ↓reduceIte]
+
 /-- The rule transition produced `expected` and applying its event observers changed that state. -/
 def WorkObserverChange (before expected actual : GameState) : Prop :=
   actual ≠ expected ∧ ∃ events, microStep0 before = some (expected, events) ∧

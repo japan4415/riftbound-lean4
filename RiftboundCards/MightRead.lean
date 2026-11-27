@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Invariant.TriggerWork
+public import Riftbound.Invariant.ExpirationWork
 public import RiftboundCards.Registry
 
 /-!
@@ -24,6 +24,21 @@ theorem advance_triggers (s : Riftbound.GameState) (wf : s.WF) (cards : s.cards 
     ∃ t used, used ≤ queue.length + 1 ∧ Riftbound.AdvancePrefix s t used [] ∧
       Riftbound.TriggerWorkStop rest t.pending :=
   Riftbound.advance_triggers_checkedMight s wf queue rest pending (cards ▸ db_mightReads)
+
+/-- The registered cards, including the Battlefield token used after a free-for-all concession,
+support the proof from a legal ordinary Pass through the Ending Phase and its ordinary triggers. -/
+theorem step_priority_pass_ending {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ Riftbound.EndingWorkStop t.pending.head? ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  have supported : Riftbound.MightRead.database s.cards := by
+    rcases cards with h | h
+    · exact h ▸ db_mightReads
+    · exact h ▸ Riftbound.MightRead.database_withConcessionBattlefield db_mightReads
+  exact Riftbound.step_priority_pass_ending wf supported pending legal
 
 end RiftboundCards
 

@@ -51,6 +51,16 @@ private theorem automatic_addObject (s : GameState) (trigger : PendTrigger) :
   · simp only [addObject, Zone.valid_chain, Zone.fits, and_self, ↓reduceIte, Option.map_some]
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
+/-- Automatically finalizing a trigger adds the new ability object on top of the Chain. -/
+theorem putTrigger_automatic_chain (s : GameState) (trigger : PendTrigger) :
+    (putTrigger s trigger []).zone .chain = ⟨s.nextId⟩ :: s.zone .chain := by
+  obtain ⟨object, follow, _⟩ := automatic_addObject s trigger
+  obtain ⟨⟨next, id⟩, added, same⟩ := Option.map_eq_some_iff.mp follow
+  obtain ⟨_, _, shape⟩ := addObject_spec added
+  dsimp only at same
+  rw [← same, shape]
+  exact GameState.zone_setZone_self ..
+
 private theorem automatic_unchanged (s : GameState) (trigger : PendTrigger) :
     let t := putTrigger s trigger []
     t.config = s.config ∧ t.cards = s.cards ∧ t.turn = s.turn ∧ t.turnFx = s.turnFx ∧
