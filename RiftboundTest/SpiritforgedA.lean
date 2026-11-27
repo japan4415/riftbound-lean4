@@ -3495,7 +3495,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let played ← play s p card
   let gear ← played.inBase p "SFD-051"
   let suited ← activate played p gear 0 [unit] ⟨0, [.calm]⟩
-  let hit := (dealObj 4 suited unit (some s.you)).1
+  let hit := suited.markDamage unit 4 (some s.you)
   let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
   let trashed ← saved.firstOf p .trash "SFD-051"
   let replaced := events.filter (fun
@@ -3511,7 +3511,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let p := s.me
   let (s, _) ← put s p "SFD-173" .base
   let (s, unit) ← put s p "OGN-006" .base
-  let hit := (dealObj 3 s unit (some s.you)).1
+  let hit := s.markDamage unit 3 (some s.you)
   let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
   return saved.where? unit == some (.player p .base) && saved.damageMarks[unit.n]?.isNone &&
     (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted) &&
