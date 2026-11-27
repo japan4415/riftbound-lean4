@@ -2283,9 +2283,9 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Wizened Elder、Orb of Regret、Smoke Screen、Stupefy、Arena Bar、Bilgewater Bully、Cithria of Cloudfield、Taric, Protector、Captain Farron の9枚を `full` とした。Buff した Bilgewater Bully が Ready になると戦場から別の戦場へ移動できる。Taric と Captain Farron の効果は2対2で同じ戦場にいるチームメイトにも適用される。全1,103枚中614枚が実装済みとなった。
 
-### 効果でプレイする Unit・Gear のディスカード
+### Unit・Gear の登場前に行うディスカード
 
-- 効果で Unit や Gear をプレイするときに任意のディスカードを選んだ場合、手札を捨ててから盤面に出す。Void Rush で Zed, From the Shadows をプレイするシナリオで、ディスカードと登場の順序、および Shadow Clone を出す誘発を確認する。
+- Unit や Gear を直接または効果でプレイするときに任意のディスカードを選んだ場合、手札を捨ててから盤面に出す。Zed, From the Shadows を手札と Void Rush の両方からプレイし、ディスカード、登場、Shadow Clone の誘発を確認する。Void Rush を `full` とし、全1,103枚中615枚が実装済みとなった。
 
 ## M10: 完了判定（original.md の最終目的）
 

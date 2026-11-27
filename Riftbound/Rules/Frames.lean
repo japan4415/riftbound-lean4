@@ -365,7 +365,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .playCard c pay ts flow discard pick =>
-    (applyPlayCard s p c pay ts rest flow pick).map (payPlayDiscard p c discard)
+    applyPlayCard s p c pay ts rest flow pick discard
   | .priority p :: rest, .standardMove u d _ =>
     (applyMove s p u d).map
       (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
@@ -382,7 +382,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
       some ({ s with pending := .chainPass (s.nextParticipant p) (n + 1) :: rest }, [])
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
-    (reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick).map (payPlayDiscard p c discard)
+    reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick discard
   | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
     activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
@@ -448,8 +448,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   -- in a Showdown, the player with Focus plays a Spell with Action or a card with Reaction, or uses an
   -- ability: it goes on the Chain, and the Showdown goes on when the Chain is empty (CR 347-348)
   | .showdown bf q _ :: rest, .playCard c pay ts flow discard pick =>
-    (reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick).map
-      (payPlayDiscard q c discard)
+    reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick discard
   | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
     activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
@@ -480,7 +479,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .teamInvitation guest :: .priority p :: rest }, [])
   | .teamInvitation _ :: rest, .pass => some ({ s with pending := rest }, [])
   | .teamInvitation guest :: rest, .playCard c pay ts flow discard pick =>
-    (reactStep s guest c pay ts (.chainPass guest 0 :: rest) flow pick).map (payPlayDiscard guest c discard)
+    reactStep s guest c pay ts (.chainPass guest 0 :: rest) flow pick discard
   | .teamInvitation guest :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
     activateStep s guest src idx pay ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
   | .teamInvitation guest :: _, .runeAbility c ab => applyRune s guest c ab

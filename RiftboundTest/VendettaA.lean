@@ -2960,11 +2960,14 @@ meta def selectDamageReplacement (p : PlayerId) (accept : DamageReplacement → 
   let (s, card) ← put s p "VEN-047" .hand
   let s := s.rich p
   let playZed (d : Option ObjId) : Action := ⟨.player p, .playCard zed ⟨4, [.fury]⟩ [] none d⟩
-  let (paid, _) ← (step 100 s (playZed (some card))).toOption
+  let (paid, events) ← (step 100 s (playZed (some card))).toOption
   let (unpaid, _) ← (step 100 s (playZed none)).toOption
+  let entered ← paid.firstOf p .base "VEN-023"
+  let discarded ← paid.firstOf p .trash "VEN-047"
   let paid := settleChain {} 12 paid
   let unpaid := settleChain {} 12 unpaid
   return paid.countNamed p .base "Shadow Clone" == 1 && unpaid.countNamed p .base "Shadow Clone" == 0 &&
+    events.idxOf (.discarded p discarded true) < events.idxOf (.moved zed entered (.player p .base)) &&
     paid.locate card == none && unpaid.locate card == some (.player p .hand)
 
 /-- Find a finalization through the effect's ordered choices, then take it. -/

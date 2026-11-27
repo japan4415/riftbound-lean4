@@ -1395,9 +1395,9 @@ def activateStep (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) (pay :
 answered. -/
 def castStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (new : List Frame) (flow : Option Cost := none)
-    (pick : SpellPick := .plain) : Option (GameState × List Event) :=
+    (pick : SpellPick := .plain) (discard : Option ObjId := none) : Option (GameState × List Event) :=
   (applyCast s p c pay ts flow pick).map (fun r =>
-    let r' := castPay s c ts r
+    let r' := castPay s p c ts discard r
     ({ r'.1 with pending := new }, r'.2))
 
 /-- What using an ability with a new stack does. -/
@@ -1469,10 +1469,10 @@ theorem activateStep_isSome {s : GameState} {p : PlayerId} {src : ObjId} {idx : 
 
 /-- What casting a Spell with a new stack does. -/
 theorem castStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : castStep s p c pay ts new flow pick = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) :
     ∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
-      s' = { (castPay s c ts (s2, es2)).1 with pending := new } := by
+      s' = { (castPay s p c ts discard (s2, es2)).1 with pending := new } := by
   unfold castStep at h
   simp only [Option.map_eq_some_iff] at h
   obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -1481,45 +1481,45 @@ theorem castStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Rune
 
 /-- Casting a Spell keeps the game well formed. -/
 theorem castStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
-    (h : castStep s p c pay ts new flow pick = some (s', es)) : s'.WF := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) : s'.WF := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
-  exact ((castPay_safe s c ts (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
+  exact ((castPay_safe s p c ts discard (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
 
 /-- Casting a Spell keeps the physical cards. -/
 theorem castStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
-    (h : castStep s p c pay ts new flow pick = some (s', es)) : s'.physIds.Perm s.physIds := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) : s'.physIds.Perm s.physIds := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   have h2 := applyCast_physIds hwf hm
-  exact ((castPay_safe s c ts (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
+  exact ((castPay_safe s p c ts discard (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
 
 /-- Casting a Spell keeps `OwnerOk`. -/
 theorem castStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : castStep s p c pay ts new flow pick = some (s', es)) : s'.OwnerOk := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) : s'.OwnerOk := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
-  exact ((castPay_safe s c ts (s2, es2)).own (applyCast_wf hwf hm)
+  exact ((castPay_safe s p c ts discard (s2, es2)).own (applyCast_wf hwf hm)
     (applyCast_ownerOk hwf hown hm)).congr rfl rfl
 
 /-- Casting a Spell changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
 theorem castStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : castStep s p c pay ts new flow pick = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
   obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
-  have hs := (castPay_safe s c ts (s2, es2)).same
+  have hs := (castPay_safe s p c ts discard (s2, es2)).same
   exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
     (congrArg GameState.cards hs).trans h6, rfl⟩
 
 /-- A castable Spell from a permitted zone can be cast, with any new stack. -/
 theorem castStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
     (h : castable s p c pay ts flow pick = true) :
-    ∃ r, castStep s p c pay ts new flow pick = some r := by
+    ∃ r, castStep s p c pay ts new flow pick discard = some r := by
   obtain ⟨r, hr⟩ := applyCast_isSome hwf hc h
   exact ⟨_, by unfold castStep; rw [hr]; rfl⟩
 
@@ -1528,18 +1528,18 @@ Gear at once (it goes to the Base, and what it sets off goes on the Chain). `new
 stack in place of the frame that was answered. -/
 def reactStep (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment)
     (ts : List ObjId) (new : List Frame) (flow : Option Cost := none)
-    (pick : SpellPick := .plain) : Option (GameState × List Event) :=
-  if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick
-  else (playPermanent s p c pay ts pick).map
+    (pick : SpellPick := .plain) (discard : Option ObjId := none) : Option (GameState × List Event) :=
+  if castable s p c pay ts flow pick = true then castStep s p c pay ts new flow pick discard
+  else (playPermanent s p c pay ts pick discard).map
     (fun r => ({ r.1 with pending := new }, r.2))
 
 /-- What answering with a card does. -/
 theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) :
     (∃ s2 es2, applyCast s p c pay ts flow pick = some (s2, es2) ∧
-      s' = { (castPay s c ts (s2, es2)).1 with pending := new }) ∨
-    (∃ s2 es2, playPermanent s p c pay ts pick = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
+      s' = { (castPay s p c ts discard (s2, es2)).1 with pending := new }) ∨
+    (∃ s2 es2, playPermanent s p c pay ts pick discard = some (s2, es2) ∧ s' = { s2 with pending := new }) := by
   unfold reactStep at h
   split at h
   · exact Or.inl (castStep_cases h)
@@ -1548,81 +1548,50 @@ theorem reactStep_cases {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Run
 
 /-- Answering the Chain keeps the game well formed. -/
 theorem reactStep_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.WF := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) : s'.WF := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
-  · exact ((castPay_safe s c ts (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
+  · exact ((castPay_safe s p c ts discard (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
   · exact ((playPermanent_safe hm).wf hwf).congr rfl rfl rfl rfl
 
 /-- Answering the Chain keeps the physical cards. -/
 theorem reactStep_physIds {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.physIds.Perm s.physIds := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF)
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) : s'.physIds.Perm s.physIds := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · have h2 := applyCast_physIds hwf hm
-    exact ((castPay_safe s c ts (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
+    exact ((castPay_safe s p c ts discard (s2, es2)).phys (applyCast_wf hwf hm)).trans h2
   · exact (playPermanent_safe hm).phys hwf
 
 /-- Answering the Chain keeps `OwnerOk`. -/
 theorem reactStep_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) : s'.OwnerOk := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk)
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) : s'.OwnerOk := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
-  · exact ((castPay_safe s c ts (s2, es2)).own (applyCast_wf hwf hm)
+  · exact ((castPay_safe s p c ts discard (s2, es2)).own (applyCast_wf hwf hm)
       (applyCast_ownerOk hwf hown hm)).congr rfl rfl
   · exact ((playPermanent_safe hm).own hwf hown).congr rfl rfl
 
 /-- Answering the Chain changes nothing of the turn order, the phase, the result, the rules or the
 cards; the stack is `new`. -/
 theorem reactStep_meta {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) :
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
   rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
   · obtain ⟨h1, h2, h3, h4, -, h6⟩ := applyCast_meta hm
-    have hs := (castPay_safe s c ts (s2, es2)).same
+    have hs := (castPay_safe s p c ts discard (s2, es2)).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, rfl⟩
   · have hs := (playPermanent_safe hm).same
     exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, rfl⟩
 
-/-- An optional discard preserves the rules and the stack produced by a Main Phase play. -/
-theorem applyPlayCard_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {rest : List Frame}
-    {discard : Option ObjId} {es : List Event}
-    (h : (applyPlayCard s p c pay ts rest flow pick).map (payPlayDiscard p c discard) = some (s', es)) :
-    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.cards = s.cards ∧
-      (s'.pending = s.pending ∨ s'.pending = .chainPass p 0 :: .priority p :: rest) := by
-  obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-  obtain ⟨hcfg, hto, hph, hres, hcards, hp⟩ := applyPlayCard_meta hr
-  have hf := (payPlayDiscard_safe p c discard r).same
-  rw [he] at hf
-  change SameMeta r.1 s' at hf
-  exact ⟨hf.config.trans hcfg, hf.turnOrder.trans hto, hf.phase.trans hph, hf.result.trans hres,
-    (congrArg GameState.cards hf).trans hcards, hp.imp (hf.pending.trans) (hf.pending.trans)⟩
-
-/-- An optional discard preserves the rules and the stack produced by answering the Chain. -/
-theorem reactStep_discard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame}
-    {discard : Option ObjId} {es : List Event}
-    (h : (reactStep s p c pay ts new flow pick).map (payPlayDiscard p c discard) = some (s', es)) :
-    s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
-      s'.result = s.result ∧ s'.cards = s.cards ∧ s'.pending = new := by
-  obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-  obtain ⟨hcfg, hto, hph, hres, hcards, hp⟩ := reactStep_meta hr
-  have hf := (payPlayDiscard_safe p c discard r).same
-  rw [he] at hf
-  change SameMeta r.1 s' at hf
-  exact ⟨hf.config.trans hcfg, hf.turnOrder.trans hto, hf.phase.trans hph, hf.result.trans hres,
-    (congrArg GameState.cards hf).trans hcards, hf.pending.trans hp⟩
-
 /-- A card from a permitted zone can answer the Chain, with any new stack. -/
 theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} (hwf : s.WF) (hc : c ∈ s.playSources p)
     (h : castable s p c pay ts flow pick = true ∨ ∃ dest ts' pick', playable s p c pay dest ts' pick' = true) :
-    ∃ r, reactStep s p c pay ts new flow pick = some r := by
+    ∃ r, reactStep s p c pay ts new flow pick discard = some r := by
   unfold reactStep
   split
   · rename_i hk
@@ -1630,7 +1599,7 @@ theorem reactStep_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : RuneP
   · rename_i hk
     rcases h with h | ⟨dest, ts', _, h⟩
     · exact absurd h hk
-    · obtain ⟨r, applied⟩ := playPermanent_isSome (ts := ts) (pick := pick) hwf
+    · obtain ⟨r, applied⟩ := playPermanent_isSome (ts := ts) (pick := pick) (discard := discard) hwf
         (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
       exact ⟨({ r.1 with pending := new }, r.2), by rw [applied]; rfl⟩
 

@@ -648,28 +648,6 @@ def counterObjHand (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem counterObjHand_safe (s : GameState) (id : ObjId) : Safe s (counterObjHand s id).1 :=
   counterObjTo_safe .hand s id
 
-/-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
-def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .trash s id
-  match s.obj? id with
-  | some o =>
-    let discards := r.2.filterMap (fun e =>
-      match e with
-      | .moved _ n (.player _ .trash) => some (Event.discarded o.owner n true)
-      | _ => none)
-    ((if discards.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded), r.2 ++ discards)
-  | none => r
-
-/-- Discarding a card is a safe change. -/
-theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
-  unfold discardObj
-  split
-  · dsimp only
-    split
-    · exact sendObj_safe .trash s id
-    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
-  · exact sendObj_safe .trash s id
-
 /-- Record a linked trigger for each matching type after an actual discard. -/
 def discardWithTypeEvents (p : PlayerId) (src : ObjId) (sourceCard : Option CardId)
     (links : List (CardType × Nat)) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -687,54 +665,6 @@ theorem discardWithTypeEvents_safe (p : PlayerId) (src : ObjId) (sourceCard : Op
     (links : List (CardType × Nat)) (s : GameState) (id : ObjId) :
     Safe s (discardWithTypeEvents p src sourceCard links s id).1 :=
   discardObj_safe s id
-
-/-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
-The last discard event closes the group for effects that watch one or more discards. -/
-def payDiscards (p : PlayerId) : GameState → List ObjId → GameState × List Event
-  | s, [] => (s, [])
-  | s, id :: ids =>
-    if (s.zone (.player p .hand)).contains id then
-      let r := discardObj s id
-      let next := payDiscards p r.1 ids
-      let events := if ids.isEmpty then r.2 else r.2.map (fun e => match e with
-        | .discarded q card _ => .discarded q card false
-        | other => other)
-      (next.1, events ++ next.2)
-    else payDiscards p s ids
-
-/-- Paying with hand cards preserves well-formedness, card identities and ownership. -/
-theorem payDiscards_safe (p : PlayerId) :
-    ∀ (ds : List ObjId) (s : GameState), Safe s (payDiscards p s ds).1
-  | [], s => Safe.refl s
-  | id :: ids, s => by
-    simp only [payDiscards]
-    split
-    · exact (discardObj_safe s id).trans (payDiscards_safe p ids _)
-    · exact payDiscards_safe p ids s
-
-/-- Pay the optional discard after the mana payment, recording it on the card before the
-play and discard triggers are processed (CR 357.1-357.2, 423.3). -/
-def payPlayDiscard (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : GameState × List Event :=
-  match discard with
-  | none => r
-  | some id =>
-    let paid := payDiscards p r.1 [id]
-    let played := r.2.findSome? (fun
-      | .moved old new _ => if old == c then some new else none
-      | _ => none)
-    (if paid.2.isEmpty then paid.1 else markPaid paid.1 played true, r.2 ++ paid.2)
-
-/-- Paying the optional discard of a play preserves the structural invariants. -/
-theorem payPlayDiscard_safe (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : Safe r.1 (payPlayDiscard p c discard r).1 := by
-  unfold payPlayDiscard
-  split
-  · exact Safe.refl _
-  · dsimp only
-    split
-    · exact payDiscards_safe _ _ _
-    · exact (payDiscards_safe _ _ _).trans (markPaid_safe _ _ true)
 
 /-- Replacing a Rune Pool is a safe change. -/
 theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (s.setPool p pool) :=

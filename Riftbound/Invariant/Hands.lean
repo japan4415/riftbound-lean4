@@ -226,7 +226,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p _ c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
     have hturn := playOk_not_setup hl.2.2.1
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_discard_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := applyPlayCard_meta h
     have hturn' : s'.phase ≠ .setup := by simpa only [hphase] using hturn
     have hcount : s'.playerCount = s.playerCount := by simp [GameState.playerCount, hcfg]
     refine ⟨fun hm => ?_, fun hph => ?_, fun f hf hpf => ?_⟩
@@ -345,7 +345,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       · exact ⟨Frame.chainPass p n, by rw [hp]; exact List.mem_cons_self, rfl⟩
   · rename_i p n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
     have hturn : s.phase ≠ .setup := by
       rcases reactable_spec.mp hl.2.2.1 with ⟨(h0 | h0) | h0, -⟩ | ⟨h0, -⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
@@ -655,7 +655,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_pop hp (by simp [Frame.contrib]) ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
   · rename_i bf q n rest c pay ts flow discard pick hp hk
     rw [hp, hk] at hl
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
     have hturn : s.phase ≠ .setup := by
       rcases showdownable_spec hl.2.2.1 with h0 | ⟨dest, ts', choice, h0⟩
       · obtain ⟨-, -, -, -, hm, -⟩ := castable_spec h0
@@ -781,7 +781,7 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_pop hp (fun _ => rfl) ⟨rfl, rfl, rfl, rfl, rfl⟩ (fun _ => rfl) rfl
   · rename_i guest rest c pay ts flow discard pick hp hk
-    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_discard_meta h
+    obtain ⟨hcfg, hto, hphase, -, -, hpend⟩ := reactStep_meta h
     have hturn := hinv.play _ (by rw [hp]; exact List.mem_cons_self) rfl
     refine hinv.of_play (hphase ▸ hturn) hto hcfg (fun hm => ?_)
     rw [hpend] at hm

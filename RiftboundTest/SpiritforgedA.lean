@@ -2210,7 +2210,7 @@ private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId
       d.countIn s.me .hand "OGN-004" && (r.poolOf s.me).energy == 12 - 2 &&
     r.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1
 
--- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
+-- Void Rush draws both revealed Spells when neither has a legal target.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-188" .hand
   let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-004"]

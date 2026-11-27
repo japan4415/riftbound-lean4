@@ -44,13 +44,13 @@ private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : L
     all_goals cases action : a.kind <;> simp [action] at play
     all_goals simp only [applyFrame0, pending, action] at rawStep
     case cons.priority.playCard =>
-      obtain ⟨_, _, _, _, cards, stack⟩ := applyPlayCard_discard_meta rawStep
+      obtain ⟨_, _, _, _, cards, stack⟩ := applyPlayCard_meta rawStep
       refine ⟨cards, [], raw.pending, rfl, (by simp), ?_⟩
       rcases stack with h | h
       · rw [h, pending]; rfl
       · rw [h]; rfl
     case cons.chainPass.playCard | cons.showdown.playCard | cons.teamInvitation.playCard =>
-      obtain ⟨_, _, _, _, cards, stack⟩ := reactStep_discard_meta rawStep
+      obtain ⟨_, _, _, _, cards, stack⟩ := reactStep_meta rawStep
       exact ⟨cards, [], _, stack, by simp, rfl⟩
     all_goals
       obtain ⟨_, _, _, _, cards, stack⟩ := activateStep_meta rawStep
@@ -68,8 +68,7 @@ private theorem playDeclaration_isSome {s : GameState} {a : Action}
       simp only [LegalFrame, pending, action] at legal
       simp only [applyFrame0, pending, action]
     case cons.priority.playCard =>
-      obtain ⟨result, applied⟩ := applyPlayCard_isSome (rest := rest) wf legal.2.1 legal.2.2.1
-      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, applied, rfl⟩⟩
+      exact applyPlayCard_isSome (rest := rest) wf legal.2.1 legal.2.2.1
     case cons.chainPass.playCard p _ c pay ts flow _ pick =>
       have playable : castable s p c pay ts flow pick = true ∨
           ∃ d xs choice, Riftbound.playable s p c pay d xs choice = true := by
@@ -80,15 +79,12 @@ private theorem playDeclaration_isSome {s : GameState} {a : Action}
           exact Or.inr ⟨some b, ts, pick, hb⟩
         · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h.2
           exact Or.inr ⟨some b, ts, pick, hb⟩
-      obtain ⟨result, applied⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) wf legal.2.1 playable
-      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, applied, rfl⟩⟩
+      exact reactStep_isSome (new := .chainPass p 0 :: rest) wf legal.2.1 playable
     case cons.showdown.playCard bf p _ _ _ _ _ _ _ =>
-      obtain ⟨result, applied⟩ := reactStep_isSome (new := .chainPass p 0 :: .showdown bf p 0 :: rest)
+      exact reactStep_isSome (new := .chainPass p 0 :: .showdown bf p 0 :: rest)
         wf legal.2.1 (showdownable_spec legal.2.2.1)
-      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, applied, rfl⟩⟩
     case cons.teamInvitation.playCard p _ _ _ _ _ _ =>
-      obtain ⟨result, applied⟩ := reactStep_isSome (new := .chainPass p 0 :: rest) wf legal.2.1 (.inl legal.2.2.1)
-      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, applied, rfl⟩⟩
+      exact reactStep_isSome (new := .chainPass p 0 :: rest) wf legal.2.1 (.inl legal.2.2.1)
     case cons.showdown.activate =>
       simp only [activatableSD, Bool.and_eq_true] at legal
       exact activateStep_isSome legal.2.1.1

@@ -5511,7 +5511,7 @@ def SFD_188 : CardDef :=
       (.seqOf [.prim (.revealTop 2),
         .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
         .prim (.draw .you (.sub (.min (.const 2) (.var ⟨"d"⟩)) (.sub (.var ⟨"d"⟩) deckSize)))]))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-189
 /--

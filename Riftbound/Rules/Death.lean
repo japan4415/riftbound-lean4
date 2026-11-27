@@ -39,6 +39,20 @@ theorem sendObj_safe (k : ZoneKind) (s : GameState) (id : ObjId) :
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- Sending another object to a zone leaves this card and the Rune Pools in place. -/
+theorem sendObj_retains {k : ZoneKind} {s : GameState} {id c : ObjId} {z : Zone}
+    (wf : s.WF) (member : c ∈ s.zone z) (different : c ≠ id) :
+    RetainsCard s (sendObj k s id).1 z c := by
+  unfold sendObj
+  split
+  · dsimp only
+    split
+    · rename_i result moved
+      obtain ⟨_, _, spec⟩ := moveObj_spec moved
+      exact (spec.retainsOther wf (GameState.zone_valid_of_mem wf member) member different).1
+    · exact RetainsCard.refl member
+  · exact RetainsCard.refl member
+
 /-- Attribute a successful move into Banishment to the player performing Banish (CR 428). -/
 def banishCardEvents (actor : PlayerId) (s : GameState) (id : ObjId)
     (moves : List Event) : List Event :=
