@@ -97,6 +97,14 @@ inductive ReplayPublicEvent where
   | buffedUnit (seat : PlayerId)
   /-- This seat Stunned a Unit. -/
   | stunnedUnit (seat : PlayerId)
+  /-- Damage was dealt to one object. -/
+  | damaged (amount : Nat)
+  /-- Damage was dealt to the visible card or token with this code. -/
+  | damagedCard (card : CardId) (amount : Nat)
+  /-- An object died under this seat's control. -/
+  | died (controller : PlayerId)
+  /-- The card or token with this code died under this seat's control. -/
+  | diedCard (controller : PlayerId) (card : CardId)
   /-- The seat burned out. -/
   | burnedOut (seat : PlayerId)
   /-- The seat gained the given number of points. -/
@@ -116,13 +124,19 @@ private def ReplayPublicEvent.ofEngineEvent (s : GameState) (moves : List (ObjId
   | .tokenPlayed p id => some ((replayEventCard s moves id).elim (.playedToken p) (.playedTokenCode p))
   | .buffedBy _ p => some (.buffedUnit p)
   | .stunnedBy _ p => some (.stunnedUnit p)
+  | .damaged target amount =>
+    some ((replayEventCard s moves target).elim (.damaged amount) (fun card => .damagedCard card amount))
+  | .died target controller =>
+    some ((replayEventCard s moves target).elim (.died controller) (.diedCard controller))
   | .burnedOut p => some (.burnedOut p)
   | .pointsGained p n => some (.pointsGained p n)
   | _ => none
 
 private def ReplayPublicEvent.covers (actual expected : ReplayPublicEvent) : Bool :=
   match actual, expected with
-  | .playedCardCode p _, .playedCard q | .playedTokenCode p _, .playedToken q => p == q
+  | .playedCardCode p _, .playedCard q | .playedTokenCode p _, .playedToken q |
+    .diedCard p _, .died q => p == q
+  | .damagedCard _ actual, .damaged expected => actual == expected
   | _, _ => actual == expected
 
 /-- The seat with open priority, Chain priority or Focus at a visible Battlefield. -/

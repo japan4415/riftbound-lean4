@@ -89,6 +89,23 @@ meta def traceOf (seed turns : Nat) : String :=
     !check [.playedCardCode p (cid "OGN-001")] && !check [.drew s.you, .playedCard p] &&
     !check [.playedCard p, .playedCardCode p (cid "OGN-051")] : Option Bool).getD false
 
+-- Lethal damage and death remain identifiable after the Unit gets a new Trash ID.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let (s, unit) ← put s p "OGN-051" .base
+  let (dead, death) := killObj s unit
+  let events : List Event := [.damaged unit 8] ++ death
+  let code := cid "OGN-051"
+  let check (sequence : List ReplayPublicEvent) :=
+    (ReplayObservation.checkAt [{ checkpoint := 1, facts := [.eventsInOrder sequence] }]
+      1 dead events).isOk
+  return check [.damagedCard code 8, .diedCard p code] &&
+    check [.damaged 8, .died p] && !check [.died p, .damaged 8] &&
+    !check [.damaged 7] && !check [.diedCard s.you code] &&
+    !check [.damagedCard (cid "OGN-001") 8] && !check [.died p, .diedCard p code]
+  : Option Bool).getD false
+
 -- XP is seat-specific, and marker observations retain all copies of a matching Unit.
 #guard (do
   let s ← lab
