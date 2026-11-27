@@ -776,11 +776,12 @@ def OGN_029.meta : CardDef :=
 /-- Falling Star. -/
 def OGN_029 : CardDef :=
   { OGN_029.meta with
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
+    spellEffect := some {
+      choices := [.targetOf .one .any .anywhere [.ofType .unit],
         .targetOf .one .any .anywhere [.ofType .unit]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 3)),
-        .prim (.deal (.slot 1) (.const 3))])),
-    status := .drafted }
+      body := .seqOf [.prim (.deal (.slot 0) (.const 3)), .prim (.deal (.slot 1) (.const 3))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED OGN-030
 /--

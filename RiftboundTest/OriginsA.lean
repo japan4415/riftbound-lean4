@@ -2736,6 +2736,21 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     (result.obj? second).any (fun o => o.damage == 6) && (result.obj? backup).any (fun o => o.damage == 0) &&
     result.countIn p .trash "OGN-105" == 1 && (result.zone .chain).isEmpty
 
+-- CR 758.2: both Falling Star instructions can choose the same Unit and each deals 3.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← put s q "OGN-116" .base
+  let (s, other) ← put s q "OGN-116" .base
+  let (s, spell) ← put s p "OGN-029" .hand
+  let chain ← castOpen s p spell [unit, unit]
+  let response ← passBy chain p
+  let (settled, events) ← (step 100 response ⟨.player q, .pass⟩).toOption
+  return events.filter (fun | .damaged .. => true | _ => false) ==
+      [.damaged unit 3, .damaged unit 3] &&
+    (settled.obj? unit).any (fun o => o.damage == 6) &&
+    (settled.obj? other).any (fun o => o.damage == 0)
+
 -- Wind Wall (OGN-064): counter a spell on the Chain (Confront would draw 1)
 #guard t fun s => do
   let (s1, conf) ← put s s.me "OGN-129" .hand

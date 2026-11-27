@@ -2252,7 +2252,7 @@ def SFD_077 : CardDef :=
         .prim (.deal (.slot 0) (.const 4)), none⟩,
       ⟨"Gear を Kill", [.targetOf .one .any .anywhere [.ofType .gear]],
         .prim (.kill (.slot 0)), none⟩] },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-078
 /--

@@ -1405,6 +1405,22 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (cast rich p c paid [u] (pick := order 0 1)).isNone &&
     (cast rich p c paid [u] (pick := .mode 0)).isNone
 
+-- CR 820.2.a: both Rocket Barrage executions can choose the same Gear before it is killed.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "SFD-077" .hand
+  let (s, gear) ← put s q "SFD-030" .base
+  let (s, other) ← put s q "SFD-030" .base
+  let choices : SpellPick := .withCosts (.thenRepeat (.mode 1) 1 (.mode 1)) false 1
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨8, [.mind, .mind]⟩ [gear, gear] none none choices⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let (settled, events) ← (step 100 response ⟨.player q, .pass⟩).toOption
+  let dead ← settled.firstOf q .trash "SFD-030"
+  return events.filter (fun | .died .. => true | _ => false) == [.died dead q] &&
+    (settled.obj? other).isSome && settled.countIn q .trash "SFD-030" == 1
+
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, the player may play a gear (cost 7
 -- or less) from the hand this turn for no Energy: it is played later, and only the first one is free
 #guard tsf fun s => do

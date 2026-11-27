@@ -2213,6 +2213,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Hextech Ray、Void Seeker、Falling Comet は、解決時に対象が Battlefield にいるか確認する。Void Seeker は、Flash で対象が Base に戻った場合もドローを実行する（CR 359.3.e.5）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 - Singularity は確定時に異なる Unit を最大2体選ぶ。解決時に残った対象それぞれへ同時に6ダメージを与える。以上4枚を `full` とし、全1,103枚中569枚を実装済みにした。[カード実装状況](coverage.md)
 
+### Falling Star の2回のダメージと Rocket Barrage の Repeat
+
+- Falling Star は2回のダメージそれぞれの対象を確定し、解決時に対象を再確認する。同じ Unit を選び、その Unit が有効な対象であれば、3ダメージを2回与える（CR 359.3.e、758.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Rocket Barrage の Repeat はモードと対象を実行ごとに確定する。同じ Gear が2回選ばれた場合は1回目に死に、2回目は解決時の対象確認で処理を省く（CR 820.2.a）。以上2枚を `full` とし、全1,103枚中571枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
