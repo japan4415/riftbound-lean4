@@ -456,26 +456,148 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
         checkFactValue "game result" expected s.result
     | _, _ => checkFactValue "game result" expected s.result
 
+/-- Check the facts together against one checkpoint's state and events. -/
+def ReplayObservation.checkFacts (observation : ReplayObservation) (s : GameState)
+    (events : List Event) (disclosures : List CardDisclosure) (before : Option GameState) :
+    Except String PUnit :=
+  observation.facts.forM (fun fact => fact.check s events disclosures before)
+
+private def checkEligibleObservation (checkpoint : Nat) (check : ReplayObservation → Except String PUnit)
+    (observation : ReplayObservation) : Except String (Option ReplayObservation) :=
+  let source := observation.source?.map (fun label => s!" ({(toJson label).compress})") |>.getD ""
+  let errorPrefix := s!"checkpoint {checkpoint}: observation{source}"
+  let last := observation.through?.getD observation.checkpoint
+  if last < checkpoint then .error s!"{errorPrefix}: its last eligible checkpoint was {last}"
+  else match check observation with
+    | .ok () => .ok none
+    | .error reason =>
+      if checkpoint < last then .ok (some observation)
+      else if observation.through?.isSome then
+        .error s!"{errorPrefix}: no match in checkpoints {observation.checkpoint} through {last}: {reason}"
+      else .error s!"{errorPrefix}: {reason}"
+
 /-- Validate the observations at this position and advance an ordered observation schedule. -/
 def ReplayObservation.checkAt (schedule : List ReplayObservation) (checkpoint : Nat)
     (s : GameState) (events : List Event := []) (disclosures : List CardDisclosure := [])
     (before : Option GameState := none) :
-    Except String (List ReplayObservation) := do
+    Except String (List ReplayObservation) :=
   let (eligible, later) := schedule.span (fun observation => observation.checkpoint <= checkpoint)
-  let mut unmatched := []
-  for observation in eligible do
-    let source := observation.source?.map (fun label => s!" ({(toJson label).compress})") |>.getD ""
-    let errorPrefix := s!"checkpoint {checkpoint}: observation{source}"
-    let last := observation.through?.getD observation.checkpoint
-    if last < checkpoint then throw s!"{errorPrefix}: its last eligible checkpoint was {last}"
-    if let .error reason := observation.facts.forM (fun fact => fact.check s events disclosures before) then
-      if checkpoint < last then
-        unmatched := observation :: unmatched
-      else if observation.through?.isSome then
-        throw s!"{errorPrefix}: no match in checkpoints {observation.checkpoint} through {last}: {reason}"
-      else
-        throw s!"{errorPrefix}: {reason}"
-  return unmatched.reverse ++ later
+  let check := checkEligibleObservation checkpoint
+    (fun observation => observation.checkFacts s events disclosures before)
+  (eligible.filterMapM check).map (· ++ later)
+
+private theorem checkEligible_keeps_original {index : Nat}
+    {check : ReplayObservation → Except String PUnit} {source pending : ReplayObservation}
+    (h : checkEligibleObservation index check source = .ok (some pending)) : source = pending := by
+  simp only [checkEligibleObservation] at h
+  split at h
+  · contradiction
+  · split at h
+    · cases h
+    · split at h
+      · cases h
+        rfl
+      · split at h <;> contradiction
+
+private theorem checkEligible_discharge {index : Nat}
+    {check : ReplayObservation → Except String PUnit} {observation : ReplayObservation}
+    (h : checkEligibleObservation index check observation = .ok none) :
+    index ≤ observation.through?.getD observation.checkpoint ∧ check observation = .ok () := by
+  simp only [checkEligibleObservation] at h
+  split at h
+  · contradiction
+  · rename_i onTime
+    refine ⟨Nat.le_of_not_lt onTime, ?_⟩
+    split at h
+    · assumption
+    · split at h
+      · cases h
+      · split at h <;> contradiction
+
+private theorem span_replay (p : ReplayObservation → Bool) (schedule : List ReplayObservation) :
+    schedule.span p = (schedule.takeWhile p, schedule.dropWhile p) := by
+  have loop (acc : List ReplayObservation) :
+      List.span.loop p schedule acc =
+        (acc.reverse ++ schedule.takeWhile p, schedule.dropWhile p) := by
+    induction schedule generalizing acc with
+    | nil => simp [List.span.loop]
+    | cons next rest ih =>
+      cases eligible : p next <;>
+        simp [List.span.loop, List.takeWhile, List.dropWhile, eligible, ih, List.append_assoc]
+  simpa [List.span] using loop []
+
+private theorem discharge_of_removed {index : Nat} {check : ReplayObservation → Except String PUnit}
+    {eligible pending : List ReplayObservation} {observation : ReplayObservation}
+    (ran : eligible.filterMapM (checkEligibleObservation index check) = .ok pending)
+    (member : observation ∈ eligible) (removed : observation ∉ pending) :
+    checkEligibleObservation index check observation = .ok none := by
+  induction eligible generalizing pending with
+  | nil => simp at member
+  | cons first rest ih =>
+    rw [List.filterMapM_cons] at ran
+    rcases List.mem_cons.mp member with same | inRest
+    · subst first
+      cases h : checkEligibleObservation index check observation with
+      | error error => simp [h, bind, Except.bind] at ran
+      | ok option =>
+        cases option with
+        | none => rfl
+        | some kept =>
+          have original := checkEligible_keeps_original h
+          subst kept
+          cases later : rest.filterMapM (checkEligibleObservation index check) with
+          | error error => simp [h, later, bind, Except.bind] at ran
+          | ok remaining =>
+            simp only [h, later, bind, Except.bind] at ran
+            change (Except.ok (observation :: remaining) : Except String _) = .ok pending at ran
+            have same := Except.ok.inj ran
+            subst pending
+            exact (removed List.mem_cons_self).elim
+    · cases h : checkEligibleObservation index check first with
+      | error error => simp [h, bind, Except.bind] at ran
+      | ok option =>
+        cases option with
+        | none => exact ih (by simpa [h, bind, Except.bind] using ran) inRest removed
+        | some kept =>
+          cases later : rest.filterMapM (checkEligibleObservation index check) with
+          | error error => simp [h, later, bind, Except.bind] at ran
+          | ok remaining =>
+            simp only [h, later, bind, Except.bind] at ran
+            change (Except.ok (kept :: remaining) : Except String _) = .ok pending at ran
+            have same := Except.ok.inj ran
+            subst pending
+            exact ih later inRest (fun hm => removed (List.mem_cons_of_mem _ hm))
+
+/-- An observation removed by a successful checkpoint check matched every fact within its window. -/
+theorem ReplayObservation.checkAt_removed_matched {schedule pending : List ReplayObservation}
+    {index : Nat} {s : GameState} {events : List Event} {disclosures : List CardDisclosure}
+    {before : Option GameState} {observation : ReplayObservation}
+    (ran : ReplayObservation.checkAt schedule index s events disclosures before = .ok pending)
+    (member : observation ∈ schedule) (removed : observation ∉ pending) :
+    observation.checkpoint ≤ index ∧ index ≤ observation.through?.getD observation.checkpoint ∧
+      observation.checkFacts s events disclosures before = .ok () := by
+  let due (row : ReplayObservation) := decide (row.checkpoint ≤ index)
+  change (
+    let (eligible, later) := schedule.span due
+    (eligible.filterMapM
+      (checkEligibleObservation index (fun row => row.checkFacts s events disclosures before))).map
+      (· ++ later)) = .ok pending at ran
+  rw [span_replay] at ran
+  dsimp only at ran
+  cases result : (schedule.takeWhile due).filterMapM
+      (checkEligibleObservation index (fun row => row.checkFacts s events disclosures before)) with
+  | error error => simp [result, Except.map] at ran
+  | ok unmatched =>
+    simp [result, Except.map] at ran
+    subst pending
+    have later : observation ∉ schedule.dropWhile due :=
+      fun h => removed (List.mem_append_right _ h)
+    have inDue : observation ∈ schedule.takeWhile due := by
+      have both : observation ∈ schedule.takeWhile due ++ schedule.dropWhile due := by simpa using member
+      exact (List.mem_append.mp both).resolve_right later
+    have within : due observation = true := List.all_eq_true.mp List.all_takeWhile _ inDue
+    have verified := discharge_of_removed result inDue (fun h => removed (List.mem_append_left _ h))
+    exact ⟨of_decide_eq_true within, checkEligible_discharge verified⟩
 
 end RiftboundDriver
 

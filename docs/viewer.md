@@ -200,6 +200,8 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 
 `record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
 
+Lean の `ReplayObservation.checkAt_removed_matched` は、照合待ちから外れた観測の全項目が、指定された手番号の範囲内にある同じ地点で一致したことを示す。
+
 #### カード定義を更新した後に再照合する
 
 ```sh
