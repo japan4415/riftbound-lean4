@@ -3753,6 +3753,24 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     ((x.cardDef? c).bind (x.effCost s.me c)).map (·.energy)
   return cost s2 inHand == some 3 && cost s2 inTrash == some 1
 
+-- Last Rites plays the Void Drone from Trash for one Energy. The discount grants no permission.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "SFD-216"
+  let (s, host) ← putAt (s.control p field) p "OGN-051" field
+  let (s, gear) ← put s p "SFD-150" .base
+  let (s, fromHand) ← put s p "SFD-010" .hand
+  let (s, fromTrash) ← put s p "SFD-010" .trash
+  let funded := s.fund p 1
+  let equipped := funded.hook gear host
+  let replayed ← fire equipped [.scored p field false]
+  let unfunded ← fire (equipped.fund p 0) [.scored p field false]
+  return (cast funded p fromHand ⟨1, []⟩).isNone &&
+    (cast funded p fromTrash ⟨1, []⟩).isNone &&
+    replayed.countIn p .base "SFD-010" == 1 && replayed.countIn p .trash "SFD-010" == 0 &&
+    replayed.countIn p .hand "SFD-010" == 1 && (replayed.poolOf p).energy == 0 &&
+    unfunded.countIn p .trash "SFD-010" == 1
+
 -- (review) Vex only counts while she is in the combat; Grimwyrm cannot go to a Rockfall Path
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"

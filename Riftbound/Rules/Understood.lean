@@ -592,7 +592,8 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .friendlyAttackGroupHere => t.subject == .self
       | .firstUnitDeathHere => t.subject != .self
       | .deathknell => t.subject == .self
-      | .firstCardResolved | .firstPermanentHere | .delayedPlay | .delayedEnd | .delayedDamage =>
+      | .firstCardResolved | .secondCardResolved | .firstPermanentHere |
+        .delayedPlay | .delayedEnd | .delayedDamage =>
         t.subject == .self
       | .stun | .stunByYou | .discard | .ready | .exhaust => true
       | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)

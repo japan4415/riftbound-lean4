@@ -30,6 +30,22 @@ theorem GameState.recordTurnEvent_damage_keeps_global (s : GameState) (notes : L
   simp only [GameState.recordTurnEvent, hit, List.mem_filter]
   cases nk : note.kind <;> simp [global]
 
+/-- Finalized plays cannot trigger an ordinal ability until a card actually resolves. -/
+theorem GameState.cardResolutionTriggers_eq_nil_of_counts {s before : GameState}
+    (same : ∀ p ∈ s.players,
+      (before.playLog.countP (fun play =>
+        play.turn == s.turn && play.who == p && play.moment == .resolved)) =
+      (s.playLog.countP (fun play =>
+        play.turn == s.turn && play.who == p && play.moment == .resolved))) :
+    s.cardResolutionTriggers before = [] := by
+  unfold cardResolutionTriggers
+  split
+  · rfl
+  · dsimp only
+    apply List.flatMap_eq_nil_iff.mpr
+    intro p member
+    simp [same p member]
+
 private def boardObserved (s : GameState) : List ObjId :=
   s.inPlay ++ s.players.flatMap (fun p => s.zone (.player p .legendZone))
 
@@ -276,7 +292,7 @@ theorem withAwakenNotices (s : GameState) (events : List Event)
   unfold GameState.withTriggers
   rw [recordAwakenNotices s events notices, awakenNotices_noWinner s events notices]
   dsimp only
-  have first : s.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers]
+  have first : s.cardResolutionTriggers s = [] := by simp [GameState.cardResolutionTriggers]
   have noDamage := s.delayedDamageTriggers_noDamage events
     (fun e member => by cases notices e member <;> rfl)
   rw [first, awakenNotices_noDelayedPlay s events notices, noDamage]

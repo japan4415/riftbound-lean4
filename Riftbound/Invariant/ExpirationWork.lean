@@ -1075,7 +1075,7 @@ private theorem linkedCleanup_withTriggers_pending (s : GameState) :
   let recorded := s.recordTurnEvents [.linkedDamageCleanupDone]
   have plays : recorded.playLog = s.playLog := by
     simp [recorded, GameState.recordTurnEvents, GameState.recordPlayEvent]
-  have first : recorded.firstCardTriggers s = [] := by simp [GameState.firstCardTriggers, plays]
+  have first : recorded.cardResolutionTriggers s = [] := by simp [GameState.cardResolutionTriggers, plays]
   have detect : recorded.detect [.linkedDamageCleanupDone] [] (some s.turnFx) = [] := by
     have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
       List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
@@ -1084,7 +1084,7 @@ private theorem linkedCleanup_withTriggers_pending (s : GameState) :
   unfold GameState.withTriggers
   rw [noScore]
   change (if _ then (match recorded.detect [.linkedDamageCleanupDone]
-      (recorded.firstCardTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone] ++
+      (recorded.cardResolutionTriggers s ++ s.delayedPlayTriggers [.linkedDamageCleanupDone] ++
         s.delayedDamageTriggers [.linkedDamageCleanupDone])
       (some s.turnFx) with
       | [] => recorded | queue => { recorded with pending := insertDetectedTriggers recorded queue s.pending })

@@ -28,6 +28,14 @@ structure ReplayObservedUnit where
   damage : Nat
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A public Unit's current Might, including modifiers, recorded with its printed code. -/
+structure ReplayObservedUnitMight where
+  /-- The printed card or token code. -/
+  card : CardId
+  /-- The Unit's current Might at the checkpoint. -/
+  might : Int
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- The visible cards attached to one observed Unit. -/
 structure ReplayObservedUnitAttachments where
   /-- The Unit's visible card or token code. -/
@@ -195,6 +203,8 @@ inductive ReplayObservationFact where
       (cards : List CardId)
   /-- All Units of the controller at the given public place, with exhaustion and marked damage. -/
   | unitStates (controller : PlayerId) (place : ReplayUnitPlace) (units : List ReplayObservedUnit)
+  /-- The current Might of each Unit of the controller at the given public place. -/
+  | unitMights (controller : PlayerId) (place : ReplayUnitPlace) (units : List ReplayObservedUnitMight)
   /-- The codes of all Units of one controller with this marker at the given public place. -/
   | markedUnits (controller : PlayerId) (place : ReplayUnitPlace) (marker : ReplayUnitMarker)
       (cards : List CardId)
@@ -389,6 +399,16 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
       return ⟨card, o.exhausted, o.damage⟩
     unless decide (expected.Perm actual) do
       checkFactValue label expected actual
+  | .unitMights controller place expected =>
+    let (label, ids) ← observeUnitsAt s controller place
+    let actual ← ids.mapM fun id => do
+      let some card := (s.obj? id).bind (·.kind.cardId?)
+        | throw s!"{label}: a Unit's card code could not be read"
+      let some might := s.mightNow id
+        | throw s!"{label}: could not read the Might of {card.code}"
+      pure ({ card, might } : ReplayObservedUnitMight)
+    unless decide (expected.Perm actual) do
+      checkFactValue s!"{label} Might" expected actual
   | .markedUnits controller place marker cards =>
     let (label, ids) ← observeUnitsAt s controller place
     let actual := ids.filterMap fun id => do

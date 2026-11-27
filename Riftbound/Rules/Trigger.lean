@@ -508,17 +508,25 @@ def GameState.delayedDeathTriggers (s : GameState) (dead : ObjId) : List PendTri
       else []
     | _ => [])
 
-/-- The abilities that watch the first card the player successfully played this turn
-(CR 420.4.a). -/
-def GameState.firstCardTriggers (s before : GameState) : List PendTrigger :=
+/-- The abilities that watch the first or second card the player successfully played this turn.
+Count resolutions by the acting seat, including repeated plays of the same physical card (CR 420.4.a). -/
+def GameState.cardResolutionTriggers (s before : GameState) : List PendTrigger :=
   if s.playLog == before.playLog then []
   else
-    let completed (state : GameState) (p : PlayerId) :=
-      state.playLog.any (fun play =>
+    let completed (state : GameState) (p : PlayerId) : Nat :=
+      state.playLog.countP (fun play =>
         play.turn == s.turn && play.who == p && play.moment == .resolved)
-    let players := s.players.filter (fun p => !completed before p && completed s p)
-    players.flatMap (fun p => s.inPlay.flatMap (fun src =>
-      if (s.obj? src).any (·.controller == p) then triggersOf s src p .firstCardResolved else []))
+    s.players.flatMap (fun p =>
+      let previous := completed before p
+      let current := completed s p
+      if previous >= 2 || previous >= current then [] else
+        s.inPlay.flatMap (fun src =>
+          if (s.obj? src).any (·.controller == p) then
+            triggersOfMatching s src p (fun
+              | .firstCardResolved => previous == 0 && current > 0
+              | .secondCardResolved => previous < 2 && current >= 2
+              | _ => false)
+          else []))
 
 /-- The player's watchers of a qualifying Unit, Gear, or activated ability (CR 206-206.1). -/
 def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Nat) : List PendTrigger :=
@@ -1339,7 +1347,7 @@ def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   | some p => { next with result := some (.won (s.config.mode.sideSeats p)), pending := [] }
   | none =>
     if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-      match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es ++ s.delayedDamageTriggers es)
+      match next.detect es (next.cardResolutionTriggers s ++ s.delayedPlayTriggers es ++ s.delayedDamageTriggers es)
           (some s.turnFx) with
       | [] => next
       | pend => { next with pending := insertDetectedTriggers next pend s.pending }
@@ -1949,7 +1957,7 @@ theorem withTriggers_cases (s : GameState) (es : List Event) :
     right
     by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
     · cases hd : (s.recordTurnEvents es).detect es
-        ((s.recordTurnEvents es).firstCardTriggers s ++ (s.delayedPlayTriggers es ++ s.delayedDamageTriggers es))
+        ((s.recordTurnEvents es).cardResolutionTriggers s ++ (s.delayedPlayTriggers es ++ s.delayedDamageTriggers es))
         (some s.turnFx) with
       | nil => simp [hg, hd]
       | cons x xs =>
@@ -2001,7 +2009,7 @@ theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
   dsimp only
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
-      GameState.stunGroupWatchers, GameState.trimLimits, GameState.firstCardTriggers, GameState.firstSpellFieldTriggers,
+      GameState.stunGroupWatchers, GameState.trimLimits, GameState.cardResolutionTriggers, GameState.firstSpellFieldTriggers,
       GameState.delayedPlayTriggers, GameState.delayedDamageTriggers, empty]
   · simp [GameState.recordTurnEvents]
 

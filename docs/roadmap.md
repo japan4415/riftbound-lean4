@@ -2463,6 +2463,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Defy の対象判定に印刷コストを使うことを確認した。3枚を追加で確認し、777枚を `full` とした。[公式 Spiritforged FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
 - 誘発元、誘発のきっかけ、確定時の対象・費用をカードコードで記録できる。任意の誘発や取り消し可能な Add を強制手と判定しないことを Lean で証明した。
 
+### 解決したカードの数とグループ移動の照合
+
+- Darius, Trifarian は、本人が解決した2枚目のカードで誘発する。打ち消された Spell やカードでないトークンは数えず、Darius 自身を2枚目にプレイした場合も誘発する。解決済み枚数が変わらなければ、この種の誘発が増えないことを Lean で証明した。[公式 Unleashed FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- グループで移動するときの移動先、共有費用、選んだ Unit をカードコードで照合できる。各場所の Unit の Might も観測に指定できる。
+- Seal 5枚の Reaction Add、Whiteflame Protector の対象と一時的な Might 増加、Void Drone の Trash からの実際の支払いを確認し、Darius と合わせて785枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

@@ -262,6 +262,22 @@ meta def traceOf (seed turns : Nat) : String :=
     !check [.xp p 2] && !check [.markedUnits p .base .buffed [card]] &&
     !check [.markedUnits p .base .stunned [card, card]] : Option Bool).getD false
 
+-- Current Might is checked per Unit, including two copies with different modifiers.
+#guard (do
+  let s ← lab
+  let p := s.me
+  let q := s.you
+  let (s, first) ← put s p "OGN-136" .base
+  let (s, _) ← put s p "OGN-136" .base
+  let (s, _) ← put s q "OGN-136" .base
+  let s := s.modObj first (fun o => { o with buffed := true })
+  let card := cid "OGN-136"
+  let check (who : PlayerId) (units : List ReplayObservedUnitMight) :=
+    (ReplayObservation.checkAt [{ checkpoint := 1, facts := [.unitMights who .base units] }] 1 s).isOk
+  return check p [⟨card, 3⟩, ⟨card, 2⟩] && check p [⟨card, 2⟩, ⟨card, 3⟩] &&
+    check q [⟨card, 2⟩] && !check p [⟨card, 3⟩, ⟨card, 3⟩] &&
+    !check p [⟨card, 3⟩] : Option Bool).getD false
+
 -- A token already known to the viewer changes identity in `copies`, using its original ID.
 #guard (do
     let s ← lab

@@ -186,6 +186,7 @@ Sealed や Draft のサイドボードを照合する場合は、`limitedPools` 
 - `battlefieldControl` は Battlefield の支配者、`battlefieldUnits` はその Battlefield にいる指定プレイヤーの Unit を照合する。どちらも Battlefield を持ち込んだ席を `owner`、現在のカードコードを `field`、確認する席を `controller` に入れる。`battlefieldUnits` では `cards` に全 Unit のコードを入れる。`battlefieldControl` の `controller: null` は支配者なしを表す。
 
 - `unitStates` は Unit のカードコード、Exhaust の有無、与えられたダメージを照合する。`controller` に席、`place` に `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"RAD-157"}}}` を指定する。`units` にはその席がその場所でコントロールする全 Unit を `{"card":{"code":"RAD-026"},"exhausted":true,"damage":2}` の形で入れる。同名の Unit はそれぞれ記録し、並び順は問わない。
+- `unitMights` は同じ `controller` と `place` で、装備や一時的な増減を含むその時点の Might を照合する。`units` には `{"card":{"code":"OGN-027"},"might":7}` の形で、その席がその場所でコントロールする全 Unit を記録する。
 - `markedUnits` は同じ `controller` と `place` の指定で、`marker` が `"buffed"` または `"stunned"` に当てはまる全 Unit のコードを `cards` に入れる。同じコードの Unit が複数該当する場合は枚数分を記録する。
 - `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
 

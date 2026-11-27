@@ -283,7 +283,7 @@ def SFD_010 : CardDef :=
 
     abilities := [.passive (.not (.matches .self .inHandZone))
       [.costMinus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-011
 /--

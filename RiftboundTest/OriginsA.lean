@@ -3387,6 +3387,52 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   | .ok (x, _) => some x
   | .error _ => none
 
+-- Every Seal pays and Adds one Power of the printed domain, including while a Spell is waiting.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let seals : List (String × Domain) := [
+    ("OGN-040", .fury), ("OGN-081", .calm), ("OGN-120", .mind),
+    ("OGN-163", .body), ("OGN-204", .chaos), ("OGN-245", .order)]
+  return seals.all fun (code, domain) => (do
+    let (s, card) ← put s p code .hand
+    let (s, spell) ← put s q "OGN-129" .hand
+    let funded := (s.noRunes p).setPool p (({} : RunePool).addPower domain 1)
+    let paid ← cast funded p card ⟨0, [domain]⟩
+    let source ← paid.firstOf p .base code
+    let add : Action := ⟨.player p, .manaAbility source 0 ⟨0, []⟩⟩
+    let (neutral, _) ← (step 100 paid add).toOption
+    let otherTurn := { paid with
+      active := some q
+      pending := [.priority q] }
+    let waiting ← passBy (← castOpen otherTurn q spell []) q
+    let (charged, _) ← (step 100 waiting add).toOption
+    return (paid.poolOf p).total == 0 && paid.tired source == some false &&
+      (neutral.poolOf p).get domain == 1 && (neutral.poolOf p).total == 1 &&
+      neutral.tired source == some true && (step 100 neutral add).toOption.isNone &&
+      (charged.poolOf p).get domain == 1 && (charged.poolOf p).total == 1 &&
+      charged.poolOf q == waiting.poolOf q && charged.tired source == some true &&
+      (charged.zone .chain) == (waiting.zone .chain) && (charged.zone .chain).length == 1
+      : Option Bool).getD false
+
+-- Whiteflame Protector can give Might to either side or itself. The bonus expires with the turn.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-082" .hand
+  let (s, ally) ← put s p "OGN-136" .base
+  let (s, enemy) ← put s q "OGN-136" .base
+  let friendly ← play s p card [] { pick := (· == [ally]) }
+  let opposing ← play s p card [] { pick := (· == [enemy]) }
+  let waiting ← castStop s p card
+  let source ← waiting.firstOf p .base "OGN-082"
+  let (choseSelf, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [source]⟩).toOption
+  let self := settleChain {} 12 choseSelf
+  return friendly.mightNow ally == some 10 && friendly.mightNow enemy == some 2 &&
+    opposing.mightNow ally == some 2 && opposing.mightNow enemy == some 10 &&
+    (opposing.mapObjects endTurnObj).mightNow enemy == some 2 &&
+    self.mightNow source == (s.cardDef? card).bind (fun d => d.might.map (fun n => n + 8))
+
 -- CR 359.3.e.5: Flash strands the damage instruction, and Void Seeker still draws.
 -- Hextech Ray and Falling Comet apply the same Battlefield restriction on resolution.
 #guard t fun s => do
@@ -3649,6 +3695,39 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let three ← play two s.me c
   return one.tired d == some true && one.mightNow d == some 6 &&
     two.tired d == some false && two.mightNow d == some 8 && three.mightNow d == some 8
+
+-- Darius can be the second card himself. Playing a token does not count as a card.
+#guard t fun s => do
+  let p := s.me
+  let (s, darius) ← put s p "OGN-027" .hand
+  let (s, first) ← put s p "OGN-136" .hand
+  let (token, tokenEvents) := playUnitTokenAt s p "Recruit" none
+  let withToken := token.withTriggers tokenEvents
+  let tokenOnly ← play withToken p darius
+  let earlier ← play s p first
+  let second ← play earlier p darius
+  let foundBefore ← tokenOnly.firstOf p .base "OGN-027"
+  let foundAfter ← second.firstOf p .base "OGN-027"
+  return token.countNamed p .base "Recruit" == 1 &&
+    tokenOnly.tired foundBefore == some true && tokenOnly.mightNow foundBefore == some 5 &&
+    second.tired foundAfter == some false && second.mightNow foundAfter == some 7
+
+-- A Spell countered after it was finalized does not advance Darius's count of resolved cards.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, darius) ← put s p "OGN-027" .base
+  let (s, spell) ← put (s.tire darius) p "OGN-129" .hand
+  let (s, counter) ← put s q "OGN-064" .hand
+  let (s, first) ← put s p "OGN-010" .hand
+  let (s, second) ← put s p "OGN-010" .hand
+  let waiting ← passBy (← castOpen s p spell []) p
+  let onChain ← (waiting.zone .chain).head?
+  let stopped ← play waiting q counter [onChain]
+  let once ← play stopped p first
+  let twice ← play once p second
+  return stopped.tired darius == some true && once.tired darius == some true &&
+    twice.tired darius == some false && twice.mightNow darius == some 7
 
 -- Stand United (OGN-053): buff a friendly unit; buffs give friendly units +1 Might more this turn
 #guard t fun s => do

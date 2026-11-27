@@ -721,12 +721,10 @@ def OGN_027.meta : CardDef :=
 /-- Darius, Trifarian. -/
 def OGN_027 : CardDef :=
   { OGN_027.meta with
-    abilities := [.triggered
-      { event := .play, subject := Selector.all .you .anywhere [],
-        condition := .cmp .eq .cardsPlayed (.const 2) }
+    abilities := [.triggered (.onSelf .secondCardResolved)
       (.of [] (.seqOf [.grant .self (.mightPlus .it (.const 2)) .thisTurn, .prim (.ready .self)]))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-028
 /--
@@ -2201,7 +2199,7 @@ def OGN_081 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .calm) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-082
 /--
@@ -2227,7 +2225,7 @@ def OGN_082 : CardDef :=
     abilities := [.triggered (.onSelf .play)
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.mightPlus .it (.const 8)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-083
 /--
@@ -3258,7 +3256,7 @@ def OGN_120 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .mind) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-121
 /--
@@ -4423,7 +4421,7 @@ def OGN_163 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .body) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-164
 /--
@@ -5518,7 +5516,7 @@ def OGN_204 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .chaos) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-205
 /--
@@ -6640,7 +6638,7 @@ def OGN_245 : CardDef :=
     abilities := [.activated [.exhaustSelf] .reaction
         (.of []
         (.prim (.addPower .you (.const 1) (some .order) none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-246
 /--

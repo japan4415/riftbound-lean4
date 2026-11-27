@@ -290,6 +290,8 @@ inductive TriggerEvent where
   | play
   /-- The player completes their first play of a card this turn (CR 420.4.a). -/
   | firstCardResolved
+  /-- The controller's second card resolves during the turn (CR 420.4.a). -/
+  | secondCardResolved
   /-- The player plays their first Unit or Gear at this Battlefield this turn. -/
   | firstPermanentHere
   /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/

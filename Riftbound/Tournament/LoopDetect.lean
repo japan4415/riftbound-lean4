@@ -379,6 +379,15 @@ theorem forcedAnswer_triggerFunding_none {s : GameState} {p : PlayerId} {first :
   have fund : LegalFrame s ⟨.player p, .triggerAdd add⟩ := by simp [LegalFrame, pending, eligible]
   exact forcedAnswer_none_of_alternatives cancel fund (by simp)
 
+/-- While selecting a group to move, the only possible forced answer is to cancel. -/
+theorem forcedAnswer_groupMove_cancel {s : GameState} {p : PlayerId} {destination : MoveDest}
+    {fee : Cost} {chosen : List ObjId} {rest : List Frame} {answer : Action}
+    (pending : s.pending = .groupMove p destination fee chosen :: rest)
+    (forced : forcedAnswer s = some answer) :
+    answer = ⟨.player p, .decide false⟩ := by
+  have cancel : LegalFrame s ⟨.player p, .decide false⟩ := by simp [LegalFrame, pending]
+  exact (forcedAnswer_unique forced cancel rfl).symm
+
 end Riftbound
 
 end
