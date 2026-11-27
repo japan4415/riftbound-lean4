@@ -200,8 +200,8 @@ private theorem trimGear_read {s : GameState} {p : PlayerId} {predicate : TurnFx
   exact dropPowerFx_filter_of_disjoint ignoresGear _ _
 
 private theorem setPool_spent {s : GameState} {p : PlayerId} {pool : RunePool}
-    (unchanged : pool.spent = (s.poolOf p).spent) :
-    ∀ q, ((s.setPool p pool).poolOf q).spent = (s.poolOf q).spent := by
+    (unchanged : pool.powerSpent = (s.poolOf p).powerSpent) :
+    ∀ q, ((s.setPool p pool).poolOf q).powerSpent = (s.poolOf q).powerSpent := by
   intro q
   by_cases eq : q = p
   · subst q
@@ -209,8 +209,8 @@ private theorem setPool_spent {s : GameState} {p : PlayerId} {pool : RunePool}
   · rw [GameState.poolOf_setPool_ne _ eq]
 
 private theorem poolsMap_spent {f : RunePool → RunePool}
-    (unchanged : ∀ pool, (f pool).spent = pool.spent) (s : GameState) (players : List PlayerId) :
-    ∀ p, ((poolsMap f s players).poolOf p).spent = (s.poolOf p).spent := by
+    (unchanged : ∀ pool, (f pool).powerSpent = pool.powerSpent) (s : GameState) (players : List PlayerId) :
+    ∀ p, ((poolsMap f s players).poolOf p).powerSpent = (s.poolOf p).powerSpent := by
   induction players generalizing s with
   | nil => intro p; rfl
   | cons p rest ih =>
@@ -218,7 +218,7 @@ private theorem poolsMap_spent {f : RunePool → RunePool}
     rw [poolsMap, ih, setPool_spent (unchanged (s.poolOf p))]
 
 private theorem poolsAddAny_spent (n : Nat) (s : GameState) (players : List PlayerId) :
-    ∀ p, ((poolsAddAny n s players).poolOf p).spent = (s.poolOf p).spent := by
+    ∀ p, ((poolsAddAny n s players).poolOf p).powerSpent = (s.poolOf p).powerSpent := by
   induction players generalizing s with
   | nil => intro p; rfl
   | cons p rest ih =>
@@ -256,7 +256,7 @@ private theorem poolAndFactsReads (s : GameState) (pools : Std.ExtTreeMap Nat Ru
     (notes : List TurnFx)
     (turnFacts : notes.filter (fun note => note.kind != .gearMana) =
       s.turnFx.filter (fun note => note.kind != .gearMana))
-    (powerSpent : ∀ p, (pools.getD p.n RunePool.empty).spent = (s.poolOf p).spent)
+    (powerSpent : ∀ p, (pools.getD p.n RunePool.empty).powerSpent = (s.poolOf p).powerSpent)
     (buffFacts : ∀ p, notes.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p)) =
       s.turnFx.filter (fun f => (f.kind == .buffsExtraMight) && (f.turn == s.turn && f.who == p))) :
     SameMightReads s { s with pools, turnFx := notes } := by
@@ -275,13 +275,13 @@ private theorem poolAndFactsReads (s : GameState) (pools : Std.ExtTreeMap Nat Ru
     rfl, rfl, base, rfl, rfl, rfl, rfl, turnFacts, powerSpent, rfl, rfl, rfl, fun _ _ _ _ => rfl⟩
 
 private theorem poolsMap_reads {f : RunePool → RunePool} (s : GameState) (players : List PlayerId)
-    (unchanged : ∀ pool, (f pool).spent = pool.spent) :
+    (unchanged : ∀ pool, (f pool).powerSpent = pool.powerSpent) :
     SameMightReads s (poolsMap f s players) ∧ (poolsMap f s players).cards = s.cards ∧
       (poolsMap f s players).objects = s.objects ∧ (poolsMap f s players).zones = s.zones := by
   have shape := poolsMap_onlyPools f s players
   have spent := poolsMap_spent unchanged s players
-  have projected : ∀ p, ((poolsMap f s players).pools.getD p.n RunePool.empty).spent =
-      (s.poolOf p).spent := spent
+  have projected : ∀ p, ((poolsMap f s players).pools.getD p.n RunePool.empty).powerSpent =
+      (s.poolOf p).powerSpent := spent
   have reads := poolAndFactsReads s (poolsMap f s players).pools s.turnFx rfl projected (fun _ => rfl)
   have cards := congrArg GameState.cards shape
   have objects := congrArg GameState.objects shape

@@ -1992,7 +1992,7 @@ def SFD_068 : CardDef :=
   { SFD_068.meta with
 
     abilities := [.passive .always [.doubleEquip]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-069
 /--
@@ -2958,7 +2958,7 @@ def SFD_101 : CardDef :=
             (.ifThen (.matches .it (.not .buffed)) (.prim (.buff .it)) .nop))) .unlimited,
       .triggered (.onSelf .spendBuff)
         (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-102
 /--
@@ -3842,7 +3842,7 @@ def SFD_131 : CardDef :=
 
     abilities := [.passive .always
       [.assaultCount (Selector.all .enemy .here [.ofType .unit])]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-132
 /--
@@ -4191,7 +4191,7 @@ def SFD_143 : CardDef :=
 
     abilities := [.passive (.cmp .ge .powerSpent (.const 2))
       [.mightPlus .self (.const 2), .keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-144
 /--

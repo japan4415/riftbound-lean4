@@ -464,7 +464,7 @@ structure SameMightReads (before after : GameState) : Prop where
   turnFacts : after.turnFx.filter (fun note => note.kind != .gearMana) =
     before.turnFx.filter (fun note => note.kind != .gearMana)
   /-- Power already spent by each player. -/
-  powerSpent : ∀ p, (after.poolOf p).spent = (before.poolOf p).spent
+  powerSpent : ∀ p, (after.poolOf p).powerSpent = (before.poolOf p).powerSpent
   /-- Each player's experience. -/
   xpOf : after.xpOf = before.xpOf
   /-- Each side's points. -/

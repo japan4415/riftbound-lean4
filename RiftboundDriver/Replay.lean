@@ -716,6 +716,10 @@ structure ReplayCheckpoint where
   stunAttributions? : Option (List (Nat × PlayerId)) := none
   /-- Victim, controller, turn, stamp, and actual company when the historical mark differs. -/
   deathCompany? : Option (List (Nat × PlayerId × Nat × Nat × Bool)) := none
+  /-- Separate Deflect Power already spent, reported for seats with a positive balance. -/
+  deflectSpent? : Option (List (Nat × Nat)) := none
+  /-- Power spent earlier in this turn before the Main Phase emptied the pools. -/
+  spentBeforeMain? : Option (List (Nat × Nat)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -957,7 +961,7 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
   -- Keep the original state fingerprint and record new evidence separately.
   let playLog := s.playLog.map (fun play => { play with energyPaid := 0, physical := none, stamp := none })
   let turnFx := s.turnFx.filter (fun note => match note.kind with
-    | .deathCompany _ => false
+    | .deathCompany _ | .powerSpentBeforeMain _ => false
     | _ => true)
   let company := s.turnFx.filterMap (fun note => do
     let target ← note.target
@@ -965,6 +969,11 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
     | .deathCompany alone => some (target.n, note.who, note.turn, note.stamp, alone)
     | _ => none)
   let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog, turnFx }
+  let deflect := s.pools.toList.filterMap (fun (seat, pool) =>
+    if pool.deflectSpent == 0 then none else some (seat, pool.deflectSpent))
+  let earlierPower := s.players.filterMap (fun seat =>
+    let amount := s.powerSpentBeforeMain seat
+    if amount == 0 then none else some (seat.n, amount))
   let buffs := events.zipIdx.filterMap fun (event, index) =>
     match event with
     | .buffedBy _ p => some (index, p)
@@ -986,7 +995,9 @@ def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheck
     playStamps? := some (s.playLog.map (·.stamp))
     buffAttributions? := some buffs
     stunAttributions? := if stuns.isEmpty then none else some stuns
-    deathCompany? := if company.isEmpty then none else some company }
+    deathCompany? := if company.isEmpty then none else some company
+    deflectSpent? := if deflect.isEmpty then none else some deflect
+    spentBeforeMain? := if earlierPower.isEmpty then none else some earlierPower }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1651,6 +1662,10 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
       throw s!"checkpoint {index}: stun responsibilities differ"
     if witness.deathCompany?.any (fun company => actual.deathCompany?.getD [] != company) then
       throw s!"checkpoint {index}: company at death differs"
+    if witness.deflectSpent?.any (fun spent => actual.deflectSpent?.getD [] != spent) then
+      throw s!"checkpoint {index}: Deflect Power spending differs"
+    if witness.spentBeforeMain?.any (fun spent => actual.spentBeforeMain?.getD [] != spent) then
+      throw s!"checkpoint {index}: Power spending before Main differs"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint))

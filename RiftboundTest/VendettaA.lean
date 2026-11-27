@@ -1337,9 +1337,9 @@ where
     !(actions.contains (debit [.domain .fury])) &&
     (step 100 s (debit [.domain .order])).toOption.isNone &&
     (step 100 s (debit [.flexible, .domain .calm])).toOption.isNone &&
-    (canonical.poolOf p) == { pool with energy := 0, order := 0, fury := 0, spent := 1 } &&
-    (fromFlexible.poolOf p) == { pool with energy := 0, order := 0, any := 0, spent := 1 } &&
-    (fromCalm.poolOf p) == { pool with energy := 0, order := 0, calm := 0, spent := 1 }
+    (canonical.poolOf p) == { pool with energy := 0, order := 0, fury := 0, spent := 1, deflectSpent := 1 } &&
+    (fromFlexible.poolOf p) == { pool with energy := 0, order := 0, any := 0, spent := 1, deflectSpent := 1 } &&
+    (fromCalm.poolOf p) == { pool with energy := 0, order := 0, calm := 0, spent := 1, deflectSpent := 1 }
 
 -- Lacerate needs both sources when Fizz plays it against Plaza Guardian: one
 -- Order Power for the Spell and one extra Power for Deflect.

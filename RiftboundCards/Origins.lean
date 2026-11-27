@@ -5274,8 +5274,8 @@ def OGN_195.meta : CardDef :=
 /-- Rhasa the Sunderer. -/
 def OGN_195 : CardDef :=
   { OGN_195.meta with
-    abilities := [.passive .always [.costMinus .self (.count (.all .friendly .inTrash []))]],
-    status := .drafted }
+    abilities := [.passive .always [.costMinus .self (.count (.all .you .inTrash []))]],
+    status := .full }
 
 -- BEGIN GENERATED OGN-196
 /--
@@ -5553,7 +5553,7 @@ def OGN_205 : CardDef :=
     abilities := [.triggered
       { event := .move, condition := .cmp .eq .movesThisTurn (.const 3) }
       (.of [] (.prim (.score .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-206
 /--
@@ -6272,7 +6272,7 @@ def OGN_232 : CardDef :=
     abilities := [.passive (.matches .self .mighty)
       [.keyword .self ⟨.deflect, .amount 1⟩, .keyword .self ⟨.ganking, .none⟩,
        .keyword .self ⟨.shield, .amount 1⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-233
 /--
@@ -6588,7 +6588,7 @@ def OGN_243 : CardDef :=
         (.of [] (.prim (.ready .self))) .unlimited,
        .passive .always
         [.mightPlus (Selector.all .friendly .here [.ofType .unit, .notSelf]) (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-244
 /--
@@ -6674,7 +6674,7 @@ def OGN_246 : CardDef :=
       { event := .die,
         subject := Selector.all .you .anywhere [.ofType .unit, .notSelf, .not (.tag ⟨"Recruit"⟩)] }
       (.of [] (.prim (.create "Recruit" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-247
 /--

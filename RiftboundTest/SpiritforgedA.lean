@@ -3745,6 +3745,20 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     atk.combatMight w true == 4 + 2 && atk.combatMight w false == 4 &&
     s3.mightNow w == some 4 && atk.mightNow w == some 6
 
+-- A teammate and an enemy at another location are outside Warmonger's Assault count.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let left : PlayerId := ⟨2⟩
+  let right : PlayerId := ⟨3⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, w) ← putAt s p "SFD-131" field
+  let (s, _) ← putAt s mate "OGN-001" field
+  let (s, _) ← put s left "OGN-001" .base
+  let (s, _) ← putAt s left "OGN-001" field
+  let (s, _) ← putAt s right "OGN-001" field
+  return s.kwAmount w .assault == 2 && s.combatMight w true == 6 && s.combatMight w false == 4
+
 -- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-065" .base
@@ -4166,6 +4180,34 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     !withRell b "SFD-042" && b.handN s.me == s5.handN s.me && !withRell c "SFD-042" &&
     (a.poolOf s.me).energy == (s5.poolOf s.me).energy
 
+-- A separate Deflect payment counts toward Sivir's same-turn Power threshold.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, sivir) ← put s p "SFD-143" .base
+  let (s, opposing) ← put s q "SFD-143" .base
+  let (s, foe) ← put s q "OGN-013" .base
+  let (s, noTax) ← put s q "OGN-052" .base
+  let (s, spell) ← put s p "VEN-127" .hand
+  let pool : RunePool := { energy := 2, order := 1, fury := 1, any := 1 }
+  let s := (s.noRunes p).setPool p pool
+  let castOn (unit : ObjId) (pick : SpellPick) :=
+    (step 100 s ⟨.player p, .playCard spell ⟨2, [.order]⟩ [unit] none none pick⟩).toOption
+  let (untaxed, _) ← castOn noTax .plain
+  let (regular, _) ← castOn foe .plain
+  let (explicit, _) ← castOn foe (.withDeflectPayment .plain [.flexible])
+  let settled := settleChain {} 24 explicit
+  let (afterMain, _) ← microStep0 { settled with phase := .draw, pending := [.phase .main] }
+  let (nextTurn, _) ← microStep0 { afterMain with phase := .ending, pending := [.expireTurn] }
+  return (untaxed.poolOf p).powerSpent == 1 && !untaxed.hasKw sivir .ganking &&
+    (regular.poolOf p).powerSpent == 2 && regular.hasKw sivir .ganking &&
+    (explicit.poolOf p).powerSpent == 2 && explicit.hasKw sivir .ganking &&
+    explicit.mightNow sivir == (s.mightNow sivir).map (· + 2) &&
+    explicit.mightNow opposing == s.mightNow opposing &&
+    (afterMain.poolOf p).total == 0 && (afterMain.poolOf p).powerSpent == 0 &&
+    afterMain.powerSpentBeforeMain p == 2 && afterMain.hasKw sivir .ganking &&
+    nextTurn.powerSpentBeforeMain p == 0 && !nextTurn.hasKw sivir .ganking
+
 -- Sivir, Mercenary (SFD-143): once I have spent 2 or more Power this turn, +2 Might and Ganking
 #guard tsf fun s => do
   let (s1, sivir) ← put s s.me "SFD-143" .base
@@ -4177,6 +4219,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (pool 2).mightNow sivir == some 6 && (pool 2).hasKw sivir .ganking &&
     (pool 5).mightNow sivir == some 6 && paid.any (·.spent == 2) &&
     ((s2.setPool s.me { spent := 3 }).mightNow other == some 4)
+
+-- Sivir's own Accelerate payment is enough Power to turn on her passive as she enters.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-143" .hand
+  let ordinary ← cast (s.fund p 4 (chaos := 1)) p card ⟨4, [.chaos]⟩
+  let fast ← cast (s.fund p 5 (chaos := 2)) p card ⟨5, [.chaos, .chaos]⟩
+  let exhausted ← ordinary.firstOf p .base "SFD-143"
+  let ready ← fast.firstOf p .base "SFD-143"
+  return ordinary.tired exhausted == some true && ordinary.mightNow exhausted == some 4 &&
+    fast.tired ready == some false && fast.mightNow ready == some 6 && fast.hasKw ready .ganking
 
 -- (the Power paid by playing a card is counted)
 #guard tsf fun s => do

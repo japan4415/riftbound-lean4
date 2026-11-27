@@ -1419,6 +1419,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let entered ← play s p kadregrin
   return entered.countIn p .base "OGN-038" == 1 && entered.handN p == 1 && entered.handN ally == 0
 
+-- Darius strengthens teammates in his location and does not strengthen another Base.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, ally) ← putAt s mate "OGN-136" field
+  let (s, foe) ← putAt s enemy "OGN-136" field
+  let (s, away) ← put s mate "OGN-136" .base
+  let (withDarius, _) ← putAt s p "OGN-243" field
+  return withDarius.mightNow ally == (s.mightNow ally).map (· + 1) &&
+    withDarius.mightNow foe == s.mightNow foe && withDarius.mightNow away == s.mightNow away
+
 -- Fiora (OGN-232): Deflect, Ganking and Shield only while she is Mighty (Might 4, buffed 5)
 #guard t fun s => do
   let (s1, f) ← put s s.me "OGN-232" .base
@@ -2006,6 +2020,21 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let c ← fire tk [.died token s.me]
   return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0 &&
     c.countNamed s.me .base "Recruit" == tk.countNamed s.me .base "Recruit"
+
+-- Viktor witnesses each qualifying death only while he remains on the Board (CR 383.2.c.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, viktor) ← put s p "OGN-246" .base
+  let (s, first) ← put s p "OGN-052" .base
+  let (s, second) ← put s p "OGN-052" .base
+  let (s, rival) ← put s q "OGN-052" .base
+  let (survived, deaths) := resolveDeathGroupWith s [first, second, rival] killObj
+  let (killed, together) := resolveDeathGroupWith s [viktor, first] killObj
+  let advanced ← fire survived deaths
+  let wiped ← fire killed together
+  return advanced.countNamed p .base "Recruit" == 2 &&
+    advanced.countNamed q .base "Recruit" == 0 && wiped.countNamed p .base "Recruit" == 0
 
 -- Draven (OGN-028): his Might is increased by my points
 #guard t fun s => do
@@ -2952,6 +2981,19 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
     energyNow s3 s.me c == (energyPrinted s3 c).map (· - 2) &&
     energyNow s4 s.me c == energyNow s3 s.me c &&
     played.countIn s.me .base "OGN-195" == 1
+
+-- Rhasa uses its player's Trash, including when a teammate has a separate Trash.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, rhasa) ← put s p "OGN-195" .hand
+  let (mine, _) ← put s p "OGN-136" .trash
+  let (team, _) ← put mine mate "OGN-136" .trash
+  let (opponent, _) ← put team enemy "OGN-136" .trash
+  return energyNow mine p rhasa == (energyPrinted s rhasa).map (· - 1) &&
+    energyNow opponent p rhasa == energyNow mine p rhasa
 
 -- Eager Apprentice (OGN-084): my spells cost 1 less (at least 1) while it is at a battlefield
 #guard t fun s => do

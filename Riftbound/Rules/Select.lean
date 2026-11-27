@@ -324,6 +324,23 @@ def GameState.fxOf (s : GameState) (p : PlayerId) : List TurnEffect :=
           !s.playedSince p f.kind.playType f.stamp
         | _ => true))).map (·.kind)
 
+/-- Read the turn's earlier Power spending from one archived Main Phase note. -/
+def TurnFx.spendingBeforeMain (note : TurnFx) (p : PlayerId) (turn : Nat) : Option Nat :=
+  match note.kind with
+  | .powerSpentBeforeMain amount => if note.who == p && note.turn == turn then some amount else none
+  | _ => none
+
+/-- Power spent before the Main Phase clears the pool still counts this turn (CR 316.3). -/
+def GameState.powerSpentBeforeMain (s : GameState) (p : PlayerId) : Nat :=
+  (s.turnFx.filterMap (fun note => note.spendingBeforeMain p s.turn)).sum
+
+/-- Save the current spending history immediately before clearing the Main Phase pools. -/
+def GameState.mainPhasePowerNotes (s : GameState) : List TurnFx :=
+  s.turnFx ++ s.pools.toList.filterMap (fun (seat, pool) =>
+    if pool.powerSpent == 0 then none else some {
+      who := ⟨seat⟩, turn := s.turn, stamp := s.nextTimestamp,
+      kind := .powerSpentBeforeMain pool.powerSpent })
+
 /-- A turn effect readies entering Units played by the source's side (CR 491.8.e). -/
 def GameState.friendlyUnitsReady (s : GameState) (p : PlayerId) : Bool :=
   s.turnFx.any (fun note =>
@@ -1256,7 +1273,7 @@ def Amount.evalS0 (s : GameState) (p : PlayerId) (self : ObjId) (env : Env) : Am
         (s.cardDef? ⟨k⟩).any (·.hasType .unit))).foldl
       (fun acc (_, o) => acc + (o.chose.filter enemy).length) 0
     some (spells + abilities)
-  | .powerSpent => some (s.poolOf p).spent
+  | .powerSpent => some ((s.poolOf p).powerSpent + s.powerSpentBeforeMain p)
   | .equipmentPlayed =>
     some (s.objects.toList.filter (fun (k, o) =>
       o.owner == p && o.playedTurn == some s.turn &&

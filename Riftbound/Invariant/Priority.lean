@@ -38,7 +38,7 @@ theorem applyDeclaredAction_chainPass {s : GameState} {p : PlayerId} {passes : N
     simp [h, extraEvents, GameState.actionTransitionEvents, pending, withTriggers_nil,
       GameState.paySurcharge, GameState.paidDeflectPool, GameState.deflectInPayment,
       Action.targetsOf, Action.spellSource,
-      GameState.deflectCost, RunePool.takeN, GameState.poolOf]
+      GameState.deflectCost, RunePool.takeN, RunePool.recordDeflectDebit, GameState.poolOf]
 
 /-- A non-final pass leaves the Chain intact and stops at the next player's priority without
 using fuel (CR 338.2). -/

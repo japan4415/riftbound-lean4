@@ -17,7 +17,11 @@ theorem advance_main_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       t.pending.head?.all (fun f => !f.isWork) = true := by
   let rest := [Frame.priority p]
-  let raw := { s with phase := .main, pending := .cleanup :: rest, pools := {} }
+  let raw := { s with
+    phase := .main
+    pending := .cleanup :: rest
+    pools := {}
+    turnFx := s.mainPhasePowerNotes }
   let emitted := [Event.phaseStarted (s.active.getD ⟨0⟩) .main]
   have step : microStep0 s = some (raw, emitted) := by
     simp only [microStep0, pending, raw, emitted, rest]

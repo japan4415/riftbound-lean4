@@ -198,7 +198,8 @@ def paidDeflectPool (pool : RunePool) (a : Action) (amount : Nat) : RunePool :=
   let explicitSources := match a.kind with
     | .playCard _ _ _ _ _ pick => pick.deflectPayment
     | _ => none
-  (explicitSources.bind pool.takeBuckets).getD (pool.takeN amount)
+  let paid := (explicitSources.bind pool.takeBuckets).getD (pool.takeN amount)
+  pool.recordDeflectDebit paid
 
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/

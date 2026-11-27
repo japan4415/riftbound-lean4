@@ -17,6 +17,19 @@ theorem old_of_zone {s : GameState} (wf : s.WF) {z : Zone} {id : ObjId}
     (member : id ∈ s.zone z) : id.n < s.nextId :=
   wf.lt_nextId id (GameState.mem_zoneIds (GameState.zone_valid_of_mem wf member) member)
 
+/-- Gear-only funding notes do not affect the turn's earlier Power spending. -/
+private theorem spendingBeforeMain_filter (notes : List TurnFx) (p : PlayerId) (turn : Nat) :
+    ((notes.filter (·.kind != .gearMana)).filterMap (·.spendingBeforeMain p turn)) =
+      notes.filterMap (·.spendingBeforeMain p turn) := by
+  induction notes with
+  | nil => rfl
+  | cons first rest ih =>
+    by_cases gear : first.kind = .gearMana
+    · have ignored : first.spendingBeforeMain p turn = none := by
+        simp [TurnFx.spendingBeforeMain, gear]
+      simp [gear, ignored, ih]
+    · simp [gear, List.filterMap_cons, ih]
+
 /-- Every object on the Board has an existing identifier. -/
 theorem old_inPlay {s : GameState} (wf : s.WF) {id : ObjId}
     (member : id ∈ s.inPlay) : id.n < s.nextId := by
@@ -361,7 +374,12 @@ theorem amount_eq (wf : s.WF) (p : PlayerId) (env : Env) {self : ObjId} (oldSelf
   case points target =>
     cases target <;> simp only [MightRead.amount, Bool.false_eq_true] at supported
     simp only [Amount.evalS0, PlayerSel.resolve, same.departures, same.pointsOf]
-  case powerSpent => simp only [Amount.evalS0, same.powerSpent]
+  case powerSpent =>
+    have prior : t.powerSpentBeforeMain p = s.powerSpentBeforeMain p := by
+      unfold GameState.powerSpentBeforeMain
+      rw [same.turn, ← spendingBeforeMain_filter t.turnFx p s.turn,
+        ← spendingBeforeMain_filter s.turnFx p s.turn, same.turnFacts]
+    simp only [Amount.evalS0, same.powerSpent, prior]
   case xp => simp only [Amount.evalS0, same.xpOf]
 termination_by structural amount
 

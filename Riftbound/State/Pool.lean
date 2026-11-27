@@ -35,14 +35,16 @@ structure RunePool where
   /-- Power of any domain (an `[Add]` of the rainbow Power): it can pay a Power symbol of any
   domain, when the Power of that domain is not there. -/
   any : Nat := 0
-  /-- How much Power was paid out of the Pool since it was last emptied (a count, not a
-  resource). -/
+  /-- Power spent in ordinary payments since the Pool was emptied. -/
   spent : Nat := 0
   /-- Energy available only for playing Spells (CR 166, 445). -/
   spellEnergy : Nat := 0
+  /-- Power spent paying separate Deflect surcharges since the Pool was emptied. -/
+  deflectSpent : Nat := 0
 deriving DecidableEq
 
-/-- Preserve the state representation of archives whose Pools have no Spell-only Energy. -/
+/-- Preserve the historical Pool fingerprint. The archive records separate Deflect spending
+alongside that fingerprint. -/
 instance : Repr RunePool where
   reprPrec p _ :=
     let field (name : String) (value : Nat) :=
@@ -113,6 +115,13 @@ def takePower (p : RunePool) (d : Domain) : Option RunePool :=
 /-- All the Power in the Pool, over every domain. -/
 def totalPower (p : RunePool) : Nat :=
   p.fury + p.calm + p.mind + p.body + p.chaos + p.order + p.any
+
+/-- All Power the player has spent, including separate Deflect payments. -/
+def powerSpent (p : RunePool) : Nat := p.spent + p.deflectSpent
+
+/-- Count the actual Power removed by a separate surcharge. -/
+def recordDeflectDebit (before after : RunePool) : RunePool :=
+  { after with deflectSpent := before.deflectSpent + (before.totalPower - after.totalPower) }
 
 /-- Everything in the Pool: Energy and Power. -/
 def total (p : RunePool) : Nat := p.energy + p.unitEnergy + p.spellEnergy + p.totalPower
@@ -274,6 +283,39 @@ theorem total_takeBuckets {p q : RunePool} {sources : List PowerBucket}
       have more := ih left
       simp only [List.length_cons]
       omega
+
+/-- Deducting a list of exact sources removes one Power per entry and leaves the existing
+ordinary spend count alone. -/
+theorem takeBuckets_counts {p q : RunePool} {sources : List PowerBucket}
+    (paid : p.takeBuckets sources = some q) :
+    q.totalPower + sources.length = p.totalPower ∧ q.spent = p.spent := by
+  induction sources generalizing p with
+  | nil =>
+    have same : p = q := Option.some.inj paid
+    simp [same]
+  | cons source rest ih =>
+    cases first : p.takeBucket source 1 with
+    | none => simp [takeBuckets, first] at paid
+    | some next =>
+      have left : next.takeBuckets rest = some q := by simpa [takeBuckets, first] using paid
+      have one := totalPower_takeBucket first
+      obtain ⟨more, ordinary⟩ := ih left
+      have kept : next.spent = p.spent := by
+        unfold takeBucket at first
+        split at first
+        · cases source with
+          | flexible => injection first with equal; subst next; rfl
+          | domain d => cases d <;> injection first with equal <;> subst next <;> rfl
+        · cases first
+      exact ⟨by simp only [List.length_cons]; omega, ordinary.trans kept⟩
+
+/-- A separately recorded payment counts each spent Power once. -/
+theorem powerSpent_recordDeflectDebit {p q : RunePool} {sources : List PowerBucket}
+    (paid : p.takeBuckets sources = some q) :
+    (p.recordDeflectDebit q).powerSpent = p.powerSpent + sources.length := by
+  obtain ⟨removed, ordinary⟩ := takeBuckets_counts paid
+  simp only [recordDeflectDebit, powerSpent, ordinary]
+  omega
 
 /-- What a payment takes out of the Pool: Energy, and one Power for each domain listed
 (CR 357.1, 445). The domains are the ones the player chose for `[A]` symbols. -/

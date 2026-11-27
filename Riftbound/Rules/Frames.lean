@@ -279,8 +279,11 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
               pending := .draw p (scoreDrawCount p r.2) :: .cleanup :: rest },
       r.2)
   | .phase .main :: rest =>
-    some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
-      [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
+    some ({ s with
+      phase := .main
+      pending := .cleanup :: rest
+      pools := {}
+      turnFx := s.mainPhasePowerNotes }, [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
   | .draw p 0 startingHand :: rest =>
     some ({ s with pending := rest }, startingHand.toList.map (.drewGroup p))
   | .draw p (n + 1) startingHand :: rest =>

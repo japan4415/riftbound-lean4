@@ -177,6 +177,8 @@ inductive ReplayObservationFact where
   | xp (seat : PlayerId) (amount : Nat)
   /-- The observed balance of one resource in the seat's Pool. -/
   | poolResource (seat : PlayerId) (resource : ReplayPoolResource) (amount : Nat)
+  /-- The Power a seat has spent so far in the current turn. -/
+  | spentPower (seat : PlayerId) (amount : Nat)
   /-- The size of a visible zone, including face-down cards or abilities on the Chain. -/
   | zoneCount (zone : Zone) (count : Nat)
   /-- All face-up card codes in a public zone, with duplicate copies and in any order. -/
@@ -360,6 +362,10 @@ private def ReplayObservationFact.check (fact : ReplayObservationFact) (s : Game
     observeSeat s seat
     checkFactValue s!"seat {seat.n} Pool {(toJson resource).compress}" amount
       (resource.amount (s.poolOf seat))
+  | .spentPower seat amount =>
+    observeSeat s seat
+    checkFactValue s!"seat {seat.n} Power spent this turn" amount
+      ((s.poolOf seat).powerSpent + s.powerSpentBeforeMain seat)
   | .zoneCount zone count =>
     checkFactValue s!"{zoneLabel zone} count" count (← observeZone s zone).length
   | .zoneCards zone cards => checkCardSet (zoneLabel zone) cards (← publicCards s zone)
