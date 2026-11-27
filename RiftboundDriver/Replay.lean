@@ -317,6 +317,8 @@ structure ReplayCheckpoint where
   events : List Event
   /-- Seat numbers and physical Chosen Champion IDs. Earlier archives did not store this. -/
   chosenChampions? : Option (List (Nat × Nat)) := none
+  /-- Marked damage and the responsible seat of each hit. Earlier archives did not store this. -/
+  damageMarks? : Option (List (Nat × List (Option Nat × Nat))) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -556,9 +558,12 @@ private def replayXP (s : GameState) : GameState :=
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
   -- Keep the original state fingerprint and record new registration evidence separately.
-  { state := toString (hash (reprStr (replayXP { s with cards := ⟨[]⟩, chosenChampions := {} })))
+  { state := toString (hash (reprStr (replayXP { s with
+      cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {} })))
     events
-    chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n))) }
+    chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n)))
+    damageMarks? := some (s.damageMarks.toList.map (fun (id, marks) =>
+      (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount))))) }
 
 /-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
 def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
@@ -1190,6 +1195,8 @@ private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
     if witness.events != actual.events then throw s!"checkpoint {index}: events differ"
     if witness.chosenChampions?.any (fun registered => actual.chosenChampions? != some registered) then
       throw s!"checkpoint {index}: Chosen Champion identities differ"
+    if witness.damageMarks?.any (fun marked => actual.damageMarks? != some marked) then
+      throw s!"checkpoint {index}: damage marks differ"
 
 private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do

@@ -121,6 +121,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))
               with objects := (s.objects.erase id.n).insert id'.n o',
+                   damageMarks := s.damageMarks.erase id.n,
                    nextId := s.nextId + 1, nextTimestamp := s.nextTimestamp + 1 }, id')
     else
       some ((s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id (s.zone dst)), id)
@@ -271,7 +272,8 @@ def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
             nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
             turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-            turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience } = s
+            turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience,
+            damageMarks := s.damageMarks } = s
 
 namespace SameMeta
 
@@ -286,7 +288,8 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
               nextTimestamp := s.nextTimestamp, points := s.points,
               turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-              turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience } : GameState)) h2
+              turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience,
+              damageMarks := s.damageMarks } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this

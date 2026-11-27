@@ -791,14 +791,87 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
   return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
 
--- Elder Dragon (UNL-118): any damage kills enemy units; the other player's units are not affected
+-- Elder Dragon sees its controller's earlier damage, not a third seat's damage. Healing and
+-- prevention both remove the mark that would make the damage lethal.
 #guard tun fun s => do
-  let (s1, _) ← putAt s s.me "UNL-118" s.bf0
-  let (s2, e) ← putAt s1 s.you "OGN-088" s.bf0
-  let (s3, m) ← putAt s2 s.me "OGN-088" s.bf0
-  let s4 := s3.modObj e (fun o => { o with damage := 1 })
-  let s5 := s4.modObj m (fun o => { o with damage := 1 })
-  return !s2.lethal e && s4.lethal e && !s5.lethal m
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let s := { s with config := { s.config with mode := .ffa4 } }
+  let (s, foe) ← put s q "OGN-049" .base
+  let (s, ally) ← put s p "OGN-049" .base
+  let prior := (dealObj 1 s foe (some p)).1
+  let (withDragon, _) ← put prior p "UNL-118" .base
+  let (board, _) ← put s p "UNL-118" .base
+  let other := (dealObj 1 board foe (some third)).1
+  let own := (dealObj 1 board ally (some p)).1
+  let healed := (healOne 1 withDragon foe).1
+  let shielded := board.addTurnFxOn q foe (.preventDamage 1)
+  let (prevented, events) := dealObj 1 shielded foe (some p)
+  return !prior.lethal foe && withDragon.lethal foe && !other.lethal foe && !own.lethal ally &&
+    !healed.lethal foe && (healed.damageMarks[foe.n]?).isNone &&
+    !prevented.lethal foe && (prevented.damageMarks[foe.n]?).isNone && events.isEmpty &&
+    other.combatNeed foe (some p) == some 1 && other.combatNeed foe (some third) == some 4 &&
+    (withDragon.mapObjects healObj).damageMarks.isEmpty
+
+-- Ally damage does not inherit the Dragon's passive in 2v2 (CR 142.3.b).
+#guard tun fun s => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := { s with config := { s.config with mode := .teamDuel } }
+  let (s, _) ← put s p "UNL-118" .base
+  let (s, victim) ← put s enemy "OGN-049" .base
+  let (s, ownSide) ← put s teammate "OGN-049" .base
+  return !((dealObj 1 s victim (some teammate)).1.lethal victim) &&
+    (dealObj 1 s victim (some p)).1.lethal victim && !((dealObj 1 s ownSide (some p)).1.lethal ownSide)
+
+-- Each location gets its own optional target. Moving one target before resolution leaves the
+-- targets originally declared at the other locations legal.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let third : PlayerId := ⟨2⟩
+  let fourth : PlayerId := ⟨3⟩
+  let bf := s.bf0
+  let s := { s with config := { s.config with mode := .ffa4 }, turnOrder := [p, q, third, fourth] }
+  let (s, qBase) ← put s q "OGN-049" .base
+  let (s, spare) ← put s q "OGN-088" .base
+  let (s, thirdBase) ← put s third "OGN-049" .base
+  let (s, onField) ← putAt (s.control q bf) q "OGN-049" bf
+  let (s, dragon) ← put (s.rich p) p "UNL-118" .hand
+  let (offered, _) ← (step 100 s ⟨.player p, .playCard dragon ⟨12, [.body, .body, .body, .body]⟩ []⟩).toOption
+  let finalize (targets : List ObjId) : Action := ⟨.player p, .putTrigger 0 targets (.pay [])⟩
+  let (queued, _) ← (step 100 offered (finalize [qBase, thirdBase, onField])).toOption
+  let (empty, _) ← (step 100 offered (finalize [])).toOption
+  let success := settleChain {} 20 queued
+  let moved := settleChain {} 20 (moveHome queued onField).1
+  let skipped := settleChain {} 20 empty
+  return !(step 100 offered (finalize [qBase, spare])).isOk &&
+    (queued.obj? qBase).any (·.damage == 0) && queued.inPlay.contains onField &&
+    success.countIn q .trash "OGN-049" == 2 && success.countIn third .trash "OGN-049" == 1 &&
+    success.inPlay.contains spare && moved.inPlay.contains onField &&
+    moved.countIn q .trash "OGN-049" == 1 && moved.countIn third .trash "OGN-049" == 1 &&
+    skipped.inPlay.contains qBase && skipped.inPlay.contains thirdBase && skipped.inPlay.contains onField
+
+-- Real Combat Damage uses the assigning seat both for the lethal amount and the marks.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, _) ← put s p "UNL-118" .base
+  let (s, attacker) ← putAt (s.control q bf) p "OGN-049" bf
+  let (s, first) ← putAt s q "OGN-049" bf
+  let (s, second) ← putAt s q "OGN-049" bf
+  let (step1, _) ← (advance 100 { s with pending := [.combatDamage bf p] } []).toOption
+  let (step2, _) ← (step 100 step1 ⟨.player p, .assignPick first⟩).toOption
+  let (step3, _) ← (step 100 step2 ⟨.player p, .assignPick second⟩).toOption
+  let (step4, _) ← (step 100 step3 ⟨.player p, .assignDone⟩).toOption
+  let (step5, _) ← (step 100 step4 ⟨.player q, .assignPick attacker⟩).toOption
+  let (done, events) ← (step 100 step5 ⟨.player q, .assignDone⟩).toOption
+  return events.contains (.damaged first 1) && events.contains (.damaged second 4) &&
+    events.contains (.damaged attacker 10) && done.countIn q .trash "OGN-049" == 2 &&
+    done.countIn p .trash "OGN-049" == 1 && done.damageMarks.isEmpty
 
 -- Maduli the Gatekeeper (UNL-144) can't be readied: not by the Awaken Phase, not by an effect
 #guard tun fun s => do

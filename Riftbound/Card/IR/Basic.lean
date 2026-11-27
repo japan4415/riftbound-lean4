@@ -261,6 +261,14 @@ inductive Place where
   | onChainAll
 deriving DecidableEq, Repr, Hashable
 
+/-- A specific physical location on the Board (CR 197). -/
+inductive BoardLocation where
+  /-- A specific seat's Base. -/
+  | base (seat : PlayerId)
+  /-- A specific Battlefield on the Board. -/
+  | battlefield (id : ObjId)
+deriving DecidableEq, Repr, Hashable
+
 /-- How many objects an effect takes (CR 355): "a", "up to N", "N", "each" or "all". -/
 inductive Quantity where
   /-- Exactly one. -/
@@ -273,6 +281,8 @@ inductive Quantity where
   | combinedMightAtMost (limit : Nat)
   /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
   | atOneBattlefield (limit : Nat)
+  /-- Up to one target in each specific Base or Battlefield. -/
+  | onePerLocation
   /-- From one target up to the current Might of the Unit at an earlier slot (CR 355.14). -/
   | splitByMight (slot : Nat)
   /-- Exactly `n`. -/
@@ -364,6 +374,8 @@ deriving DecidableEq, Repr, Hashable
 
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
+  /-- Original locations specified for a finalized Chain item's targets (CR 359.3.e). -/
+  | declaredTargetLocations (locations : List (ObjId × BoardLocation))
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
   | unchoosableEnemy
   /-- No standard or instructed Move can move this Unit this turn (CR 447). -/

@@ -145,6 +145,8 @@ deriving DecidableEq, Repr, Hashable
 /-- Damage from one instruction. Damage and replacements remain tentative until the
 whole simultaneous instruction is ready. -/
 structure EffectDamageBatch extends EffectDamageProgress where
+  /-- Responsible seat per target when the hits come from different sources (CR 418.6). -/
+  damageSources : List (ObjId × PlayerId) := []
   /-- An optional reflexive ability tied to actual deaths from the damage. -/
   onKill : Option DamageKillLink := none
 deriving DecidableEq, Hashable
@@ -154,6 +156,10 @@ instance : Repr EffectDamageBatch where
   reprPrec batch prec := match batch.onKill with
     | none => reprPrec batch.toEffectDamageProgress prec
     | some link => reprPrec (batch.toEffectDamageProgress, link) prec
+
+/-- The player responsible for a hit, regardless of whether the damage is spell or ability damage. -/
+def EffectDamageBatch.responsible (batch : EffectDamageBatch) (target : ObjId) : Option PlayerId :=
+  ((batch.damageSources.find? (·.1 == target)).map Prod.snd) <|> batch.controller
 
 /-- The reflexive ability attached to a Unit token instruction (CR 375, 388-389). -/
 structure UnitTokenFollowup where

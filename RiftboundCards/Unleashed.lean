@@ -3429,13 +3429,9 @@ def UNL_118 : CardDef :=
   { UNL_118.meta with
     abilities := [.passive .always [.anyDamageKills],
       .triggered (.onSelf .play)
-        (.of [] (.seqOf [
-          .forEach (Selector.all .any .anywhere [.ofType .battlefield])
-            (.may (.prim (.deal (Selector.one .enemy .anywhere [.ofType .unit, .at_ .it])
-              (.const 1)))),
-          .may (.prim (.deal (Selector.one .enemy .atBase [.ofType .unit]) (.const 1)))]))
-        .unlimited],
-    status := .drafted }
+        (.of [.targetOf .onePerLocation .enemy .anywhere [.ofType .unit]]
+          (.prim (.deal (.slotsFrom 0) (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-119
 /--

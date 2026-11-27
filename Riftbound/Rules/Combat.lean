@@ -66,11 +66,10 @@ def foes (s : GameState) (bf : ObjId) (side : PlayerId) : List ObjId :=
 
 /-- The damage a Unit needs to be killed: what is missing to its Might, and at least 1 if it has no
 damage, because lethal damage is not 0 (CR 142.4.b). -/
-def need (s : GameState) (u : ObjId) : Nat :=
+def need (s : GameState) (u : ObjId) (responsible : Option PlayerId := none) : Nat :=
   let d := ((s.obj? u).map (·.damage)).getD 0
-  -- any amount of the damage of a side kills, while a passive ability of it says so
-  if ((s.obj? u).map (fun o => s.anyDamageKills o.controller)).getD false then
-    (if d = 0 then 1 else 0)
+  if s.damageWillBeLethal u 0 none then 0
+  else if (s.obj? u).any (fun target => responsible.any (fun p => s.makesDamageLethal p target)) then 1
   else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
 /-- The order chosen for this Unit in the current combat, once all its replacements are ordered. -/
@@ -105,8 +104,8 @@ def combatDamagePreview (s : GameState) (u : ObjId) (raw : Nat) (batch : EffectD
 
 /-- The least raw damage yielding lethal damage in the selected order. Work backwards through
 the replacements. Full prevention has no finite lethal assignment (CR 438.5, 467.2.c.5). -/
-def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
-  let base := s.need u
+def combatNeed (s : GameState) (u : ObjId) (responsible : Option PlayerId := none) : Option Nat :=
+  let base := s.need u responsible
   if base == 0 then some 0
   else if (s.activeMods u).contains .noDamage then none
   else (s.combatReplacements u).foldr (fun replacement lethal => lethal.bind (fun needed =>
@@ -373,8 +372,12 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
 
 /-- The damage from both sides after applying the chosen assignment replacements
 (CR 467.2.c.1, 467.2.c.5). -/
-def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat)) : EffectDamageBatch :=
-  let batch : EffectDamageBatch := { controller := none, incoming := [] }
+def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat))
+    (combatants : Option (PlayerId × PlayerId) := none) : EffectDamageBatch :=
+  let damageSources := combatants.toList.flatMap fun (attacker, defender) =>
+    hits.filterMap fun (unit, _) => (s.obj? unit).map fun target =>
+      (unit, if s.config.mode.sameSide attacker target.controller then defender else attacker)
+  let batch : EffectDamageBatch := { controller := none, incoming := [], damageSources }
   hits.foldl (fun now (u, raw) =>
     match s.obj? u with
     | none => now
@@ -595,22 +598,22 @@ def excessOf (s : GameState) (p : PlayerId) (done : List (ObjId × Nat)) : Nat :
       if (s.activeMods unit).contains .noDamage then acc
       else
         let damage := (s.combatDamagePreview unit raw { controller := none, incoming := [] }).2
-        acc + (damage - s.need unit)) 0
+        acc + (damage - s.need unit (some p))) 0
 
 /-- The answer `assignDone`: the damage of this side is assigned down the order, and the next side
 asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -/
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) : GameState × List Event :=
   let total := s.combatTotal bf att side
-  let done' := done ++ greedy (fun u => (s.combatNeed u).getD (total + 1)) total acc
+  let done' := done ++ greedy (fun u => (s.combatNeed u (some side)).getD (total + 1)) total acc
   let defender := s.defenderAt bf att
   match (if side = att then s.assignFrame bf att defender done' else none) with
   | some f => ({ s with pending := combatAssignmentChoices s bf defender ++ f :: rest }, [])
   | none =>
-    let batch := combatDamageBatch s done'
+    let batch := combatDamageBatch s done' (some (att, defender))
     let excess := (excessOf s att done', excessOf s defender done')
     let next := Frame.cleanup :: .combatResolve bf att :: rest
-    if batch.resolved.any (fun hit => (damageDeathChoice s hit).isSome) then
+    if batch.resolved.any (fun hit => (damageDeathChoice s batch hit).isSome) then
       let damage := EffectList.ofList [.resolveEffectDamage batch none, .endCombatDamage excess]
       ({ s with pending := .run att bf {} damage :: next }, [])
     else

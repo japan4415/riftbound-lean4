@@ -1493,6 +1493,21 @@ theorem prepareGearAnimation_safe (s : GameState) (t : PendTrigger) (targets : L
   · exact endGearAnimation_safe _ _ _
   · exact Safe.refl _
 
+/-- Store a location restriction that will be checked against each selected target on resolution. -/
+def recordTriggerLocations (s : GameState) (t : PendTrigger) (item : ObjId)
+    (targets : List ObjId) (mode : Option Nat) : GameState :=
+  if !targets.isEmpty && (trigChoices s t mode).any Choice.recordsLocations then
+    let locations := targets.filterMap (fun id => (s.boardLocationOf id).map (id, ·))
+    s.addTurnFxOn t.controller item (.declaredTargetLocations locations)
+  else s
+
+theorem recordTriggerLocations_safe (s : GameState) (t : PendTrigger) (item : ObjId)
+    (targets : List ObjId) (mode : Option Nat) : Safe s (recordTriggerLocations s t item targets mode) := by
+  unfold recordTriggerLocations
+  split
+  · exact addTurnFxOn_safe _ _ _ _
+  · exact Safe.refl s
+
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none)
@@ -1512,7 +1527,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       targetPlayer := player }
   let s1 := prepareGearAnimation used t ts mode
   match addObject s1 item .chain with
-  | some r => r.1
+  | some r => recordTriggerLocations r.1 t r.2 ts mode
   | none => s1
 
 /-- Record the replacement selected for each object in the same cost. -/
@@ -1638,8 +1653,9 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
   dsimp only
   split
   · rename_i r hr
-    refine done.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
-      fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩
+    exact (done.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
+      fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩).trans
+      (recordTriggerLocations_safe _ _ _ _ _)
   · exact done
 
 /-- Paying for a trigger preserves structural invariants. -/

@@ -1432,7 +1432,7 @@ def GameState.pickCandidates (s : GameState) (p : PlayerId) (self : ObjId) (env 
 def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
-  | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ => true
+  | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ | .onePerLocation => true
   | _ => false
 
 /-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
@@ -1587,7 +1587,7 @@ def Choice.multi : Choice → Bool
   | .target (.upTo n) _ _ _ => decide (2 ≤ n)
   | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
   | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _
-  | .target (.splitByMight _) _ _ _ => true
+  | .target (.splitByMight _) _ _ _ | .target .onePerLocation _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
@@ -1696,6 +1696,62 @@ end GameState
 def GameState.targetsByBattlefield (s : GameState) (ids : List ObjId) : List (List ObjId) :=
   s.battlefields.map (fun bf => ids.filter (fun id => s.hereOf id == some bf))
 
+/-- A Unit's current physical Base or Battlefield. -/
+def GameState.boardLocationOf (s : GameState) (id : ObjId) : Option BoardLocation :=
+  match s.locate id with
+  | some (.player seat .base) => some (.base seat)
+  | some .battlefieldZone => ((s.obj? id).bind (·.loc)).map .battlefield
+  | _ => none
+
+/-- The combinations obtained by taking zero or one member of each location's candidates. -/
+def locationSelections : List (List ObjId) → List (List ObjId)
+  | [] => [[]]
+  | group :: groups =>
+    let rest := locationSelections groups
+    rest ++ group.flatMap (fun id => rest.map (id :: ·))
+
+private theorem locationSelections_subset {groups : List (List ObjId)} {ids : List ObjId}
+    {target : ObjId} (selected : ids ∈ locationSelections groups) (member : target ∈ ids) :
+    ∃ group ∈ groups, target ∈ group := by
+  induction groups generalizing ids with
+  | nil => simp [locationSelections] at selected; subst ids; simp at member
+  | cons group groups ih =>
+    simp only [locationSelections, List.mem_append, List.mem_flatMap, List.mem_map] at selected
+    rcases selected with selected | ⟨id, inGroup, rest, selected, rfl⟩
+    · obtain ⟨g, hg, ht⟩ := ih selected member
+      exact ⟨g, List.mem_cons_of_mem _ hg, ht⟩
+    · rcases List.mem_cons.mp member with rfl | member
+      · exact ⟨group, List.mem_cons_self .., inGroup⟩
+      · obtain ⟨g, hg, ht⟩ := ih selected member
+        exact ⟨g, List.mem_cons_of_mem _ hg, ht⟩
+
+/-- Enumerate one optional selection per occupied location and put each set in target order. -/
+def GameState.targetsOnePerLocation (s : GameState) (ids : List ObjId) : List (List ObjId) :=
+  let tagged := ids.filterMap fun id => (s.boardLocationOf id).map (id, ·)
+  let locations := (tagged.map Prod.snd).eraseDups
+  let groups := locations.map fun place => (tagged.filter (·.2 == place)).map Prod.fst
+  (locationSelections groups).map (·.mergeSort (fun a b => decide (a.n ≤ b.n)))
+
+private theorem GameState.targetsOnePerLocation_subset {s : GameState} {ids chosen : List ObjId}
+    {target : ObjId} (selected : chosen ∈ s.targetsOnePerLocation ids) (member : target ∈ chosen) :
+    target ∈ ids := by
+  simp only [targetsOnePerLocation, List.mem_map] at selected
+  obtain ⟨unsorted, selected, rfl⟩ := selected
+  obtain ⟨group, inGroups, targetInGroup⟩ := locationSelections_subset selected (List.mem_mergeSort.mp member)
+  obtain ⟨_, _, rfl⟩ := List.mem_map.mp inGroups
+  obtain ⟨tag, inGroup, rfl⟩ := List.mem_map.mp targetInGroup
+  obtain ⟨original, inOriginal, tagEq⟩ := List.mem_filterMap.mp (List.mem_filter.mp inGroup).1
+  have same : original = tag.1 := by
+    cases loc : s.boardLocationOf original with
+    | none => simp [loc] at tagEq
+    | some _ => exact congrArg Prod.fst (by simpa [loc] using tagEq : (original, _) = tag)
+  simpa [← same] using inOriginal
+
+/-- Does this choice assign each selected object to its own specific location? -/
+def Choice.recordsLocations : Choice → Bool
+  | .target .onePerLocation _ _ _ => true
+  | _ => false
+
 /-- The eligible sets of candidates for a multi-target choice. -/
 def Choice.sortedTargetGroups (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List (List ObjId) :=
@@ -1736,22 +1792,27 @@ def Choice.groupNonemptyOk (c : Choice) (ids : List ObjId) : Bool :=
 /-- All chosen targets must fit one candidate group and satisfy its limit. -/
 def Choice.groupTargetsOk (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (ids : List ObjId) : Bool :=
-  c.groupNonemptyOk ids && (c.sortedTargetGroups s p self pm acc).any (fun group =>
-    decide (ids.Sublist group) &&
-      decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self pm acc group))
+  if c.recordsLocations then (s.targetsOnePerLocation (c.sortedCands s p self pm acc)).contains ids
+  else c.groupNonemptyOk ids && (c.sortedTargetGroups s p self pm acc).any (fun group =>
+      decide (ids.Sublist group) &&
+        decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self pm acc group))
 
 /-- Enumerate legal target groups. -/
 def Choice.groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) : List (List ObjId) :=
-  ((c.sortedTargetGroups s p self pm acc).flatMap (fun group =>
-    subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self pm acc group) group)).filter
-      c.groupNonemptyOk
+  if c.recordsLocations then s.targetsOnePerLocation (c.sortedCands s p self pm acc)
+  else ((c.sortedTargetGroups s p self pm acc).flatMap (fun group =>
+      subseqsWithin (c.groupWeight s pm) (c.targetGroupLimit s p self pm acc group) group)).filter
+        c.groupNonemptyOk
 
 /-- Enumerating grouped targets agrees with checking the selected targets. -/
 theorem Choice.mem_groupTuples (s : GameState) (p : PlayerId) (self : ObjId)
     (pm : List (ObjId × Int)) (acc : List ObjId) (c : Choice) (ids : List ObjId) :
     ids ∈ c.groupTuples s p self pm acc ↔ c.groupTargetsOk s p self pm acc ids = true := by
-  simp only [Choice.groupTuples, Choice.groupTargetsOk, List.mem_filter, List.mem_flatMap,
+  unfold Choice.groupTuples Choice.groupTargetsOk
+  split
+  · simp_all
+  simp only [List.mem_filter, List.mem_flatMap,
     mem_subseqsWithin, Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq]
   constructor
   · rintro ⟨⟨group, hg, hsub, hsum⟩, hcount⟩
@@ -1902,11 +1963,16 @@ theorem targetsOkAfter_mem_targetPresent {s : GameState} {p : PlayerId} {self : 
   | c :: cs, acc, ts, h => by
     intro x hx
     by_cases hm : c.multi = true
-    · simp only [targetsOkAfter_cons, hm, ite_true, Choice.groupTargetsOk, Bool.and_eq_true,
-        List.any_eq_true, decide_eq_true_eq] at h
-      obtain ⟨group, hg, hsub, _⟩ := h.2.2
-      have hx' := Choice.mem_sortedTargetGroups hg (hsub.subset hx)
-      exact Choice.candidatesAfter_mem ((List.mem_mergeSort).mp hx')
+    · simp only [targetsOkAfter_cons, hm, ite_true, Bool.and_eq_true] at h
+      have within := h.2
+      unfold Choice.groupTargetsOk at within
+      split at within
+      · exact Choice.candidatesAfter_mem (List.mem_mergeSort.mp
+          (GameState.targetsOnePerLocation_subset (List.contains_iff_mem.mp within) hx))
+      · simp only [Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq] at within
+        obtain ⟨group, hg, hsub, _⟩ := within.2
+        have hx' := Choice.mem_sortedTargetGroups hg (hsub.subset hx)
+        exact Choice.candidatesAfter_mem (List.mem_mergeSort.mp hx')
     · have hm' : c.multi = false := by simpa using hm
       cases ts with
       | nil => cases hx

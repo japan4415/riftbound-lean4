@@ -2229,6 +2229,39 @@ theorem spendPrevent_safe (s : GameState) (id : ObjId) (n : Nat) :
 def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
   { o with damage := o.damage + n, damagedTurn := if n = 0 then o.damagedTurn else some turn }
 
+/-- The responsible seat controls a permanent that makes its damage lethal to this enemy
+(CR 142.3.b, 142.4.c). -/
+def GameState.makesDamageLethal (s : GameState) (responsible : PlayerId) (target : Object) : Bool :=
+  !s.config.mode.sameSide responsible target.controller && s.inPlay.any (fun src =>
+    (s.obj? src).any (·.controller == responsible) && (s.activeMods src).contains .anyDamageKills)
+
+/-- Already marked damage and an incoming hit together satisfy the current lethal threshold. -/
+def GameState.damageWillBeLethal (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : Bool :=
+  (s.obj? id).any fun target =>
+    let total := target.damage + amount
+    decide (0 < total) && ((s.mightNow id).any (fun might => decide (Might.eff might ≤ total)) ||
+      (decide (0 < amount) && responsible.any (fun p => s.makesDamageLethal p target)) ||
+      (s.damageMarks[id.n]?.getD []).any (fun (p, _) => p.any (fun seat => s.makesDamageLethal seat target)))
+
+/-- Mark only damage that was actually dealt after applying immunity and prevention. -/
+def GameState.markDamage (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : GameState :=
+  let damaged := s.modObj id (fun o => o.takeDamage s.turn amount)
+  if amount == 0 || (s.obj? id).isNone then damaged else
+    let marks := (responsible, amount) :: (damaged.damageMarks[id.n]?.getD [])
+    { damaged with damageMarks := damaged.damageMarks.insert id.n marks }
+
+theorem GameState.markDamage_safe (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : Safe s (s.markDamage id amount responsible) := by
+  have damaged := Safe.modObj s id (f := fun o => o.takeDamage s.turn amount) (fun _ => rfl) (fun _ => rfl)
+  unfold markDamage
+  dsimp only
+  split
+  · exact damaged
+  · exact damaged.trans ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Damage is excluded by the Unit's immunity, with enemy-effect immunity scoped to its source. -/
 def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option PlayerId) : Bool :=
   let mods := s.activeMods id
@@ -2236,11 +2269,11 @@ def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option 
     (controller.any (fun p => !s.config.mode.sameSide p o.controller) && mods.contains .noEnemyEffectDamage)
 
 /-- Record applied damage, then process effects that react directly to it (CR 418). -/
-def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealRemaining (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : GameState × List Event :=
   let damagingUnit := decide (0 < n) && (s.cardDef? id).any (·.hasType .unit)
-  let lethal := (s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n
-  let saver := if damagingUnit && decide lethal then s.deathSaver id else none
-  let damaged := s.modObj id (fun o => o.takeDamage s.turn n)
+  let saver := if damagingUnit && s.damageWillBeLethal id n responsible then s.deathSaver id else none
+  let damaged := s.markDamage id n responsible
   let event := Event.damaged id n
   match saver with
   | some _ =>
@@ -2253,9 +2286,9 @@ def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Eve
     else (damaged, [event])
 
 /-- Recording damage and applying direct reactions preserve the structural invariants. -/
-theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId) :
-    Safe s (dealRemaining n s id).1 := by
-  have damaged := Safe.modObj s id (f := fun o => o.takeDamage s.turn n) (fun _ => rfl) (fun _ => rfl)
+theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : Safe s (dealRemaining n s id responsible).1 := by
+  have damaged := s.markDamage_safe id n responsible
   unfold dealRemaining
   dsimp only
   split
@@ -2271,42 +2304,44 @@ def GameState.previewPrevent (s : GameState) (id : ObjId) (n : Nat) : Nat × Nat
   (prevented, incoming - prevented)
 
 /-- Spend finite prevention, then apply any damage left (CR 438.2-438.4). -/
-def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : GameState × List Event :=
   let (prevented, damage) := s.previewPrevent id n
   let after := { s with turnFx := spendPrevent s.turn id prevented s.turnFx }
   if 0 < n ∧ damage = 0 then (after, [])
-  else dealRemaining damage after id
+  else dealRemaining damage after id responsible
 
 /-- Applying finite prevention preserves the structural invariants. -/
-theorem dealThroughPrevent_safe (n : Nat) (s : GameState) (id : ObjId) :
-    Safe s (dealThroughPrevent n s id).1 := by
+theorem dealThroughPrevent_safe (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : Safe s (dealThroughPrevent n s id responsible).1 := by
   unfold dealThroughPrevent
   split
   split
   · exact spendPrevent_safe s id _
-  · exact (spendPrevent_safe s id _).trans (dealRemaining_safe _ _ _)
+  · exact (spendPrevent_safe s id _).trans (dealRemaining_safe _ _ _ _)
 
 /-- Apply damage after accounting for immunity, doubling and prevention (CR 418, 438). An object
 whose damage reaches its Might is killed by the next Cleanup (CR 323.4), not here. -/
-def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none) :
-    GameState × List Event :=
+def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none)
+    (responsible : Option PlayerId := effectController) : GameState × List Event :=
   match s.obj? id with
   | some o =>
     if damageImmune s id o effectController then (s, [])
     else if decide (0 < n) && s.shielded id then (s.useShield id, [])
-    else dealThroughPrevent n s id
+    else dealThroughPrevent n s id responsible
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
-    (effectController : Option PlayerId := none) : Safe s (dealObj n s id effectController).1 := by
+    (effectController : Option PlayerId := none) (responsible : Option PlayerId := effectController) :
+    Safe s (dealObj n s id effectController responsible).1 := by
   unfold dealObj
   split
   · split
     · exact Safe.refl s
     · split
       · exact useShield_safe s id
-      · exact dealThroughPrevent_safe n s id
+      · exact dealThroughPrevent_safe n s id responsible
   · exact Safe.refl s
 
 /-- Read both Mights before marking damage. The Units themselves are the sources, so
@@ -2314,8 +2349,8 @@ modifiers for damage from a Spell do not apply (CR 418.6.b.3). -/
 def exchangeDamage (s : GameState) (a b : ObjId) : GameState × List Event :=
   match s.mightNow a, s.mightNow b with
   | some am, some bm =>
-    let hit := dealObj am.toNat s b
-    let reply := dealObj bm.toNat hit.1 a
+    let hit := dealObj am.toNat s b none ((s.obj? a).map (·.controller))
+    let reply := dealObj bm.toNat hit.1 a none ((s.obj? b).map (·.controller))
     (reply.1, hit.2 ++ reply.2)
   | _, _ => (s, [])
 
@@ -2324,7 +2359,7 @@ theorem exchangeDamage_safe (s : GameState) (a b : ObjId) :
     Safe s (exchangeDamage s a b).1 := by
   unfold exchangeDamage
   split
-  · exact (dealObj_safe _ s b).trans (dealObj_safe _ _ a)
+  · exact (dealObj_safe _ s b _ _).trans (dealObj_safe _ _ a _ _)
   · exact Safe.refl s
 
 /-- How much has already been consumed from this turn note in the current damage instruction. -/
@@ -2451,24 +2486,26 @@ theorem linkDamageHit_safe (r : GameState × List Event) (id : ObjId) (amount : 
   · exact Safe.refl _
 
 /-- Record damage and any per-hit attribution, keeping the whole instruction's events together. -/
-def applyEffectDamageAmounts (link : Option DamageKillLink) (s : GameState) :
+def applyEffectDamageAmounts (batch : EffectDamageBatch) (s : GameState) :
     List (ObjId × Nat) → GameState × List Event
   | [] => (s, [])
   | (id, amount) :: rest =>
-    let r := if (s.obj? id).isSome then linkDamageHit (dealRemaining amount s id) id amount link else (s, [])
-    let later := applyEffectDamageAmounts link r.1 rest
+    let r := if (s.obj? id).isSome then
+        linkDamageHit (dealRemaining amount s id (batch.responsible id)) id amount batch.onKill
+      else (s, [])
+    let later := applyEffectDamageAmounts batch r.1 rest
     (later.1, r.2 ++ later.2)
 
 /-- Recording a batch of damage preserves the game invariants. -/
-theorem applyEffectDamageAmounts_safe (link : Option DamageKillLink) (s : GameState)
-    (hits : List (ObjId × Nat)) : Safe s (applyEffectDamageAmounts link s hits).1 := by
+theorem applyEffectDamageAmounts_safe (batch : EffectDamageBatch) (s : GameState)
+    (hits : List (ObjId × Nat)) : Safe s (applyEffectDamageAmounts batch s hits).1 := by
   induction hits generalizing s with
   | nil => exact Safe.refl s
   | cons hit rest ih =>
     obtain ⟨id, amount⟩ := hit
     simp only [applyEffectDamageAmounts]
     split
-    · exact (dealRemaining_safe amount s id).trans ((linkDamageHit_safe _ _ _ _).trans (ih _))
+    · exact (dealRemaining_safe amount s id _).trans ((linkDamageHit_safe _ _ _ _).trans (ih _))
     · exact ih s
 
 /-- Commit the spent effects and the damage in one step, after all replacement decisions. -/
@@ -2481,7 +2518,7 @@ def commitEffectDamage (s : GameState) (batch : EffectDamageBatch) : GameState �
       if spent < n then some { note with kind := .preventDamage (n - spent) } else none
     | .damagePrevented => none
     | _ => some note)
-  applyEffectDamageAmounts batch.onKill { s with turnFx := notes } batch.resolved.reverse
+  applyEffectDamageAmounts batch { s with turnFx := notes } batch.resolved.reverse
 
 /-- Committing the ordered damage and its replacements preserves the game invariants. -/
 theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
@@ -2494,11 +2531,11 @@ theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
 
 /-- A positive hit that immediately Kills a Unit or applies a lethal-damage replacement
 can require a choice after prevention determines how much damage will be dealt. -/
-def damageDeathChoice (s : GameState) (hit : ObjId × Nat) :
+def damageDeathChoice (s : GameState) (batch : EffectDamageBatch) (hit : ObjId × Nat) :
     Option (ObjId × PlayerId × Effect × Effect) :=
   let (id, amount) := hit
-  let lethal := (s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + amount
-  if amount != 0 && (s.killOnHit id || (decide lethal && (s.deathSaver id).isSome)) then
+  if amount != 0 && (s.killOnHit id ||
+      (s.damageWillBeLethal id amount (batch.responsible id) && (s.deathSaver id).isSome)) then
     s.deathReplacementChoice id
   else none
 
@@ -2563,7 +2600,7 @@ def resolveEffectDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   | none =>
     match batch.incoming with
     | [] =>
-      match batch.resolved.reverse.findSome? (damageDeathChoice s) with
+      match batch.resolved.reverse.findSome? (damageDeathChoice s batch) with
       | some (u, controller, first, other) =>
         (s, [.eitherDo controller u {} first other .nil,
           .run p src env (.cons (.resolveEffectDamage batch none) es)], [])
@@ -2645,12 +2682,23 @@ def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
       let y ← (← b.eval s p src env).head?
       let xm ← s.mightNow x
       let ym ← s.mightNow y
-      some { controller := none, incoming := [(y, xm.toNat), (x, ym.toNat)] }
+      let sources := [(y, x), (x, y)].filterMap fun (target, src) =>
+        (s.obj? src).map (fun o => (target, o.controller))
+      some { controller := none, incoming := [(y, xm.toNat), (x, ym.toNat)], damageSources := sources }
     | _ => none
   if batch.incoming.any (fun (id, amount) => amount != 0 &&
       (s.obj? id).any (fun target => !damageImmune s id target batch.controller) &&
       (1 < (damageReplacements s batch id).length ||
-        (damageDeathChoice s (id, amount)).isSome)) then some batch else none
+        (damageDeathChoice s batch (id, amount)).isSome)) then some batch else none
+
+/-- A distributed hit is attributed to its specified Unit's controller (CR 418.6.b.4). -/
+def unitSplitDamageBatch (s : GameState) (hits : List (ObjId × Nat)) (link : DamageKillLink) :
+    EffectDamageBatch :=
+  let responsible := ((s.obj? link.dealer).map (·.controller)).getD link.player
+  { controller := none
+    incoming := hits
+    onKill := some link
+    damageSources := hits.map (fun (target, _) => (target, responsible)) }
 
 /-- Apply the copyable text at the start of this attachment (CR 479.1.d, 719.1). -/
 def copyAttachmentText (s : GameState) (g u : ObjId) (d : CardDef) : GameState :=
@@ -6777,8 +6825,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | _, _, _ => skip
   | .applyUnitSplitDamage hits link =>
     if s.damageOff then (s, [.run p src env es], []) else
-      let batch : EffectDamageBatch := { controller := none, incoming := hits, onKill := some link }
-      (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
+      (s, [.run p src env (.cons (.resolveEffectDamage (unitSplitDamageBatch s hits link) none) es)], [])
   | .applySplitDamage hits =>
     if s.damageOff then (s, [.run p src env es], []) else
       let batch : EffectDamageBatch := {
@@ -6923,8 +6970,18 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
     let subject := o.triggerSubject.toList
     let targets := if o.spellPick == .plain then o.targets.take (o.targets.length - subject.length)
       else o.targets
-    let slots := if recheck then recheckedSlots s o.controller src targets definition ++
-      subject.map Value.obj else slotValues o.targets definition
+    let slots := match definition.bind (fun e => e.choices.find? Choice.recordsLocations) with
+      | some choice =>
+        let declared := s.turnFx.findSome? fun note =>
+          if note.target == some item then match note.kind with
+            | .declaredTargetLocations locations => some locations
+            | _ => none
+          else none
+        let valid := choice.candidatesAfter s o.controller src s.mightTable []
+        (declared.getD []).map fun (target, loc) =>
+          if valid.contains target && s.boardLocationOf target == some loc then .obj target else .int 0
+      | none => if recheck then recheckedSlots s o.controller src targets definition ++
+          subject.map Value.obj else slotValues o.targets definition
     let targetObjs := match ability with
       | some (.activated costs _ _ _) =>
         if costs.any (fun | .killFriendly .. => true | _ => false) then targets.dropLast

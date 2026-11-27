@@ -1111,7 +1111,7 @@ theorem offBoardToken_zone {s : GameState} {id : ObjId} (h : s.offBoardToken = s
 
 /-- Removing an object does not change what the others are. -/
 theorem obj?_removed {s : GameState} {id y : ObjId} (h : y.n ≠ id.n) (z : Zone) (l : List ObjId) :
-    ({ s.setZone z l with objects := s.objects.erase id.n } : GameState).obj? y = s.obj? y := by
+    ({ s.setZone z l with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).obj? y = s.obj? y := by
   unfold GameState.obj?
   have : ¬ compare id.n y.n = .eq := fun e => h (Nat.compare_eq_eq.mp e).symm
   simp [Std.ExtTreeMap.getElem?_erase, this]
@@ -1137,10 +1137,10 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       exact Option.some.inj (h2.symm.trans h1)
     subst hzz
     -- the Board is untouched
-    have hin : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hin : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).inPlay = s.inPlay := by
       rw [GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
-      have hpc : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+      have hpc : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
           GameState).inPlayZones = s.inPlayZones := rfl
       rw [hpc]
       apply flatMap_congr_mem
@@ -1152,11 +1152,11 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
         simp only [List.mem_append, List.mem_map, List.mem_singleton] at hx
         rcases hx with ⟨p, -, rfl⟩ | rfl <;> simp [Zone.isBoard, ZoneKind.isBoard] at hnb
       exact GameState.zone_setZone_ne s hxz _
-    have hlt : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hlt : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).tokC < s.tokC := by
       obtain ⟨s1, hs1⟩ : ∃ s1 : GameState, s1 =
           { s.setZone z' ((s.zone z').erase id) with
-            objects := s.objects.erase id.n } := ⟨_, rfl⟩
+            objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } := ⟨_, rfl⟩
       rw [← hs1]
       have hisTok : ∀ y : ObjId, y ≠ id → s1.isTok y = s.isTok y := by
         intro y hy
@@ -1200,11 +1200,11 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       intro e
       rw [← e] at hnb
       simp [Zone.isBoard] at hnb
-    have hbf : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hbf : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).zone Zone.battlefieldZone = s.zone Zone.battlefieldZone :=
       GameState.zone_setZone_ne s hbz _
     -- the objects in play are as they were: the token that goes is not one of them
-    have hdm : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hdm : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).dmgC = s.dmgC := by
       unfold GameState.dmgC
       rw [hin]
@@ -1220,14 +1220,14 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       have hxid : x ≠ id := ne_of_mem_other_zone hwf hidz' hxz hne
       have hn : x.n ≠ id.n := fun e => hxid (objId_eq_of_n e)
       rw [obj?_removed hn]
-    have hlt2 : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hlt2 : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).tokC + ({ s.setZone z' ((s.zone z').erase id) with
-          objects := s.objects.erase id.n } : GameState).dmgC < s.tokC + s.dmgC := by
+          objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).dmgC < s.tokC + s.dmgC := by
       rw [hdm]; omega
     have hl : ({ s.setZone z' ((s.zone z').erase id) with
-        objects := s.objects.erase id.n } : GameState).legendCount = s.legendCount := by
+        objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).legendCount = s.legendCount := by
       refine legendCount_eq (s := s)
-        (t := { s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n }) rfl ?_
+        (t := { s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n }) rfl ?_
       intro p
       apply GameState.zone_setZone_ne
       intro e

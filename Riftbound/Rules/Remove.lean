@@ -18,13 +18,15 @@ namespace Riftbound
 zone. Only what is not a physical card is removed this way (`removeObj_physIds`). -/
 def removeObj (s : GameState) (id : ObjId) : Option GameState :=
   match s.locate id with
-  | some z => some { s.setZone z ((s.zone z).erase id) with objects := s.objects.erase id.n }
+  | some z => some { s.setZone z ((s.zone z).erase id) with
+      objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n }
   | none => none
 
 /-- What removing an object does: it is taken out of the zone it is on, and out of the table. -/
 theorem removeObj_spec {s s' : GameState} {id : ObjId} (h : removeObj s id = some s') :
     ∃ z, z ∈ allZones s.playerCount ∧ id ∈ s.zone z ∧
-      s' = { s.setZone z ((s.zone z).erase id) with objects := s.objects.erase id.n } := by
+      s' = { s.setZone z ((s.zone z).erase id) with
+        objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } := by
   unfold removeObj at h
   split at h
   · rename_i z hz

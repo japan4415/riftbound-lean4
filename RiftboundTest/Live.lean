@@ -16,6 +16,19 @@ open Riftbound RiftboundDriver
 
 meta def h0 : List PlayerId := [⟨0⟩]
 
+-- Legacy checkpoints decode without a damage witness. New ones record attribution separately
+-- from the pre-existing state fingerprint.
+#guard match liveStart 1 h0 with
+  | .ok (g, _) =>
+    let before := ReplayCheckpoint.capture g.s []
+    let changed := { g.s with damageMarks := g.s.damageMarks.insert 19 [(some ⟨0⟩, 1)] }
+    let after := ReplayCheckpoint.capture changed []
+    let legacy := Lean.Json.mkObj [("state", .str before.state), ("events", .arr #[])]
+    let restored := (Lean.fromJson? (α := ReplayCheckpoint) legacy).toOption
+    before.state == after.state && after.damageMarks? == some [(19, [(some 0, 1)])] &&
+      restored.any (fun item => item.state == before.state && item.damageMarks?.isNone)
+  | .error _ => false
+
 -- a game for the person of seat 0: it waits for them (the mulligan), and offers only their answers
 #guard match liveStart 1 h0 with
   | .ok (g, j) =>

@@ -138,6 +138,8 @@ structure GameState where
   experience : Std.ExtTreeMap Nat Nat := {}
   /-- The physical card registered as each seat's Chosen Champion (CR 103.3.a, 112). -/
   chosenChampions : Std.ExtTreeMap Nat PhysId := {}
+  /-- Damage still marked on each object, newest first, with the responsible seat (CR 142.3). -/
+  damageMarks : Std.ExtTreeMap Nat (List (Option PlayerId × Nat)) := {}
 deriving DecidableEq
 
 /-- Game archives hashed the printed state before withdrawals were added. Preserve that format
@@ -164,6 +166,8 @@ instance : Repr GameState where
       else fields ++ [field "experience" (repr s.experience)]
     let fields := if s.chosenChampions.isEmpty then fields
       else fields ++ [field "chosenChampions" (repr s.chosenChampions)]
+    let fields := if s.damageMarks.isEmpty then fields
+      else fields ++ [field "damageMarks" (repr s.damageMarks)]
     Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Every zone of a game with `n` players. -/

@@ -77,7 +77,7 @@ theorem Effect.ObservedFinite.resolveDamage (batch : EffectDamageBatch) (hit : O
     intro s p src env more rest keeps wf reads pending base inserted
     cases incoming : batch.incoming with
     | nil =>
-      cases choice : batch.resolved.reverse.findSome? (damageDeathChoice s) with
+      cases choice : batch.resolved.reverse.findSome? (damageDeathChoice s batch) with
       | none =>
         apply advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
         simp only [runEffect, Effect.pickSel?, runEffect1, resolveEffectDamageStep, incoming, choice]
@@ -209,7 +209,7 @@ theorem Effect.ObservedFinite.applyUnitSplitDamage (hits : List (ObjId × Nat)) 
   · apply advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
     simp only [runEffect, Effect.pickSel?, runEffect1, disabled, ite_true]
     exact ⟨_, rest, rfl, base⟩
-  · let batch : EffectDamageBatch := { controller := none, incoming := hits, onKill := some link }
+  · let batch := unitSplitDamageBatch s hits link
     refine advance_run_via wf reads pending ?_ (.resolveDamage batch none) base inserted
     simp only [runEffect, Effect.pickSel?, runEffect1, ite_eq_right disabled, batch]
 
@@ -390,8 +390,8 @@ private theorem killOrSaveFrom_noAttach (root : ObjId) (fuel : Nat) (s : GameSta
         | some _ => exact ih _ _ _
       exact prior.append (completeDeathSave_noAttach _ _ _ _ _)
 
-private theorem dealObj_noAttach (n : Nat) (s : GameState) (id : ObjId) (controller : Option PlayerId) :
-    NoAttach (dealObj n s id controller).2 := by
+private theorem dealObj_noAttach (n : Nat) (s : GameState) (id : ObjId)
+    (controller responsible : Option PlayerId) : NoAttach (dealObj n s id controller responsible).2 := by
   unfold dealObj
   split
   · split
@@ -429,7 +429,7 @@ private theorem exchangeDamage_noAttach (s : GameState) (a b : ObjId) :
     NoAttach (exchangeDamage s a b).2 := by
   unfold exchangeDamage
   split
-  · exact (dealObj_noAttach _ _ _ _).append (dealObj_noAttach _ _ _ _)
+  · exact (dealObj_noAttach _ _ _ _ _).append (dealObj_noAttach _ _ _ _ _)
   · exact .nil
 
 private inductive PrimitiveDamage : Prim → Prop where
@@ -448,7 +448,7 @@ private theorem PrimitiveDamage.noAttach {pr : Prim} (damage : PrimitiveDamage p
     · obtain ⟨n, _, body⟩ := Option.bind_eq_some_iff.mp rule
       obtain ⟨ids, _, done⟩ := Option.map_eq_some_iff.mp body
       rw [← done]
-      exact applyEach_noAttach _ (fun _ _ => dealObj_noAttach _ _ _ _) s ids
+      exact applyEach_noAttach _ (fun _ _ => dealObj_noAttach _ _ _ _ _) s ids
   | exchange a b =>
     simp only [applyPrim] at rule
     split at rule
