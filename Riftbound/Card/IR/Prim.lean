@@ -186,8 +186,8 @@ inductive Prim where
   | becomeCopy (s src : Selector)
   /-- Add the Battlefield token to the board, if it is not there already (Baron Pit). -/
   | addBattlefield (token : String)
-  /-- Play `n` tokens at the place the object came from by its last move: the Battlefield it left,
-  else the Base (Lillia). -/
+  /-- Play `n` tokens at the place saved by a move-from trigger, or use the object's previous
+  location if no trigger saved one (Lillia). -/
   | createAtPrev (token : String) (n : Amount) (ready : Bool)
   /-- Play an additional copy of each token the selector names, where it is (Zilean). -/
   | cloneToken (s : Selector)
@@ -415,6 +415,8 @@ inductive TriggerEvent where
   | linkedUnitTokens (inheritsTarget : Bool)
   /-- Every Beginning Phase, using the Battlefield's ability controller (CR 190.6, 315.2.a). -/
   | battlefieldBeginning
+  /-- A move whose origin is saved for the ability. An empty field list denotes the Base. -/
+  | moveFrom
 deriving DecidableEq, Repr, Hashable
 
 /-- Something that happens in the game that a replacement ability can change (CR 367-375). -/

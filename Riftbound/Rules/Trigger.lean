@@ -635,6 +635,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | some o =>
       let fields := some (o.prevLoc.toList ++ o.loc.toList)
       (triggersOf s u o.controller .move).map (fun t => { t with eventBattlefields := fields }) ++
+        triggersOf s u o.controller .moveFrom (some o.prevLoc.toList) ++
         watchersOf s u o.controller .move
     | none => []
   | .phaseStarted p .beginning =>

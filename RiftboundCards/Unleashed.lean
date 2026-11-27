@@ -2417,9 +2417,9 @@ def UNL_082.meta : CardDef :=
 /-- Lillia. -/
 def UNL_082 : CardDef :=
   { UNL_082.meta with
-    abilities := [.triggered (.onSelf .move)
+    abilities := [.triggered (.onSelf .moveFrom)
       (.of [] (.prim (.createAtPrev "Sprite" (.const 1) false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-083
 /--

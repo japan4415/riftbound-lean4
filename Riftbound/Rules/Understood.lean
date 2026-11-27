@@ -628,7 +628,7 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .conquer | .hold => true
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
-      | .battlefieldBeginning => t.subject == .self
+      | .battlefieldBeginning | .moveFrom => t.subject == .self
       | _ => false) &&
     (t.subject == .self ||
       (match t.subject with

@@ -3339,20 +3339,42 @@ def GameState.tokenFieldAllowed (s : GameState) (p : PlayerId) (src : ObjId)
     (card : CardDef) (field : ObjId) : Bool :=
   card.canPlayAtBattlefield && s.playBfLocationAllowed p src card field
 
-/-- Play tokens at the specified Battlefield. Unit tokens redirected to Base by a Combat
-do not contest the Battlefield (CR 184.2, 190.3, 464.2.a, 830). -/
+/-- The legal location for an instructed token. Combat can redirect it to Base (CR 464.2.a). -/
+def GameState.instructedTokenLocation (s : GameState) (p : PlayerId) (src : ObjId)
+    (card : CardDef) (field : ObjId) : Option (Option ObjId) :=
+  if card.hasType .unit && !s.combatAllowsUnitPlay p field then some none
+  else if s.tokenFieldAllowed p src card field then some (some field) else none
+
+/-- Play an instructed group of tokens. Units entering a Battlefield can contest it (CR 190.3). -/
+def playInstructedTokens (s : GameState) (p : PlayerId) (card : CardDef)
+    (location : Option ObjId) (count : Nat) (ready : Bool) : GameState × List Event :=
+  let placed := createN card.id p location (ready || s.tokenReady p card location) count s
+  let next := if card.hasType .unit && count > 0 then
+    location.elim placed (fun field => contestFor p field placed)
+  else placed
+  (buffNewTokens s next p, tokenPlays s next p)
+
+/-- Playing the group and contesting its destination preserves structural invariants. -/
+theorem playInstructedTokens_safe (s : GameState) (p : PlayerId) (card : CardDef)
+    (location : Option ObjId) (count : Nat) (ready : Bool) :
+    Safe s (playInstructedTokens s p card location count ready).1 := by
+  unfold playInstructedTokens
+  dsimp only
+  have placed := createN_safe card.id p location (ready || s.tokenReady p card location) count s
+  split
+  · cases location with
+    | none => exact placed.trans (buffNewTokens_safe _ _ _)
+    | some field => exact placed.trans ((contestFor_safe p field _).trans (buffNewTokens_safe _ _ _))
+  · exact placed.trans (buffNewTokens_safe _ _ _)
+
+/-- Play tokens at the specified Battlefield, subject to placement rules (CR 184.2, 830). -/
 def applyCreateAt (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (name : String) (n : Amount) (dest : Selector) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind fun count =>
     (s.tokenCard name).bind fun card =>
       ((dest.eval s p src env).bind List.head?).map fun field =>
-        let redirected := card.hasType .unit && !s.combatAllowsUnitPlay p field
-        if redirected || s.tokenFieldAllowed p src card field then
-          let location := if redirected then none else some field
-          let placed := createN card.id p location (ready || s.tokenReady p card location) count s
-          let next := if card.hasType .unit && count > 0 && !redirected then contestFor p field placed else placed
-          (buffNewTokens s next p, tokenPlays s next p)
-        else (s, [])
+        (s.instructedTokenLocation p src card field).elim (s, [])
+          (fun location => playInstructedTokens s p card location count ready)
 
 /-- Playing the selected group of tokens preserves structural and physical-card invariants. -/
 theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
@@ -3372,26 +3394,32 @@ theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : E
         | nil => simp [hn, hc, hd] at h
         | cons field fields =>
           simp only [hn, hc, hd, Option.bind_some, List.head?_cons, Option.map_some] at h
-          split at h
-          · cases h
-            let location := if card.hasType .unit && !s.combatAllowsUnitPlay p field then none else some field
-            have placed := createN_safe card.id p location (ready || s.tokenReady p card location) count s
-            change Safe s (buffNewTokens s _ p)
-            split
-            · exact placed.trans ((contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _))
-            · exact placed.trans (buffNewTokens_safe _ _ _)
-          · cases h
+          cases whereTo : s.instructedTokenLocation p src card field with
+          | none =>
+            simp only [whereTo, Option.elim_none, Option.some.injEq] at h
+            cases h
             exact Safe.refl _
+          | some location =>
+            simp only [whereTo, Option.elim_some, Option.some.injEq] at h
+            cases h
+            exact playInstructedTokens_safe s p card location count ready
 
-/-- Play tokens at the Battlefield the object left by its last move, or at the Base (Lillia). -/
+/-- A move-from ability names the origin of that move, even if its source has moved again. -/
+def GameState.tokenMoveOrigin (s : GameState) (src : ObjId) (env : Env) : Option ObjId :=
+  env.eventBattlefields.elim ((s.obj? src).bind (·.prevLoc)) List.head?
+
+/-- Apply normal token placement restrictions when the saved origin is a Battlefield. -/
+def GameState.moveOriginTokenLocation (s : GameState) (p : PlayerId) (src : ObjId)
+    (env : Env) (card : CardDef) : Option (Option ObjId) :=
+  (s.tokenMoveOrigin src env).elim (some none) (s.instructedTokenLocation p src card)
+
+/-- Play tokens at the Battlefield of the move's origin, or at the Base (Lillia). -/
 def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
     (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind (fun k =>
     (s.tokenCard name).map (fun c =>
-      let dest := ((s.obj? src).bind (·.prevLoc)).filter (fun bf =>
-        !c.hasType .unit || s.combatAllowsUnitPlay p bf)
-      let r := createN c.id p dest (ready || s.tokenReady p c dest) k s
-      (buffNewTokens s r p, tokenPlays s r p)))
+      (s.moveOriginTokenLocation p src env c).elim (s, [])
+        (fun location => playInstructedTokens s p c location k ready)))
 
 /-- Playing tokens at the place an object came from is a safe change. -/
 theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
@@ -3406,8 +3434,15 @@ theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
     | none => simp [ht] at h
     | some c =>
       simp only [ht, Option.map_some, Option.some.injEq] at h
-      rw [← h]
-      exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+      cases whereTo : s.moveOriginTokenLocation p src env c with
+      | none =>
+        simp only [whereTo, Option.elim_none] at h
+        cases h
+        exact Safe.refl _
+      | some location =>
+        simp only [whereTo, Option.elim_some] at h
+        cases h
+        exact playInstructedTokens_safe s p c location k ready
 
 /-- Play one more token like the one the object is, where it is. -/
 def cloneTok (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -6071,7 +6106,8 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
     | .createAtPrev name n ready => do
       let card ← s.tokenCard name
       let count ← n.evalS s p src env
-      some (card, count, ready, (s.obj? src).bind (·.prevLoc), false)
+      let location ← s.moveOriginTokenLocation p src env card
+      some (card, count, ready, location, location.isSome)
     | .playUnitTokenAt name dest | .playReadyUnitTokenAt name dest => do
       let card ← s.tokenCard name
       let ready := match pr with | .playReadyUnitTokenAt .. => true | _ => false

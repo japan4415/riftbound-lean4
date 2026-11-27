@@ -2235,6 +2235,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Keeper of Masks の Reflection は Keeper のコピーになり、元のオブジェクトと同じ Beginning Phase に Temporary が誘発する。LeBlanc は自身の支配者が同じ Battlefield でコントロールする Temporary だけを抑止する。
 - Smoke and Mirrors は自分がコントロールする別々の場所の Unit を選ぶ。Temporary を持つ対象がいない場合も1枚引く。Sumpworks Map は Reaction でプレイでき、残っている間は相手の Hold と Conquer で引く。以上4枚を `full` とし、全1,103枚中580枚を実装済みにした。[カード実装状況](coverage.md)
 
+### 移動を誘発した出発地点
+
+- Lillia, Fae Fawn は誘発した移動の出発地点を保持する。最初の能力に Flash を重ねて移動した場合、各能力が自分の出発地点に Sprite を作る。カードを `full` とし、全1,103枚中581枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

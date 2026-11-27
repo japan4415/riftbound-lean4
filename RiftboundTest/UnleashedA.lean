@@ -825,6 +825,21 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
     (finished.cardDef? old).any (·.id == cid "UNL-T06") && finished.tired old == some false &&
     expired.unitsAtOf field p == [old] && expired.countIn p .trash "UNL-081" == 1
 
+-- Lillia starts two triggers from different origins when Flash answers her first move.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, lillia) ← put (s.control p field) p "UNL-082" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (waiting, _) ← (step 100 s ⟨.player p, .standardMove lillia (.battlefield field)⟩).toOption
+  let returned ← play waiting p flash [lillia]
+  let fieldSprites := (returned.unitsAtOf field p).filter (fun id =>
+    (returned.cardDef? id).any (·.id == cid "TKN-Sprite"))
+  let sprite ← fieldSprites.head?
+  return (waiting.zone .chain).length == 1 && returned.countIn p .base "UNL-082" == 1 &&
+    returned.countIn p .base "TKN-Sprite" == 1 && fieldSprites.length == 1 &&
+    returned.tired sprite == some true && returned.hasKw sprite .temporary
+
 -- Smoke and Mirrors swaps units at distinct locations with Temporary. Both branches draw.
 #guard tun fun s => do
   let p := s.me
