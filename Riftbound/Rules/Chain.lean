@@ -205,13 +205,7 @@ def GameState.activationPlan (s : GameState) (p : PlayerId) (src : ObjId)
     (d : CardDef) (idx : Nat) (costs : List AbilityCost) (targets : List ObjId) :
     Option (Bool × List Cost) :=
   (costPlan costs).map (fun (ex, base) =>
-    let discount := costs.foldl (fun total c =>
-      match c with
-      | .energyDiscount cond amount =>
-        if cond.eval s p src {} == some true then
-          total + (amount.evalS s p src {}).getD 0
-        else total
-      | _ => total) 0
+    let discount := s.abilityEnergyDiscount p src targets costs
     let tax := if costs.contains .fromHidden then
       let cut := s.playPowerCut p src targets
       let deflect := if cut != 0 then s.deflectCost p targets (some src) else 0

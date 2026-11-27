@@ -1369,6 +1369,75 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     declined.tired legend == some false && declined.tired unit == some true &&
     countered.tired legend == some true && countered.tired unit == some true
 
+-- Sprite Burst offers a separate legal location for each ready Sprite.
+#guard tun fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt (s.control p field) p "OGN-013" field
+  let (s, burst) ← put (s.fund p 5) p "UNL-069" .hand
+  let (s, _) ← (step 100 s ⟨.player p, .playCard burst ⟨5, []⟩ []⟩).toOption
+  let (s, _) ← (step 100 s ⟨.player p, .pass⟩).toOption
+  let (placing, _) ← (step 100 s ⟨.player s.you, .pass⟩).toOption
+  let (next, first) ← (step 100 placing ⟨.player p, .decide true⟩).toOption
+  let (done, second) ← (step 100 next ⟨.player p, .decide false⟩).toOption
+  let base ← done.firstOf p .base "TKN-Sprite"
+  let deployed ← (done.unitsAt field).find? (fun id => (done.cardDef? id).any (·.id == cid "TKN-Sprite"))
+  let ready (id : ObjId) := done.tired id == some false && done.hasKw id .temporary &&
+    done.mightNow id == some 3
+  return first.contains (.tokenPlayed p base) && second.contains (.tokenPlayed p deployed) &&
+    ready base && ready deployed
+
+-- Bashful Bloom counts allied and gained Temporary when pricing the activation.
+-- Losing a counted Unit in response leaves the payment and token play in place.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { labState.config with mode := Mode.teamDuel } labState.cards
+  let s := { s with
+    active := some p, turnOrder := Mode.teamTurnOrder true, phase := .main, pending := [.priority p] }
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, _) ← putAt (s.control p field) p "OGN-013" field
+  let (s, legend) ← put (s.fund p 4) p "UNL-189" .legendZone
+  let (s, _) ← put s p "UNL-078" .base
+  let (s, marked) ← put s p "OGN-010" .base
+  let withEnemy := createOne (cid "TKN-Sprite") enemy none true s
+  let withAlly := createOne (cid "TKN-Sprite") ally none true withEnemy
+  let withKeyword := withAlly.modObj marked (fun o =>
+    { o with tempKws := (⟨.temporary, .none⟩, .never) :: o.tempKws })
+  let activation (cost : Nat) : Action := ⟨.player p, .activate legend 0 ⟨cost, []⟩ []⟩
+  let paid (g : GameState) (cost : Nat) := (legalFrameActions g).contains (activation cost)
+  let many := (List.range 3).foldl (fun g _ => createOne (cid "TKN-Sprite") p none true g) withKeyword
+  let (waiting, _) ← (step 100 withKeyword (activation 2)).toOption
+  let (removed, _) := killObj waiting marked
+  let done := settleChain { yes := false } 16 removed
+  let sprite ← (done.unitsAt field).find? (fun id => (done.cardDef? id).any (·.id == cid "TKN-Sprite"))
+  return paid withEnemy 4 && paid withAlly 3 && paid withKeyword 2 && paid many 0 &&
+    !paid withKeyword 1 && !paid withKeyword 3 && !(step 100 withKeyword (activation 3)).isOk &&
+    !(step 100 (withKeyword.tire legend) (activation 2)).isOk &&
+    waiting.poolOf p == { energy := 2 } && waiting.tired legend == some true &&
+    done.poolOf p == waiting.poolOf p && done.tired sprite == some false &&
+    done.mightNow sprite == some 3 && done.hasKw sprite .temporary
+
+-- At Beginning, old Sprites expire. Fountain's Deathknell and Sprite Queen create fresh ready ones.
+#guard tun fun s => do
+  let p := s.me
+  let (s, fountain) ← put s p "UNL-078" .hand
+  let (s, queen) ← put s p "UNL-084" .hand
+  let placed ← play s p fountain
+  let stocked ← play placed p queen
+  let sprites (g : GameState) := (g.zone (.player p .base)).filter (fun id =>
+    (g.cardDef? id).any (·.id == cid "TKN-Sprite"))
+  let old := sprites stocked
+  let (waiting, events) ← (advance 100 { stocked with pending := [.phase .beginning, .priority p] } []).toOption
+  let done := settleChain {} 16 waiting
+  let fresh := sprites done
+  return (sprites placed).length == 1 && old.length == 2 && fresh.length == 2 &&
+    events.contains (.phaseStarted p .beginning) && done.countIn p .trash "UNL-078" == 1 &&
+    done.countIn p .base "UNL-084" == 1 &&
+    old.all (fun id => (done.obj? id).isNone) &&
+    fresh.all (fun id => done.tired id == some false && done.hasKw id .temporary && done.mightNow id == some 3)
+
 -- Back Off (UNL-042): played from the hand, it draws 1
 #guard tun fun s => do
   let (s1, c) ← put s s.me "UNL-042" .hand

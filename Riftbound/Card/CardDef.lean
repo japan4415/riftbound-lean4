@@ -120,6 +120,8 @@ structure CardDef where
   /-- Abilities this card gives to other objects, through attachment or a resolving effect
   (CR 137, 479.3). They are not abilities of the card itself. -/
   grants : List Ability := []
+  /-- The Equip ability's printed Energy discount, which can read the recipient in slot 0. -/
+  equipEnergyDiscount : Option Amount := none
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
   /-- Energy discount when at least one declared target matches these filters (CR 355, 356.4). -/
@@ -198,6 +200,10 @@ def equipCost (c : CardDef) : Option Cost :=
     | .equip, .cost cost | .equip, .costOrExhaustUnit cost => some cost
     | _, _ => none)
 
+/-- The resource payment and printed modifiers of the Equip ability (CR 356.4, 818). -/
+def equipResourceCosts (c : CardDef) (cost : Cost) : List AbilityCost :=
+  .pay cost :: c.equipEnergyDiscount.toList.map (AbilityCost.energyDiscount .always)
+
 /-- Whether the Equipment lets its controller exhaust a Unit to pay its Equip cost. -/
 def equipCanExhaust (c : CardDef) : Bool :=
   c.keywords.any (fun k => match k.keyword, k.arg with
@@ -212,18 +218,19 @@ def keywordTrigger : Keyword → Option Ability
   | _ => none
 
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
-activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
+activated ability, "pay the cost: attach this to a unit you control" (CR 137, 818), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def printedKeywordAbilities (c : CardDef) : List Ability :=
-  let equipAbility (cost : AbilityCost) : Ability :=
-    .activated [cost] .normal
-      (EffectDef.of [Choice.targetOf .one .you .anywhere [.ofType .unit]]
-        (.prim (.attach .self (.slot 0)))) .unlimited
+  let equipAbility (costs : List AbilityCost) : Ability :=
+    .activated costs .normal
+      { choices := [Choice.targetOf .one .you .anywhere [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.attach .self (.slot 0)) } .unlimited
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost => [equipAbility (.pay cost)]
+    | .equip, .cost cost => [equipAbility (c.equipResourceCosts cost)]
     | .equip, .costOrExhaustUnit cost =>
-      [equipAbility (.pay cost), equipAbility (.exhaustFriendly (.ofList [.ofType .unit]))]
+      [equipAbility (c.equipResourceCosts cost), equipAbility [.exhaustFriendly (.ofList [.ofType .unit])]]
     | _, _ => []) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
@@ -357,6 +364,7 @@ theorem copyLimit_of_not_unique {c : CardDef} (h : c.hasKeyword .unique = false)
 `it` and the replaced event where they mean something (`Riftbound.Card.IR.Check`). -/
 def StaticOk (c : CardDef) : Prop :=
   c.abilities.all Ability.ok = true ∧ c.grants.all Ability.ok = true ∧
+    c.equipEnergyDiscount.all (Amount.ok { slots := 1 }) = true ∧
     (match c.spellEffect with
       | none => true
       | some d => d.ok {}) = true
@@ -365,8 +373,8 @@ instance (c : CardDef) : Decidable c.StaticOk := by unfold StaticOk; infer_insta
 
 /-- A card with no effect refers to nothing, so it passes the check. -/
 theorem staticOk_of_no_effects {c : CardDef} (h1 : c.abilities = []) (h2 : c.spellEffect = none)
-    (h3 : c.grants = []) : c.StaticOk := by
-  simp [StaticOk, h1, h2, h3]
+    (h3 : c.grants = []) (h4 : c.equipEnergyDiscount = none) : c.StaticOk := by
+  simp [StaticOk, h1, h2, h3, h4]
 
 end CardDef
 

@@ -364,7 +364,7 @@ def Prim.understood : Prim → Bool
   | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .createAt _ n bf _ => n.understood && bf.understoodPick
-  | .playUnitToken _ | .playUnitTokenAt _ _ => true
+  | .playUnitToken _ | .playUnitTokenAt _ _ | .playReadyUnitToken _ | .playReadyUnitTokenAt _ _ => true
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
@@ -683,6 +683,7 @@ carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   (c.status == .drafted || c.status == .full) &&
     c.abilities.all Ability.runs && c.grants.all Ability.runs &&
+    c.equipEnergyDiscount.all Amount.understoodK &&
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility) ||
       (k.keyword == .showOff && c.showOffRequirement.any (·.filters.understood))) &&

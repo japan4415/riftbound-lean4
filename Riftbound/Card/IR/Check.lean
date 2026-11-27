@@ -190,7 +190,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
   | .createAt _ n bf _ => Amount.ok c n && Selector.ok c bf
-  | .playUnitToken _ | .playUnitTokenAt _ _ => true
+  | .playUnitToken _ | .playUnitTokenAt _ _ | .playReadyUnitToken _ | .playReadyUnitTokenAt _ _ => true
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
@@ -495,7 +495,11 @@ def Ability.ok : Ability → Bool
   | .replacement event cond instead =>
     let ctx : Ctx := { eventOk := true, slots := if event == .attach then 1 else 0 }
     Condition.ok ctx cond && instead.ok ctx
-  | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
+  | .activated costs _ body _ =>
+    let pricing : Ctx := { slots := (body.choices.filter Choice.isTarget).length }
+    costs.all (fun cost => match cost with
+      | .energyDiscount .. => cost.ok pricing
+      | _ => cost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
     let hasAmount := t.event == .linkedBurnUnit || t.event == .delayedEnd

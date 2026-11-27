@@ -132,4 +132,69 @@ private meta def checkQuickDraw (code : String) (bonus : Int) : Bool :=
     (fromPlay gear).contains mine && !(fromPlay gear).contains theirs &&
     (fromPlay chef).contains gear && !(fromPlay chef).contains otherGear
 
+-- Hextech Gauntlets offers one Equip ability, priced against its declared recipient.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, zero) ← put s p "OGN-013" .base
+  let (s, two) ← put s p "RAD-005" .base
+  let (s, large) ← put s p "SFD-092" .base
+  let (s, foe) ← put s q "OGN-013" .base
+  let (s, response) ← put s q "OGN-095" .hand
+  let s := ((s.fund p 3 1).fund q 1).modObj zero (fun o => { o with baseMightThisTurn := some 0 })
+  let equip (energy : Nat) (target : ObjId) : Action :=
+    ⟨.player p, .activate gear 0 ⟨energy, [.fury]⟩ [target]⟩
+  let options := (legalFrameActions s).filter (fun a => match a.kind with
+    | .activate source .. => source == gear
+    | _ => false)
+  let (waiting, _) ← (step 100 s (equip 1 two)).toOption
+  let (offered, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let resolved ← cast offered q response ⟨1, []⟩ [two]
+  let turned := settleChain {} 12 (setController q waiting two).1
+  let (s, field) ← putBf s p "VEN-161"
+  let discounted := s.control p field
+  return s.mightNow zero == some 0 && options.length == 3 &&
+    options.contains (equip 3 zero) && options.contains (equip 1 two) && options.contains (equip 0 large) &&
+    !(step 100 s (equip 0 two)).isOk && !(step 100 s (equip 2 two)).isOk &&
+    !(step 100 s (equip 1 foe)).isOk &&
+    (legalFrameActions discounted).contains (equip 0 two) &&
+    !(legalFrameActions discounted).contains (equip 1 two) &&
+    waiting.poolOf p == { energy := 2, spent := 1 } && resolved.poolOf p == waiting.poolOf p &&
+    (waiting.obj? gear).all (·.attached.isNone) && (resolved.obj? gear).any (·.attached == some two) &&
+    resolved.mightNow two == some 4 && turned.poolOf p == waiting.poolOf p &&
+    (turned.obj? gear).any (·.attached.isNone)
+
+-- Weaponmaster uses the recipient discount and its own Power reduction without an activation.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, chef) ← put (s.fund p 5) p "SFD-092" .hand
+  let (playing, _) ← (step 100 s ⟨.player p, .playCard chef ⟨5, []⟩ []⟩).toOption
+  let ready := settleChain {} 12 playing
+  let host ← ready.firstOf p .base "SFD-092"
+  return (ready.obj? gear).any (·.attached == some host) && ready.mightNow host == some 8 &&
+    ready.poolOf p == {} && !(ready.fxOf p).contains .usedGearAbility
+
+-- The granted Conquer ability belongs to the wearer and sees the excess from that Combat.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, unit) ← putAt s p "OGN-013" field
+  let equipped ← activate (s.control p field) p gear 0 [unit] ⟨1, [.fury]⟩
+  let (equipped, defender) ← putAt equipped q "OGN-013" field
+  let fight (g : GameState) := do
+    let (g, _) ← (advance 100 (g.control q field |>.inCombatAt field p) []).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignPick defender⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignDone⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player q, .assignPick unit⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player q, .assignDone⟩).toOption
+    return settleChain {} 12 g
+  let enough ← fight equipped
+  let missed ← fight (equipped.modObj unit (fun o => { o with baseMightThisTurn := some 1 }))
+  return enough.pointsOf p == equipped.pointsOf p + 1 && missed.pointsOf p == enough.pointsOf p &&
+    enough.handN p == equipped.handN p + 1 && missed.handN p == equipped.handN p
+
 end RiftboundTest

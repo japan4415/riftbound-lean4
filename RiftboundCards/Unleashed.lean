@@ -2053,8 +2053,8 @@ def UNL_069.meta : CardDef :=
 def UNL_069 : CardDef :=
   { UNL_069.meta with
     spellEffect := some (.of []
-      (.prim (.create "Sprite" (.const 2) .atBase true))),
-    status := .drafted }
+      (.repeatN (.const 2) (.prim (.playReadyUnitToken "Sprite")))),
+    status := .full }
 
 -- BEGIN GENERATED UNL-070
 /--
@@ -2293,9 +2293,9 @@ def UNL_078 : CardDef :=
   { UNL_078.meta with
     abilities := [.triggered (.onSelf .play)
         (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited,
-      .triggered (.onSelf .die)
+      .triggered (.onSelf .deathknell)
         (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-079
 /--
@@ -2490,7 +2490,7 @@ def UNL_084 : CardDef :=
         (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited,
       .triggered { event := .at_ .beginning }
         (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-085
 /--
@@ -5442,25 +5442,13 @@ def UNL_188.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Hextech Gauntlets. -/
+/-- Hextech Gauntlets discounts the Equip cost by the chosen Unit's current Might. -/
 def UNL_188 : CardDef :=
   { UNL_188.meta with
-    abilities := [
-      .activated [.pay ⟨2, [.any]⟩] .normal
-        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (.ifThen (.matches (.slot 0) (.might .ge (.const 1))) (.prim (.attach .self (.slot 0))) .nop))
-        .unlimited,
-      .activated [.pay ⟨1, [.any]⟩] .normal
-        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (.ifThen (.matches (.slot 0) (.might .ge (.const 2))) (.prim (.attach .self (.slot 0))) .nop))
-        .unlimited,
-      .activated [.pay ⟨0, [.any]⟩] .normal
-        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (.ifThen (.matches (.slot 0) (.might .ge (.const 3))) (.prim (.attach .self (.slot 0))) .nop))
-        .unlimited],
+    equipEnergyDiscount := some (.mightOf (.slot 0)),
     grants := [.triggered { condition := .excessAtLeast 3, event := .conquer }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED UNL-189
 /--
@@ -5479,29 +5467,13 @@ def UNL_189.meta : CardDef :=
     sets := [⟨"UNL"⟩] }
 -- END GENERATED
 
-/-- Bashful Bloom. -/
+/-- Bashful Bloom counts friendly Temporary Units when declaring its activation. -/
 def UNL_189 : CardDef :=
   { UNL_189.meta with
-    abilities := [
-      .activated [.pay ⟨4, []⟩, .exhaustSelf] .normal
-        (.of [] (.prim (.create "Sprite" (.const 1) .atBase true))) .unlimited,
-      .activated [.pay ⟨3, []⟩, .exhaustSelf] .normal
-        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
-          [.ofType .unit, .hasKeyword .temporary])) (.const 1))
-          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
-      .activated [.pay ⟨2, []⟩, .exhaustSelf] .normal
-        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
-          [.ofType .unit, .hasKeyword .temporary])) (.const 2))
-          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
-      .activated [.pay ⟨1, []⟩, .exhaustSelf] .normal
-        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
-          [.ofType .unit, .hasKeyword .temporary])) (.const 3))
-          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited,
-      .activated [.exhaustSelf] .normal
-        (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .anywhere
-          [.ofType .unit, .hasKeyword .temporary])) (.const 4))
-          (.prim (.create "Sprite" (.const 1) .atBase true)) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.pay ⟨4, []⟩, .exhaustSelf,
+        .energyDiscount .always (.count (Selector.all .friendly .anywhere [.ofType .unit, .hasKeyword .temporary]))]
+      .normal (.of [] (.prim (.playReadyUnitToken "Sprite"))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-190
 /--

@@ -2147,6 +2147,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Piltover Enforcer は対象を選び、自身を消耗させて誘発能力を確定する。Sivir, Ambitious も対象を確定時に選び、解決時に記録された量のダメージを与える。[Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
 - Trapping Grounds、Yeti Brawler、Piltover Enforcer、Tryndamere, Barbarian、Sivir, Ambitious の5枚を `full` とし、全1,103枚中542枚を実装済みにした。[カード実装状況](coverage.md)
 
+### 装備先で変わるコストと Ready の Sprite
+
+- Hextech Gauntlets は、装備先の現在の Might を使って Equip の Energy を決める。Weaponmaster 経由では同じ Energy 割引に Weaponmaster の Power 割引を加える。装備先が Conquer すると、その戦闘の余剰ダメージが3点以上なら1枚引く（CR 356.4.g、818.1.c.4、821.1.c.2）。
+- Bashful Bloom は、起動時に味方の Temporary Unit の数に応じて Energy を支払う。Bashful Bloom と Sprite Burst の Ready の Sprite は、プレイする席が Base または条件を満たす Battlefield に出す。Sprite Fountain と Sprite Queen は印刷された指定どおり Base に出す（CR 184.1、184.2、355.2）。
+- Unleashed の5枚を `full` にし、全1,103枚中547枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

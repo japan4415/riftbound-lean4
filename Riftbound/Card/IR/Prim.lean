@@ -142,6 +142,10 @@ inductive Prim where
   | playUnitToken (token : String)
   /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
   | playUnitTokenAt (token : String) (dest : Option ObjId)
+  /-- Play a ready Unit token at a location its player chooses (CR 184.1, 355.2). -/
+  | playReadyUnitToken (token : String)
+  /-- Play the ready Unit token at the chosen Battlefield or at Base. -/
+  | playReadyUnitTokenAt (token : String) (dest : Option ObjId)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
   /-- Attach Equipment to an object, paying the Equip cost of each, less `less` Power

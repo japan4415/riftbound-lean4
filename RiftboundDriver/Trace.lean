@@ -53,13 +53,21 @@ def costJson (k : Cost) : String :=
 
 /-- The chosen token placement, or the decision to see the remaining locations. -/
 def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let placement : Effect → Option (String × Option ObjId × Bool) := fun
+    | .prim (.playUnitTokenAt name dest) => some (name, dest, false)
+    | .prim (.playReadyUnitTokenAt name dest) => some (name, dest, true)
+    | _ => none
   match frame with
-  | some (.eitherDo _ _ _ a@(.prim (.playUnitTokenAt name _)) b _) =>
-    match if yes then a else b with
-    | .prim (.playUnitTokenAt _ dest) =>
-      [("token", jstr name), ("dest", dest.elim "null" (fun bf => toString bf.n))]
-    | .eitherOf _ => [("token", jstr name), ("moreLocations", "true")]
-    | _ => []
+  | some (.eitherDo _ _ _ first other _) =>
+    match placement first with
+    | some (name, _, _) =>
+      let fields := [("token", jstr name)]
+      match if yes then first else other with
+      | .eitherOf _ => fields ++ [("moreLocations", "true")]
+      | chosen => (placement chosen).toList.flatMap (fun (_, dest, ready) => fields ++
+        [("dest", dest.elim "null" (fun bf => toString bf.n))] ++
+        if ready then [("ready", "true")] else [])
+    | none => []
   | _ => []
 
 /-- Describe which Unit token replacement was offered or chosen (CR 372-375). -/

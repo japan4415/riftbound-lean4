@@ -2975,6 +2975,34 @@ theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
 def Cost.weaponmasterDiscount (c : Cost) (less : Nat) : Cost :=
   { c with power := Nat.repeat (fun symbols => symbols.erase .any) less c.power }
 
+/-- Energy discounts on an ability read the chosen objects when its cost is determined (CR 356.4.g). -/
+def GameState.abilityEnergyDiscount (s : GameState) (p : PlayerId) (src : ObjId)
+    (targets : List ObjId) (costs : List AbilityCost) : Nat :=
+  costs.foldl (fun total c => match c with
+    | .energyDiscount condition amount =>
+      let env : Env := { slots := targets.map Value.obj, passMight := s.mightTable }
+      if condition.eval s p src env == some true then total + (amount.evalS s p src env).getD 0
+      else total
+    | _ => total) 0
+
+/-- A Weaponmaster payment can attach this gear to the recipient (CR 821.1.c.5). -/
+def GameState.weaponmasterAttachable (s : GameState) (p : PlayerId) (gear recipient : ObjId) : Bool :=
+  s.inPlay.contains gear && s.inPlay.contains recipient &&
+    s.controllerOf gear == p && s.controllerOf recipient == p &&
+    (s.obj? gear).any (·.attached != some recipient) &&
+    !(s.cardDef? gear).any (·.hasType .unit) && (s.cardDef? recipient).any (·.hasType .unit)
+
+/-- The Equip cost paid by Weaponmaster includes the Equipment's own discount for the recipient
+(CR 821.1.c.2). -/
+def GameState.weaponmasterCost (s : GameState) (p : PlayerId) (gear recipient : ObjId)
+    (less : Nat) : Option Cost := do
+  if s.weaponmasterAttachable p gear recipient then
+    let definition ← s.cardDef? gear
+    let printed ← definition.equipCost
+    let discount := s.abilityEnergyDiscount p gear [recipient] (definition.equipResourceCosts printed)
+    return (printed.lessEnergy discount).weaponmasterDiscount less
+  else none
+
 /-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` generic Power
 (Weaponmaster): an Equipment whose cost cannot be paid stays where it is, and one with no Equip
 cost is not attached. `none` if the unit is not exactly one object, or either cannot be
@@ -2987,9 +3015,9 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
       | [u] =>
         if u ∈ s.inPlay then
         some (gs.foldl (fun (r : GameState × List Event) g =>
-          match (r.1.cardDef? g).bind CardDef.equipCost with
+          match r.1.weaponmasterCost p g u less with
           | some c =>
-            match payByRunes r.1 p g (c.weaponmasterDiscount less) with
+            match payByRunes r.1 p g c with
             | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
             | none => r
           | none => r) (s, []))
@@ -3018,9 +3046,9 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             rw [← h]
             have key : ∀ (l : List ObjId) (r0 : GameState × List Event), Safe s r0.1 →
                 Safe s (l.foldl (fun (r : GameState × List Event) g =>
-                  match (r.1.cardDef? g).bind CardDef.equipCost with
+                  match r.1.weaponmasterCost p g u less with
                   | some c =>
-                    match payByRunes r.1 p g (c.weaponmasterDiscount less) with
+                    match payByRunes r.1 p g c with
                     | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
                     | none => r
                   | none => r) r0).1 := by
@@ -3031,10 +3059,10 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 intro r0 h0
                 simp only [List.foldl_cons]
                 apply ih
-                cases hc : (r0.1.cardDef? g).bind CardDef.equipCost with
+                cases hc : r0.1.weaponmasterCost p g u less with
                 | none => simpa [hc] using h0
                 | some c =>
-                  cases hp : payByRunes r0.1 p g (c.weaponmasterDiscount less) with
+                  cases hp : payByRunes r0.1 p g c with
                   | none => simpa [hc, hp] using h0
                   | some q =>
                     simp only [hp]
@@ -3127,25 +3155,26 @@ def GameState.unitTokenDestinations (s : GameState) (p : PlayerId) (c : CardDef)
   none :: fields.map some
 
 /-- Play a Unit token at a valid destination. -/
-def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
+def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId)
+    (ready : Bool := false) :
     GameState × List Event :=
   match s.tokenCard name with
   | some c =>
     if c.hasType .unit && (s.unitTokenDestinations p c).contains dest then
-      let r := createOne c.id p dest (s.tokenReady p c dest) s
+      let r := createOne c.id p dest (ready || s.tokenReady p c dest) s
       let next := dest.elim r (fun bf => contestFor p bf r)
       (buffNewTokens s next p, tokenPlays s next p)
     else (s, [])
   | none => (s, [])
 
 /-- Playing a Unit token at its destination is a safe change. -/
-theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
-    Safe s (playUnitTokenAt s p name dest).1 := by
+theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId)
+    (ready : Bool := false) : Safe s (playUnitTokenAt s p name dest ready).1 := by
   unfold playUnitTokenAt
   split
   · rename_i c _
     split
-    · have place := createOne_safe c.id p dest (s.tokenReady p c dest) s
+    · have place := createOne_safe c.id p dest (ready || s.tokenReady p c dest) s
       cases dest with
       | none => exact place.trans (buffNewTokens_safe _ _ _)
       | some bf => exact place.trans ((contestFor_safe p bf _).trans (buffNewTokens_safe _ _ _))
@@ -3655,6 +3684,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .create name n place ready => applyCreate s p src env name n place ready
   | .createAt name n dest ready => applyCreateAt s p src env name n dest ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
+  | .playReadyUnitTokenAt name dest => some (playUnitTokenAt s p name dest true)
   | .attach gears to => applyAttach s p src env gears to
   | .copyAttachedFrom model => onSelected s p src env model (copyAttachedUnit src)
   | .detach sel => onSelected s p src env sel detachObj
@@ -3879,6 +3909,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | playUnitTokenAt name dest =>
     cases h
     exact playUnitTokenAt_safe s p name dest
+  | playReadyUnitTokenAt name dest =>
+    cases h
+    exact playUnitTokenAt_safe s p name dest true
   | attach gears to => exact applyAttach_safe h
   | copyAttachedFrom model => exact onSelected_safe (copyAttachedUnit_safe src) h
   | attachPaying gears to less => exact applyAttachPaying_safe h
@@ -5768,9 +5801,7 @@ def equipWithCostFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   match gear.eval s p src env, recipient.eval s p src env with
   | some [g], some [u] =>
     if (s.cardDef? g).any CardDef.equipCanExhaust then
-      if !s.inPlay.contains g || !s.inPlay.contains u ||
-          !(s.cardDef? u).any (·.hasType .unit) || (s.cardDef? g).any (·.hasType .unit) ||
-          s.controllerOf g != p || s.controllerOf u != p || (s.obj? g).any (·.attached == some u) then
+      if !s.weaponmasterAttachable p g u then
         .run p src env es
       else
         let filters := FilterList.ofList [.ofType .unit, .ready]
@@ -5950,9 +5981,10 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
       let card ← s.tokenCard name
       let count ← n.evalS s p src env
       some (card, count, ready, (s.obj? src).bind (·.prevLoc), false)
-    | .playUnitTokenAt name dest => do
+    | .playUnitTokenAt name dest | .playReadyUnitTokenAt name dest => do
       let card ← s.tokenCard name
-      if (s.unitTokenDestinations p card).contains dest then some (card, 1, false, dest, true)
+      let ready := match pr with | .playReadyUnitTokenAt .. => true | _ => false
+      if (s.unitTokenDestinations p card).contains dest then some (card, 1, ready, dest, true)
       else none
     | .cloneToken sel => do
       let [id] ← sel.eval s p src env | none
@@ -6253,10 +6285,13 @@ def runPrimEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr :
   match pr with
   | move@(.move ..) | move@(.swapPlaces ..) =>
     moveEffectStep s p src env move .nop es funding
-  | .playUnitToken name =>
+  | .playUnitToken name | .playReadyUnitToken name =>
     match s.tokenCard name with
     | some c =>
-      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
+      let place := match pr with
+        | .playReadyUnitToken _ => Prim.playReadyUnitTokenAt name
+        | _ => Prim.playUnitTokenAt name
+      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (place dest))
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
     | none => skip
   | .burn who n => burnEffect s p src env who n es
@@ -6294,7 +6329,7 @@ def runPrimEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr :
       | none => skip
   | .castInline sel => castInlineStep s p src env sel es funding
   | pr@(.create ..) | pr@(.createAt ..) | pr@(.createAtPrev ..) |
-    pr@(.playUnitTokenAt ..) | pr@(.cloneToken ..) =>
+    pr@(.playUnitTokenAt ..) | pr@(.playReadyUnitTokenAt ..) | pr@(.cloneToken ..) =>
     unitTokenPrimStep s p src env pr es
   | .kill sel => killEffectStep s p src env sel none es
   | .banishReplay sel replay =>
