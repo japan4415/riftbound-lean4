@@ -197,6 +197,71 @@ theorem advance_trigger_tail (s : GameState) (rest : List Frame) (wf : s.WF)
       advance_triggers_to_decision s wf queue rest waiting reads (Or.inl nonempty)
     exact ⟨t, used, run, Or.inl (by simp [stack, decision])⟩
 
+/-- A finite dispatcher run reaches a decision, an empty stack, or the specified continuation. -/
+def AdvanceTo (s : GameState) (keeps : List Frame → Prop) : Prop :=
+  ∃ t used events, AdvancePrefix s t used events ∧
+    (t.pending.head?.all (fun f => !f.isWork) = true ∨
+      (keeps t.pending ∧ t.WF ∧ t.cards = s.cards))
+
+/-- A continuation already at the head of the stack is ready immediately. -/
+theorem AdvanceTo.resume {s : GameState} {keeps : List Frame → Prop} (wf : s.WF)
+    (kept : keeps s.pending) : AdvanceTo s keeps :=
+  ⟨s, 0, [], by intro fuel past; simp, Or.inr ⟨kept, wf, rfl⟩⟩
+
+/-- Run the next segment if the first segment reached its tracked continuation. -/
+theorem AdvanceTo.then {s : GameState} {first last : List Frame → Prop}
+    (before : AdvanceTo s first) (reads : MightRead.database s.cards)
+    (after : ∀ t : GameState, t.WF → MightRead.database t.cards → first t.pending → AdvanceTo t last) :
+    AdvanceTo s last := by
+  obtain ⟨t, used, events, path, stop | ⟨kept, wf, cards⟩⟩ := before
+  · exact ⟨t, used, events, path, Or.inl stop⟩
+  · obtain ⟨u, later, emitted, run, done⟩ := after t wf (cards ▸ reads) kept
+    exact ⟨u, used + later, events ++ emitted, path.append run,
+      done.imp_right (fun ⟨lastStack, lastWF, lastCards⟩ => ⟨lastStack, lastWF, lastCards.trans cards⟩)⟩
+
+/-- Dispatch a rule and its immediate Adds, keeping any ordinary trigger insertion in the
+tracked continuation. -/
+theorem AdvanceTo.rule {s raw : GameState} {frame : Frame} {rest : List Frame}
+    {events : List Event} {keeps : List Frame → Prop}
+    (pending : s.pending = frame :: rest) (automatic : frame.isWork = true)
+    (rule : microStep0 s = some (raw, events)) (wf : raw.WF) (cards : raw.cards = s.cards)
+    (reads : MightRead.database s.cards) (base : keeps raw.pending)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  obtain ⟨t, used, events, _, path, lastWF, lastCards, route⟩ :=
+    advance_rule_with_adds pending automatic rule wf cards reads
+  generalize stack : t.pending = frames at route
+  cases route with
+  | empty => exact ⟨t, used, events, path, Or.inl (by rw [stack]; rfl)⟩
+  | resume => exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ base, lastWF, lastCards⟩⟩
+  | queue q nonempty =>
+    exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ inserted raw.pending base q nonempty, lastWF, lastCards⟩⟩
+
+/-- Ordinary triggers wait behind every resolution frame in the supplied prefix. -/
+theorem insertTriggers_append_resolution (frames rest : List Frame) (queue : List PendTrigger)
+    (resolution : ∀ f ∈ frames, f.isResolution = true) :
+    insertTriggers queue (frames ++ rest) = frames ++ insertTriggers queue rest := by
+  induction frames with
+  | nil => rfl
+  | cons f fs ih =>
+    have first := resolution f List.mem_cons_self
+    simp only [List.cons_append, insertTriggers, first, ite_true, ih (fun g member =>
+      resolution g (List.mem_cons_of_mem _ member))]
+
+/-- The known resolution frames are followed by a tracked continuation. -/
+def ResolutionPrefix (frames : List Frame) (keeps : List Frame → Prop) (stack : List Frame) : Prop :=
+  ∃ tail, stack = frames ++ tail ∧ keeps tail
+
+/-- Inserting ordinary triggers preserves the resolution prefix. -/
+theorem ResolutionPrefix.insert {frames stack : List Frame} {keeps : List Frame → Prop}
+    (tracked : ResolutionPrefix frames keeps stack)
+    (resolution : ∀ f ∈ frames, f.isResolution = true)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail))
+    (q : List PendTrigger) (nonempty : q ≠ []) :
+    ResolutionPrefix frames keeps (insertTriggers q stack) := by
+  obtain ⟨tail, rfl, kept⟩ := tracked
+  exact ⟨_, insertTriggers_append_resolution frames tail q resolution, inserted tail kept q nonempty⟩
+
 end Riftbound
 
 end

@@ -67,7 +67,8 @@ private theorem popNil (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
     runStep_observed (wf.congr rfl rfl rfl rfl) checked rfl reads rfl (Or.inl rfl)
   exact runPrefix rfl step
 
-private theorem addPrimRule (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+/-- Immediate Add primitives leave the remaining Run frame after one step. -/
+theorem runEffect_triggerAdd_prim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) (more : EffectList) (allowed : (Effect.prim pr).isTriggerAdd = true) :
     runEffect s p src env (.prim pr) more effectAddPolicy =
       match applyPrim s p src env pr with
@@ -162,7 +163,7 @@ private theorem addEffect_prim (pr : Prim) (allowed : (Effect.prim pr).isTrigger
     AddEffectTerminates (.prim pr) := by
   apply addEffect_single
   intro s p src env more
-  have rule := addPrimRule s p src env pr more allowed
+  have rule := runEffect_triggerAdd_prim s p src env pr more allowed
   cases applied : applyPrim s p src env pr with
   | none =>
     exact ⟨s, [.skipped src], by simpa only [applied] using rule, rfl, .refl s, rfl, .refl _, Or.inr rfl⟩

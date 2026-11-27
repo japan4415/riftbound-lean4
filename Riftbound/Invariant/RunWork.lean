@@ -1,0 +1,546 @@
+module
+
+public import Riftbound.Invariant.ObservedWork
+public import Riftbound.Invariant.TurnDrawWork
+
+/-!
+# Effect programs under the work dispatcher (I12)
+-/
+
+@[expose] public section
+
+namespace Riftbound
+
+/-- Executing this effect consumes one instruction without creating a new work or decision
+frame before the remaining instructions. -/
+def Effect.SingleRun (effect : Effect) : Prop :=
+  ∀ s p src env more, ∃ board emitted,
+    runEffect s p src env effect more effectAddPolicy = (board, [.run p src env more], emitted)
+
+/-- Remaining instructions for the same invocation, with its current environment and tail. -/
+def RunContinuation (p : PlayerId) (src : ObjId) (program : EffectList)
+    (keeps : List Frame → Prop) (stack : List Frame) : Prop :=
+  ∃ env rest, stack = .run p src env program :: rest ∧ keeps rest
+
+/-- Ordinary trigger insertion preserves the next Run frame. -/
+theorem RunContinuation.insert {p : PlayerId} {src : ObjId} {program : EffectList}
+    {keeps : List Frame → Prop} {stack : List Frame}
+    (before : RunContinuation p src program keeps stack)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail))
+    (q : List PendTrigger) (ne : q ≠ []) :
+    RunContinuation p src program keeps (insertTriggers q stack) := by
+  obtain ⟨env, rest, rfl, kept⟩ := before
+  exact ⟨env, _, rfl, inserted rest kept q ne⟩
+
+/-- One instruction terminates when it yields to a decision or reaches the rest of the invocation
+under the actual observer and any immediate Adds it schedules. -/
+def Effect.ObservedFinite (effect : Effect) : Prop :=
+  ∀ (s : GameState) p src env more rest (keeps : List Frame → Prop),
+    s.WF → MightRead.database s.cards → s.pending = .run p src env (.cons effect more) :: rest →
+    keeps rest → (∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) →
+    AdvanceTo s (RunContinuation p src more keeps)
+
+/-- Each instruction in the program is finite under actual observation. -/
+inductive EffectList.ObservedFinite : EffectList → Prop where
+  /-- The program has no instructions. -/
+  | nil : EffectList.ObservedFinite .nil
+  /-- The first instruction and the rest terminate in order. -/
+  | cons {effect : Effect} {more : EffectList} :
+      effect.ObservedFinite → more.ObservedFinite → EffectList.ObservedFinite (.cons effect more)
+
+/-- Dispatch the instruction and account for all immediate Adds and ordinary trigger insertion. -/
+theorem advance_run_rule {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {effect : Effect} {more : EffectList} {rest : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons effect more) :: rest)
+    (base : let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
+      keeps (result.2.1 ++ rest))
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
+  let raw := { result.1 with pending := result.2.1 ++ rest }
+  have rule : microStep0 s = some (raw, result.2.2) := by simp only [microStep0, pending, raw, result]
+  have cards : raw.cards = s.cards := by
+    have same := congrArg GameState.cards (runEffect_safe s p src (env.withMight s.mightTable)
+      effect more effectAddPolicy).same
+    exact same
+  exact AdvanceTo.rule pending rfl rule (microStep_wf0 wf rule) cards reads base inserted
+
+/-- An instruction that performs its work in one Run transition terminates through the observer. -/
+theorem Effect.SingleRun.observed {effect : Effect} (single : effect.SingleRun) :
+    effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+  obtain ⟨board, emitted, rule⟩ := single s p src (env.withMight s.mightTable) more
+  dsimp only
+  rw [rule]
+  exact ⟨_, rest, rfl, base⟩
+
+/-- Consume the certified prefix and leave the still-owed Run instructions at the front. -/
+theorem EffectList.ObservedFinite.advance_appended {program : EffectList} (finite : program.ObservedFinite)
+    {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} {more : EffectList}
+    {rest : List Frame} {keeps : List Frame → Prop} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (program.append more) :: rest)
+    (base : keeps rest) (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s (RunContinuation p src more keeps) := by
+  induction finite generalizing s env rest with
+  | nil => exact .resume wf ⟨env, rest, pending, base⟩
+  | @cons effect moreProgram head remaining ih =>
+    apply AdvanceTo.then (head s p src env (moreProgram.append more) rest keeps wf reads pending base inserted) reads
+    intro t tWF tReads reached
+    obtain ⟨env, rest, stack, tracked⟩ := reached
+    exact ih tWF tReads stack tracked
+
+private theorem effectList_append_nil : ∀ es : EffectList, es.append .nil = es
+  | .nil => rfl
+  | .cons e es => by simp only [EffectList.append, effectList_append_nil es]
+
+/-- Run a certified program and remove its empty Run frame before resuming the continuation. -/
+theorem advance_run_program {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {program : EffectList} {rest : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env program :: rest) (finite : program.ObservedFinite)
+    (keeps : List Frame → Prop) (base : keeps rest)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  have full : s.pending = .run p src env (program.append .nil) :: rest := by
+    simpa only [effectList_append_nil] using pending
+  apply (finite.advance_appended wf reads full base inserted).then reads
+  intro t tWF tReads reached
+  obtain ⟨env, tail, stack, tracked⟩ := reached
+  let raw := { t with pending := tail }
+  have rule : microStep0 t = some (raw, []) := by simp only [microStep0, stack, raw]
+  exact .rule stack rfl rule (microStep_wf0 tWF rule) rfl tReads tracked inserted
+
+private theorem Effect.ObservedFinite.ofPrograms {effect : Effect}
+    (programs : ∀ s p src env more, ∃ program : EffectList, program.ObservedFinite ∧
+      (runEffect s p src env effect more effectAddPolicy).2.1 = [.run p src env (program.append more)]) :
+    effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  obtain ⟨program, finite, starts⟩ := programs s p src (env.withMight s.mightTable) more
+  have enter : AdvanceTo s (RunContinuation p src (program.append more) keeps) := by
+    apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+    dsimp only
+    rw [starts]
+    exact ⟨_, rest, rfl, base⟩
+  apply enter.then reads
+  intro t tWF tReads reached
+  obtain ⟨env, tail, stack, tracked⟩ := reached
+  exact finite.advance_appended tWF tReads stack tracked inserted
+
+/-- Nested sequences run their certified instructions before the remaining invocation. -/
+theorem Effect.ObservedFinite.seq {program : EffectList} (finite : program.ObservedFinite) :
+    (Effect.seq program).ObservedFinite :=
+  .ofPrograms (fun _ _ _ _ _ => ⟨program, finite, rfl⟩)
+
+private theorem Effect.ObservedFinite.replicate {body : Effect} (finite : body.ObservedFinite) (n : Nat) :
+    (EffectList.replicate n body).ObservedFinite := by
+  induction n with
+  | zero => exact .nil
+  | succ n ih => exact .cons finite ih
+
+/-- A runtime repetition consumes a finite number of certified body invocations. -/
+theorem Effect.ObservedFinite.repeatN {amount : Amount} {body : Effect} (finite : body.ObservedFinite) :
+    (Effect.repeatN amount body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  cases count : amount.evalS s p src env with
+  | none => exact ⟨.nil, .nil, by simp only [runEffect, Effect.pickSel?, runEffect1, count]; rfl⟩
+  | some n => exact ⟨_, finite.replicate n, by simp only [runEffect, Effect.pickSel?, runEffect1, count]⟩
+
+/-- A conditional follows the branch selected by the live state and refreshed Might. -/
+theorem Effect.ObservedFinite.ifThen {test : Condition} {yes no : Effect}
+    (onYes : yes.ObservedFinite) (onNo : no.ObservedFinite) :
+    (Effect.ifThen test yes no).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  cases result : test.eval s p src (env.withMight s.mightTable) with
+  | none =>
+    exact ⟨.nil, .nil, by simp only [runEffect, Effect.pickSel?, runEffect1, result]; rfl⟩
+  | some selected =>
+    have branch : (if selected then yes else no).ObservedFinite := by cases selected <;> assumption
+    exact ⟨.cons (if selected then yes else no) .nil, .cons branch .nil,
+      by simp only [runEffect, Effect.pickSel?, runEffect1, result, EffectList.append]⟩
+
+/-- A Run frame whose instruction list terminates under actual observation. -/
+def Frame.FiniteRun (frame : Frame) : Prop :=
+  ∃ p src env program, frame = .run p src env program ∧ program.ObservedFinite
+
+/-- Certified Run frames are resolution work. -/
+theorem Frame.FiniteRun.isResolution {frame : Frame} (finite : Frame.FiniteRun frame) :
+    frame.isResolution = true := by
+  obtain ⟨_, _, _, _, rfl, _⟩ := finite
+  rfl
+
+/-- Execute a list of certified Run frames, preserving the order of ordinary triggers queued
+behind those frames. -/
+theorem advance_run_frames {s : GameState} {frames : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : ResolutionPrefix frames keeps s.pending)
+    (finite : ∀ f ∈ frames, Frame.FiniteRun f)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  induction frames generalizing s with
+  | nil =>
+    obtain ⟨tail, ready, tracked⟩ := pending
+    exact .resume wf (ready.symm ▸ tracked)
+  | cons first later ih =>
+    obtain ⟨p, src, env, program, rfl, active⟩ := finite first List.mem_cons_self
+    obtain ⟨tail, ready, tracked⟩ := pending
+    have remaining (f : Frame) (inLater : f ∈ later) : Frame.FiniteRun f :=
+      finite f (List.mem_cons_of_mem _ inLater)
+    have begins : s.pending = .run p src env program :: (later ++ tail) := ready
+    let waits := ResolutionPrefix later keeps
+    have work := advance_run_program wf reads begins active waits ⟨tail, rfl, tracked⟩
+      (fun _ keep q ne => keep.insert (fun f member => (remaining f member).isResolution) inserted q ne)
+    exact work.then reads (fun state safe checked keep => ih safe checked keep remaining)
+
+private theorem Effect.ObservedFinite.ofForks {effect : Effect}
+    (forks : ∀ s p src env more, ∃ frames,
+      (runEffect s p src env effect more effectAddPolicy).2.1 = frames ++ [.run p src env more] ∧
+      ∀ f ∈ frames, Frame.FiniteRun f) :
+    effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  obtain ⟨frames, scheduled, finite⟩ := forks s p src (env.withMight s.mightTable) more
+  let resumes := RunContinuation p src more keeps
+  have entered : AdvanceTo s (ResolutionPrefix frames resumes) := by
+    refine advance_run_rule wf reads pending ?_ ?_
+    · dsimp only
+      rw [scheduled, List.append_assoc]
+      exact ⟨_, rfl, ⟨_, rest, rfl, base⟩⟩
+    · exact fun _ route q ne => route.insert (fun f member => (finite f member).isResolution)
+        (fun _ resume q' ne' => resume.insert inserted q' ne') q ne
+  exact entered.then reads (fun state safe checked queued =>
+    advance_run_frames safe checked queued finite (fun _ resume q ne => resume.insert inserted q ne))
+
+/-- A binding runs the certified body in the derived environment. -/
+theorem Effect.ObservedFinite.bind {name : VarId} {amount : Amount} {body : Effect}
+    (finite : body.ObservedFinite) : (Effect.bind name amount body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofForks
+  intro s p src env more
+  cases value : amount.evalS s p src env with
+  | none => exact ⟨[], by simp [runEffect, Effect.pickSel?, runEffect1, value], by simp⟩
+  | some n =>
+    refine ⟨[.run p src (env.bind name (.int n)) (.cons body .nil)], ?_, ?_⟩
+    · simp [runEffect, Effect.pickSel?, runEffect1, value]
+    · intro f member
+      obtain rfl := List.mem_singleton.mp member
+      exact ⟨_, _, _, _, rfl, .cons finite .nil⟩
+
+/-- A finite selection gives a finite list of body invocations. -/
+theorem Effect.ObservedFinite.forEach {sel : Selector} {body : Effect}
+    (finite : body.ObservedFinite) : (Effect.forEach sel body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofForks
+  intro s p src env more
+  cases selected : sel.eval s p src env with
+  | none => exact ⟨[], by simp [runEffect, Effect.pickSel?, runEffect1, selected], by simp⟩
+  | some objects =>
+    refine ⟨objects.map (fun id => .run p src { env with it := some id } (.cons body .nil)), ?_, ?_⟩
+    · simp [runEffect, Effect.pickSel?, runEffect1, selected]
+    · intro f member
+      obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
+      exact ⟨_, _, _, _, rfl, .cons finite .nil⟩
+
+/-- Each selected player receives a terminating body with the appropriate controller. -/
+theorem Effect.ObservedFinite.eachPlayer {who : PlayerSel} {body : Effect}
+    (finite : body.ObservedFinite) : (Effect.eachPlayer who body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofForks
+  intro s p src env more
+  let seats : Option (List PlayerId) := match who with
+    | .controllerOf i =>
+      match env.slots[i]? with
+      | some (.obj o) => (s.obj? o).bind fun x =>
+        if s.departures.seats.contains x.controller then none else some [x.controller]
+      | _ => none
+    | _ => who.resolve s p env
+  let playerEnv := { env with effectController := env.effectController <|> some p }
+  have rule : (runEffect s p src env (.eachPlayer who body) more effectAddPolicy).2.1 =
+      match seats with
+      | some qs => qs.map (fun q => .run q src playerEnv (.cons body .nil)) ++ [.run p src env more]
+      | none => [.run p src env more] := by
+    unfold runEffect Effect.pickSel? runEffect1
+    change (match seats with
+      | some qs => (s, qs.map (fun q => Frame.run q src playerEnv (.cons body .nil)) ++ [Frame.run p src env more], [])
+      | none => (s, [Frame.run p src env more], [Event.skipped src])).2.1 = _
+    cases seats <;> rfl
+  cases selected : seats with
+  | none => exact ⟨[], by rw [rule, selected]; rfl, by simp⟩
+  | some players =>
+    refine ⟨players.map (fun q => .run q src playerEnv (.cons body .nil)), by rw [rule, selected], ?_⟩
+    intro f member
+    obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
+    exact ⟨_, _, _, _, rfl, .cons finite .nil⟩
+
+private theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {effect : Effect} {more : EffectList} {rest : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons effect more) :: rest)
+    (waits : let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
+      (result.2.1 ++ rest).head?.all (fun f => !f.isWork) = true) :
+    AdvanceTo s keeps := by
+  let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
+  let raw := { result.1 with pending := result.2.1 ++ rest }
+  have step : microStep0 s = some (raw, result.2.2) := by simp only [microStep0, pending, raw, result]
+  have cards : raw.cards = s.cards := by
+    have db := congrArg GameState.cards (runEffect_safe s p src (env.withMight s.mightTable)
+      effect more effectAddPolicy).same
+    exact db
+  obtain ⟨mid, used, events, _, path, midWF, midCards, route⟩ :=
+    advance_rule_with_adds pending rfl step (microStep_wf0 wf step) cards reads
+  obtain ⟨t, later, remaining, stop⟩ :=
+    advance_observed_decision mid raw.pending midWF (midCards ▸ reads) route waits
+  exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append remaining, Or.inl stop⟩
+
+/-- A feasible optional instruction yields to its decision before running its body. -/
+theorem Effect.ObservedFinite.may (body : Effect) : (Effect.may body).ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  let live := env.withMight s.mightTable
+  by_cases blocked : (requiredPlayCandidates s p src live body effectAddPolicy).any List.isEmpty = true
+  · apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+    simp only [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl, blocked, ite_true]
+    exact ⟨live, rest, rfl, base⟩
+  · apply advance_run_decision wf reads pending
+    simp only [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl,
+      ite_eq_right blocked]
+    rfl
+
+/-- An empty alternative list is skipped, a singleton runs, and larger lists ask for a decision. -/
+theorem Effect.ObservedFinite.eitherOf {options : EffectList} (finite : options.ObservedFinite) :
+    (Effect.eitherOf options).ObservedFinite := by
+  cases finite with
+  | nil => exact Effect.SingleRun.observed (fun s p src env more => ⟨s, [.skipped src], rfl⟩)
+  | @cons first rest firstFinite _ =>
+    cases rest with
+    | nil =>
+      exact .ofPrograms (fun _ _ _ _ _ => ⟨.cons first .nil, .cons firstFinite .nil, rfl⟩)
+    | cons other later =>
+      intro s p src env more tail keeps wf reads pending _ _
+      apply advance_run_decision wf reads pending
+      cases later <;> rfl
+
+private theorem advance_draw_frames {s : GameState} {keeps : List Frame → Prop}
+    (players : List PlayerId) (count : Nat) (wf : s.WF) (reads : MightRead.database s.cards)
+    (frames : ResolutionPrefix (players.map fun p => .draw p count) keeps s.pending)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  induction players generalizing s with
+  | nil =>
+    obtain ⟨tail, ready, tracked⟩ := frames
+    exact .resume wf (ready.symm ▸ tracked)
+  | cons p players ih =>
+    obtain ⟨tail, ready, tracked⟩ := frames
+    let draws := players.map (fun q => Frame.draw q count)
+    let tracks := ResolutionPrefix draws keeps
+    have resolution : ∀ f ∈ draws, f.isResolution = true := by
+      intro frame member
+      obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
+      rfl
+    have begins : s.pending = .draw p count :: (draws ++ tail) := ready
+    have work : AdvanceTo s tracks := by
+      obtain ⟨t, used, events, _, path, result⟩ :=
+        advance_draw_until wf reads begins tracks ⟨tail, rfl, tracked⟩
+          (fun _ route q ne => route.insert resolution inserted q ne)
+      exact ⟨t, used, events, path, result⟩
+    exact work.then reads (fun state safe checked kept => ih safe checked kept)
+
+/-- Draw instructions finish their generated batches, or stop at Burn Out or another decision. -/
+theorem Effect.ObservedFinite.draw (who : PlayerSel) (amount : Amount) :
+    (Effect.prim (.draw who amount)).ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  let live := env.withMight s.mightTable
+  let resumes := RunContinuation p src more keeps
+  have enter (players : List PlayerId) (count : Nat)
+      (work : (runEffect s p src live (.prim (.draw who amount)) more effectAddPolicy).2.1 =
+        players.map (fun q => Frame.draw q count) ++ [.run p src live more]) :
+      AdvanceTo s resumes := by
+    let draws := players.map (fun q => Frame.draw q count)
+    have resolution : ∀ f ∈ draws, f.isResolution = true := by
+      intro frame member
+      obtain ⟨_, _, rfl⟩ := List.mem_map.mp member
+      rfl
+    have head : AdvanceTo s (ResolutionPrefix draws resumes) := by
+      refine advance_run_rule wf reads pending ?_ ?_
+      · dsimp only
+        rw [work, List.append_assoc]
+        exact ⟨_, rfl, ⟨live, rest, rfl, base⟩⟩
+      · exact fun _ route q ne => route.insert resolution
+          (fun _ keep q' ne' => keep.insert inserted q' ne') q ne
+    exact head.then reads (fun state safe checked tracked =>
+      advance_draw_frames players count safe checked tracked
+        (fun _ keep q ne => keep.insert inserted q ne))
+  cases players : who.resolve s p live with
+  | none => exact enter [] 0 (by simp only [runEffect, Effect.pickSel?, Prim.pickSel?,
+      runEffect1, runPrimEffect, players]; rfl)
+  | some targets =>
+    cases amountRead : amount.evalS s p src live with
+    | none => exact enter [] 0 (by simp only [runEffect, Effect.pickSel?, Prim.pickSel?,
+        runEffect1, runPrimEffect, players, amountRead]; rfl)
+    | some count => exact enter targets count (by simp only [runEffect, Effect.pickSel?, Prim.pickSel?,
+        runEffect1, runPrimEffect, players, amountRead])
+
+/-- A no-op consumes one Run step. -/
+theorem Effect.SingleRun.nop : Effect.nop.SingleRun := by
+  intro s p src env more
+  exact ⟨s, [], rfl⟩
+
+/-- Gaining XP consumes one Run step. -/
+theorem Effect.SingleRun.gainXP (who : PlayerSel) (amount : Amount) :
+    (Effect.prim (.gainXP who amount)).SingleRun := by
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+    effectDamageBatch?, permanentPlayEffects, applyPrim]
+  by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
+    cases who.resolve s p env <;> cases amount.evalS s p src env <;> exact ⟨_, _, rfl⟩
+
+private def noAttachments (events : List Event) : Prop :=
+  ∀ gear unit, Event.attached gear unit ∉ events
+
+private theorem noAttachments.append {a b : List Event}
+    (first : noAttachments a) (second : noAttachments b) : noAttachments (a ++ b) := by
+  intro gear unit found
+  rcases List.mem_append.mp found with l | r
+  · exact first gear unit l
+  · exact second gear unit r
+
+private theorem recycleOne_noAttachments (s : GameState) (id : ObjId) :
+    noAttachments (recycleOne s id).2 := by
+  unfold recycleOne
+  split
+  · dsimp only
+    split
+    · simp [noAttachments]
+    · split <;> simp [noAttachments]
+  · simp [noAttachments]
+
+private theorem recycleEach_noAttachments (s : GameState) (ids : List ObjId) :
+    noAttachments (applyEach recycleOne s ids).2 := by
+  induction ids generalizing s with
+  | nil => simp [applyEach, noAttachments]
+  | cons first more ih =>
+    exact (recycleOne_noAttachments s first).append (ih (recycleOne s first).1)
+
+private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (events : List Event) :
+    noAttachments (spellCompletion s src events true) := by
+  unfold spellCompletion
+  simp only [ite_true]
+  split
+  · split
+    · split <;> simp [noAttachments]
+    · simp [noAttachments]
+  · simp [noAttachments]
+
+private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {events : List Event} (outcome : applyPrim s p src env (.recycle .self) = some (t, events)) :
+    noAttachments events := by
+  unfold applyPrim at outcome
+  cases selected : Selector.eval s p src env .self with
+  | none => simp [selected] at outcome
+  | some ids =>
+    simp only [selected, Option.map_some] at outcome
+    have eventsEq := (Prod.mk.inj (Option.some.inj outcome)).2
+    rw [← eventsEq]
+    apply noAttachments.append
+    · apply (recycleEach_noAttachments s ids).append
+      split <;> simp [noAttachments]
+    · simp only [show (Selector.self == Selector.self) = true from rfl, ite_true]
+      exact spellCompletion_noAttachments s src _
+
+private theorem attachments_empty (s : GameState) {events : List Event} (h : noAttachments events) :
+    attachmentReplacementFrames s events = [] := by
+  unfold attachmentReplacementFrames
+  apply List.flatMap_eq_nil_iff.mpr
+  intro event found
+  cases event <;> try rfl
+  exact False.elim (h _ _ found)
+
+/-- A Limited Spell's recycle instruction creates no attachment-replacement work. -/
+theorem Effect.SingleRun.recycleSelf : (Effect.prim (.recycle .self)).SingleRun := by
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+    effectDamageBatch?, permanentPlayEffects]
+  have result : (match applyPrim s p src env (.recycle .self) with
+      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [Frame.run p src env more], r.2)
+      | none => (s, [Frame.run p src env more], [Event.skipped src])).2.1 = [Frame.run p src env more] := by
+    split
+    · rename_i r applied
+      dsimp only
+      rw [attachments_empty _ (recycle_noAttachments applied), List.nil_append]
+    · rfl
+  have packaged : ∃ board reported, (match applyPrim s p src env (.recycle .self) with
+      | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [Frame.run p src env more], r.2)
+      | none => (s, [Frame.run p src env more], [Event.skipped src])) =
+      (board, [Frame.run p src env more], reported) :=
+    ⟨_, _, Prod.ext rfl (Prod.ext result rfl)⟩
+  by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
+    exact packaged
+
+mutual
+
+/-- Check the effect constructors for which the observed dispatcher has a termination proof. -/
+def Effect.observedWorkSupported : Effect → Bool
+  | .nop | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.recycle .self) | .may _ => true
+  | .seq program | .eitherOf program => program.observedWorkSupported
+  | .ifThen _ yes no => yes.observedWorkSupported && no.observedWorkSupported
+  | .repeatN _ body | .bind _ _ body | .forEach _ body | .eachPlayer _ body => body.observedWorkSupported
+  | .prim primitive => (Effect.prim primitive).isTriggerAdd
+  | _ => false
+termination_by structural effect => effect
+
+/-- Check each instruction in a program individually. -/
+def EffectList.observedWorkSupported : EffectList → Bool
+  | .nil => true
+  | .cons head tail => head.observedWorkSupported && tail.observedWorkSupported
+termination_by structural program => program
+
+end
+
+private theorem Effect.ObservedFinite.addPrimitive (pr : Prim)
+    (supported : (Effect.prim pr).isTriggerAdd = true) : (Effect.prim pr).ObservedFinite := by
+  apply Effect.SingleRun.observed
+  intro s p src env more
+  rw [runEffect_triggerAdd_prim s p src env pr more supported]
+  split
+  · exact ⟨_, _, rfl⟩
+  · exact ⟨_, _, rfl⟩
+
+mutual
+
+/-- A supported instruction is finite through the real observer. -/
+theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect.observedWorkSupported = true) :
+    effect.ObservedFinite := by
+  cases effect <;> try (simp [Effect.observedWorkSupported] at supported; done)
+  case nop => exact Effect.SingleRun.nop.observed
+  case prim pr =>
+    cases pr <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
+    case gainXP who amount => exact (Effect.SingleRun.gainXP who amount).observed
+    case draw who amount => exact Effect.ObservedFinite.draw who amount
+    case recycle selector =>
+      cases selector <;> try (simp [Effect.observedWorkSupported, Effect.isTriggerAdd] at supported; done)
+      exact Effect.SingleRun.recycleSelf.observed
+    all_goals apply Effect.ObservedFinite.addPrimitive <;> exact supported
+  case seq program => exact .seq (program.observedFinite_of_supported supported)
+  case eitherOf options => exact .eitherOf (options.observedFinite_of_supported supported)
+  case ifThen test yes no =>
+    obtain ⟨yesSupported, noSupported⟩ := Bool.and_eq_true_iff.mp supported
+    exact .ifThen (yes.observedFinite_of_supported yesSupported) (no.observedFinite_of_supported noSupported)
+  case repeatN count body => exact .repeatN (body.observedFinite_of_supported supported)
+  case bind name amount body => exact .bind (body.observedFinite_of_supported supported)
+  case forEach target body => exact .forEach (body.observedFinite_of_supported supported)
+  case eachPlayer who body => exact .eachPlayer (body.observedFinite_of_supported supported)
+  case may body => exact .may body
+termination_by structural effect
+
+/-- A supported program is finite through the real observer. -/
+theorem EffectList.observedFinite_of_supported (program : EffectList) (supported : program.observedWorkSupported = true) :
+    program.ObservedFinite := by
+  cases program with
+  | nil => exact .nil
+  | cons head tail =>
+    obtain ⟨headSupported, tailSupported⟩ := Bool.and_eq_true_iff.mp supported
+    exact .cons (head.observedFinite_of_supported headSupported) (tail.observedFinite_of_supported tailSupported)
+termination_by structural program
+
+end
+
+end Riftbound
+
+end

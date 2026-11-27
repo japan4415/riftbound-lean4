@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.ExpirationWork
+public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
 
@@ -102,6 +103,21 @@ theorem step_priority_pass_to_decision {s : Riftbound.GameState} {p : Riftbound.
       ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
   exact Riftbound.step_priority_pass_to_decision wf (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- For registered cards, check the top item's actual Run programs and follow the final
+Chain Pass to a decision or a deferred limited Spell declaration. -/
+theorem step_chainPass_last_checked {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ Riftbound.ChainWorkEnd t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
+  Riftbound.step_chainPass_last_checked wf (mightReads_of_registered cards) ongoing pending last checked front decision
 
 /-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
 cards, including the Battlefield entry used after a concession. -/

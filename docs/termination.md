@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の決定点か試合終了まで追える。証明の範囲は §3〜§3o に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の決定点か試合終了まで追える。証明の範囲は §3〜§3p に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -147,6 +147,12 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 [`advance_beginning_to_decision`](../Riftbound/Invariant/TurnPhaseWork.lean) は、Beginning の Temporary と死亡置換、追加ドロー、Hold、Channel、Draw、Main を、実際の作業順に追う。Hold の得点がドローに置き換わる場合、Draw を飛ばす効果、山札切れの Burn Out、Main の Cleanup が始める Showdown も含む。即時 Add は観測された時点で解決し、通常の誘発は残っている Cleanup やドローの後ろに積む。
 
 [`RiftboundCards.step_priority_pass_to_decision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行えば、ある有限の fuel で `step` が成功することを示す。追加の fuel を与えても、到達するゲーム状態と発行するイベント列は一致する。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
+
+### 3p. Chain の最後の Pass と先頭項目の解決
+
+[`RiftboundCards.step_chainPass_last_checked`](../RiftboundCards/MightRead.lean) は、最後の Pass で先頭項目を解決するとき、エンジンがその局面で生成する Run の命令列を検査する。対応する命令列なら、実際の効果と即時 Add、項目を Chain から移す処理、必要な Recycle、Cleanup まで有限回で進む。次の決定点のほか、効果でプレイされていて宣言の確定を待つ Spell に処理を引き継ぐ場合も区別する。
+
+検査は条件分岐、繰り返し、変数束縛、対象やプレイヤーごとに行う処理、ドロー、資源処理などを扱う。プレイヤー判断が途中に入る場合はそこで止まり、通常の誘発は残っている解決フレームの後ろに積む。追加で必要な証明には、未対応の効果命令、個別の選択付きで Repeat した Spell の実行、効果でプレイされていて宣言の確定を待つ Spell の処理がある。
 
 ## 4. 進め方の案（単位に分ける）
 
