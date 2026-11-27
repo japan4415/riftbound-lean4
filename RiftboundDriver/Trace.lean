@@ -541,6 +541,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _, _ => []) ++
         (if grant.isSome && e.body == .prim (.ready .self) then
           [("abilityEffect", jstr "readySelf")] else []) ++
+        ((activationXP costs).toList.map (fun n => ("xpCost", toString n))) ++
         (if costs.contains .disempowerSelf then [("disempowerSelf", "true")] else []) ++
         (if costs.contains .exhaustSelf then [("exhaustSelf", "true")] else [])
       | _ => [])

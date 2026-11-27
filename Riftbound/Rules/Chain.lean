@@ -107,6 +107,10 @@ def GameState.activationCostObjects (s : GameState) (p : PlayerId) (src : ObjId)
         | .exhaust => (!costs.contains .exhaustSelf || src != id) &&
             (s.obj? id).any (fun o => !o.exhausted))).map some
 
+/-- The XP a player must spend before finalizing an activation (CR 357.2, 730.2). -/
+def activationXP (costs : List AbilityCost) : Option Nat :=
+  costs.findSome? (fun | .spendXP n => some n | _ => none)
+
 /-- The costs of an ability the model can pay: whether to exhaust the object, and the Energy and
 Power to pay. `none` for unsupported costs or multiple clauses of the same payment kind. -/
 def costPlan : List AbilityCost → Option (Bool × Option Cost)
@@ -135,6 +139,7 @@ def costPlan : List AbilityCost → Option (Bool × Option Cost)
     else none
   | .discard _ :: cs | .discardMatching _ _ :: cs =>
     if (discardCost cs).isNone then costPlan cs else none
+  | .spendXP _ :: cs => if (activationXP cs).isNone then costPlan cs else none
   | .recycleFromTrash .. :: cs =>
     if (activationRecycleCost cs).isSome then none else costPlan cs
   | .disempowerSelf :: cs => costPlan cs
@@ -461,11 +466,12 @@ def preCost (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCo
   let k := payKill s p costs ts
   let exhausted := payActivationObject k.1 p src costs costObject
   let d := payDiscards p exhausted.1 discards
+  let paid := (activationXP costs).elim d.1 (d.1.spendXP p)
   let permanent := s.permanentPlayActivation src costs
   let next := if gear || permanent then
     let spent := (s.poolOf p).any - pool.any
-    { d.1 with turnFx := s.spendPowerNotes p gear permanent spent d.1.turnFx }
-  else d.1
+    { paid with turnFx := s.spendPowerNotes p gear permanent spent paid.turnFx }
+  else paid
   (next, k.2 ++ exhausted.2 ++ d.2)
 
 /-- Paying the costs is a safe change. -/
@@ -474,6 +480,11 @@ theorem preCost_safe (s : GameState) (p : PlayerId) (src : ObjId) (costs : List 
     Safe s (preCost s p src costs ts gear pool discards costObject).1 := by
   have h := (payKill_safe s p costs ts).trans
     ((payActivationObject_safe _ p src costs costObject).trans (payDiscards_safe p discards _))
+  have spend (t : GameState) : Safe t ((activationXP costs).elim t (t.spendXP p)) := by
+    cases activationXP costs with
+    | none => exact Safe.refl t
+    | some n => exact Safe.spendXP t p n
+  have h := h.trans (spend _)
   unfold preCost
   dsimp only
   split
@@ -495,7 +506,7 @@ theorem preCost_zones {s : GameState} (hwf : s.WF) (p : PlayerId) (src : ObjId) 
     (by simp)).trans h.2
   unfold preCost
   dsimp only
-  split <;> exact ⟨hand, chain⟩
+  cases activationXP costs <;> split <;> exact ⟨hand, chain⟩
 
 /-- Paying the costs, including discards, preserves the Chain. -/
 theorem preCost_chain {s : GameState} (hwf : s.WF) (p : PlayerId) (src : ObjId) (costs : List AbilityCost)
@@ -509,7 +520,7 @@ theorem preCost_chain {s : GameState} (hwf : s.WF) (p : PlayerId) (src : ObjId) 
       (by simp)).trans (payKill_zones hwf p costs ts).2)
   unfold preCost
   dsimp only
-  split <;> exact h
+  cases activationXP costs <;> split <;> exact h
 
 /-- Whether the costs exhaust the object. -/
 def costExhausts (costs : List AbilityCost) : Bool :=
@@ -531,6 +542,7 @@ whether a hidden card can be revealed, and whether the ability's text is active 
 def guardOk (s : GameState) (p : PlayerId) (src : ObjId) (costs : List AbilityCost)
     (body : EffectDef) (grant : Option AbilityGrant) : Bool :=
   (s.rulesTextActive src || grant.isSome) &&
+    (activationXP costs).all (fun n => decide (n ≤ s.xpOf p)) &&
     (!costs.contains .fromBattlefield || Filter.holds s src {} src .onBattlefield == some true) &&
     (match body.body with
       | .ifThen c _ .nop => c.eval s p src {} != some false

@@ -122,6 +122,8 @@ structure CardDef where
   grants : List Ability := []
   /-- The Equip ability's printed Energy discount, which can read the recipient in slot 0. -/
   equipEnergyDiscount : Option Amount := none
+  /-- The XP cost of Equip printed in words (CR 818.1.c.3). -/
+  equipXP : Option Nat := none
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
   /-- Energy discount when at least one declared target matches these filters (CR 355, 356.4). -/
@@ -231,6 +233,7 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     | .equip, .cost cost => [equipAbility (c.equipResourceCosts cost)]
     | .equip, .costOrExhaustUnit cost =>
       [equipAbility (c.equipResourceCosts cost), equipAbility [.exhaustFriendly (.ofList [.ofType .unit])]]
+    | .equip, .none => c.equipXP.toList.map (fun n => equipAbility [.spendXP n])
     | _, _ => []) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with

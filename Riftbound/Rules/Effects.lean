@@ -2992,16 +2992,40 @@ def GameState.weaponmasterAttachable (s : GameState) (p : PlayerId) (gear recipi
     (s.obj? gear).any (·.attached != some recipient) &&
     !(s.cardDef? gear).any (·.hasType .unit) && (s.cardDef? recipient).any (·.hasType .unit)
 
-/-- The Equip cost paid by Weaponmaster includes the Equipment's own discount for the recipient
-(CR 821.1.c.2). -/
-def GameState.weaponmasterCost (s : GameState) (p : PlayerId) (gear recipient : ObjId)
-    (less : Nat) : Option Cost := do
+/-- Pay the printed Equip cost, including modifiers for the recipient and Weaponmaster's Power
+discount (CR 821.1.c.2). -/
+def payWeaponmaster (s : GameState) (p : PlayerId) (gear recipient : ObjId) (less : Nat) :
+    Option (GameState × List Event) :=
   if s.weaponmasterAttachable p gear recipient then
-    let definition ← s.cardDef? gear
-    let printed ← definition.equipCost
-    let discount := s.abilityEnergyDiscount p gear [recipient] (definition.equipResourceCosts printed)
-    return (printed.lessEnergy discount).weaponmasterDiscount less
+    (s.cardDef? gear).bind fun definition =>
+      match definition.equipXP with
+      | some xp => if xp ≤ s.xpOf p then some (s.spendXP p xp, []) else none
+      | none => definition.equipCost.bind fun printed =>
+        let discount := s.abilityEnergyDiscount p gear [recipient] (definition.equipResourceCosts printed)
+        payByRunes s p gear ((printed.lessEnergy discount).weaponmasterDiscount less)
   else none
+
+theorem payWeaponmaster_safe {s : GameState} {p : PlayerId} {gear recipient : ObjId} {less : Nat}
+    {paid : GameState × List Event} (h : payWeaponmaster s p gear recipient less = some paid) :
+    Safe s paid.1 := by
+  unfold payWeaponmaster at h
+  split at h
+  · cases definition : s.cardDef? gear with
+    | none => simp [definition] at h
+    | some d =>
+      simp only [definition, Option.bind_some] at h
+      split at h
+      · rename_i xp _
+        split at h
+        · cases h
+          exact Safe.spendXP s p xp
+        · simp at h
+      · cases printed : d.equipCost with
+        | none => simp [printed] at h
+        | some c =>
+          simp only [printed, Option.bind_some] at h
+          exact payByRunes_safe h
+  · simp at h
 
 /-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` generic Power
 (Weaponmaster): an Equipment whose cost cannot be paid stays where it is, and one with no Equip
@@ -3015,11 +3039,8 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
       | [u] =>
         if u ∈ s.inPlay then
         some (gs.foldl (fun (r : GameState × List Event) g =>
-          match r.1.weaponmasterCost p g u less with
-          | some c =>
-            match payByRunes r.1 p g c with
-            | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
-            | none => r
+          match payWeaponmaster r.1 p g u less with
+          | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
           | none => r) (s, []))
         else some (s, [])
       | _ => none))
@@ -3046,11 +3067,8 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             rw [← h]
             have key : ∀ (l : List ObjId) (r0 : GameState × List Event), Safe s r0.1 →
                 Safe s (l.foldl (fun (r : GameState × List Event) g =>
-                  match r.1.weaponmasterCost p g u less with
-                  | some c =>
-                    match payByRunes r.1 p g c with
-                    | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
-                    | none => r
+                  match payWeaponmaster r.1 p g u less with
+                  | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
                   | none => r) r0).1 := by
               intro l
               induction l with
@@ -3059,14 +3077,10 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 intro r0 h0
                 simp only [List.foldl_cons]
                 apply ih
-                cases hc : r0.1.weaponmasterCost p g u less with
-                | none => simpa [hc] using h0
-                | some c =>
-                  cases hp : payByRunes r0.1 p g c with
-                  | none => simpa [hc, hp] using h0
-                  | some q =>
-                    simp only [hp]
-                    exact h0.trans ((payByRunes_safe hp).trans (attachTo_safe u _ g))
+                cases hp : payWeaponmaster r0.1 p g u less with
+                | none => exact h0
+                | some q =>
+                  exact h0.trans ((payWeaponmaster_safe hp).trans (attachTo_safe u _ g))
             exact key gs (s, []) (Safe.refl s)
           · simp only [hu, ite_false, Option.some.injEq] at h
             rw [← h]

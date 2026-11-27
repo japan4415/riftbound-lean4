@@ -78,6 +78,35 @@ private meta def checkGear (code : String) (domain : Domain) (bonus : Int) : Boo
 #guard checkGear "SFD-095" .body 2
 #guard checkGear "SFD-161" .order 3
 
+-- Shepherd's Heirloom earns one XP on play and uses one XP to Equip through either path.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, hand) ← put (s.setXP p 0) p "UNL-158" .hand
+  let (s, host) ← put s p "OGN-049" .base
+  let (s, enemy) ← put s q "OGN-049" .base
+  let (playing, _) ← (step 100 (s.fund p 2) ⟨.player p, .playCard hand ⟨2, []⟩ []⟩).toOption
+  let played := settleChain {} 12 playing
+  let gear ← played.firstOf p .base "UNL-158"
+  let equip (target : ObjId) : Action := ⟨.player p, .activate gear 1 ⟨0, []⟩ [target]⟩
+  let (waiting, _) ← (step 100 played (equip host)).toOption
+  let attached := settleChain {} 12 waiting
+  let (board, chef) ← put (played.fund p 5) p "SFD-092" .hand
+  let weaponmaster : Action := ⟨.player p, .playCard chef ⟨5, []⟩ []⟩
+  let (withXP, _) ← (step 100 board weaponmaster).toOption
+  let (withoutXP, _) ← (step 100 (board.setXP p 0) weaponmaster).toOption
+  let equipped := settleChain {} 12 withXP
+  let declined := settleChain {} 12 withoutXP
+  let made ← equipped.firstOf p .base "SFD-092"
+  return played.xpOf p == 1 && (played.poolOf p).energy == 0 &&
+    !(step 100 (played.setXP p 0) (equip host)).isOk && !(step 100 played (equip enemy)).isOk &&
+    waiting.xpOf p == 0 && (waiting.obj? gear).any (·.attached.isNone) &&
+    (attached.obj? gear).any (·.attached == some host) && attached.mightNow host == some 7 &&
+    equipped.xpOf p == 0 && equipped.poolOf p == {} &&
+    (equipped.obj? gear).any (·.attached == some made) &&
+    !(equipped.fxOf p).contains .usedGearAbility &&
+    (declined.obj? gear).any (·.attached.isNone) && declined.xpOf p == 0
+
 -- Brutalizer gives its printed bonus as long as it is attached, plus two on that turn.
 #guard testBoard fun s => do
   let p := s.me

@@ -215,15 +215,117 @@ meta def firstAct (s : GameState) (u : ObjId) : Nat :=
     predicting.countIn p .trash "UNL-062" == 1 && done.handN p == s.handN p &&
     (done.zone deck).take 2 == [second, first]
 
--- Crowd Favorite (UNL-102): spend 2 XP to buff it; not without the XP
+-- Hunt gains XP on the battlefield. The buff costs XP as soon as it is activated.
+private meta def huntBuffCostsXP (code : String) : Bool := tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, unit) ← putAt (s.control p bf) p code bf
+  let s := (s.setXP p 0).setXP q 3
+  let scored ← fire s [.scored p bf true]
+  let below := s.setXP p (scored.xpOf p)
+  let exact := s.setXP p 2
+  let action : Action := ⟨.player p, .activate unit 0 ⟨0, []⟩ []⟩
+  let (queued, _) ← (step 100 exact action).toOption
+  let item ← (queued.zone .chain).head?
+  let resolved := settleChain {} 12 queued
+  let countered := settleChain {} 12 (counterObj queued item).1
+  return scored.xpOf p == 1 && !((legalFrameActions below).contains action) &&
+    !(step 100 below action).isOk && (legalFrameActions exact).contains action &&
+    queued.xpOf p == 0 && queued.xpOf q == 3 && !(queued.obj? unit).any (·.buffed) &&
+    resolved.xpOf p == 0 && (resolved.obj? unit).any (·.buffed) &&
+    countered.xpOf p == 0 && !(countered.obj? unit).any (·.buffed)
+
+#guard huntBuffCostsXP "UNL-102"
+#guard huntBuffCostsXP "UNL-162"
+
+-- Blood Rose pays Energy at trigger finalization and chooses the Unit when activating Ready.
 #guard tun fun s => do
-  let (s1, u) ← put s s.me "UNL-102" .base
-  let s2 := s1.setXP s.me 2
-  let s3 ← activate s2 s.me u (firstAct s2 u)
-  let s4 := s1.setXP s.me 1
-  let s5 := activate s4 s.me u (firstAct s4 u)
-  return ((s3.obj? u).any (·.buffed)) && s3.xpOf s.me == 0 &&
-    (match s5 with | none => true | some t => !((t.obj? u).any (·.buffed)))
+  let p := s.me
+  let q := s.you
+  let (s, rose) ← put (s.fund p 1) p "UNL-109" .base
+  let (s, unit) ← put s p "OGN-049" .base
+  let (s, opponent) ← put s q "OGN-049" .base
+  let s := (setExhausted true s opponent).1.setXP p 2
+  let triggers := s.detect [.played p unit]
+  let (offered, _) ← (advance 100 { s with pending := insertTriggers triggers s.pending } []).toOption
+  let buy : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (bought, _) ← (step 100 offered buy).toOption
+  let (skipped, _) ← (step 100 offered skip).toOption
+  let funded := settleChain {} 12 bought
+  let ready : Action := ⟨.player p, .activate rose 1 ⟨0, []⟩ [opponent]⟩
+  let (queued, _) ← (step 100 funded ready).toOption
+  let resolved := settleChain {} 12 queued
+  return triggers.length == 1 && (s.detect [.played q opponent]).isEmpty &&
+    bought.xpOf p == 2 && (bought.poolOf p).energy == 0 && !(bought.zone .chain).isEmpty &&
+    skipped.xpOf p == 2 && (skipped.poolOf p).energy == 1 && (skipped.zone .chain).isEmpty &&
+    funded.xpOf p == 3 && !(step 100 s ready).isOk && queued.xpOf p == 0 &&
+    queued.tired rose == some true && queued.tired opponent == some true &&
+    resolved.tired rose == some true && resolved.tired opponent == some false
+
+-- Megatusk grants Ganking to its controller's units at its location for the current turn.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, tusk) ← putAt (s.control p bf) p "UNL-126" bf
+  let (s, nearby) ← putAt s p "OGN-049" bf
+  let (s, other) ← putAt s q "OGN-049" bf
+  let (s, distant) ← put s p "OGN-049" .base
+  let (s, homeTusk) ← put s p "UNL-126" .base
+  let action : Action := ⟨.player p, .activate tusk 0 ⟨0, []⟩ []⟩
+  let (queued, _) ← (step 100 (s.setXP p 3) action).toOption
+  let granted := settleChain {} 12 queued
+  let atHome ← activate (s.setXP p 3) p homeTusk 0
+  let (expired, _) ← (advance 100 { granted with pending := [.expireTurn, .priority p] } []).toOption
+  return !(step 100 (s.setXP p 2) action).isOk && queued.xpOf p == 0 &&
+    !queued.hasKw nearby .ganking && granted.hasKw tusk .ganking && granted.hasKw nearby .ganking &&
+    !granted.hasKw distant .ganking && !granted.hasKw other .ganking &&
+    atHome.hasKw homeTusk .ganking && atHome.hasKw distant .ganking && !atHome.hasKw nearby .ganking &&
+    !expired.hasKw nearby .ganking
+
+-- Voidreaver's abilities spend XP and exhaust immediately. The move requires an exhausted
+-- friendly Unit on a battlefield, while the buff can target an opponent's Unit.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, legend) ← put (s.control p bf) p "UNL-201" .legendZone
+  let (s, tired) ← putAt s p "OGN-049" bf
+  let (s, stillReady) ← putAt s p "OGN-088" bf
+  let (s, opponent) ← put s q "OGN-049" .base
+  let s := (setExhausted true s tired).1.setXP p 0
+  let won ← fire s [.combatWon bf p]
+  let exact := s.setXP p 2
+  let buff : Action := ⟨.player p, .activate legend 1 ⟨0, []⟩ [opponent]⟩
+  let move (target : ObjId) : Action := ⟨.player p, .activate legend 2 ⟨0, []⟩ [target]⟩
+  let (buffing, _) ← (step 100 (s.setXP p (won.xpOf p)) buff).toOption
+  let (moving, _) ← (step 100 exact (move tired)).toOption
+  let buffed := settleChain {} 12 buffing
+  let moved := settleChain {} 12 moving
+  let readied := settleChain {} 12 (readyEffect moving tired).1
+  return won.xpOf p == 1 && buffing.xpOf p == 0 && buffing.tired legend == some true &&
+    !(buffing.obj? opponent).any (·.buffed) && (buffed.obj? opponent).any (·.buffed) &&
+    !(step 100 (s.setXP p 1) (move tired)).isOk && !(step 100 exact (move stillReady)).isOk &&
+    moving.xpOf p == 0 && moving.tired legend == some true &&
+    moved.where? tired == some (.player p .base) && readied.where? tired == some .battlefieldZone &&
+    (readied.obj? tired).any (·.loc == some bf)
+
+-- Keeper of the Hammer gains XP on Hold and draws after paying both activation costs.
+#guard tun fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, legend) ← put (s.control p bf) p "UNL-203" .legendZone
+  let s := s.setXP p 2
+  let held ← fire s [.scored p bf false]
+  let conquered ← fire s [.scored p bf true]
+  let draw : Action := ⟨.player p, .activate legend 1 ⟨0, []⟩ []⟩
+  let (queued, _) ← (step 100 (s.setXP p (held.xpOf p)) draw).toOption
+  let resolved := settleChain {} 12 queued
+  return held.xpOf p == 3 && conquered.xpOf p == 2 && !(step 100 s draw).isOk &&
+    queued.xpOf p == 0 && queued.tired legend == some true && queued.handN p == s.handN p &&
+    resolved.handN p == s.handN p + 1
 
 -- Disposal Order declares one mode and a set of at most three opponent Trash cards.
 -- A chance answer can change the order of that group but cannot add, omit or duplicate a card.

@@ -2153,6 +2153,12 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Bashful Bloom は、起動時に味方の Temporary Unit の数に応じて Energy を支払う。Bashful Bloom と Sprite Burst の Ready の Sprite は、プレイする席が Base または条件を満たす Battlefield に出す。Sprite Fountain と Sprite Queen は印刷された指定どおり Base に出す（CR 184.1、184.2、355.2）。
 - Unleashed の5枚を `full` にし、全1,103枚中547枚を実装済みにした。[カード実装状況](coverage.md)
 
+### 起動能力と Equip の XP コスト
+
+- XP は、能力を起動する席が支払い、Chain に載った時点で差し引かれている。能力を打ち消しても、支払った XP は戻らない。Shepherd's Heirloom の Equip は XP 1 を支払う。Weaponmaster 経由でも同じ XP を支払う（CR 357.2、730.2、818.1.c.3、821.1.c.2）。
+- Blood Rose の誘発では、Chain に載せるときに Energy 1 を支払うか選ぶ。Blood Rose と Voidreaver の起動では、対象を選んでから XP と Exhaust を支払う。Megatusk は自身と同じ場所にいる、自分が支配する Unit にそのターンの Ganking を与える。
+- Unleashed の6枚を `full` にし、全1,103枚中553枚を実装済みにした。[カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

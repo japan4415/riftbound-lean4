@@ -47,10 +47,6 @@ def predict1 : Effect := .seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .y
 /-- Open the private Predict decision and resolve the kept and recycled cards. -/
 def predict2 : Effect := .prim (.predict (.const 2))
 
-/-- "Spend `n` XP>" then the effect: it cannot be used without the XP. -/
-def spendXpThen (n : Nat) (e : Effect) : Effect :=
-  .ifThen (.cmp .ge .xp (.const n)) (.seqOf [.prim (.spendXP .you (.const n)), e]) .nop
-
 /-- Ready up to two runes. -/
 def readyTwoRunes : Effect :=
   .seqOf [.may (.prim (.ready (Selector.one .friendly .atBase [.ofType .rune, .exhausted]))),
@@ -2985,7 +2981,7 @@ def UNL_102.meta : CardDef :=
 /-- Crowd Favorite. -/
 def UNL_102 : CardDef :=
   { UNL_102.meta with
-    abilities := [.activated [] .normal (.of [] (spendXpThen 2 (.prim (.buff .self)))) .unlimited],
+    abilities := [.activated [.spendXP 2] .normal (.of [] (.prim (.buff .self))) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED UNL-103
@@ -3176,13 +3172,16 @@ def UNL_109.meta : CardDef :=
 def UNL_109 : CardDef :=
   { UNL_109.meta with
     abilities := [
-      .triggered { event := .play, subject := Selector.all .you .anywhere [.ofType .unit] }
-        (.of [] (.ifThen (.canPay ⟨1, []⟩)
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.gainXP .you (.const 1))])) .nop)) .unlimited,
-      .activated [.exhaustSelf] .normal
-        (.of [] (spendXpThen 3 (.prim (.ready (Selector.one .any .anywhere [.ofType .unit])))))
-        .unlimited],
-    status := .drafted }
+      .triggered
+        { event := .play
+          subject := Selector.all .you .anywhere [.ofType .unit]
+          optional := true, cost := .energy 1 }
+        (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited,
+      .activated [.spendXP 3, .exhaustSelf] .normal
+        { choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+          recheckTargets := true
+          body := .prim (.ready (.slot 0)) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-110
 /--
@@ -3653,10 +3652,10 @@ def UNL_126.meta : CardDef :=
 /-- Megatusk. -/
 def UNL_126 : CardDef :=
   { UNL_126.meta with
-    abilities := [.activated [] .normal (.of [] (spendXpThen 3
-      (.grant (Selector.all .friendly .here [.ofType .unit])
-        (.keyword .it { keyword := .ganking }) .thisTurn))) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.spendXP 3] .normal
+      (.of [] (.grant (Selector.all .you .here [.ofType .unit])
+        (.keyword .it { keyword := .ganking }) .thisTurn)) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-127
 /--
@@ -4574,12 +4573,9 @@ def UNL_158.meta : CardDef :=
 /-- Shepherd's Heirloom. -/
 def UNL_158 : CardDef :=
   { UNL_158.meta with
-    abilities := [
-      .triggered (.onSelf .play) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited,
-      .activated [] .normal
-        (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-          (spendXpThen 1 (.prim (.attach .self (.slot 0))))) .unlimited],
-    status := .drafted }
+    equipXP := some 1,
+    abilities := [.triggered (.onSelf .play) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-159
 /--
@@ -4681,8 +4677,8 @@ def UNL_162.meta : CardDef :=
 /-- Enthralling Protector. -/
 def UNL_162 : CardDef :=
   { UNL_162.meta with
-    abilities := [.activated [] .normal (.of [] (spendXpThen 2 (.prim (.buff .self)))) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.spendXP 2] .normal (.of [] (.prim (.buff .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-163
 /--
@@ -5825,14 +5821,15 @@ def UNL_201 : CardDef :=
   { UNL_201.meta with
     abilities := [
       .triggered (.onSelf .winCombat) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited,
-      .activated [.exhaustSelf] .normal
-        (.of [] (spendXpThen 1 (.prim (.buff (Selector.one .any .anywhere [.ofType .unit])))))
-        .unlimited,
-      .activated [.exhaustSelf] .normal
-        (.of [] (spendXpThen 2 (.prim (.move
-          (Selector.one .friendly .atBattlefield [.ofType .unit, .exhausted]) .base))))
-        .unlimited],
-    status := .drafted }
+      .activated [.spendXP 1, .exhaustSelf] .normal
+        { choices := [.targetOf .one .any .anywhere [.ofType .unit]]
+          recheckTargets := true
+          body := .prim (.buff (.slot 0)) } .unlimited,
+      .activated [.spendXP 2, .exhaustSelf] .normal
+        { choices := [.targetOf .one .friendly .atBattlefield [.ofType .unit, .exhausted]]
+          recheckTargets := true
+          body := .prim (.move (.slot 0) .base) } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-202
 /--
@@ -5886,8 +5883,9 @@ def UNL_203.meta : CardDef :=
 def UNL_203 : CardDef :=
   { UNL_203.meta with
     abilities := [.triggered (.onSelf .youHold) (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited,
-      .activated [.exhaustSelf] .normal (.of [] (spendXpThen 3 (.prim (.draw .you (.const 1))))) .unlimited],
-    status := .drafted }
+      .activated [.spendXP 3, .exhaustSelf] .normal
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED UNL-204
 /--
