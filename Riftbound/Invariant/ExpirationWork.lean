@@ -1291,6 +1291,39 @@ private theorem EndingFrame.queue_nonempty {queue : List PendTrigger}
       obtain ⟨_, _, _, _, impossible⟩ := PendTrigger.immediateAddFrame_run add
       contradiction
 
+private theorem advance_turn_boundary_work (raw : GameState) (notices : List Event) (wf : raw.WF)
+    (database : MightRead.database raw.cards) (ordinaryMight : raw.cards.mightTriggersAreOrdinary)
+    (pending : raw.pending = [.cleanup, .expireTurn, .beginTurn]) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true ∨
+        (t.pending = [.beginTurn] ∧ t.WF ∧ t.cards = raw.cards)) := by
+  obtain ⟨mid, adds, added, runAdds, midWF, midCards, midShape, _⟩ :=
+    resolve_cycle_observation raw notices wf database
+      (pending.symm ▸ CycleStack.beginTurn.expire.cleanup)
+  obtain ⟨t, later, events, run, lastWF, lastCards, shape, outside⟩ :=
+    advance_cycle_run mid midWF (midCards ▸ database) (midCards ▸ ordinaryMight) midShape
+  have initial := runAdds.append run
+  have cards : t.cards = raw.cards := lastCards.trans midCards
+  cases stack : t.pending with
+  | nil => exact ⟨t, _, _, initial, Or.inl (by simp [stack])⟩
+  | cons first rest =>
+    have frame := shape.safe first (stack ▸ List.mem_cons_self)
+    cases frame with
+    | cleanup => exact False.elim (outside (Or.inl (stack ▸ rfl)))
+    | expire => exact False.elim (outside (Or.inr (stack ▸ rfl)))
+    | turn =>
+      have order := List.pairwise_cons.mp (stack ▸ shape.ending.turnLast rfl)
+      cases rest with
+      | nil => exact ⟨t, _, _, initial, Or.inr ⟨stack, lastWF, cards⟩⟩
+      | cons f fs => exact False.elim (order.1 f List.mem_cons_self rfl)
+    | choice => exact ⟨t, _, _, initial, Or.inl (by simp [stack, Frame.isWork])⟩
+    | queue queued =>
+      have nonempty := (shape.ending.allowed _ (stack ▸ List.mem_cons_self)).queue_nonempty
+      obtain ⟨done, used, _, _, _, resolved, decisionStack, decision⟩ :=
+        advance_triggers_to_decision t lastWF queued rest stack (cards ▸ database) (Or.inl nonempty)
+      refine ⟨done, adds + later + used, _, initial.append resolved, ?_⟩
+      exact Or.inl (by simp [decisionStack, decision])
+
 /-- Ending resolves the immediate Adds detected at phase entry and during Cleanup, including
 any Expiration passes their effects require. It reaches a player decision, an empty stack, or
 the normal Begin Turn continuation. -/
@@ -1304,33 +1337,9 @@ theorem advance_ending_with_adds {s : GameState} (wf : s.WF) (database : MightRe
   let notices := emitted ++ s.workTransitionEvents raw
   have step : workStep s = some (raw.withTriggers notices, emitted) := by
     simp only [workStep, pending, microStep, microStep0, Option.map_some, raw, emitted, notices]
-  obtain ⟨mid, adds, added, runAdds, midWF, midCards, midShape, _⟩ :=
-    resolve_cycle_observation raw notices (wf.congr rfl rfl rfl rfl) database
-      CycleStack.beginTurn.expire.cleanup
-  obtain ⟨t, later, events, run, lastWF, lastCards, shape, outside⟩ :=
-    advance_cycle_run mid midWF (midCards ▸ database) (midCards ▸ ordinaryMight) midShape
-  have initial := (runAdds.prepend pending rfl step).append run
-  have positive : 0 < adds + 1 + later := by omega
-  have cards : t.cards = s.cards := lastCards.trans midCards
-  cases stack : t.pending with
-  | nil => exact ⟨t, _, _, positive, initial, Or.inl (by simp [stack])⟩
-  | cons first rest =>
-    have frame := shape.safe first (stack ▸ List.mem_cons_self)
-    cases frame with
-    | cleanup => exact False.elim (outside (Or.inl (stack ▸ rfl)))
-    | expire => exact False.elim (outside (Or.inr (stack ▸ rfl)))
-    | turn =>
-      have order := List.pairwise_cons.mp (stack ▸ shape.ending.turnLast rfl)
-      cases rest with
-      | nil => exact ⟨t, _, _, positive, initial, Or.inr ⟨stack, lastWF, cards⟩⟩
-      | cons f fs => exact False.elim (order.1 f List.mem_cons_self rfl)
-    | choice => exact ⟨t, _, _, positive, initial, Or.inl (by simp [stack, Frame.isWork])⟩
-    | queue queued =>
-      have nonempty := (shape.ending.allowed _ (stack ▸ List.mem_cons_self)).queue_nonempty
-      obtain ⟨done, used, _, _, _, resolved, decisionStack, decision⟩ :=
-        advance_triggers_to_decision t lastWF queued rest stack (cards ▸ database) (Or.inl nonempty)
-      refine ⟨done, adds + 1 + later + used, _, by omega, initial.append resolved, ?_⟩
-      exact Or.inl (by simp [decisionStack, decision])
+  obtain ⟨t, used, events, path, next⟩ :=
+    advance_turn_boundary_work raw notices (wf.congr rfl rfl rfl rfl) database ordinaryMight rfl
+  exact ⟨t, used + 1, emitted ++ events, by omega, path.prepend pending rfl step, next⟩
 
 /-- From the Ending Phase, automatic work can finish, ask for a decision, reach the next turn's
 Awaken stack, or enter an immediate Add that was scheduled by event observation. -/
@@ -1347,6 +1356,25 @@ inductive TurnBoundaryStop (s : GameState) : Prop where
   | immediateAdd {frame : Frame} {rest : List Frame} (observed : GameState) (trigger : PendTrigger) :
       s.pending = frame :: rest → trigger.immediateAddFrame observed = some frame → TurnBoundaryStop s
 
+private theorem advance_beginTurn_to_awaken_checkpoint {s : GameState} (wf : s.WF)
+    (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (pending : s.pending = [.beginTurn]) :
+    ∃ t used, AdvancePrefix s t used [] ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        ∃ p, t.pending = turnFrames p ∧ t.active = some p ∧ t.WF ∧ t.cards = s.cards) := by
+  cases clock : s.clockConclusion with
+  | some result =>
+    obtain ⟨finish, _⟩ := advance_beginTurn_clock wf database pending clock
+    exact ⟨_, 1, finish, Or.inl rfl⟩
+  | none =>
+    obtain ⟨t, elapsed, _, start, wellFormed, boundary⟩ :=
+      advance_beginTurn_checkpoint wf database ordinaryMight pending clock
+    refine ⟨t, elapsed, start, ?_⟩
+    rcases boundary with awakened | choice
+    · exact Or.inr ⟨_, by simpa only [List.append_nil] using awakened.1,
+        awakened.2.1, wellFormed, awakened.2.2.2⟩
+    · exact Or.inl (by cases stack : t.pending <;> simp_all)
+
 private theorem advance_ending_to_awaken_checkpoint {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
@@ -1355,18 +1383,12 @@ private theorem advance_ending_to_awaken_checkpoint {s : GameState} (wf : s.WF) 
   obtain ⟨mid, used, events, positive, path, stop | ⟨normal, midWF, cards⟩⟩ :=
     advance_ending_with_adds wf database ordinaryMight pending
   · exact ⟨mid, used, events, positive, path, Or.inl stop⟩
-  · cases clock : mid.clockConclusion with
-    | some result =>
-      obtain ⟨finish, _⟩ := advance_beginTurn_clock midWF (cards ▸ database) normal clock
-      exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, Or.inl rfl⟩
-    | none =>
-      obtain ⟨t, elapsed, _, start, wellFormed, boundary⟩ :=
-        advance_beginTurn_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) normal clock
-      refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_⟩
-      rcases boundary with awakened | choice
-      · exact Or.inr ⟨_, by simpa only [List.append_nil] using awakened.1,
-          awakened.2.1, wellFormed, awakened.2.2.2.trans cards⟩
-      · exact Or.inl (by cases stack : t.pending <;> simp_all)
+  · obtain ⟨t, elapsed, start, boundary⟩ :=
+      advance_beginTurn_to_awaken_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) normal
+    refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_⟩
+    rcases boundary with stop | ⟨p, stack, active, tWF, tCards⟩
+    · exact Or.inl stop
+    · exact Or.inr ⟨p, stack, active, tWF, tCards.trans cards⟩
 
 /-- Follow the real Ending Phase across the normal turn boundary. After resolving Ending's
 immediate Adds, the engine processes the clock and any ordinary triggers before Awaken. -/
@@ -1393,6 +1415,18 @@ inductive AwakenWorkStop (cards : CardDB) (s : GameState) : Prop where
   | immediateAdd {frame : Frame} {rest : List Frame} (observed : GameState) (trigger : PendTrigger) :
       s.pending = frame :: rest → trigger.immediateAddFrame observed = some frame → AwakenWorkStop cards s
 
+private theorem advance_awaken_to_beginning_checkpoint {s : GameState} {p : PlayerId} (wf : s.WF)
+    (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary) (pending : s.pending = turnFrames p) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        (t.pending = (turnFrames p).drop 1 ∧ t.WF ∧ t.cards = s.cards)) := by
+  obtain ⟨t, used, events, _, work, after⟩ := advance_awaken wf database ordinaryMight ordinaryAwaken pending
+  refine ⟨t, used, events, work, ?_⟩
+  rcases after with next | ⟨frame, rest, choice, decision⟩
+  · exact Or.inr next
+  · exact Or.inl (by simp [choice, decision])
+
 private theorem advance_ending_through_awaken_checkpoint {s : GameState} (wf : s.WF)
     (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
     (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
@@ -1402,12 +1436,13 @@ private theorem advance_ending_through_awaken_checkpoint {s : GameState} (wf : s
   obtain ⟨mid, used, events, positive, path, stop | ⟨p, stack, _, midWF, cards⟩⟩ :=
     advance_ending_to_awaken_checkpoint wf database ordinaryMight pending
   · exact ⟨mid, used, events, positive, path, Or.inl stop⟩
-  · obtain ⟨t, elapsed, later, _, awake, after⟩ :=
-      advance_awaken midWF (cards ▸ database) (cards ▸ ordinaryMight) (cards ▸ ordinaryAwaken) stack
+  · obtain ⟨t, elapsed, later, awake, after⟩ :=
+      advance_awaken_to_beginning_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight)
+        (cards ▸ ordinaryAwaken) stack
     refine ⟨t, used + elapsed, events ++ later, by omega, path.append awake, ?_⟩
-    rcases after with ⟨continues, wellFormed, preserved⟩ | ⟨f, tail, choice, decision⟩
+    rcases after with done | ⟨continues, wellFormed, preserved⟩
+    · exact Or.inl done
     · exact Or.inr ⟨p, continues, wellFormed, preserved.trans cards⟩
-    · exact Or.inl (by simp [choice, decision])
 
 /-- Follow Ending and Awaken to Beginning or an earlier player decision or the end of the stack. -/
 theorem advance_ending_through_awaken {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
@@ -1431,6 +1466,35 @@ theorem advance_ending_to_decision {s : GameState} (wf : s.WF) (database : Might
   · obtain ⟨u, later, emitted, _, rest, done⟩ :=
       advance_beginning_to_decision tWF (cards ▸ database) beginning
     exact ⟨u, used + later, events ++ emitted, by omega, path.append rest, done⟩
+
+/-- Resume the observed turn boundary directly at Cleanup and Expiration, as when the turn
+player concedes in War. The clock and all phases of the next turn use the same dispatcher. -/
+theorem advance_observed_turn_boundary_to_decision (raw : GameState) (notices : List Event) (wf : raw.WF)
+    (database : MightRead.database raw.cards) (ordinaryMight : raw.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : raw.cards.awakenTriggersAreOrdinary)
+    (pending : raw.pending = [.cleanup, .expireTurn, .beginTurn]) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨mid, used, events, work, stop | ⟨begin, midWF, cards⟩⟩ :=
+    advance_turn_boundary_work raw notices wf database ordinaryMight pending
+  · exact ⟨mid, used, events, work, stop⟩
+  obtain ⟨start, elapsed, beginWork, boundary⟩ :=
+    advance_beginTurn_to_awaken_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) begin
+  have entered : AdvancePrefix (raw.withTriggers notices) start (used + elapsed) events := by
+    simpa only [List.append_nil] using work.append beginWork
+  rcases boundary with stop | ⟨p, stack, _, startWF, startCards⟩
+  · exact ⟨start, used + elapsed, events, entered, stop⟩
+  have known := startCards.trans cards
+  obtain ⟨awake, more, emitted, awakenWork, after⟩ :=
+    advance_awaken_to_beginning_checkpoint startWF (known ▸ database) (known ▸ ordinaryMight)
+      (known ▸ ordinaryAwaken) stack
+  have awakePath := entered.append awakenWork
+  rcases after with done | ⟨continues, awakeWF, awakeCards⟩
+  · exact ⟨awake, used + elapsed + more, events ++ emitted, awakePath, done⟩
+  · obtain ⟨t, final, lastEvents, _, beginningWork, stops⟩ :=
+      advance_beginning_to_decision awakeWF (awakeCards ▸ known ▸ database) continues
+    exact ⟨t, used + elapsed + more + final, (events ++ emitted) ++ lastEvents,
+      awakePath.append beginningWork, stops⟩
 
 private theorem priorityPass_reads {s : GameState} {p : PlayerId} {rest : List Frame}
     (before : s.pending = .priority p :: rest) :

@@ -356,7 +356,7 @@ private meta def scoredStepBoard : Option (GameState × ObjId × ObjId) := do
     s with combat, pending := [.combatDamage field attacker, .priority attacker] } []).toOption
   let select (p : PlayerId) (tank : Bool) := Action.mk (.player p) (.decide tank)
   let pick (board : GameState) (unit : ObjId) :=
-    (step 100 board ⟨.player attacker, .assignPick unit⟩).toOption.map Prod.fst
+    (step 0 board ⟨.player attacker, .assignPick unit⟩).toOption.map Prod.fst
   let (tank, _) ← (step 100 prompt (select attacker true)).toOption
   let (backline, _) ← (step 100 prompt (select attacker false)).toOption
   let assigned (board : GameState) (first second : ObjId) := do

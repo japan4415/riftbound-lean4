@@ -6,6 +6,8 @@ import Riftbound.Rules.Frames
 meta import Riftbound.Rules.Frames
 import Riftbound.Rules.TeamSetup
 meta import Riftbound.Rules.TeamSetup
+import Riftbound.Invariant.ConcessionWork
+meta import Riftbound.Invariant.ConcessionWork
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
 import RiftboundDriver.Replay
@@ -42,6 +44,7 @@ private meta def replayConcessions (mode : Mode) : Except String Unit := do
   let mut sawReplacement := false
   for p in departing do
     let action : Action := ⟨.player p, .concede⟩
+    unless concessionWorkSupported state p do throw "concession work is outside the proved continuations"
     let (next, _) ← record state action
     if next.participates p then throw "a conceded seat is still in play"
     sawReplacement := sawReplacement || next.battlefields.any (fun bf =>
@@ -71,7 +74,7 @@ private meta def replayConcessions (mode : Mode) : Except String Unit := do
   let chosen : Action := ⟨.chance, .arrangePlayers [c, a]⟩
   let incomplete : Action := ⟨.chance, .arrangePlayers [c]⟩
   let (next, _) ← (step 100 after chosen).toOption
-  return next.turnOrder == [c, a, b] && next.participatingOrder == [c, a] &&
+  return concessionWorkSupported s b && next.turnOrder == [c, a, b] && next.participatingOrder == [c, a] &&
     next.pending.head? == some (Frame.chanceBurnOut c) &&
     (step 100 after incomplete).toOption.isNone).getD false
 
@@ -279,7 +282,8 @@ private meta def removalState : GameState :=
   let (next, _) ← (step 80 s (concede b)).toOption
   let (lastTwo, _) ← (step 80 next (concede d)).toOption
   let (won, _) ← (step 80 lastTwo (concede a)).toOption
-  return (legalActions s).contains (concede b) &&
+  return concessionWorkSupported s b && concessionWorkSupported next d &&
+    concessionWorkSupported lastTwo a && (legalActions s).contains (concede b) &&
     next.active == some c && next.participatingOrder == [a, c, d] &&
     next.battlefields == [field] &&
     (next.cardDef? field).any (fun (card : CardDef) =>
@@ -305,7 +309,8 @@ private meta def removalState : GameState :=
   let (choice, _) ← (step 100 three ⟨.chance, .arrange []⟩).toOption
   let (two, _) ← (step 100 choice ⟨.player c, .concede⟩).toOption
   let (scored, _) ← (step 100 two (target d)).toOption
-  return (legalFrameActions choice) == [target c, target d] &&
+  return concessionWorkSupported s b && concessionWorkSupported choice c &&
+    (legalFrameActions choice) == [target c, target d] &&
     !(legalActions choice).contains (target b) &&
     (legalFrameActions two) == [target d] && (step 100 two (target c)).toOption.isNone &&
     scored.pointsOf d == 1 && scored.pointsOf b == 0 && scored.pointsOf c == 0).getD false

@@ -5,6 +5,7 @@ public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.PlayDeclarationWork
 public import Riftbound.Invariant.ResourceDecisionWork
 public import Riftbound.Invariant.CombatWork
+public import Riftbound.Invariant.ConcessionWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
@@ -49,6 +50,19 @@ private theorem ordinaryAwaken_of_registered {cards : Riftbound.CardDB}
   rcases registered with h | h
   · exact h ▸ db_awakenTriggersAreOrdinary
   · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
+
+/-- A checked War concession with the registered cards reaches a decision or ends the game. -/
+theorem step_freeForAllConcede_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (ffa : s.config.mode.isFreeForAll = true) (legal : Riftbound.Legal s ⟨.player p, .concede⟩)
+    (checked : Riftbound.concessionWorkSupported s p = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .concede⟩ = .ok (t, events) :=
+  Riftbound.step_freeForAllConcede_checked_to_decision wf
+    (Riftbound.MightRead.database_withConcessionBattlefield (mightReads_of_registered cards))
+    (Riftbound.CardDB.mightTriggersAreOrdinary_withConcessionBattlefield (ordinaryMight_of_registered cards))
+    (Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield (ordinaryAwaken_of_registered cards))
+    ffa legal checked
 
 /-- The registered cards, including the Battlefield token used after a free-for-all concession,
 support the proof from a legal ordinary Pass through the Ending Phase and its ordinary triggers. -/

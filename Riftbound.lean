@@ -68,9 +68,11 @@ public import Riftbound.Invariant.Priority
 public import Riftbound.Invariant.ChainWork
 public import Riftbound.Invariant.DisclosureWork
 public import Riftbound.Invariant.ChainAnswerWork
+public import Riftbound.Invariant.DecisionHandoffs
 public import Riftbound.Invariant.TriggerAnswerWork
 public import Riftbound.Invariant.PlayDeclarationWork
 public import Riftbound.Invariant.MovementWork
+public import Riftbound.Invariant.ConcessionWork
 public import Riftbound.Invariant.ResourceDecisionWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.CombatWork

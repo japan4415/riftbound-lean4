@@ -30,11 +30,15 @@ private meta def collect (turn : Nat) :
   | 0, _, _, _ => .error "setup did not reach the chosen turn"
   | n + 1, rng, state, answers => do
     if state.turn >= turn || state.result.isSome then return (state, answers)
-    let answer := match state.pending with
+    let answer : Option (Action × Rng) := match state.pending with
       | .chanceBattlefield _ :: _ => some (⟨.chance, .pick 0⟩, rng)
       | _ => playAnswer rng state
     let some (action, nextRng) := answer | throw "no answer in team setup"
-    let (next, _) ← (step 100 state action).mapError (fun e => reprStr e)
+    let fuel := match state.pending, action.kind with
+      | .showdown _ _ passes :: _, .pass =>
+        if passes + 1 < state.participatingCount then 0 else 100
+      | _, _ => 100
+    let (next, _) ← (step fuel state action).mapError (fun e => reprStr e)
     collect turn n nextRng next (answers.push (.observed action))
 
 private meta def recordGroupMove (start : GameState) (answers : Array ReplayAnswer) :
@@ -82,8 +86,11 @@ private meta def exampleMatch : Except String Unit := do
       (first.zone (.player ⟨0⟩ .hand)).length == 4 do throw "incorrect starting seat or Battlefield setup"
   let invite : Action := ⟨.player ⟨0⟩, .inviteTeammate ⟨1⟩⟩
   let decline : Action := ⟨.player ⟨1⟩, .pass⟩
-  let (invited, _) ← (step 100 first invite).mapError (fun e => reprStr e)
-  let (resumed, _) ← (step 100 invited decline).mapError (fun e => reprStr e)
+  let (invited, opened) ← (step 0 first invite).mapError reprStr
+  let (resumed, closed) ← (step 0 invited decline).mapError reprStr
+  unless opened.isEmpty && closed.isEmpty &&
+      invited.pending == .teamInvitation ⟨1⟩ :: first.pending && resumed.pending == first.pending do
+    throw "the invitation did not return to the turn player's decision"
   let earlyAnswers := earlyAnswers.push (.observed invite) |>.push (.observed decline)
   let (moved, groupAnswers) ← recordGroupMove resumed earlyAnswers
   let (afterShowdown, answers) ← collect 6 15 (Rng.ofSeed 24) moved groupAnswers
