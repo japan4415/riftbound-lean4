@@ -46,6 +46,10 @@ TEXT_ERRATA = {
         "When I attack or defend, you may pay :rb_rune_fury:. If you do, give me":
             "When I attack or defend, you may pay :rb_rune_fury: to give me",
     },
+    "SFD-140": {
+        "ignoring its Energy cost. Recycle that spell after you play it.":
+            "ignoring its Energy cost. Then recycle it.",
+    },
     "SFD-163": {
         "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
             "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",

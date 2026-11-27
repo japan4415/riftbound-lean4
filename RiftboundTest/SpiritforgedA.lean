@@ -1977,6 +1977,49 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
     a.countIn s.me .trash "SFD-147" == 1 && (a.poolOf s.me).energy == 12 - 3 - 0 - 0 &&
     (a.obj? big).isSome
 
+private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId)
+  | 0, _ => none
+  | n + 1, s => do
+    if let some item := (s.zone .chain).find? (fun id =>
+        (s.obj? id).any (fun o => o.limitedSpellExit == .recycle && o.pendingSpellPlay.isNone)) then
+      return (s, item)
+    let action ← (legalFrameActions s).find? (fun a => match a.kind with
+      | .decide false | .putTrigger _ _ .skip => false
+      | _ => true)
+    let (next, _) ← (step 100 s action).toOption
+    fizzResponse n next
+
+-- A finalized Spell played by Fizz is recycled directly when it resolves or is countered.
+-- On the Hunt still requires both Power, and countering it does not ready any Units.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, _) ← put s p "SFD-204" .trash
+  let (s, unit) ← put s p "OGN-051" .base
+  let s := s.tire unit
+  let castFizz : Action := ⟨.player p, .playCard fizz ⟨3, [.chaos]⟩ []⟩
+  let (started, _) ← (step 100 (s.fund p 3 (chaos := 3)) castFizz).toOption
+  let (short, _) ← (step 100 (s.fund p 3 (chaos := 2)) castFizz).toOption
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (response, item) ← fizzResponse 14 started
+  let normal := finishItem response item
+  let stopped := counterObj response item
+  let resolved := settleChain {} 12 response
+  let (selfBanish, ownEvents) ← applyPrim response p item {} (.banish .self)
+  let deck := Zone.player p .mainDeck
+  let normalCard ← (normal.1.zone deck).getLast?
+  let counteredCard ← (stopped.1.zone deck).getLast?
+  return (legalFrameActions started).contains skip && (started.zone .chain).isEmpty &&
+    (fizzResponse 14 short).isNone && (response.poolOf p).chaos == 0 &&
+    normal.2 == [.moved item normalCard deck, .recycled p, .spellResolved p normalCard] &&
+    stopped.2 == [.moved item counteredCard deck, .recycled p] &&
+    normal.1.isCard "SFD-204" normalCard && stopped.1.isCard "SFD-204" counteredCard &&
+    (normal.1.zone deck).dropLast == response.zone deck &&
+    (stopped.1.zone deck).dropLast == response.zone deck &&
+    stopped.1.tired unit == some true && resolved.tired unit == some false &&
+    selfBanish.countIn p .banishment "SFD-204" == 1 && (finishItem selfBanish item).2.isEmpty &&
+    !(ownEvents.contains (.recycled p))
+
 -- (review) playing for a reduced cost: the Energy goes down to the floor of 0 and the Power is paid
 -- in full; with no Power in the Pool, nothing is paid and the card is not played
 #guard tsf fun s => do

@@ -32,9 +32,9 @@ theorem advance_finish_chain_item_with_adds {s : GameState} {item : ObjId} {rest
     let result := finishItem s item
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       t.WF ∧ t.cards = s.cards ∧
-      ObservedWorkStack (finishedItemFrames s item result ++ rest) t.pending := by
+      ObservedWorkStack (finishedItemFrames result.1 ++ rest) t.pending := by
   let result := finishItem s item
-  let raw := { result.1 with pending := finishedItemFrames s item result ++ rest }
+  let raw := { result.1 with pending := finishedItemFrames result.1 ++ rest }
   have step : microStep0 s = some (raw, result.2) := by
     simp only [microStep0, pending, raw, result]
   have known : raw.cards = s.cards := by
@@ -60,35 +60,8 @@ theorem step_chainPass_last_with_adds {s : GameState} {p : PlayerId} {passes : N
   rw [step_chainPass_last _ ongoing pending last]
   simpa only [List.nil_append] using path fuel []
 
-/-- Finishing a Chain item starts Cleanup, preceded by one recycle instruction if required. -/
-theorem finishedItemFrames_recycle_cases (s : GameState) (item : ObjId) (rest : List Frame) :
-    let result := finishItem s item
-    let continuation := .cleanup :: (afterItem result.1 ++ rest)
-    finishedItemFrames s item result ++ rest = continuation ∨
-      ∃ p src, finishedItemFrames s item result ++ rest =
-        .run p src {} (.cons (.prim (.recycle .self)) .nil) :: continuation := by
-  unfold finishedItemFrames
-  dsimp only
-  cases found : s.obj? item with
-  | none => exact Or.inl rfl
-  | some object =>
-    simp only [Option.toList_some, List.flatMap_cons, List.flatMap_nil, List.append_nil]
-    split
-    · exact Or.inl rfl
-    · let tail := .cleanup :: (afterItem (finishItem s item).1 ++ rest)
-      let frame := fun id => Frame.run object.owner id {} (.cons (.prim (.recycle .self)) .nil)
-      have shape (moved : Option ObjId) :
-          moved.toList.map frame ++ tail = tail ∨
-            ∃ p src, moved.toList.map frame ++ tail =
-              .run p src {} (.cons (.prim (.recycle .self)) .nil) :: tail := by
-        cases moved with
-        | none => exact Or.inl rfl
-        | some src => exact Or.inr ⟨object.owner, src, rfl⟩
-      simp only [List.append_assoc, List.cons_append]
-      exact shape _
-
-/-- Remove the Chain item, run its optional Recycle and Cleanup, and keep the continuation
-with any ordinary triggers observed along the way. -/
+/-- Remove the Chain item, run Cleanup, and keep the continuation with any ordinary triggers
+observed along the way. -/
 theorem advance_finished_item_until {s : GameState} {item : ObjId} {rest : List Frame}
     (wf : s.WF) (reads : MightRead.database s.cards) (pending : s.pending = .finishSpell item :: rest)
     (keeps : List Frame → Prop) (base : keeps (afterItem (finishItem s item).1 ++ rest))
@@ -96,7 +69,7 @@ theorem advance_finished_item_until {s : GameState} {item : ObjId} {rest : List 
     AdvanceTo s keeps := by
   let next := afterItem (finishItem s item).1 ++ rest
   let result := finishItem s item
-  let raw := { result.1 with pending := finishedItemFrames s item result ++ rest }
+  let raw := { result.1 with pending := finishedItemFrames result.1 ++ rest }
   let cleanupContinuation := ResolutionPrefix [.cleanup] keeps
   have step : microStep0 s = some (raw, result.2) := by simp only [microStep0, pending, raw, result]
   have cards : raw.cards = s.cards := by
@@ -112,21 +85,9 @@ theorem advance_finished_item_until {s : GameState} {item : ObjId} {rest : List 
       cleanupContinuation (insertTriggers q tail) :=
     fun _ tracked q ne => tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) inserted q ne
   have rawWF := microStep_wf0 wf step
-  rcases finishedItemFrames_recycle_cases s item rest with normal | ⟨p, src, recycle⟩
-  · have entered : AdvanceTo s cleanupContinuation :=
-      .rule pending rfl step rawWF cards reads ⟨next, normal, base⟩ insertCleanup
-    exact entered.then reads (fun _ => advanceCleanup)
-  · let program := EffectList.cons (.prim (.recycle .self)) .nil
-    let recycleFrame := Frame.run p src {} program
-    have entered : AdvanceTo s (ResolutionPrefix [recycleFrame] cleanupContinuation) := by
-      refine .rule pending rfl step rawWF cards reads ⟨.cleanup :: next, recycle, ⟨next, rfl, base⟩⟩ ?_
-      exact fun _ route q ne => route.insert
-        (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) insertCleanup q ne
-    apply entered.then reads
-    intro mid midWF midReads staged
-    obtain ⟨tail, stack, scheduled⟩ := staged
-    exact (advance_run_program midWF midReads stack (.cons Effect.SingleRun.recycleSelf.observed .nil)
-      cleanupContinuation scheduled insertCleanup).then midReads (fun _ => advanceCleanup)
+  have entered : AdvanceTo s cleanupContinuation :=
+    .rule pending rfl step rawWF cards reads ⟨next, rfl, base⟩ insertCleanup
+  exact entered.then reads (fun _ => advanceCleanup)
 
 /-- Resolving the newest Chain item reaches a decision or an already queued limited Spell. -/
 inductive ChainWorkEnd (s : GameState) : Prop where

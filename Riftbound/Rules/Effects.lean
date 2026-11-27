@@ -562,21 +562,32 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
 def Object.banishesOnChainExit (o : Object) : Bool :=
   o.flowed || (o.limitedSpellExit == .banish && o.pendingSpellPlay.isNone)
 
+/-- A limited play can replace an external exit from the Chain with Recycle (CR 391.3.a). -/
+def Object.recyclesOnChainExit (o : Object) : Bool :=
+  !o.banishesOnChainExit && o.limitedSpellExit == .recycle && o.pendingSpellPlay.isNone
+
+/-- Recycle puts the Spell on the bottom of its owner's deck (CR 417). -/
+def Object.chainExitPosition (o : Object) : Pos :=
+  if o.recyclesOnChainExit then .bottom else .top
+
 /-- The destination of a card removed from the Chain after replacement effects (CR 367-370). -/
 def GameState.chainDestinationKind (s : GameState) (id : ObjId) (o : Object)
     (otherwise : ZoneKind) : ZoneKind :=
-  if o.banishesOnChainExit then .banishment else s.ownerDestination id o otherwise
+  if o.banishesOnChainExit then .banishment
+  else if o.recyclesOnChainExit then .mainDeck
+  else s.ownerDestination id o otherwise
 
 /-- A card leaving the Chain always goes to an owner's zone. -/
 def GameState.chainDestination (s : GameState) (id : ObjId) (o : Object)
     (otherwise : ZoneKind) : Zone :=
   .player o.owner (s.chainDestinationKind id o otherwise)
 
-/-- Attribute a banishing replacement to its controller, the card's owner (CR 391.3.a). -/
+/-- Record a Chain exit replacement for the owner (CR 391.3.a, 417). -/
 def GameState.chainExitEvents (s : GameState) (o : Object) (id new : ObjId)
     (otherwise : ZoneKind) : List Event :=
   let dest := s.chainDestinationKind id o otherwise
-  o.ownerMoveEvents id new dest (o.banishesOnChainExit || otherwise != dest)
+  if o.recyclesOnChainExit then [.moved id new (.player o.owner dest), .recycled o.owner]
+  else o.ownerMoveEvents id new dest (o.banishesOnChainExit || otherwise != dest)
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
@@ -592,7 +603,7 @@ def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s id (s.chainDestination id o k) with
+        match moveObj s id (s.chainDestination id o k) o.chainExitPosition with
         | some r => (r.1, s.chainExitEvents o id r.2 k)
         | none => (s, [])
     else (s, [])
@@ -7078,7 +7089,7 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s item (s.chainDestination item o .trash) with
+        match moveObj s item (s.chainDestination item o .trash) o.chainExitPosition with
         | some r =>
           let es := s.chainExitEvents o item r.2 .trash
           (r.1, es ++ spellCompletion s item es)
@@ -7086,36 +7097,23 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
     else (s, [])
   | none => (s, [])
 
-/-- Follow a completed play to its new object and Recycle it if the limited Play requires it.
-A countered Spell has no resolution here (CR 420.4.a.1). -/
-def finishedItemFrames (s : GameState) (item : ObjId) (r : GameState × List Event) : List Frame :=
-  let recycle := (s.obj? item).toList.flatMap (fun o =>
-    if o.limitedSpellExit != .recycle then [] else
-    r.2.findSome? (fun
-      | .moved old next _ => if old == item then some next else none
-      | _ => none) |>.toList.map (fun next =>
-        Frame.run o.owner next {} (.cons (.prim (.recycle .self)) .nil)))
-  recycle ++ .cleanup :: afterItem r.1
+/-- After an item leaves the Chain, run Cleanup before continuing the Chain. -/
+def finishedItemFrames (s : GameState) : List Frame :=
+  .cleanup :: afterItem s
 
-/-- Recycling, Cleanup and continuing the Chain all consist of play frames. -/
-theorem finishedItemFrames_mem {s : GameState} {item : ObjId} {r : GameState × List Event}
-    {f : Frame} (hf : f ∈ finishedItemFrames s item r) : f.isPlay = true := by
+/-- Cleanup and continuing the Chain consist of play frames. -/
+theorem finishedItemFrames_mem {s : GameState} {f : Frame}
+    (hf : f ∈ finishedItemFrames s) : f.isPlay = true := by
   unfold finishedItemFrames at hf
-  rcases List.mem_append.mp hf with hr | hn
-  · obtain ⟨o, -, ho⟩ := List.mem_flatMap.mp hr
-    split at ho
-    · simp at ho
-    · obtain ⟨next, -, rfl⟩ := List.mem_map.mp ho
-      rfl
-  · rcases List.mem_cons.mp hn with rfl | hn
-    · rfl
-    · exact afterItem_mem hn
+  rcases List.mem_cons.mp hf with rfl | hn
+  · rfl
+  · exact afterItem_mem hn
 
 /-- Finishing an item either changes nothing, moves a Spell, or removes an ability. -/
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
       (∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-        moveObj s item (s.chainDestination item o .trash) = some (s2, id') ∧
+        moveObj s item (s.chainDestination item o .trash) o.chainExitPosition = some (s2, id') ∧
           (finishItem s item).1 = s2) ∨
       (∃ o s2, s.obj? item = some o ∧ item ∈ s.zone .chain ∧ o.kind.phys? = none ∧
           removeObj s item = some s2 ∧ (finishItem s item).1 = s2) := by

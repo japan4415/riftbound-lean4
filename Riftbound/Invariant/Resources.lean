@@ -151,7 +151,7 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
 theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
-    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) = some r) :
+    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) o.chainExitPosition = some r) :
     ∃ id', (finishItem s item).2 = s.chainExitEvents o item id' .trash ++
         spellCompletion s item (s.chainExitEvents o item id' .trash) ∧
       id' ∈ (finishItem s item).1.zone (s.chainDestination item o .trash) := by

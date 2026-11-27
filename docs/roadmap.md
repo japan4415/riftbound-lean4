@@ -2193,6 +2193,11 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - Stalking Wolf は、自分の最後の Unit が支払いに使うペットである Battlefield に Ambush できる。Chain への Reaction、Base へのプレイ、効果によるプレイを確認した。Stalking Wolf を `full` とし、全1,103枚中562枚を実装済みにした（CR 822）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/) · [カード実装状況](coverage.md)
 - 旧形式のリプレイは `revalidate` で更新できる。盤面の指紋とイベント列を照合し、実際にプレイした Unit や Gear の配置先・追加コストを呪文の対象として記録していた場合だけ、その注記を取り除く。
 
+### Fizz で唱え直した呪文を山札の底に戻す
+
+- Fizz, Trickster の誘発は確定前に辞退できる。解決時には自身の Trash から Energy の元のコストが3以下の Spell を選び、Energy を免除して Power を支払う（CR 383.3.a、420.3）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- 確定した Spell が解決や打ち消しで Chain を離れるときは、オーナーの山札の底へ直接 Recycle する。Spell 自身の指示で Chain を離れる場合はその指示を適用する。Fizz, Trickster を `full` とし、全1,103枚中563枚を実装済みにした（CR 391.3.a、417）。[Vendetta 公式ルール更新](https://playriftbound.com/en-us/news/announcements/core-rules-vendetta-patch-notes/) · [カード実装状況](coverage.md)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

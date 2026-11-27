@@ -1017,7 +1017,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (finishItem_sameMeta s item).config])
-      (new := finishedItemFrames s item (finishItem s item)) rfl (fun g hg => by
+      (new := finishedItemFrames (finishItem s item).1) rfl (fun g hg => by
         have hplay := finishedItemFrames_mem hg
         cases g <;> simp_all [Frame.isPlay, Frame.isSetup])
   · rename_i rest hp

@@ -372,7 +372,7 @@ def counterForPlayerRemoval (s : GameState) (id : ObjId) : GameState × List Eve
       match o.kind with
       | .chainAbility .. => ((removeObj s id).getD s, [])
       | _ =>
-        match moveObj s id (s.chainDestination id o .trash) with
+        match moveObj s id (s.chainDestination id o .trash) o.chainExitPosition with
         | none => (s, [])
         | some (next, moved) => (next, s.chainExitEvents o id moved .trash)
 
@@ -421,7 +421,7 @@ private theorem counterForPlayerRemoval_privateZone (s : GameState) (id : ObjId)
           subst src
           exact GameState.zone_setZone_ne _ (by simp) _
       all_goals
-        cases moved : moveObj s id (s.chainDestination id o .trash) with
+        cases moved : moveObj s id (s.chainDestination id o .trash) o.chainExitPosition with
         | none => rfl
         | some result =>
           obtain ⟨board, new⟩ := result
@@ -431,9 +431,11 @@ private theorem counterForPlayerRemoval_privateZone (s : GameState) (id : ObjId)
           rw [GameState.chainDestination, Zone.normalize_owner, GameState.chainDestinationKind]
           split
           · rcases privateZone with rfl | rfl <;> simp
-          · rcases GameState.ownerDestination_trash_or_banishment s id o (Or.inl rfl) with trash | banished
-            · rw [trash]; rcases privateZone with rfl | rfl <;> simp
-            · rw [banished]; rcases privateZone with rfl | rfl <;> simp
+          · split
+            · rcases privateZone with rfl | rfl <;> simp
+            · rcases GameState.ownerDestination_trash_or_banishment s id o (Or.inl rfl) with trash | banished
+              · rw [trash]; rcases privateZone with rfl | rfl <;> simp
+              · rw [banished]; rcases privateZone with rfl | rfl <;> simp
     · simp [counterForPlayerRemoval, found, inChain]
 
 /-- Apply the object changes for a departure in rules order, keeping the original Battlefield

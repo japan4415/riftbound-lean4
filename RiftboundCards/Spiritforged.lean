@@ -4098,8 +4098,7 @@ def SFD_139 : CardDef :=
 Printings: SFD-140/221
 
 > When you play me, you may play a spell from your trash with Energy cost no more than
-> :rb_energy_3:, ignoring its Energy cost. Recycle that spell after you play it. (You must still
-> pay its Power cost.)
+> :rb_energy_3:, ignoring its Energy cost. Then recycle it. (You must still pay its Power cost.)
 -/
 def SFD_140.meta : CardDef :=
   { id := ⟨"SFD-140"⟩,
@@ -4116,11 +4115,10 @@ def SFD_140.meta : CardDef :=
 /-- Fizz, Trickster. -/
 def SFD_140 : CardDef :=
   { SFD_140.meta with
-
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
-        [.ofType .spell, .cost .le (.const 3)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .play with optional := true }
+      (.of [] (.prim (.castInline (Selector.one .you .inTrash
+        [.ofType .spell, .cost .le (.const 3)])))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-141
 /--
