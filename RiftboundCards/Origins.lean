@@ -64,11 +64,9 @@ def OGN_002.meta : CardDef :=
 /-- Brazen Buccaneer. -/
 def OGN_002 : CardDef :=
   { OGN_002.meta with
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inHand [])) (.const 1))
-        (.may (.seqOf [.prim (.discardCard (Selector.one .friendly .inHand [])),
-          .prim (.addEnergy .you (.min (.const 2) .energyPaid) none)])) .nop)) .unlimited],
-    status := .drafted }
+    playExtra := some (.discardCard, false),
+    paidCut := some (.energy 2),
+    status := .full }
 
 -- BEGIN GENERATED OGN-003
 /--

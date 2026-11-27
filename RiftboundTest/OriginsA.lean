@@ -21,6 +21,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Brazen Buccaneer quotes its discounted price only when another card pays the cost.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, buccaneer) ← put s p "OGN-002" .hand
+  let (s, payment) ← put s p "OGN-136" .hand
+  let (s, opponentCard) ← put s q "OGN-136" .hand
+  let s := s.rich p
+  let action (energy : Nat) (cost : List ObjId) : Action :=
+    ⟨.player p, .playCard buccaneer ⟨energy, []⟩ cost⟩
+  let options := legalFrameActions s
+  let (entry, events) ← (step 100 s (action 4 [payment])).toOption
+  let entered ← entry.firstOf p .base "OGN-002"
+  let discarded ← events.findIdx? (fun | .discarded who _ _ => who == p | _ => false)
+  let enteredAt ← events.findIdx? (fun | .played who id => who == p && id == entered | _ => false)
+  return options.contains (action 6 []) && options.contains (action 4 [payment]) &&
+    !options.contains (action 4 []) && !options.contains (action 4 [buccaneer]) &&
+    !options.contains (action 4 [opponentCard]) && !options.contains (action 6 [payment]) &&
+    discarded < enteredAt && (entry.obj? entered).any (·.discardPaid) &&
+    entry.countIn p .trash "OGN-136" == s.countIn p .trash "OGN-136" + 1
+
+-- Effect plays see the same hand payment and discount before funding the lowered cost.
+#guard t fun s => do
+  let p := s.me
+  let (s, buccaneer) ← put s p "OGN-002" .trash
+  let (s, payment) ← put s p "OGN-136" .hand
+  let quote := permanentPlayOptions s p buccaneer { price := .reduceEnergy 1 }
+  let cost (discard : Option ObjId) := quote.findSome? (fun plan =>
+    if plan.battlefield.isNone && plan.extraObject == discard then some plan.cost.energy else none)
+  return cost none == some 5 && cost (some payment) == some 3 &&
+    (cost (some buccaneer)).isNone
+
 -- Chemtech Enforcer adds its printed Assault and requires a discard when played.
 #guard t fun s => do
   let p := s.me
@@ -3322,17 +3354,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return third.pointsOf s.me == c.pointsOf s.me + 1 && (c.obj? y).map (·.moves) == some 3 &&
     (back.obj? id').map (·.moves) == some 0
 
--- Additional costs, paid as the card is played: the cost they save is given back to the Pool
--- Brazen Buccaneer (OGN-002): discard a card, 2 Energy back
+-- Without choosing a discard, Brazen Buccaneer costs the printed six Energy.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-002" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .hand
-  let yes ← play s2 s.me c [] { yes := true }
-  let no ← play s2 s.me c [] { yes := false }
-  let alone ← play (s1.setZone (.player s.me .hand) [c]) s.me c [] { yes := true }
-  return yes.countIn s.me .trash "OGN-136" == 1 && (yes.poolOf s.me).energy == 12 - 6 + 2 &&
-    no.countIn s.me .hand "OGN-136" == 1 && (no.poolOf s.me).energy == 12 - 6 &&
-    (alone.poolOf s.me).energy == 12 - 6
+  let p := s.me
+  let (s, card) ← put s p "OGN-002" .hand
+  let (spare, _) ← put s p "OGN-136" .hand
+  let declined ← play spare p card
+  let alone ← play (s.setZone (.player p .hand) [card]) p card
+  return declined.countIn p .hand "OGN-136" == 1 &&
+    (declined.poolOf p).energy == 12 - 6 && (alone.poolOf p).energy == 12 - 6
 
 -- Wallop (OGN-146) and Call to Glory (OGN-207): spend a buff, and the spell costs nothing
 #guard t fun s => do

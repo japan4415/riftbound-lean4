@@ -58,6 +58,8 @@ inductive PlayExtra where
   | spendXP (n : Nat)
   /-- For a Spell: spending this much XP lifts the first target's Might cap (Conscription). -/
   | spendXPOver (n : Nat) (cap : Nat)
+  /-- Another card is discarded from the hand as a permanent's play cost (CR 357.2, 423.3). -/
+  | discardCard
 deriving DecidableEq, Repr, Hashable
 
 /-- The Spell picks the object for this cost separately from its effect's choices (CR 355, 357). -/

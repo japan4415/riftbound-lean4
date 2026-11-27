@@ -526,10 +526,27 @@ def GameState.extraTarget (s : GameState) (p : PlayerId) (k : PlayExtra) (t : Ob
   | .spendXP n =>
     decide (t ∈ s.zone (.player p .legendZone)) && decide (n ≤ s.xpOf p)
   | .spendXPOver _ _ => false
+  | .discardCard => (s.zone (.player p .hand)).contains t
 
 /-- The objects an additional cost of the kind can be done to. -/
 def GameState.extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra) : List ObjId :=
-  (s.inPlay ++ s.zone (.player p .legendZone)).filter (fun t => s.extraTarget p k t)
+  match k with
+  | .discardCard => s.zone (.player p .hand)
+  | _ => (s.inPlay ++ s.zone (.player p .legendZone)).filter (fun t => s.extraTarget p k t)
+
+/-- Every object eligible for the additional cost occurs in the corresponding candidate zone. -/
+theorem GameState.mem_extraCandidates (s : GameState) (p : PlayerId) (k : PlayExtra)
+    (id : ObjId) : id ∈ s.extraCandidates p k ↔ s.extraTarget p k id = true := by
+  cases k
+  case discardCard => simp [extraCandidates, extraTarget]
+  all_goals
+    simp only [extraCandidates, List.mem_filter]
+    refine ⟨And.right, fun valid => ⟨?_, valid⟩⟩
+    simp only [extraTarget, Bool.and_eq_true, decide_eq_true_eq] at valid
+    first
+    | exact List.mem_append.mpr (Or.inl valid.1.1)
+    | exact List.mem_append.mpr (Or.inr valid.1)
+    | contradiction
 
 /-- The additional XP cost when the player has enough XP to pay it. -/
 def GameState.playXPCost (s : GameState) (p : PlayerId) (d : CardDef) : Option Nat :=
@@ -545,7 +562,7 @@ def GameState.extraOk (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjI
   | some (k, mandatory) =>
     match ts with
     | [] => !mandatory || (pick.paysXP && (s.cardDef? c).any (fun d => (s.playXPCost p d).isSome))
-    | [t] => s.extraTarget p k t && !((s.cardDef? c).any (·.hasType .spell))
+    | [t] => (s.extraTarget p k t && t != c) && !((s.cardDef? c).any (·.hasType .spell))
     | _ => false
 
 /-- Apply the target restrictions belonging to the recorded payment (CR 355, 359.3.e.13). -/
@@ -1737,10 +1754,33 @@ def applyPlay (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Payment
         before.showOffEvents p pick.showOffObject ++ [Event.moved c r.2 (.player p .base)]))
   | _, _ => none
 
+/-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
+def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
+  let r := sendObj .trash s id
+  match s.obj? id with
+  | some o =>
+    let discards := r.2.filterMap (fun e =>
+      match e with
+      | .moved _ n (.player _ .trash) => some (Event.discarded o.owner n true)
+      | _ => none)
+    ((if discards.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded), r.2 ++ discards)
+  | none => r
+
+/-- Discarding a card is a safe change. -/
+theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
+  unfold discardObj
+  split
+  · dsimp only
+    split
+    · exact sendObj_safe .trash s id
+    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
+  · exact sendObj_safe .trash s id
+
 /-- Do the additional cost of the kind to the object. -/
 def applyExtra (s : GameState) (k : PlayExtra) (t : ObjId) :
     Option (GameState × List Event) :=
   match k with
+  | .discardCard => some (discardObj s t)
   | .exhaustLegend => some (s.exhaustObj t, [])
   | .exhaustUnit => some (setExhausted true s t)
   | .killUnitOrGear | .killGear | .killUnit | .killUnitForTarget | .killPet =>
@@ -1769,28 +1809,6 @@ theorem markPaid_safe (s : GameState) (o : Option ObjId) (discarded : Bool := fa
   cases o with
   | none => exact Safe.refl s
   | some n => exact Safe.modObj s n (fun _ => rfl) (fun _ => rfl)
-
-/-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
-def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .trash s id
-  match s.obj? id with
-  | some o =>
-    let discards := r.2.filterMap (fun e =>
-      match e with
-      | .moved _ n (.player _ .trash) => some (Event.discarded o.owner n true)
-      | _ => none)
-    ((if discards.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded), r.2 ++ discards)
-  | none => r
-
-/-- Discarding a card is a safe change. -/
-theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
-  unfold discardObj
-  split
-  · dsimp only
-    split
-    · exact sendObj_safe .trash s id
-    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
-  · exact sendObj_safe .trash s id
 
 /-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
 The last discard event closes the group for effects that watch one or more discards. -/
@@ -1940,6 +1958,10 @@ theorem applyExtra_safe {s s' : GameState} {k : PlayExtra} {t : ObjId}
     {es : List Event} (h : applyExtra s k t = some (s', es)) : Safe s s' := by
   unfold applyExtra at h
   cases k with
+  | discardCard =>
+    have state : (discardObj s t).1 = s' := congrArg Prod.fst (Option.some.inj h)
+    rw [← state]
+    exact discardObj_safe s t
   | exhaustLegend =>
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -2234,7 +2256,7 @@ structure PermanentPayment where
 /-- A board cost must use an object already on the Board. The Legend Zone and XP have their own
 eligibility rules. -/
 def PlayExtra.boardPayment : PlayExtra → Bool
-  | .exhaustLegend | .spendXP _ | .spendXPOver _ _ => false
+  | .exhaustLegend | .spendXP _ | .spendXPOver _ _ | .discardCard => false
   | _ => true
 
 /-- The cost leaves the card being played and its resources untouched. -/
@@ -2243,6 +2265,10 @@ theorem applyExtra_retains {s s' : GameState} {k : PlayExtra} {t c : ObjId} {z :
     (hz : z.isBoard = false) (hc : c ∈ s.zone z) (different : c ≠ t)
     (onBoard : k.boardPayment = true → t ∈ s.inPlay) : RetainsCard s s' z c := by
   cases k <;> simp only [applyExtra] at h
+  case discardCard =>
+    have state : (discardObj s t).1 = s' := congrArg Prod.fst (Option.some.inj h)
+    rw [← state]
+    exact discardObj_retains hwf hc different
   case exhaustLegend =>
     obtain ⟨rfl, _⟩ := Prod.mk.inj (Option.some.inj h)
     have n : t.n ≠ c.n := by
@@ -2289,7 +2315,7 @@ def payPermanentExtra (before s : GameState) (c : ObjId) (costs : List ObjId)
         (applyExtra s k target).map fun (paid, events) =>
           let energy := if k == .returnGear then ((before.cardDef? target).bind (·.cost)).map (·.energy)
             else none
-          ⟨paid, events, energy, false⟩
+          ⟨paid, events, energy, k == .discardCard⟩
       else none
     | _, _ => none
 
@@ -3072,9 +3098,8 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
       | none => rw [hx] at h; simp at h
       | some kb =>
         rw [hx] at h
-        simp only [List.mem_map, GameState.extraCandidates, List.mem_filter] at h
-        obtain ⟨t, ⟨-, ht⟩, rfl⟩ := h
-        exact ⟨kb.1, kb.2, t, rfl, rfl, ht⟩
+        obtain ⟨t, ht, rfl⟩ := List.mem_map.mp h
+        exact ⟨kb.1, kb.2, t, rfl, rfl, (s.mem_extraCandidates p kb.1 t).mp ht⟩
     · right; right; right
       simp only [List.mem_map] at h
       obtain ⟨b, hb, rfl⟩ := h
@@ -3089,13 +3114,7 @@ theorem mem_playTargets (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
         exact ⟨(mem_targetTuples s p c s.mightTable e.choices ts).mpr hok, hne⟩
     · right; right; left
       rw [hx]
-      simp only [List.mem_map, GameState.extraCandidates, List.mem_filter]
-      refine ⟨t, ⟨?_, ht⟩, rfl⟩
-      cases k <;> simp only [GameState.extraTarget, Bool.and_eq_true, decide_eq_true_eq] at ht
-      all_goals first
-        | exact List.mem_append.mpr (Or.inl ht.1.1)
-        | exact List.mem_append.mpr (Or.inr ht.1)
-        | contradiction
+      exact List.mem_map.mpr ⟨t, (s.mem_extraCandidates p k t).mpr ht, rfl⟩
     · right; right; right
       exact List.mem_map.mpr ⟨b, hb, rfl⟩
 
@@ -3147,7 +3166,7 @@ theorem extraOk_mem_playTargets {s : GameState} {p : PlayerId} {c : ObjId} {d : 
       cases tl with
       | nil =>
         simp only [Bool.and_eq_true] at h
-        exact Or.inr (Or.inr (Or.inl ⟨k, b, t, rfl, rfl, h.1⟩))
+        exact Or.inr (Or.inr (Or.inl ⟨k, b, t, rfl, rfl, h.1.1⟩))
       | cons _ _ => simp at h
 
 /-- A card can be discarded as a play cost only from the player's hand. The card being played
