@@ -35,14 +35,15 @@ private theorem triggerFrames_stop (s : GameState) (rest : List Frame) :
     · exact .priority _ 0
 
 private theorem triggerFrames_decision (s : GameState) (rest : List Frame) (openChain : s.zone .chain ≠ []) :
-    ∃ f tail, triggerFrames s rest ++ rest = f :: tail ∧ f.isWork = false := by
+    ∃ f tail, triggerFrames s rest ++ rest = f :: tail ∧ f.isWork = false ∧
+      (∀ p, f ≠ .priority p) := by
   unfold triggerFrames
   split
-  · exact ⟨_, _, rfl, rfl⟩
+  · exact ⟨_, _, rfl, rfl, by intro p wrong; cases wrong⟩
   · have nonempty : (s.zone .chain).isEmpty = false := by
       cases zoned : s.zone .chain <;> simp_all
     simp only [nonempty, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append]
-    exact ⟨_, _, rfl, rfl⟩
+    exact ⟨_, _, rfl, rfl, by intro p wrong; cases wrong⟩
 
 private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
     (observe : ∀ (s : GameState) (queue : List PendTrigger) (rest : List Frame),
@@ -53,7 +54,8 @@ private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
     (pending : s.pending = .triggers queue :: rest) :
     ∃ t used, used ≤ queue.length + 1 ∧ RawWorkPrefix s t used [] ∧
       TriggerWorkStop rest t.pending ∧ (P s → AdvancePrefix s t used []) ∧
-      (queue ≠ [] ∨ s.zone .chain ≠ [] → ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
+      (queue ≠ [] ∨ s.zone .chain ≠ [] →
+        ∃ f tail, t.pending = f :: tail ∧ f.isWork = false ∧ (∀ p, f ≠ .priority p)) := by
   cases queue with
   | nil =>
     let next := { s with pending := triggerFrames s rest ++ rest }
@@ -100,7 +102,8 @@ private theorem rawTriggers_bound_and_observed (P : GameState → Prop)
         exact ite_eq_right automatic
       have raw : microStep0 s = some (next, []) := by
         simp only [microStep0, pending, routed, next] <;> rfl
-      refine ⟨next, 1, by simp, .single pending rfl raw, .order .., ?_, fun _ => ⟨_, _, rfl, rfl⟩⟩
+      refine ⟨next, 1, by simp, .single pending rfl raw, .order .., ?_,
+        fun _ => ⟨_, _, rfl, rfl, by intro p wrong; cases wrong⟩⟩
       intro before
       exact AdvancePrefix.prepend (n := 0) pending rfl
         ((observe s (first :: more) rest before pending).1.trans raw) (by intro fuel prior; simp)
@@ -136,7 +139,8 @@ theorem advance_triggers_noMightWatches (s : GameState) (wf : s.WF) (queue : Lis
 private theorem advance_checked_triggers (s : GameState) (wf : s.WF) (queue : List PendTrigger)
     (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards) :
     ∃ t used, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧ TriggerWorkStop rest t.pending ∧
-      (queue ≠ [] ∨ s.zone .chain ≠ [] → ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
+      (queue ≠ [] ∨ s.zone .chain ≠ [] →
+        ∃ f tail, t.pending = f :: tail ∧ f.isWork = false ∧ (∀ p, f ≠ .priority p)) := by
   obtain ⟨next, used, bound, _, done, observed, decides⟩ := rawTriggers_bound_and_observed
     (fun t => t.WF ∧ MightRead.database t.cards) (by
       intro current ts tail ⟨wellFormed, checked⟩ queued outcome
@@ -166,7 +170,7 @@ theorem advance_triggers_to_decision (s : GameState) (wf : s.WF) (queue : List P
     ∃ t used f tail, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧
       t.pending = f :: tail ∧ f.isWork = false := by
   obtain ⟨next, used, bound, trace, _, decides⟩ := advance_checked_triggers s wf queue rest pending database
-  obtain ⟨f, tail, left, asks⟩ := decides started
+  obtain ⟨f, tail, left, asks, _⟩ := decides started
   exact ⟨next, used, f, tail, bound, trace, left, asks⟩
 
 /-- Trigger work cannot expose neutral priority when its continuation does not start there. -/
@@ -178,13 +182,28 @@ theorem advance_triggers_to_nonpriorityDecision (s : GameState) (wf : s.WF) (que
       t.pending = f :: tail ∧ f.isWork = false ∧ (∀ p, f ≠ .priority p) := by
   obtain ⟨next, used, bound, trace, stop, decides⟩ :=
     advance_checked_triggers s wf queue rest pending database
-  obtain ⟨f, tail, pending, decision⟩ := decides started
+  obtain ⟨f, tail, pending, decision, _⟩ := decides started
   refine ⟨next, used, f, tail, bound, trace, pending, decision, ?_⟩
   intro p equal
   subst f
   rw [pending] at stop
   cases stop
   exact different p tail rfl
+
+/-- Trigger work with a nonempty queue or open Chain waits for an answer without needing
+another Cleanup, even if neutral priority is the original continuation. -/
+theorem advance_triggers_to_preparedDecision (s : GameState) (wf : s.WF) (queue : List PendTrigger)
+    (rest : List Frame) (pending : s.pending = .triggers queue :: rest) (database : MightRead.database s.cards)
+    (started : queue ≠ [] ∨ s.zone .chain ≠ []) :
+    ∃ t used f tail, used ≤ queue.length + 1 ∧ AdvancePrefix s t used [] ∧
+      t.pending = f :: tail ∧ f.isWork = false ∧
+      t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true := by
+  obtain ⟨next, used, bound, trace, _, decides⟩ :=
+    advance_checked_triggers s wf queue rest pending database
+  obtain ⟨f, tail, atDecision, decision, nonpriority⟩ := decides started
+  refine ⟨next, used, f, tail, bound, trace, atDecision, decision, ?_⟩
+  rw [GameState.preparePriority_of_nonpriority atDecision nonpriority]
+  simp [atDecision, decision]
 
 /-- The observed trigger work takes at most the queue length plus one step to reach the
 continuation, wait for an answer or process an observer change. -/

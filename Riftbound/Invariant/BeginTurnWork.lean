@@ -68,13 +68,14 @@ theorem workStep_beginTurn_mightOrdinary (s : GameState) (rest : List Frame)
 
 /-- When the clock allows play to continue, the real engine initializes the turn and reaches its
 Awaken stack with its card database, or a decision for the ordinary queue that came first. -/
-theorem advance_beginTurn_checkpoint {s : GameState} {rest : List Frame} (wf : s.WF)
+theorem advance_beginTurn_prepared_checkpoint {s : GameState} {rest : List Frame} (wf : s.WF)
     (checkedMight : MightRead.database s.cards) (checkedTriggers : s.cards.mightTriggersAreOrdinary)
     (pending : s.pending = .beginTurn :: rest) (clock : s.clockConclusion = none) :
     ∃ t used, 0 < used ∧ AdvancePrefix s t used [] ∧ t.WF ∧
       ((t.pending = turnFrames s.nextTurnPlayer ++ rest ∧ t.active = some s.nextTurnPlayer ∧
         t.turn = s.turn + 1 ∧ t.cards = s.cards) ∨
-        t.pending.head?.any (fun f => !f.isWork) = true) := by
+        (t.pending.head?.any (fun f => !f.isWork) = true ∧
+          t.preparePriority.pending.head?.all (fun f => !f.isWork) = true)) := by
   let next := beginTurnStep s rest
   let detected := next.detect (s.mightyEvents next)
   have stack : next.pending = turnFrames s.nextTurnPlayer ++ rest := by
@@ -97,21 +98,32 @@ theorem advance_beginTurn_checkpoint {s : GameState} {rest : List Frame} (wf : s
       intro empty
       have observed := observe
       simp [sees, empty] at observed
-    obtain ⟨t, used, f, later, _, path, decision, stop, notNeutral⟩ :=
-      advance_triggers_to_nonpriorityDecision waiting (workStep_wf wf step) detected _ activeStack
-        (waitingCards ▸ checkedMight) (Or.inl nonempty) (by simp [turnFrames])
+    obtain ⟨t, used, f, later, _, path, decision, stop, boundary⟩ :=
+      advance_triggers_to_preparedDecision waiting (workStep_wf wf step) detected _ activeStack
+        (waitingCards ▸ checkedMight) (Or.inl nonempty)
     have reached : t.WF := by
-      have prepared := GameState.preparePriority_of_nonpriority decision notNeutral
-      have finish := path.finish (by simp [prepared, decision, stop]) []
+      have finish := path.finish boundary []
       exact advance_wf used (workStep_wf wf step) (by simpa using finish)
     exact ⟨t, used + 1, by omega, by simpa using path.prepend pending rfl step, reached,
-      Or.inr (by simp [decision, stop])⟩
+      Or.inr ⟨by simp [decision, stop], boundary⟩⟩
   · rw [ite_eq_right observe] at step
     have still : AdvancePrefix next next 0 [] := by intro fuel before; simp
     have started : next.active = some s.nextTurnPlayer ∧ next.turn = s.turn + 1 := by
       simp [next, beginTurnStep, clock]
     exact ⟨next, 1, by decide, still.prepend pending rfl step, workStep_wf wf step,
       Or.inl ⟨stack, started.1, started.2, cards⟩⟩
+
+/-- When the clock allows play to continue, the engine reaches Awaken or a decision before it. -/
+theorem advance_beginTurn_checkpoint {s : GameState} {rest : List Frame} (wf : s.WF)
+    (checkedMight : MightRead.database s.cards) (checkedTriggers : s.cards.mightTriggersAreOrdinary)
+    (pending : s.pending = .beginTurn :: rest) (clock : s.clockConclusion = none) :
+    ∃ t used, 0 < used ∧ AdvancePrefix s t used [] ∧ t.WF ∧
+      ((t.pending = turnFrames s.nextTurnPlayer ++ rest ∧ t.active = some s.nextTurnPlayer ∧
+        t.turn = s.turn + 1 ∧ t.cards = s.cards) ∨
+        t.pending.head?.any (fun f => !f.isWork) = true) := by
+  obtain ⟨t, used, positive, trace, wellFormed, stop⟩ :=
+    advance_beginTurn_prepared_checkpoint wf checkedMight checkedTriggers pending clock
+  exact ⟨t, used, positive, trace, wellFormed, stop.imp_right And.left⟩
 
 /-- When the clock allows play to continue, the real engine initializes the turn and reaches its
 Awaken stack or a player decision for any nonempty ordinary queue that came first. -/

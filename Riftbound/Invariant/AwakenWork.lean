@@ -45,13 +45,14 @@ private theorem awaken_readied_notices (s : GameState) (eligible : ObjId → Obj
 
 /-- Awaken reaches the original Beginning stack or a player decision for the ordinary triggers
 it observed. The Beginning continuation keeps the same card database and is well formed. -/
-theorem advance_awaken {s : GameState} {rest : List Frame} (wf : s.WF)
+theorem advance_awaken_prepared {s : GameState} {rest : List Frame} (wf : s.WF)
     (mightReads : MightRead.database s.cards) (might : s.cards.mightTriggersAreOrdinary)
     (awaken : s.cards.awakenTriggersAreOrdinary)
     (pending : s.pending = .phase .awaken :: .phase .beginning :: rest) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       ((t.pending = .phase .beginning :: rest ∧ t.WF ∧ t.cards = s.cards) ∨
-        ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
+        ∃ f tail, t.pending = f :: tail ∧ f.isWork = false ∧
+          t.preparePriority.pending.head?.all (fun f => !f.isWork) = true) := by
   let p := s.active.getD ⟨0⟩
   let eligible := awakenCanReady s p (s.anyActive .skipUnitAwaken)
   let raw := { s.mapObjectsAt (awakenReady eligible) with
@@ -87,14 +88,28 @@ theorem advance_awaken {s : GameState} {rest : List Frame} (wf : s.WF)
     have nonempty : detected ≠ [] := by
       intro empty
       simp [observes, empty] at inserts
-    obtain ⟨t, used, f, tail, _, path, choice, decision⟩ :=
-      advance_triggers_to_decision next (workStep_wf wf work) detected _ stack mightReads (Or.inl nonempty)
+    obtain ⟨t, used, f, tail, _, path, choice, decision, ready⟩ :=
+      advance_triggers_to_preparedDecision next (workStep_wf wf work) detected _ stack
+        mightReads (Or.inl nonempty)
     exact ⟨t, used + 1, events, by omega, by simpa only [List.append_nil] using path.prepend pending rfl work,
-      Or.inr ⟨f, tail, choice, decision⟩⟩
+      Or.inr ⟨f, tail, choice, decision, ready⟩⟩
   · rw [ite_eq_right inserts] at work
     have zero : AdvancePrefix raw raw 0 [] := by intro fuel before; simp
     exact ⟨raw, 1, events, by decide, by simpa only [List.append_nil] using zero.prepend pending rfl work,
       Or.inl ⟨rfl, workStep_wf wf work, rfl⟩⟩
+
+/-- Awaken reaches Beginning or a player decision for its ordinary triggers. -/
+theorem advance_awaken {s : GameState} {rest : List Frame} (wf : s.WF)
+    (mightReads : MightRead.database s.cards) (might : s.cards.mightTriggersAreOrdinary)
+    (awaken : s.cards.awakenTriggersAreOrdinary)
+    (pending : s.pending = .phase .awaken :: .phase .beginning :: rest) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      ((t.pending = .phase .beginning :: rest ∧ t.WF ∧ t.cards = s.cards) ∨
+        ∃ f tail, t.pending = f :: tail ∧ f.isWork = false) := by
+  obtain ⟨t, used, events, positive, trace, stop⟩ :=
+    advance_awaken_prepared wf mightReads might awaken pending
+  exact ⟨t, used, events, positive, trace,
+    stop.imp_right (fun ⟨f, tail, choice, decision, _⟩ => ⟨f, tail, choice, decision⟩)⟩
 
 /-- The blank Battlefield added after a concession preserves the Awaken trigger check. -/
 theorem CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield {db : CardDB}
