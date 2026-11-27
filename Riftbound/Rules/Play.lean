@@ -3261,7 +3261,8 @@ def applyPlayCard (s : GameState) (p : PlayerId) (c : ObjId) (pay : RunePool.Pay
       (fun r =>
         let r' := castPay s p c targets discard r
         ({ r'.1 with pending := .chainPass p 0 :: .priority p :: rest }, r'.2))
-  else playPermanent s p c pay targets pick discard
+  else (playPermanent s p c pay targets pick discard).map
+    (fun result => ({ result.1 with pending := .cleanup :: s.pending }, result.2))
 
 /-- Playing a card keeps the game well formed. -/
 theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -3274,7 +3275,9 @@ theorem applyPlayCard_wf {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : Ru
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
     exact ((castPay_safe s p c targets discard (s2, es2)).wf (applyCast_wf hwf hm)).congr rfl rfl rfl rfl
-  · exact (playPermanent_safe h).wf hwf
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    exact ((playPermanent_safe applied).wf hwf).congr rfl rfl rfl rfl
 
 /-- Playing a card keeps the physical cards. -/
 theorem applyPlayCard_physIds {s s' : GameState} {p : PlayerId} {c : ObjId}
@@ -3289,7 +3292,9 @@ theorem applyPlayCard_physIds {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     have hp := applyCast_physIds hwf hm
     exact ((castPay_safe s p c targets discard (s2, es2)).phys (applyCast_wf hwf hm)).trans hp
-  · exact (playPermanent_safe h).phys hwf
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    exact (playPermanent_safe applied).phys hwf
 
 /-- Playing a card keeps `OwnerOk`. -/
 theorem applyPlayCard_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId}
@@ -3304,16 +3309,18 @@ theorem applyPlayCard_ownerOk {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact ((castPay_safe s p c targets discard (s2, es2)).own (applyCast_wf hwf hm)
       (applyCast_ownerOk hwf hown hm)).congr rfl rfl
-  · exact (playPermanent_safe h).own hwf hown
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    exact ((playPermanent_safe applied).own hwf hown).congr rfl rfl
 
 /-- Playing a card changes nothing of the turn order, the phase, the result, the rules or the
-cards; the stack is the same, or the Spell's players have to pass above the `priority` frame. -/
+cards. A permanent schedules Cleanup and a Spell opens its Chain window. -/
 theorem applyPlayCard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
     {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {targets : List ObjId} {rest : List Frame} {es : List Event}
     (h : applyPlayCard s p c pay targets rest flow pick discard = some (s', es)) :
     s'.config = s.config ∧ s'.turnOrder = s.turnOrder ∧ s'.phase = s.phase ∧
       s'.result = s.result ∧ s'.cards = s.cards ∧
-      (s'.pending = s.pending ∨ s'.pending = .chainPass p 0 :: .priority p :: rest) := by
+      (s'.pending = .cleanup :: s.pending ∨ s'.pending = .chainPass p 0 :: .priority p :: rest) := by
   unfold applyPlayCard at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
@@ -3324,8 +3331,10 @@ theorem applyPlayCard_meta {s s' : GameState} {p : PlayerId} {c : ObjId}
     have hs := (castPay_safe s p c targets discard (s2, es2)).same
     exact ⟨hs.config.trans h1, hs.turnOrder.trans h2, hs.phase.trans h3, hs.result.trans h4,
       (congrArg GameState.cards hs).trans h6, Or.inr rfl⟩
-  · have hs := (playPermanent_safe h).same
-    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, Or.inl hs.pending⟩
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    have hs := (playPermanent_safe applied).same
+    exact ⟨hs.config, hs.turnOrder, hs.phase, hs.result, hs.cards, Or.inl rfl⟩
 
 /-- A card that can be played or cast is played after setup. -/
 theorem playOk_not_setup {s : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
@@ -3351,10 +3360,14 @@ theorem applyPlayCard_isSome {s : GameState} {p : PlayerId} {c : ObjId} {pay : R
     exact ⟨_, rfl⟩
   · simp only [hcast]
     rcases hp with ⟨-, h, -⟩ | h | ⟨h, -⟩
-    · exact playPermanent_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
+    · obtain ⟨result, ok⟩ := playPermanent_isSome (discard := discard) (ts := targets) (pick := pick)
+        hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden h)) h
+      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, ok, rfl⟩⟩
     · exact absurd h hcast
     · obtain ⟨b, -, hb⟩ := bfPlayOk_spec h
-      exact playPermanent_isSome hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
+      obtain ⟨result, ok⟩ := playPermanent_isSome (discard := discard) (ts := targets) (pick := pick)
+        hwf (GameState.permanentPlaySource_zone hc (playable_not_hidden hb)) hb
+      exact ⟨_, Option.map_eq_some_iff.mpr ⟨result, ok, rfl⟩⟩
 
 end Riftbound
 

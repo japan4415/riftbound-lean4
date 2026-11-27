@@ -967,7 +967,9 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let p := s.me
   let field := s.bf0
   let other ← s.battlefields[1]?
-  let (s, nilah) ← put (((s.control p field).control p other).rich p) p "UNL-115" .hand
+  let (s, _) ← putAt (s.control p field) p "OGN-051" field
+  let (s, _) ← putAt (s.control p other) p "OGN-051" other
+  let (s, nilah) ← put (s.rich p) p "UNL-115" .hand
   let normal ← cast s p nilah ⟨3, [.body]⟩
   let paid ← cast s p nilah ⟨4, [.body, .body]⟩
   let original ← normal.firstOf p .base "UNL-115"

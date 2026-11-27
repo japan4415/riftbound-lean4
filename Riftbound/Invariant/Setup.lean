@@ -509,7 +509,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
     rcases hpend with e | e
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
-        (new := [Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
+        (new := [Frame.cleanup, Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
         (new := [Frame.chainPass p 0, Frame.priority p]) (by rw [e]; rfl)
         (by simp [Frame.isSetup])

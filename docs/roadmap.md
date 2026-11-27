@@ -2295,6 +2295,10 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 - Poppy, Paragon は登場時に各対戦相手の得点を確認する。War でも手番順の後ろにいる対戦相手が勝利点まで3点以内なら能力が誘発する。Kha'Zix, Mutating Horror は攻撃・防衛の開始時に、戦場の敵 Unit が1体かどうかを確認する。2枚を `full` とし、全1,103枚中623枚が実装済みとなった。[公式総合ルール 383.2.a.1](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
 
+### Unit・Gear の登場後に行う Cleanup
+
+- 通常の優先権で Unit や Gear をプレイした後、優先権を返す前に Cleanup を行う。Cruel Patron のコストで Lee Sin を Kill すると、Might が下がって致死ダメージに達した味方の Unit もこの時点で撃破される。Lee Sin, Centered の Accelerate と Buff 済みの味方への効果を確認して `full` とし、全1,103枚中624枚が実装済みとなった。[公式総合ルール 322–323](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。

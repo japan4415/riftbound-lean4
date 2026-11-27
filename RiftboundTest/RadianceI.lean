@@ -125,6 +125,23 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     relevant replacement == [.moved gear sacrifice (.player p .trash), .died sacrifice p,
       .moved patron ready (.player p .base)]
 
+-- Paying Cruel Patron by killing Lee Sin makes an already damaged Unit lethal before priority.
+#guard match lab with
+  | none => false
+  | some start => ((do
+    let p := start.me
+    let field := start.bf0
+    let (s, lee) ← putAt (start.control p field) p "OGN-151" field
+    let (s, ally) ← putAt s p "OGN-136" field
+    let (s, patron) ← put (s.fund p 4) p "OGN-208" .hand
+    let ready := (dealObj 4 (s.buff ally) ally).1
+    let (after, events) ← (step 100 ready ⟨.player p, .playCard patron ⟨4, []⟩ [lee]⟩).toOption
+    return (cleanupStep ready).isNone && after.pending == [.priority p] &&
+      (cleanupStep after).isNone && after.locate ally == none &&
+      events.any (fun
+        | .moved before _ (.player owner .trash) => before == ally && owner == p
+        | _ => false)) : Option Bool).getD false
+
 -- A limited play pays the same Kill cost before it decides how Cruel Patron enters.
 #guard radianceCase fun s => do
   let p := s.me

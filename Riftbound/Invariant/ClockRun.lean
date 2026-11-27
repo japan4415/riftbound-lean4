@@ -93,7 +93,9 @@ theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
     obtain ⟨rfl, -⟩ := hr
     exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s p c targets discard (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
-  · exact TC.of_safe (playPermanent_safe h)
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    exact (TC.of_safe (playPermanent_safe applied)).trans ⟨rfl, rfl⟩
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}

@@ -316,6 +316,16 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return b.mightNow v == (s4.mightNow v).map (· + 3) && b.mightNow w == s4.mightNow w &&
     b.mightNow e == (s4.mightNow e).map (· + 1) && b.mightNow u == s4.mightNow u
 
+-- Lee Sin can Accelerate by paying the printed additional Body Power and Energy.
+#guard t fun s => do
+  let p := s.me
+  let (s, lee) ← put (s.fund p 7 (body := 1)) p "OGN-151" .hand
+  let regular ← cast s p lee ⟨6, []⟩
+  let accelerated ← cast s p lee ⟨7, [.body]⟩
+  let before ← regular.firstOf p .base "OGN-151"
+  let after ← accelerated.firstOf p .base "OGN-151"
+  return regular.tired before == some true && accelerated.tired after == some false
+
 -- Arena Bar (OGN-124): exhaust it to buff an exhausted friendly unit
 #guard t fun s => do
   let (s1, g) ← put s s.me "OGN-124" .base

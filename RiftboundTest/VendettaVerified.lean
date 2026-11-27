@@ -1185,7 +1185,8 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, renekton) ← put s p "VEN-019" .hand
   let (s, first) ← putAt s q "VEN-071" field
   let (s, second) ← putAt s q "VEN-071" field
-  let (s, friendly) ← putAt s p "VEN-071" field
+  let (s, friendly) ← put s p "VEN-071" .base
+  let s := (s.control q field).modObj friendly (fun o => { o with exhausted := false })
   let (s, elsewhere) ← put s q "VEN-071" .base
   let runes (t : GameState) := (t.zone (.player p .base)).countP
     (fun id => (t.cardDef? id).any (·.hasType .rune))
@@ -1195,8 +1196,11 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let attack (t : GameState) : Option (GameState × ObjId) := do
     let played ← cast (t.fund p 7 (fury := 1)) p renekton ⟨7, [.fury]⟩
     let unit ← played.firstOf p .base "VEN-019"
-    let (moving, _) ← (step 100 (played.control q field)
-      ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+    let send (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption
+    let (group, _) ← send played (.startGroupMove (.battlefield field) Cost.zero)
+    let (group, _) ← send group (.choose unit)
+    let (group, _) ← send group (.choose friendly)
+    let (moving, _) ← send group (.decide true)
     return (settleChain {} 8 moving, unit)
   let (fourRunes, attacker) ← attack s
   let (fiveRunes, _) ← attack five

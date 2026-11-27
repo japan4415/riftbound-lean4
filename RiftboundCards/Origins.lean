@@ -4088,7 +4088,7 @@ def OGN_151 : CardDef :=
   { OGN_151.meta with
     abilities := [.passive .always
       [.mightPlus (Selector.all .friendly .here [.ofType .unit, .buffed, .notSelf]) (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED OGN-152
 /--

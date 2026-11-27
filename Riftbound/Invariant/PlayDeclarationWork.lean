@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.TriggerAnswerWork
+public import Riftbound.Invariant.MovementWork
 
 /-!
 # Card play and ability declarations (I12)
@@ -35,8 +36,10 @@ private theorem isPlayDeclaration_regular {s : GameState} {a : Action}
 
 private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : List Event}
     (play : isPlayDeclaration s a = true) (rawStep : applyFrame0 s a = some (raw, events)) :
-    raw.cards = s.cards ∧ ∃ body rest, raw.pending = body ++ rest ∧
-      (∀ f ∈ body, f.FiniteRun) ∧ isOrdinaryDecisionTail rest = true := by
+    raw.cards = s.cards ∧
+      ((∃ rest, raw.pending = .cleanup :: rest ∧ isOrdinaryDecisionTail rest = true) ∨
+        ∃ body rest, raw.pending = body ++ rest ∧
+          (∀ f ∈ body, f.FiniteRun) ∧ isOrdinaryDecisionTail rest = true) := by
   cases pending : s.pending with
   | nil => simp [isPlayDeclaration, pending] at play
   | cons frame rest =>
@@ -45,16 +48,15 @@ private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : L
     all_goals simp only [applyFrame0, pending, action] at rawStep
     case cons.priority.playCard =>
       obtain ⟨_, _, _, _, cards, stack⟩ := applyPlayCard_meta rawStep
-      refine ⟨cards, [], raw.pending, rfl, (by simp), ?_⟩
       rcases stack with h | h
-      · rw [h, pending]; rfl
-      · rw [h]; rfl
+      · exact ⟨cards, Or.inl ⟨_, h, by rw [pending]; rfl⟩⟩
+      · exact ⟨cards, Or.inr ⟨[], _, h, by simp, rfl⟩⟩
     case cons.chainPass.playCard | cons.showdown.playCard | cons.teamInvitation.playCard =>
       obtain ⟨_, _, _, _, cards, stack⟩ := reactStep_meta rawStep
-      exact ⟨cards, [], _, stack, by simp, rfl⟩
+      exact ⟨cards, Or.inr ⟨[], _, stack, by simp, rfl⟩⟩
     all_goals
       obtain ⟨_, _, _, _, cards, stack⟩ := activateStep_meta rawStep
-      exact ⟨cards, _, _, stack, activationRecycleFrames_finite _ _ _ _ _, rfl⟩
+      exact ⟨cards, Or.inr ⟨_, _, stack, activationRecycleFrames_finite _ _ _ _ _, rfl⟩⟩
 
 private theorem playDeclaration_isSome {s : GameState} {a : Action}
     (wf : s.WF) (play : isPlayDeclaration s a = true) (legal : LegalFrame s a) :
@@ -105,14 +107,16 @@ private theorem advance_playDeclaration_to_decision {s : GameState} {a : Action}
   | none =>
     have regular := isPlayDeclaration_regular play
     obtain ⟨⟨raw, events⟩, applied⟩ := playDeclaration_isSome wf play (legal.frame regular)
-    obtain ⟨same, body, rest, pending, finite, decision⟩ := playDeclaration_raw play applied
+    obtain ⟨same, plan⟩ := playDeclaration_raw play applied
     apply advance_observed_frame_to_decision needs regular applied
       (applyFrame_wf0 wf (legal.frame regular) applied) (same.symm ▸ reads)
     intro next notices safe checked stack
-    refine advance_observed_runs_then next notices safe checked ⟨rest, stack.trans pending, Or.inl rfl⟩
-      finite (isOrdinaryDecisionTail_front decision) ?_
-    intro t _ _ resumed
-    exact ⟨t, 0, [], by intro fuel prior; simp, resumed.symm ▸ isOrdinaryDecisionTail_boundary decision⟩
+    rcases plan with ⟨rest, pending, decision⟩ | ⟨body, rest, pending, finite, decision⟩
+    · exact advance_observed_cleanup_to_decision next notices safe checked (stack.trans pending) decision
+    · refine advance_observed_runs_then next notices safe checked ⟨rest, stack.trans pending, Or.inl rfl⟩
+        finite (isOrdinaryDecisionTail_front decision) ?_
+      intro t _ _ resumed
+      exact ⟨t, 0, [], by intro fuel prior; simp, resumed.symm ▸ isOrdinaryDecisionTail_boundary decision⟩
 
 /-- A legal card play or activation reaches a decision through any Recycle payment,
 replacement prompt, or event observation that the declaration starts. -/

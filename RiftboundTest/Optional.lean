@@ -59,11 +59,10 @@ meta def mainOp : Option GameState :=
           [swift, plain, echo, legionary, thrifty] } }
       | .error _ => none
 
-/-- Put a token of the card on a zone of the player. -/
+/-- Put a physical test card in a player zone. -/
 meta def putOp (s : GameState) (p : PlayerId) (card : String) (z : ZoneKind) :
     Option (GameState × ObjId) :=
-  addObject s { kind := .token (cid card), owner := p, controller := p, timestamp := ⟨0⟩ }
-    (.player p z)
+  addObject s (newCard s.cards s p (cid card)) (.player p z)
 
 /-- The payments with which the player can play the card. -/
 meta def paysOf (s : GameState) (c : ObjId) : List RunePool.Payment :=

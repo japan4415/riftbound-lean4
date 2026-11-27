@@ -234,7 +234,10 @@ theorem applyFrame_handInv0 {s s' : GameState} {a : Action} {es : List Event}
       rw [hto, hcount]
       apply hinv.turn
       rcases hpend with e | e
-      · rw [e] at hm; exact hm
+      · rw [e] at hm
+        rcases List.mem_cons.mp hm with impossible | later
+        · cases impossible
+        · exact later
       · rw [e] at hm
         simp only [List.mem_cons] at hm
         rw [hp]

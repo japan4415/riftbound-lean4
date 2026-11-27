@@ -129,7 +129,9 @@ theorem applyFrame_stack0 {s s' : GameState} {a : Action} {es : List Event}
     refine hinv.of_next hres (fun hb => ?_)
     rw [hp] at hb
     rcases hpend with e | e
-    · rw [e, hp]; exact hb
+    · rw [e, hp]
+      exact hb.replace (new := [Frame.cleanup, Frame.priority p])
+        (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
     · rw [e]
       exact hb.replace (new := [Frame.chainPass p 0, Frame.priority p])
         (fun _ => ⟨Frame.priority p, by simp, rfl⟩)
