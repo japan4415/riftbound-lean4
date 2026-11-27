@@ -28,6 +28,8 @@ structure Ctx where
   slots : Nat := 0
   /-- The number of declared player target slots. -/
   playerSlots : Nat := 0
+  /-- A destination was declared for a move. -/
+  hasMoveDestination : Bool := false
   /-- An X was chosen when the card was played. -/
   hasX : Bool := false
   /-- The number of modes the card asks to choose from, if it does. -/
@@ -142,6 +144,7 @@ end
 def Dest.ok (c : Ctx) : Dest → Bool
   | .base => true
   | .at_ s => Selector.ok c s
+  | .declared => c.hasMoveDestination
 
 /-- A game action refers only to what is there. -/
 def Prim.ok (c : Ctx) : Prim → Bool
@@ -476,6 +479,7 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
   { base with
     slots := (d.choices.filter Choice.isTarget).length + base.slots,
     playerSlots := if d.playerTarget.isSome then base.playerSlots + 1 else base.playerSlots,
+    hasMoveDestination := base.hasMoveDestination || d.moveChoice.isSome,
     hasX := d.choices.any (· == .xValue),
     modes := (d.choices.filterMap Choice.modeCount).head? }
 
@@ -487,7 +491,8 @@ def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
     (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
     d.modes.all (fun mode =>
       let branch : EffectDef :=
-        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget }
+        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget,
+          moveChoice := mode.moveChoice }
       let context := branch.ctx base
       Choice.allOk 0 branch.choices && Effect.ok context branch.body &&
         mode.moveChoice.all (fun move =>

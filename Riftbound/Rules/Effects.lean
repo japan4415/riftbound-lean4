@@ -998,21 +998,53 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
 effect's controller. In team play, a Unit going to an invalid Battlefield is recalled
 instead (CR 449.2.c). -/
 def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
-    (actor : PlayerId := controller) : GameState × List Event :=
+    (actor : PlayerId := controller) (declaredBase : Option PlayerId := none) : GameState × List Event :=
   if s.moveBlockedFor actor u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
-    | none => moveHome s u
+    | none =>
+      if declaredBase.any (fun seat => (s.obj? u).any (·.controller != seat)) then recallFx false s u
+      else moveHome s u
     | some bf => moveOrRecall s (some bf) s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
 theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
-    (actor : PlayerId := p) : Safe s (moveByEffect p loc s u actor).1 := by
-  unfold moveByEffect
-  split
-  · exact Safe.refl s
+    (actor : PlayerId := p) (declaredBase : Option PlayerId := none) :
+    Safe s (moveByEffect p loc s u actor declaredBase).1 := by
+  by_cases blocked : (s.moveBlockedFor actor u || s.blocksEnemyMove p u) = true
+  · simpa [moveByEffect, blocked] using Safe.refl s
   · cases loc with
-    | none => exact moveHome_safe s u
-    | some bf => exact moveOrRecall_safe s (some bf) s u
+    | none =>
+      by_cases changed : declaredBase.any (fun seat => (s.obj? u).any (·.controller != seat)) = true
+      · simpa [moveByEffect, blocked, changed] using recallFx_safe false s u
+      · simpa [moveByEffect, blocked, changed] using moveHome_safe s u
+    | some bf =>
+      simpa [moveByEffect, blocked] using moveOrRecall_safe s (some bf) s u
+
+/-- The Base originally declared for this target of a grouped Move on the Chain. -/
+def GameState.declaredMoveBase (s : GameState) (src unit : ObjId) : Option PlayerId := do
+  let bases ← s.turnFx.findSome? fun note =>
+    if note.turn == s.turn && note.target == some src then
+      match note.kind with
+      | .declaredMoveBases bases => some bases
+      | _ => none
+    else none
+  bases.findSome? (fun (id, seat) => if id == unit then some seat else none)
+
+/-- Move a target to its declared location if it is currently somewhere else. -/
+def moveDeclaredTarget (p : PlayerId) (source : ObjId) (env : Env)
+    (place : Option ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if (s.obj? id).any (·.loc != place) then
+    moveByEffect (env.effectController.getD p) place s id p (s.declaredMoveBase source id)
+  else (s, [])
+
+/-- Moving to the declared destination preserves the structural invariants. -/
+theorem moveDeclaredTarget_safe (p : PlayerId) (source : ObjId) (env : Env)
+    (place : Option ObjId) (s : GameState) (id : ObjId) :
+    Safe s (moveDeclaredTarget p source env place s id).1 := by
+  unfold moveDeclaredTarget
+  split
+  · exact moveByEffect_safe _ _ _ _ _ _
+  · exact Safe.refl _
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
@@ -3804,6 +3836,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .move sel .base =>
     (onSelected s p src env sel (fun t u => moveByEffect (env.effectController.getD p) none t u p)).map
       (movedEvents p)
+  | .move sel .declared =>
+    let pick := env.executionPick <|> (s.obj? src).map (·.spellPick)
+    match pick.bind SpellPick.moveDestination? with
+    | none => none
+    | some place =>
+      if place.any (fun bf => !s.battlefields.contains bf) then none
+      else (onSelected s p src env sel (moveDeclaredTarget p src env place)).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -4035,6 +4074,15 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
       show Safe s r0.1
       exact onSelected_safe (fun t u => moveByEffect_safe _ none t u p) hr0
+    | declared =>
+      simp only [applyPrim] at h
+      split at h
+      · simp at h
+      · split at h
+        · simp at h
+        · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+          show Safe s r0.1
+          exact onSelected_safe (moveDeclaredTarget_safe p src env _) hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -5255,9 +5303,8 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   let thenMove (move : Effect) : Effect :=
     if afterNegatedMove then .seqOf [move, afterMove] else .doThen move afterMove
   let effectPick := env.executionPick <|> (s.obj? src).map (·.spellPick)
-  match effectPick.map SpellPick.effectChoice, env.slots[slot]? with
-  | some (.destination dest), some (.obj id)
-  | some (.modeDestination _ dest), some (.obj id) =>
+  match effectPick.bind SpellPick.moveDestination?, env.slots[slot]? with
+  | some dest, some (.obj id) =>
     match s.obj? id, dest with
     | some o, none =>
       if !allowBase then resume
@@ -5854,7 +5901,7 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
       let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
       .cons (.retainTargetSet remaining) body
     | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ |
-        .target (.exactly _) _ _ _ =>
+        .target (.combinedMightFromOneController _) _ _ _ | .target (.exactly _) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
       let pm := s.mightTable
       let legal := c.candidatesAfter s p src pm fixed
@@ -5862,9 +5909,16 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
       let weight := c.groupWeight s pm
       let limit := c.groupLimit
       let total (ids : List ObjId) := (ids.map weight).sum
-      let groups := if total original ≤ limit then [original] else
-        (subseqsWithin weight limit original).filter (fun group =>
-          original.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      let keep (candidates : List ObjId) :=
+        if total candidates ≤ limit then [candidates] else
+          (subseqsWithin weight limit candidates).filter (fun group =>
+            candidates.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      let groups := match c with
+        | .target (.combinedMightFromOneController _) _ _ _ =>
+          let nonempty := ((s.targetsByController original).flatMap keep).filter (fun group =>
+            !List.isEmpty group)
+          if nonempty.isEmpty then [[]] else nonempty.eraseDups
+        | _ => keep original
       .cons (.retainTargetSet (groups.map (fixed ++ ·))) body
     | _ => body
   | none => body
@@ -6518,6 +6572,25 @@ theorem runPrimEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : E
     | exact castReducedStep_safe (by assumption)
     | exact applyPrim_safe (by assumption)
 
+/-- Update a Spell's choices and record any newly declared grouped Move destination. -/
+def GameState.replaceSpellChoices (s : GameState) (spell : ObjId) (pick : SpellPick)
+    (targets : List ObjId) : GameState :=
+  let updated := s.modObj spell fun o =>
+    let newPick : SpellPick := match o.spellPick.optionalCosts with
+      | some (printed, repeats) => .withCosts pick printed repeats
+      | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
+    let recorded := newPick.addPaidKill o.spellPick.paidKill
+    { o with targets, spellPick := recorded, targetPlayer := pick.playerTarget }
+  updated.recordDeclaredMoveBases spell
+
+/-- Replacing choices and recording their destinations changes no physical card or zone. -/
+theorem GameState.replaceSpellChoices_safe (s : GameState) (spell : ObjId) (pick : SpellPick)
+    (targets : List ObjId) : Safe s (s.replaceSpellChoices spell pick targets) := by
+  unfold replaceSpellChoices
+  dsimp only
+  refine Safe.trans ?_ (GameState.recordDeclaredMoveBases_safe _ spell)
+  exact Safe.modObj s spell (fun _ => rfl) (fun _ => rfl)
+
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
@@ -6577,13 +6650,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .resolveSpellExecution pick targets =>
     (s, spellExecutionFrames s p src env pick targets ++ [.run p src env es], [])
   | .setSpellChoices spell pick targets =>
-    let updated := s.modObj spell fun o =>
-      let newPick : SpellPick := match o.spellPick.optionalCosts with
-        | some (printed, repeats) => .withCosts pick printed repeats
-        | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
-      let recorded := newPick.addPaidKill o.spellPick.paidKill
-      { o with targets, spellPick := recorded, targetPlayer := pick.playerTarget }
-    (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
+    (s.replaceSpellChoices spell pick targets, [.run p src env es], targets.map (Event.chosenBySpell p))
   | .moveChoosing unit home fs afterMove afterNegatedMove =>
     let chosen := chosenMove s p src env unit home fs afterMove afterNegatedMove
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
@@ -6945,6 +7012,7 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact runPrimEffect_safe s p src env _ es funding
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+    | exact GameState.replaceSpellChoices_safe s _ _ _
     | exact addReservedLegend_safe s p src _
     | exact castLimitedStep_safe s p src env _ _ _ es funding
     | exact finalizeLimitedStep_safe s p src env _ es funding

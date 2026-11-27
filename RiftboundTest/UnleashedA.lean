@@ -1495,11 +1495,94 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
 
 -- Tricksy Tentacles (UNL-054): enemy units of total Might 8 or less are moved to one place
 #guard tun fun s => do
-  let (s1, c) ← put s s.me "UNL-054" .hand
+  let (s1, c) ← put (s.control s.you s.bf0) s.me "UNL-054" .hand
   let (s2, a) ← putAt s1 s.you "OGN-135" s.bf0
   let (s3, b) ← putAt s2 s.you "OGN-135" s.bf0
-  let s4 ← play s3 s.me c [a, b] { fromEnd := some 1 }
+  let s4 ← cast (s3.rich s.me) s.me c (payOf s3 c) [a, b] {} (.destination none)
   return (s4.obj? a).any (·.loc != some s.bf0) && (s4.obj? b).any (·.loc != some s.bf0)
+
+-- The targets must share the same opposing controller and fit the Might budget at declaration.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let first : PlayerId := ⟨2⟩
+  let second : PlayerId := ⟨3⟩
+  let (s, field) ← putBf (unleashedTeamMain labState) p "OGN-275"
+  let (s, spell) ← put s p "UNL-054" .hand
+  let (s, small) ← put s first "OGN-051" .base
+  let (s, large) ← put s first "OGN-049" .base
+  let (s, tooMuch) ← put s first "OGN-049" .base
+  let (s, anotherSeat) ← put s second "OGN-051" .base
+  let s := s.fund p 4 (calm := 1)
+  let answer (targets : List ObjId) (dest : Option ObjId := some field) : Action :=
+    ⟨.player p, .playCard spell ⟨4, [.calm]⟩ targets none none (.destination dest)⟩
+  let accepts (targets : List ObjId) := (step 100 s (answer targets)).isOk
+  let offers (targets : List ObjId) := (legalFrameActions s).contains (answer targets)
+  let (s, zeros) ← (List.range 9).foldlM (fun (board, ids) _ => do
+    let (board, zero) ← put board second "UNL-053" .base
+    return (board, ids ++ [zero])) (s, [])
+  return (step 100 s (answer [] none)).isOk && !accepts [] &&
+    !(step 100 s (answer [small, large] none)).isOk && accepts [small, large] && offers [small, large] &&
+    !accepts [large, tooMuch] && !offers [large, tooMuch] &&
+    !accepts [small, anotherSeat] && !offers [small, anotherSeat] &&
+    (step 100 s (answer zeros)).isOk
+
+-- A Reaction can break the declaration's Might budget. Keep an inclusion-maximal subset
+-- of the original targets and use the Base declared at finalization.
+#guard tun fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, first) ← putAt (s.control q bf) q "OGN-049" bf
+  let (s, second) ← putAt s q "OGN-135" bf
+  let (s, untouched) ← putAt s q "OGN-051" bf
+  let (s, spell) ← put s p "UNL-054" .hand
+  let (s, response) ← put s q "OGN-058" .hand
+  let s := (s.fund p 4 (calm := 1)).fund q 2
+  let (declared, _) ← (step 100 s
+    ⟨.player p, .playCard spell ⟨4, [.calm]⟩ [first, second] none none (.destination none)⟩).toOption
+  let (window, _) ← (step 100 declared ⟨.player p, .pass⟩).toOption
+  let (higher, _) ← (step 100 window ⟨.player q, .playCard response ⟨2, []⟩ [second]⟩).toOption
+  let rec pass : Nat → GameState → Option GameState
+    | 0, _ => none
+    | n + 1, state => match state.pending with
+      | .chainPass seat _ :: _ => do
+        let (next, _) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next
+      | _ => some state
+  let waiting ← pass 10 higher
+  let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let legal := legalFrameActions waiting
+  let (done, events) ← (step 100 waiting (choose second)).toOption
+  return legal.contains (choose first) && legal.contains (choose second) &&
+    !legal.contains (choose untouched) && done.hereOf first == some bf &&
+    done.hereOf second == none && (done.zone (.player q .base)).contains second &&
+    done.hereOf untouched == some bf && events.contains (.movedByEffect p second)
+
+-- A Base is a seat's physical location. If the target is stolen after finalization,
+-- the declared Base becomes invalid and the Unit Recalls instead of making a Move.
+#guard tun fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let owner : PlayerId := ⟨2⟩
+  let other : PlayerId := ⟨3⟩
+  let (s, field) ← putBf (unleashedTeamMain labState) owner "OGN-275"
+  let (s, unit) ← putAt (s.control owner field) owner "OGN-135" field
+  let (s, spell) ← put s p "UNL-054" .hand
+  let s := s.fund p 4 (calm := 1)
+  let declare : Action := ⟨.player p, .playCard spell ⟨4, [.calm]⟩ [unit] none none (.destination none)⟩
+  let (queued, _) ← (step 100 s declare).toOption
+  let changed := (setController other queued unit).1
+  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => match state.pending with
+      | .chainPass seat _ :: _ => do
+        let (next, emitted) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next (events ++ emitted)
+      | _ => some (state, events)
+  let (done, events) ← pass 10 changed []
+  return queued.turnFx.any (fun note => note.kind == .declaredMoveBases [(unit, owner)]) &&
+    (changed.obj? unit).any (·.controller == other) &&
+    (done.zone (.player other .base)).contains unit && events.contains (.recalled unit) &&
+    !(events.contains (.movedByEffect p unit))
 
 -- Diana pays when finalizing the trigger from a non-combat Showdown, then privately Predicts.
 -- The revealed card is the new top, and only a Spell is drawn (Vendetta errata).
@@ -3032,7 +3115,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let inList (card : ObjId) := acts.any (fun a => match a.kind with
     | .playCard x _ _ _ _ _ => x == card | _ => false)
   return (r.obj? e).any (·.stunned) && back && inList c && !inList d &&
-    (cast rich s.me d (payOf rich d) [e]).isNone
+    (cast rich s.me d (payOf rich d) [e] {} (.destination none)).isNone
 
 -- Shadow is already Ready at the instant of its Battlefield play. Paying,
 -- effect-driven play and placement at Base use their respective entry states.

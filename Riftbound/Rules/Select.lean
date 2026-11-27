@@ -1453,7 +1453,7 @@ def Quantity.pickable : Quantity → Bool
   | .one => true
   | .upTo n | .atOneBattlefield n => decide (1 ≤ n)
   | .anyNumber | .combinedMightAtMost _ | .exactly _ | .splitByMight _ | .onePerLocation
-  | .atOneLocation _ => true
+  | .atOneLocation _ | .combinedMightFromOneController _ => true
   | _ => false
 
 /-- A location clause may explicitly require choosing outside the hiding Battlefield. -/
@@ -1609,7 +1609,7 @@ def Choice.multi : Choice → Bool
   | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _
   | .target (.atOneBattlefield _) _ _ _ | .target (.exactly _) _ _ _
   | .target (.splitByMight _) _ _ _ | .target .onePerLocation _ _ _
-  | .target (.atOneLocation _) _ _ _ => true
+  | .target (.atOneLocation _) _ _ _ | .target (.combinedMightFromOneController _) _ _ _ => true
   | _ => false
 
 /-- A group is limited by its size or by its total effective Might. -/
@@ -1617,14 +1617,15 @@ def Choice.groupLimit : Choice → Nat
   | .target (.upTo n) _ _ _ | .target (.atOneBattlefield n) _ _ _ |
       .target (.exactly n) _ _ _ | .target (.atOneLocation n) _ _ _ => n
   | .target .anyNumber _ _ _ => 0
-  | .target (.combinedMightAtMost limit) _ _ _ => limit
+  | .target (.combinedMightAtMost limit) _ _ _ | .target (.combinedMightFromOneController limit) _ _ _ =>
+    limit
   | _ => 1
 
 /-- The contribution of each object to the group limit, using current Might (CR 143, 355.11). -/
 def Choice.groupWeight (s : GameState) (pm : List (ObjId × Int)) (c : Choice) (id : ObjId) : Nat :=
   match c with
   | .target .anyNumber _ _ _ => 0
-  | .target (.combinedMightAtMost _) _ _ _ =>
+  | .target (.combinedMightAtMost _) _ _ _ | .target (.combinedMightFromOneController _) _ _ _ =>
     let env : Env := { passMight := pm }
     ((s.mightOf id).getD 0 + s.equipBonus id + s.buffBonus id + env.passOf id).toNat
   | _ => 1
@@ -1730,6 +1731,17 @@ def GameState.targetsByLocation (s : GameState) (ids : List ObjId) : List (List 
   (ids.filterMap s.boardLocationOf).eraseDups.map (fun place =>
     ids.filter (fun id => s.boardLocationOf id == some place))
 
+/-- The candidate groups by current controller in the players' seat order. -/
+def GameState.targetsByController (s : GameState) (ids : List ObjId) : List (List ObjId) :=
+  s.players.map (fun p => ids.filter (fun id => (s.obj? id).map (·.controller) == some p))
+
+/-- Every member of a group is an eligible candidate controlled by the group's seat. -/
+theorem GameState.mem_targetsByController {s : GameState} {ids group : List ObjId}
+    (h : group ∈ s.targetsByController ids) :
+    ∃ p ∈ s.players, ∀ id ∈ group, id ∈ ids ∧ (s.obj? id).map (·.controller) = some p := by
+  obtain ⟨p, seat, rfl⟩ := List.mem_map.mp h
+  exact ⟨p, seat, fun _ inside => by simpa only [beq_iff_eq] using List.mem_filter.mp inside⟩
+
 /-- The combinations obtained by taking zero or one member of each location's candidates. -/
 def locationSelections : List (List ObjId) → List (List ObjId)
   | [] => [[]]
@@ -1785,6 +1797,7 @@ def Choice.sortedTargetGroups (s : GameState) (p : PlayerId) (self : ObjId)
   let candidates := c.sortedCands s p self pm acc
   match c with
   | .target (.atOneBattlefield _) _ _ _ => s.targetsByBattlefield candidates
+  | .target (.combinedMightFromOneController _) _ _ _ => s.targetsByController candidates
   | .target (.atOneLocation _) _ _ _ =>
     let groups := s.targetsByLocation candidates
     if groups.isEmpty then [[]] else groups
@@ -1800,6 +1813,8 @@ theorem Choice.mem_sortedTargetGroups {s : GameState} {p : PlayerId} {self : Obj
   · simp only [GameState.targetsByBattlefield, List.mem_map] at hg
     obtain ⟨_, _, rfl⟩ := hg
     exact (List.mem_filter.mp hi).1
+  · obtain ⟨_, _, members⟩ := GameState.mem_targetsByController hg
+    exact (members id hi).1
   · dsimp only at hg
     split at hg
     · obtain rfl := List.mem_singleton.mp hg
@@ -1833,6 +1848,20 @@ def Choice.groupTargetsOk (s : GameState) (p : PlayerId) (self : ObjId)
   else c.groupNonemptyOk ids && (c.sortedTargetGroups s p self pm acc).any (fun group =>
       decide (ids.Sublist group) &&
         decide ((ids.map (c.groupWeight s pm)).sum ≤ c.targetGroupLimit s p self pm acc group))
+
+/-- A legal Might-limited group of this form has one controlling seat. -/
+theorem Choice.groupTargetsOk_combinedMightFromOneController {s : GameState}
+    {p : PlayerId} {self : ObjId} {pm : List (ObjId × Int)} {acc ids : List ObjId}
+    {limit : Nat} {side : Side} {place : Place} {fs : FilterList}
+    (legal : Choice.groupTargetsOk s p self pm acc
+      (.target (.combinedMightFromOneController limit) side place fs) ids = true) :
+    ∃ q ∈ s.players, (∀ id ∈ ids, (s.obj? id).map (·.controller) = some q) ∧
+      (ids.map ((Choice.target (.combinedMightFromOneController limit) side place fs).groupWeight s pm)).sum ≤ limit := by
+  simp [Choice.groupTargetsOk, Choice.recordsLocations, Choice.groupNonemptyOk,
+    Choice.sortedTargetGroups, List.any_eq_true, Choice.targetGroupLimit, Choice.groupLimit] at legal
+  obtain ⟨group, grouped, subset, weight⟩ := legal
+  obtain ⟨q, seat, member⟩ := GameState.mem_targetsByController grouped
+  exact ⟨q, seat, fun id inside => (member id (subset.subset inside)).2, of_decide_eq_true weight⟩
 
 /-- Enumerate legal target groups. -/
 def Choice.groupTuples (s : GameState) (p : PlayerId) (self : ObjId)

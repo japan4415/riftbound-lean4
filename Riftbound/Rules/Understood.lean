@@ -373,6 +373,7 @@ def Prim.understood : Prim → Bool
   | .topdeck s => s.understoodPickAny
   | .double s | .grantActivation s _ => s.understoodPick
   | .move s .base => s.understoodPick
+  | .move s .declared => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
     s.understoodPick && (match s with | .pick .one .. => d.understood | _ => d.understoodPick)

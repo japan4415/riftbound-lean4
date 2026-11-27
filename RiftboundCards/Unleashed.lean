@@ -1622,11 +1622,11 @@ def UNL_054.meta : CardDef :=
 /-- Tricksy Tentacles. -/
 def UNL_054 : CardDef :=
   { UNL_054.meta with
-    spellEffect := some (.of [.targetOf (.upTo 8) .enemy .anywhere [.ofType .unit]]
-      (.ifThen (.cmp .le (.mightOf (.slotsFrom 0)) (.const 8))
-        (.eitherOf (.cons (.prim (.move (.slotsFrom 0) .base))
-          (.cons (.prim (.move (.slotsFrom 0)
-            (.at_ (Selector.one .any .anywhere [.ofType .battlefield])))) .nil))) .nop)),
+    spellEffect := some {
+      choices := [.targetOf (.combinedMightFromOneController 8) .enemy .anywhere [.ofType .unit]]
+      moveChoice := some ⟨0, true, .nil⟩
+      recheckTargets := true
+      body := .prim (.move (.slotsFrom 0) .declared) },
     status := .drafted }
 
 -- BEGIN GENERATED UNL-055

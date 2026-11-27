@@ -1368,17 +1368,25 @@ def GameState.castPicks (s : GameState) (p : PlayerId) (c : ObjId) (d : CardDef)
   (ordinary ++ if d.hasType .spell then s.xpPlayPicks p d ordinary else []) ++
     (s.permanentCostPicks p c d ++ s.battlefieldPicks p c d)
 
-/-- Check the chosen destination relative to the moved target (CR 355.4).
+/-- Whether the destination applies to all of the targets of the last, grouped choice. -/
+def EffectDef.moveTargetGroup (e : EffectDef) (move : MoveChoice) : Bool :=
+  ((e.choices.filter Choice.isTarget)[move.slot]?).any Choice.multi
+
+/-- Check the chosen destination relative to each moved target (CR 355.4).
 Effects that prevent the move are checked at resolution (CR 358.3.a). -/
 def GameState.moveTargetOk (s : GameState) (c : ObjId) (e : EffectDef) (ts : List ObjId) :
     SpellPick → Bool
   | .destination dest | .modeDestination _ dest =>
     match e.moveChoice with
-    | some m => ((ts[m.slot]?).any fun id =>
-      (s.obj? id).any (fun moved => match dest with
+    | some m =>
+      let valid (id : ObjId) := (s.obj? id).any (fun moved => match dest with
         | none => m.allowBase && moved.loc.isSome
         | some bf => s.effectObjectMoveBattlefieldOk id moved bf &&
-            (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false))
+            (FilterList.holds s c { slots := ts.map Value.obj, passMight := s.mightTable } bf m.filters).getD false)
+      if e.moveTargetGroup m then
+        let moving := ts.drop m.slot
+        if moving.isEmpty then dest.isNone else moving.all valid
+      else ts[m.slot]?.any valid
     | none => false
   | .withPlayer pick _ | .withCosts pick _ _ | .withExtraObject pick _ |
       .withSpellExhausts pick _ => s.moveTargetOk c e ts pick
@@ -2096,13 +2104,41 @@ theorem paySpellExhausts_safe (s : GameState) (card : ObjId) :
     Safe s (paySpellExhausts s card) :=
   exhaustSpellGroup_safe _ _
 
+/-- Remember which physical Base was selected for each target of a grouped Move. The
+player controlling a target at resolution can differ from its controller here (CR 355.4). -/
+def GameState.recordDeclaredMoveBases (s : GameState) (card : ObjId) : GameState :=
+  match s.obj? card, s.cardDef? card with
+  | some obj, some defn =>
+    let executions := obj.spellPick.executions obj.targets
+    let choices := executions.flatMap fun (pick, targets) =>
+      if pick.moveDestination? == some none then
+        ((defn.spellForPick pick).bind (fun effect =>
+          effect.moveChoice.filter effect.moveTargetGroup)).toList.flatMap
+          (fun spec => targets.drop spec.slot)
+      else []
+    let bases := choices.filterMap fun id => (s.obj? id).map (fun unit => (id, unit.controller))
+    if bases.isEmpty then s else s.addTurnFxOn obj.controller card (.declaredMoveBases bases)
+  | _, _ => s
+
+/-- Recording the selected Base locations leaves the physical cards where they are. -/
+theorem GameState.recordDeclaredMoveBases_safe (s : GameState) (card : ObjId) :
+    Safe s (s.recordDeclaredMoveBases card) := by
+  unfold recordDeclaredMoveBases
+  split
+  · dsimp only
+    split
+    · exact Safe.refl _
+    · exact addTurnFxOn_safe _ _ _ _
+  · exact Safe.refl _
+
 /-- Commit all separately declared object payments when a Spell is finalized. -/
 def paySpellCosts (s : GameState) (card : ObjId) : GameState × List Event :=
-  paySpellObject (paySpellExhausts s card) card
+  paySpellObject (paySpellExhausts (s.recordDeclaredMoveBases card) card) card
 
 theorem paySpellCosts_safe (s : GameState) (card : ObjId) :
     Safe s (paySpellCosts s card).1 :=
-  (paySpellExhausts_safe s card).trans (paySpellObject_safe _ _)
+  (s.recordDeclaredMoveBases_safe card).trans
+    ((paySpellExhausts_safe _ card).trans (paySpellObject_safe _ _))
 
 /-- Apply the additional non-resource costs for a direct Spell play. -/
 def castPay (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)

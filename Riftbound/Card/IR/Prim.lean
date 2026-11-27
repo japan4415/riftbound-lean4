@@ -21,6 +21,8 @@ inductive Dest where
   | base
   /-- The place the selector gives: a Battlefield. -/
   | at_ (s : Selector)
+  /-- The shared destination declared when the Spell was finalized (CR 355.4). -/
+  | declared
 deriving DecidableEq, Repr, Hashable
 
 /-- Who replays a banished Unit and where the effect requires it to enter. -/

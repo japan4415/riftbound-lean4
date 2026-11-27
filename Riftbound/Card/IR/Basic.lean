@@ -124,6 +124,12 @@ def SpellPick.effectChoice : SpellPick → SpellPick
       .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. => pick.effectChoice
   | pick => pick
 
+/-- The location selected at finalization, with an inner `none` for Base. -/
+def SpellPick.moveDestination? (pick : SpellPick) : Option (Option ObjId) :=
+  match pick.effectChoice with
+  | .destination location | .modeDestination _ location => some location
+  | _ => none
+
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
@@ -280,6 +286,8 @@ inductive Quantity where
   | anyNumber
   /-- Any subset whose total Might is at most the limit (CR 355.11). -/
   | combinedMightAtMost (limit : Nat)
+  /-- Any subset controlled by one seat whose total Might is at most the limit (CR 355.11). -/
+  | combinedMightFromOneController (limit : Nat)
   /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
   | atOneBattlefield (limit : Nat)
   /-- Up to one target in each specific Base or Battlefield. -/
@@ -379,6 +387,8 @@ deriving DecidableEq, Repr, Hashable
 inductive TurnEffect where
   /-- Original locations specified for a finalized Chain item's targets (CR 359.3.e). -/
   | declaredTargetLocations (locations : List (ObjId × BoardLocation))
+  /-- The Base seats declared for the grouped moves of a finalized Spell (CR 355.4). -/
+  | declaredMoveBases (bases : List (ObjId × PlayerId))
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
   | unchoosableEnemy
   /-- No standard or instructed Move can move this Unit this turn (CR 447). -/
