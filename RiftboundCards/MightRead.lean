@@ -39,6 +39,12 @@ private theorem ordinaryMight_of_registered {cards : Riftbound.CardDB}
   · exact h ▸ db_mightTriggersAreOrdinary
   · exact h ▸ Riftbound.CardDB.mightTriggersAreOrdinary_withConcessionBattlefield db_mightTriggersAreOrdinary
 
+private theorem ordinaryAwaken_of_registered {cards : Riftbound.CardDB}
+    (registered : cards = db ∨ cards = db.withConcessionBattlefield) : cards.awakenTriggersAreOrdinary := by
+  rcases registered with h | h
+  · exact h ▸ db_awakenTriggersAreOrdinary
+  · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
+
 /-- The registered cards, including the Battlefield token used after a free-for-all concession,
 support the proof from a legal ordinary Pass through the Ending Phase and its ordinary triggers. -/
 theorem step_priority_pass_ending {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
@@ -84,12 +90,18 @@ theorem step_priority_pass_through_awaken {s : Riftbound.GameState} {p : Riftbou
       (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
       (t.pending.head?.all (fun frame => !frame.isWork) = true →
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
-  have ordinaryAwaken : s.cards.awakenTriggersAreOrdinary := by
-    rcases cards with h | h
-    · exact h ▸ db_awakenTriggersAreOrdinary
-    · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
   exact Riftbound.step_priority_pass_through_awaken wf (mightReads_of_registered cards)
-    (ordinaryMight_of_registered cards) ordinaryAwaken pending legal
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, a legal ordinary Pass reaches the next decision or game end
+with some finite fuel. Extra fuel produces the same state and events. -/
+theorem step_priority_pass_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  exact Riftbound.step_priority_pass_to_decision wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
 
 /-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
 cards, including the Battlefield entry used after a concession. -/

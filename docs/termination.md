@@ -2,7 +2,7 @@
 
 `step` は、答えを受け取ったあと、作業フレーム（work frame）を 1 つずつ処理して、次の決定フレーム（choice / chance）に着くまで進める（`advance`）。この処理が**必ず止まる**ことが、I12（[roadmap.md](roadmap.md)）である。止まらなければ、`step` は fuel（今は 100 歩）が尽きて `fuelExhausted` を返す。
 
-I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、ターンの更新と Awaken を経て、次のプレイヤー判断か Beginning の直前まで追える。証明の範囲は §3〜§3n に示す。
+I12 のうち、エンジン上で連続する Cleanup と Expiration、初期手札を引く作業の停止を証明した。対局中のドローと誘発キューの上限、効果の制御構文の有限性を示し、即時 Add は観測まで含めた実際のエンジンで元の処理に戻ることを証明した。登録済みのカードでは、Might のしきい値を越えても即時 Add が積まれず、通常の誘発キューは連続する自動処理で有限回のうちに処理される。通常の優先権での Pass は、終了フェイズの即時 Add と追加の Expiration を処理し、次のターンの Main に進む場合も含め、次の決定点か試合終了まで追える。証明の範囲は §3〜§3o に示す。
 
 ## 1. 今ある確認（証明ではない）
 
@@ -142,13 +142,19 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 続く Cleanup と Expiration は、残っている Expiration の数、Cleanup が使う盤面の測度、期限切れにする状態の有無、残っている Cleanup の数を、この順に比較する。盤面を変える Cleanup は即時 Add が資源を増やしても盤面の測度が減る。盤面を変えない Cleanup は自身のフレームを消費する。Expiration は自身のフレームを消費するか、次の Expiration を積む前に期限切れにする状態を消去する。この証明を §3l と §3m の定理にも接続した。
 
+### 3o. Beginning から次の決定点まで
+
+[`advance_beginning_to_decision`](../Riftbound/Invariant/TurnPhaseWork.lean) は、Beginning の Temporary と死亡置換、追加ドロー、Hold、Channel、Draw、Main を、実際の作業順に追う。Hold の得点がドローに置き換わる場合、Draw を飛ばす効果、山札切れの Burn Out、Main の Cleanup が始める Showdown も含む。即時 Add は観測された時点で解決し、通常の誘発は残っている Cleanup やドローの後ろに積む。
+
+[`RiftboundCards.step_priority_pass_to_decision`](../RiftboundCards/MightRead.lean) は、登録済みカードで、通常の優先権だけが残った状態から合法な Pass を行えば、ある有限の fuel で `step` が成功することを示す。追加の fuel を与えても、到達するゲーム状態と発行するイベント列は一致する。4人戦で投了後の空の Battlefield がデータベースに加わる場合にも適用できる。
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
 |---|---|---|
 | I12a | `Cleanup` の停止: 測度 1〜6 と、`killObj` が場の数を減らす補題 | 実際のイベント処理、同時撃破、入れ子の死亡置換を含めて証明済み |
 | I12b | `run` の停止 | 制御構文の合成と、観測まで含めた即時 Add の処理は証明済み。残りの効果と、実行時に作られる作業フレームまで含む一般証明が残る |
-| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | ドローと誘発キューの上限、即時 Add を含む終了フェイズから Awaken までの停止は証明済み。Beginning 以降と各作業フレームの合成が残る |
+| I12c | 段階、`triggers`、Chain の解決、Combat と、全体を `advance` にまとめる | 通常の Pass から次の決定点までの停止は証明済み。Chain、Combat、他の合法手と作業フレームの合成が残る |
 | I12d | 全体: 「`WF` な状態からの `advance` は、ある fuel で `fuelExhausted` にならない」 | 小（上がそろえば） |
 
 **fuel で扱う部分の線引き**（roadmap の約束）: 証明が終わるまでは、`fuelExhausted` が**そのまま返る**（隠さない）。証明が終わっても、「ある fuel」は存在を言うだけで、100 で足りるかどうかは、**上の測度から数えた上限**を別に示さない限り、テストで確かめる（`RiftboundTest/Fuel.lean`）。

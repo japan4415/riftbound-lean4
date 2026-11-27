@@ -104,6 +104,26 @@ private theorem any_eq_of_filter_eq (p : Frame → Bool) {first second : List Fr
     simp only [List.any_filter, Bool.and_self]
   rw [← test first, ← test second, eq]
 
+/-- Inserting ordinary triggers leaves the fields already being fought over unchanged. -/
+theorem insertTriggers_fightingAt (s : GameState) (queue : List PendTrigger) (field : ObjId) :
+    ({ s with pending := insertTriggers queue s.pending } : GameState).fightingAt field =
+      s.fightingAt field := by
+  have same := any_eq_of_filter_eq (isFightAt field) (insertTriggers_filter _ (fun _ => rfl) queue s.pending)
+  change (s.combat.any (·.battlefield == field) || (insertTriggers queue s.pending).any (isFightAt field)) =
+    (s.combat.any (·.battlefield == field) || s.pending.any (isFightAt field))
+  rw [same]
+
+/-- Cleanup keeps the same card database, including when it stages Combat. -/
+theorem cleanupFrame_cards (s : GameState) (rest : List Frame) :
+    (cleanupFrame s rest).1.cards = s.cards := by
+  rcases cleanupFrame_cases s rest with
+    ⟨_, eq⟩ | ⟨_, _, _, _, eq⟩ | ⟨_, safe, eq⟩ | ⟨_, _, eq⟩ | ⟨_, _, _, eq⟩ | eq <;>
+    rw [eq] <;> try rfl
+  have metadata := safe.same
+  unfold SameMeta at metadata
+  have projected := congrArg GameState.cards metadata
+  exact projected
+
 /-- Cleanup's measure depends on the board, the card definitions, and the fields being fought over. -/
 theorem cleanupMeasure_eq {s t : GameState} (config : t.config = s.config)
     (cards : t.cards = s.cards) (objects : t.objects = s.objects) (zones : t.zones = s.zones)

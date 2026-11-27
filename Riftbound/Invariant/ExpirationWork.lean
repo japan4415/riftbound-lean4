@@ -3,6 +3,7 @@ module
 public import Riftbound.Invariant.CleanupWork
 public import Riftbound.Invariant.AwakenWork
 public import Riftbound.Invariant.ObservedAddWork
+public import Riftbound.Invariant.TurnPhaseWork
 
 /-!
 # Finite turn Expiration and Cleanup work
@@ -431,16 +432,6 @@ private theorem expiration_engine_step (s : GameState) (wf : s.WF) (front : inEx
             ite_true, Nat.add_zero]
           omega
       exact ⟨next, [], step, fun _ => Prod.Lex.left _ _ smaller⟩
-
-private theorem cleanupFrame_cards (s : GameState) (rest : List Frame) :
-    (cleanupFrame s rest).1.cards = s.cards := by
-  rcases cleanupFrame_cases s rest with
-    ⟨_, eq⟩ | ⟨_, _, _, _, eq⟩ | ⟨_, safe, eq⟩ | ⟨_, _, eq⟩ | ⟨_, _, _, eq⟩ | eq <;>
-    rw [eq] <;> try rfl
-  have metadata := safe.same
-  unfold SameMeta at metadata
-  have projected := congrArg GameState.cards metadata
-  exact projected
 
 private theorem withTriggers_cards (s : GameState) (events : List Event) :
     (s.withTriggers events).cards = s.cards := by
@@ -1358,45 +1349,37 @@ inductive TurnBoundaryStop (s : GameState) : Prop where
 
 private theorem advance_ending_to_awaken_checkpoint {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
-    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ TurnBoundaryStop t ∧
-      (∀ p, t.pending = turnFrames p → t.WF ∧ t.cards = s.cards) := by
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        ∃ p, t.pending = turnFrames p ∧ t.active = some p ∧ t.WF ∧ t.cards = s.cards) := by
   obtain ⟨mid, used, events, positive, path, stop | ⟨normal, midWF, cards⟩⟩ :=
     advance_ending_with_adds wf database ordinaryMight pending
-  · cases stack : mid.pending with
-    | nil => exact ⟨mid, used, events, positive, path, .empty stack, by simp [stack, turnFrames]⟩
-    | cons frame rest =>
-      have decision : frame.isWork = false := by simpa [stack] using stop
-      refine ⟨mid, used, events, positive, path, .decision stack decision, ?_⟩
-      intro p frames
-      simp [frames, turnFrames, Frame.isWork] at stop
+  · exact ⟨mid, used, events, positive, path, Or.inl stop⟩
   · cases clock : mid.clockConclusion with
     | some result =>
       obtain ⟨finish, _⟩ := advance_beginTurn_clock midWF (cards ▸ database) normal clock
-      exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, .empty rfl, by simp [turnFrames]⟩
+      exact ⟨_, used + 1, events, by omega, by simpa using path.append finish, Or.inl rfl⟩
     | none =>
       obtain ⟨t, elapsed, _, start, wellFormed, boundary⟩ :=
         advance_beginTurn_checkpoint midWF (cards ▸ database) (cards ▸ ordinaryMight) normal clock
-      refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_, ?_⟩
-      · rcases boundary with awakened | choice
-        · exact .awaken _ (by simpa only [List.append_nil] using awakened.1) awakened.2.1
-        · cases next : t.pending with
-          | nil => simp [next] at choice
-          | cons first later =>
-            have decision : first.isWork = false := by simpa [next] using choice
-            exact .decision next decision
-      · intro p frames
-        rcases boundary with awakened | choice
-        · exact ⟨wellFormed, awakened.2.2.2.trans cards⟩
-        · simp [frames, turnFrames, Frame.isWork] at choice
+      refine ⟨t, used + elapsed, events, by omega, by simpa using path.append start, ?_⟩
+      rcases boundary with awakened | choice
+      · exact Or.inr ⟨_, by simpa only [List.append_nil] using awakened.1,
+          awakened.2.1, wellFormed, awakened.2.2.2.trans cards⟩
+      · exact Or.inl (by cases stack : t.pending <;> simp_all)
 
 /-- Follow the real Ending Phase across the normal turn boundary. After resolving Ending's
 immediate Adds, the engine processes the clock and any ordinary triggers before Awaken. -/
 theorem advance_ending_to_awaken {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ TurnBoundaryStop t := by
-  obtain ⟨t, used, events, positive, trace, stop, _⟩ :=
+  obtain ⟨t, used, events, positive, path, stopped | ⟨p, awakened, active, _, _⟩⟩ :=
     advance_ending_to_awaken_checkpoint wf database ordinaryMight pending
-  exact ⟨t, used, events, positive, trace, stop⟩
+  · refine ⟨t, used, events, positive, path, ?_⟩
+    cases stack : t.pending with
+    | nil => exact .empty stack
+    | cons f rest => exact .decision stack (by simpa [stack] using stopped)
+  · exact ⟨t, used, events, positive, path, .awaken p awakened active⟩
 
 /-- An observed Ending and Awaken prefix can stop at a decision, at the Beginning stack, or
 at an immediate Add scheduled earlier in Ending. -/
@@ -1410,29 +1393,44 @@ inductive AwakenWorkStop (cards : CardDB) (s : GameState) : Prop where
   | immediateAdd {frame : Frame} {rest : List Frame} (observed : GameState) (trigger : PendTrigger) :
       s.pending = frame :: rest → trigger.immediateAddFrame observed = some frame → AwakenWorkStop cards s
 
-/-- Follow the actual Ending Phase, Begin Turn and Awaken whenever those frames are reached
-before a decision or an immediate Add during Ending. -/
+private theorem advance_ending_through_awaken_checkpoint {s : GameState} (wf : s.WF)
+    (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary) (pending : s.pending = [.phase .ending, .beginTurn]) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      (t.pending.head?.all (fun f => !f.isWork) = true ∨
+        ∃ p, t.pending = (turnFrames p).drop 1 ∧ t.WF ∧ t.cards = s.cards) := by
+  obtain ⟨mid, used, events, positive, path, stop | ⟨p, stack, _, midWF, cards⟩⟩ :=
+    advance_ending_to_awaken_checkpoint wf database ordinaryMight pending
+  · exact ⟨mid, used, events, positive, path, Or.inl stop⟩
+  · obtain ⟨t, elapsed, later, _, awake, after⟩ :=
+      advance_awaken midWF (cards ▸ database) (cards ▸ ordinaryMight) (cards ▸ ordinaryAwaken) stack
+    refine ⟨t, used + elapsed, events ++ later, by omega, path.append awake, ?_⟩
+    rcases after with ⟨continues, wellFormed, preserved⟩ | ⟨f, tail, choice, decision⟩
+    · exact Or.inr ⟨p, continues, wellFormed, preserved.trans cards⟩
+    · exact Or.inl (by simp [choice, decision])
+
+/-- Follow Ending and Awaken to Beginning or an earlier player decision or the end of the stack. -/
 theorem advance_ending_through_awaken {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
     (ordinaryMight : s.cards.mightTriggersAreOrdinary) (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)
     (pending : s.pending = [.phase .ending, .beginTurn]) :
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧ AwakenWorkStop s.cards t := by
-  obtain ⟨mid, used, events, positive, path, stop, recover⟩ :=
-    advance_ending_to_awaken_checkpoint wf database ordinaryMight pending
-  cases stop with
-  | empty empty =>
-    exact ⟨mid, used, events, positive, path, .stopped (by rw [empty]; rfl)⟩
-  | decision stack decision =>
-    exact ⟨mid, used, events, positive, path, .stopped (by simp [stack, decision])⟩
-  | immediateAdd observed trigger stack added =>
-    exact ⟨mid, used, events, positive, path, .immediateAdd observed trigger stack added⟩
-  | awaken p stack _ =>
-    obtain ⟨midWF, cards⟩ := recover p stack
-    obtain ⟨t, elapsed, later, _, awake, after⟩ :=
-      advance_awaken midWF (cards ▸ database) (cards ▸ ordinaryMight) (cards ▸ ordinaryAwaken) stack
-    refine ⟨t, used + elapsed, events ++ later, by omega, path.append awake, ?_⟩
-    rcases after with ⟨continues, wellFormed, preserved⟩ | ⟨f, tail, choice, decision⟩
-    · exact .beginning p continues wellFormed (preserved.trans cards)
-    · exact .stopped (by simp [choice, decision])
+  obtain ⟨t, used, events, positive, path, stop | ⟨p, beginning, tWF, cards⟩⟩ :=
+    advance_ending_through_awaken_checkpoint wf database ordinaryMight ordinaryAwaken pending
+  · exact ⟨t, used, events, positive, path, .stopped stop⟩
+  · exact ⟨t, used, events, positive, path, .beginning p beginning tWF cards⟩
+
+/-- The standard automatic turn transition ends at a decision or the end of the game. -/
+theorem advance_ending_to_decision {s : GameState} (wf : s.WF) (database : MightRead.database s.cards)
+    (ordinaryMight : s.cards.mightTriggersAreOrdinary) (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)
+    (pending : s.pending = [.phase .ending, .beginTurn]) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨t, used, events, positive, path, stop | ⟨p, beginning, tWF, cards⟩⟩ :=
+    advance_ending_through_awaken_checkpoint wf database ordinaryMight ordinaryAwaken pending
+  · exact ⟨t, used, events, positive, path, stop⟩
+  · obtain ⟨u, later, emitted, _, rest, done⟩ :=
+      advance_beginning_to_decision tWF (cards ▸ database) beginning
+    exact ⟨u, used + later, events ++ emitted, by omega, path.append rest, done⟩
 
 private theorem priorityPass_reads {s : GameState} {p : PlayerId} {rest : List Frame}
     (before : s.pending = .priority p :: rest) :
@@ -1589,6 +1587,24 @@ theorem step_priority_pass_through_awaken {s : GameState} {p : PlayerId}
     advance_ending_through_awaken (s := initial) (wf.congr rfl rfl rfl rfl) database
       ordinaryMight ordinaryAwaken rfl
   exact ⟨t, used, events, positive, stop, priority_pass_prefix legal applyPass path⟩
+
+/-- With ordinary Might and Awaken triggers, the standard priority Pass succeeds with
+some finite fuel, carrying every emitted event to the next decision or game end. -/
+theorem step_priority_pass_to_decision {s : GameState} {p : PlayerId}
+    (wf : s.WF) (database : MightRead.database s.cards) (ordinaryMight : s.cards.mightTriggersAreOrdinary)
+    (ordinaryAwaken : s.cards.awakenTriggersAreOrdinary)
+    (pending : s.pending = [.priority p]) (legal : Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  let initial := ({ s with pending := [.phase .ending, .beginTurn] }).setPool p (s.poolOf p)
+  have applyPass : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, []) :=
+    applyDeclaredAction_priorityPass wf database pending
+  obtain ⟨t, used, events, positive, path, stop⟩ :=
+    advance_ending_to_decision (s := initial) (wf.congr rfl rfl rfl rfl) database
+      ordinaryMight ordinaryAwaken rfl
+  obtain ⟨_, finished⟩ := priority_pass_prefix legal applyPass path
+  exact ⟨t, used, events, positive, stop, fun extra =>
+    step_mono (finished stop) (Nat.le_add_right _ _)⟩
 
 end Riftbound
 
