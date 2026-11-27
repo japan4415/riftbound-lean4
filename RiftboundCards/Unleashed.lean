@@ -6070,7 +6070,7 @@ def UNL_211 : CardDef :=
     abilities := [.triggered
       { condition := .and .iControlHere (.cmp .ge .eventAmount (.const 4)),
         subject := Selector.all .you .anywhere [.ofType .spell], event := .play }
-      (.of [] predict1) .unlimited],
+      (.of [] (.prim (.predict (.const 1)))) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED UNL-212

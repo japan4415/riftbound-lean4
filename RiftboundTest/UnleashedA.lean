@@ -1767,6 +1767,7 @@ private meta def killedForPlay (events : List Event) (owner : PlayerId) (before 
   let (s6, sp) ← put s5 s.me "UNL-159" .hand
   let (s7, sp') ← moveObj s6 sp .chain
   let s8 := s7.modObj sp' (fun o => { o with energyPaid := 4, playedTurn := some s7.turn })
+  let s8 := { s8 with playLog := s8.recordPlayEvent s8.playLog (.played s.me sp') }
   let r ← fire s8 [.spellResolved s.me sp']
   return r.countIn s.me .trash "UNL-159" == 4 && r.countIn s.me .banishment "UNL-159" == 0
 
