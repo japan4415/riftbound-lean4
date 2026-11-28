@@ -298,6 +298,10 @@ Spell を解決する実際の命令列を検査し、Spell 本体、Trash へ�
 
 追加コストなどの選択を後で行う Spell では、先に元の効果を終え、待機していた Spell を既存の確定処理に渡す。Trash から Spell をプレイする `castInline` 命令も、Spell の確定を予約して元の命令に戻るところまで停止検査で扱う。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [LimitedSpellWork.lean](../Riftbound/Invariant/LimitedSpellWork.lean)
 
+### 3aq. 効果の解決中にプレイするカードを選ぶ
+
+候補がなければ元の効果の残りを実行し、候補が複数あれば選択を待つ。候補が1枚の場合と、プレイヤーが合法な候補を選んだ場合は、選択イベントの処理後に先頭の Play を検査する。その時点で Play が先頭にあり検査を通る経路では、通常の誘発を保持したまま Play と Chain Item の解決を進められる。選択の直後に即時 Add が先頭に載る経路は、追加の合成が残る。実際の起動、最後の Pass、複数候補への回答を通して、選択とプレイのイベント順、未選択カード、元の効果の再開を確かめる。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [Chain.lean](../RiftboundTest/Chain.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

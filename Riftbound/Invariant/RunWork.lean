@@ -405,19 +405,228 @@ theorem advance_spellPlayRun_checked {s : GameState} {keeps : List Frame → Pro
                     (EffectList.observedFinite_of_supported _ deferred) (by simpa [pending] using base) inserted
                 · contradiction
 
-/-- Check a live Play for a permanent or a Spell using either resolution route. -/
-def effectPlayRunSupported (s : GameState) : Bool :=
+/-- Check Play when its selector no longer requires a resolution choice. -/
+def directEffectPlayRunSupported (s : GameState) : Bool :=
   permanentPlayRunSupported s || spellPlayRunSupported s
 
-/-- Dispatch either checked Play branch to the retained continuation or an input. -/
-theorem advance_effectPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
-    (wf : s.WF) (reads : MightRead.database s.cards) (checked : effectPlayRunSupported s = true)
+private theorem advance_directEffectPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : directEffectPlayRunSupported s = true)
     (base : keeps s.pending.tail)
     (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
     AdvanceTo s keeps := by
   rcases Bool.or_eq_true_iff.mp checked with permanent | spell
   · exact advance_permanentPlayRun_checked wf reads permanent base inserted
   · exact advance_spellPlayRun_checked wf reads spell base inserted
+
+/-- For a Play that selects its card during resolution, check the real decision or the
+observed continuation of a singleton choice. -/
+def pickedEffectPlayRunSupported (s : GameState) : Bool :=
+  match s.pending with
+  | .run p src env (.cons (.prim (.play (.pick .one side place filters))) more) :: _ =>
+    match s.pickCandidates p src (env.withMight s.mightTable) side place filters true with
+    | some [_] => (workStep s).any (fun result => directEffectPlayRunSupported result.1)
+    | some (_ :: _ :: _) => true
+    | _ => more.observedWorkSupported
+  | _ => false
+
+private theorem directEffectPlayRunSupported_front {s : GameState}
+    (checked : directEffectPlayRunSupported s = true) :
+    ∃ p src env sel more rest, s.pending = .run p src env (.cons (.prim (.play sel)) more) :: rest := by
+  cases stack : s.pending with
+  | nil => simp [directEffectPlayRunSupported, permanentPlayRunSupported, spellPlayRunSupported,
+      spellPlayRunSupportedWith, stack] at checked
+  | cons f rest =>
+    cases f <;> try (simp [directEffectPlayRunSupported, permanentPlayRunSupported, spellPlayRunSupported,
+      spellPlayRunSupportedWith, stack] at checked; done)
+    case run p src env program =>
+      cases program with
+      | nil => simp [directEffectPlayRunSupported, permanentPlayRunSupported, spellPlayRunSupported,
+          spellPlayRunSupportedWith, stack] at checked
+      | cons effect more =>
+        cases effect <;> try (simp [directEffectPlayRunSupported, permanentPlayRunSupported, spellPlayRunSupported,
+          spellPlayRunSupportedWith, stack] at checked; done)
+        case prim pr =>
+          cases pr <;> try (simp [directEffectPlayRunSupported, permanentPlayRunSupported, spellPlayRunSupported,
+            spellPlayRunSupportedWith, stack] at checked; done)
+          case play sel => exact ⟨p, src, env, sel, more, rest, rfl⟩
+
+private theorem immediateAddFrame_not_play {s : GameState} {trig : PendTrigger}
+    {p : PlayerId} {src : ObjId} {env : Env} {sel : Selector} {more : EffectList} :
+    trig.immediateAddFrame s ≠ some (.run p src env (.cons (.prim (.play sel)) more)) := by
+  intro eq
+  unfold PendTrigger.immediateAddFrame at eq
+  split at eq
+  · dsimp only at eq
+    split at eq
+    · injection eq with impossible
+      cases impossible
+    · contradiction
+  · contradiction
+
+/-- If observation leaves a checked Play at the front, its original tail was preserved
+up to ordinary trigger insertion. Immediate Adds themselves start with a different instruction. -/
+theorem playTail_after_observation {raw : GameState} {notices : List Event}
+    {p : PlayerId} {src : ObjId} {env : Env} {sel : Selector} {more : EffectList} {rest : List Frame}
+    {keeps : List Frame → Prop}
+    (before : raw.pending = .run p src env (.cons (.prim (.play sel)) more) :: rest)
+    (checked : directEffectPlayRunSupported (raw.withTriggers notices) = true)
+    (base : keeps rest) (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    keeps (raw.withTriggers notices).pending.tail := by
+  obtain ⟨p', src', env', sel', more', rest', layout⟩ := directEffectPlayRunSupported_front checked
+  rcases withTriggers_cases raw notices with ⟨_, ended, _⟩ | recorded | ⟨queue, woven, _⟩
+  · simp only [ended] at layout
+    contradiction
+  · rw [recorded]
+    change keeps raw.pending.tail
+    simpa only [before, List.tail_cons] using base
+  · let ready := raw.recordTurnEvents notices
+    let adds := (queue.map (fun t => (t, t.immediateAddFrame ready))).filterMap Prod.snd
+    have noAdds : adds = [] := by
+      have head := congrArg List.head? layout
+      rw [woven] at head
+      change (adds ++ _).head? = some (.run p' src' env' (.cons (.prim (.play sel')) more')) at head
+      cases built : adds with
+      | nil => rfl
+      | cons first others =>
+        simp only [built, List.cons_append, List.head?_cons, Option.some.injEq] at head
+        have member : first ∈ adds := by simp [built]
+        obtain ⟨⟨t, add⟩, mapped, result⟩ := List.mem_filterMap.mp member
+        obtain ⟨trig, _, pair⟩ := List.mem_map.mp mapped
+        have scheduled : trig.immediateAddFrame ready = some first := (Prod.mk.inj pair).2.trans result
+        exact False.elim (immediateAddFrame_not_play (head ▸ scheduled))
+    rw [woven]
+    change keeps (adds ++ _).tail
+    rw [noAdds, List.nil_append]
+    split
+    · simpa only [before, List.tail_cons] using base
+    · rename_i nonempty
+      rw [before]
+      exact inserted rest base _ (fun eq => nonempty (by rw [eq]; rfl))
+
+private theorem noRequiredPlayCandidates (candidates : Option (List ObjId)) : (none <|> candidates) = candidates := rfl
+
+private theorem advance_pickedPlay_singleton {s : GameState} {p : PlayerId} {src obj : ObjId}
+    {env : Env} {side : Side} {place : Place} {filters : FilterList} {more : EffectList}
+    {rest : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.prim (.play (.pick .one side place filters))) more) :: rest)
+    (found : s.pickCandidates p src (env.withMight s.mightTable) side place filters true = some [obj])
+    (checked : (workStep s).any (fun result => directEffectPlayRunSupported result.1) = true)
+    (base : keeps rest) (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  let live := env.withMight s.mightTable
+  let play := Effect.prim (.play (.pick .one side place filters))
+  let bound := Frame.run p src (live.bindPick obj (play.pickIsTarget s obj))
+    (.cons (.prim (.play (.var pickVar))) more)
+  let raw := { s with pending := bound :: rest }
+  let events := play.pickEvents s p src obj
+  let notices := events ++ s.workTransitionEvents raw
+  let next := raw.withTriggers notices
+  have actual : workStep s = some (next, events) := by
+    simp only [workStep, pending, microStep, microStep0, runEffect, Effect.pickSel?, Prim.pickSel?,
+      requiredPlayCandidates, noRequiredPlayCandidates, Effect.isLinkedCost, Bool.not_false, found,
+      Effect.withPick, Prim.withSel, raw, bound, live, play, events, notices, next, Option.map_some, List.cons_append, List.nil_append]
+  rw [actual, Option.any_some] at checked
+  have tail := playTail_after_observation (raw := raw) (notices := notices) rfl checked base inserted
+  have cards : next.cards = s.cards := by
+    obtain ⟨_, _, updated⟩ := withTriggers_pending raw notices
+    change (raw.withTriggers notices).cards = s.cards
+    rw [updated]
+    rfl
+  obtain ⟨t, used, emitted, path, stop⟩ :=
+    advance_directEffectPlayRun_checked (workStep_wf wf actual) (cards.symm ▸ reads) checked tail inserted
+  exact ⟨t, used + 1, events ++ emitted, path.prepend pending rfl actual,
+    stop.imp_right (fun ⟨kept, safe, known⟩ => ⟨kept, safe, known.trans cards⟩)⟩
+
+private theorem advance_pickedPlay_cases {s : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {side : Side} {place : Place} {filters : FilterList} {more : EffectList}
+    {rest : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.prim (.play (.pick .one side place filters))) more) :: rest)
+    (checked : pickedEffectPlayRunSupported s = true)
+    (base : keeps rest) (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  let live := env.withMight s.mightTable
+  let play := Effect.prim (.play (.pick .one side place filters))
+  let candidates := s.pickCandidates p src live side place filters true
+  have route :
+      (runEffect s p src live play more effectAddPolicy).2.1 =
+        match candidates with
+        | some [obj] => [.run p src (live.bindPick obj (play.pickIsTarget s obj)) (.cons play.withPick more)]
+        | some (obj :: other :: rest) => [.pickDo p src live obj (other :: rest) play.withPick more]
+        | _ => [.run p src live more] := by
+    simp only [runEffect, play, Effect.pickSel?, Prim.pickSel?, requiredPlayCandidates,
+      Effect.isLinkedCost, Bool.not_false, noRequiredPlayCandidates, candidates]
+    generalize s.pickCandidates p src live side place filters true = choices
+    cases choices with
+    | none => rfl
+    | some cards =>
+      cases cards with
+      | nil => rfl
+      | cons first rest => cases rest <;> rfl
+  have skips (empty : candidates = none ∨ candidates = some []) (supported : more.observedWorkSupported = true) :
+      AdvanceTo s keeps := by
+    have ran : AdvanceTo s (RunContinuation p src more keeps) := by
+      apply advance_run_rule wf reads pending ?_ (fun _ held q ne => held.insert inserted q ne)
+      change RunContinuation p src more keeps ((runEffect s p src live play more effectAddPolicy).2.1 ++ rest)
+      rw [route]
+      rcases empty with no | no <;> rw [no] <;> exact ⟨live, rest, rfl, base⟩
+    exact ran.then reads (fun _ safe known ⟨_, _, stack, tail⟩ =>
+      advance_run_program safe known stack (EffectList.observedFinite_of_supported more supported)
+        keeps tail inserted)
+  simp only [pickedEffectPlayRunSupported, pending, ← show live = env.withMight s.mightTable from rfl,
+    ← show candidates = s.pickCandidates p src live side place filters true from rfl] at checked
+  cases found : candidates with
+  | none => exact skips (.inl found) (by simpa only [found] using checked)
+  | some cards =>
+    cases cards with
+    | nil => exact skips (.inr found) (by simpa only [found] using checked)
+    | cons first others =>
+      cases others with
+      | nil =>
+        exact advance_pickedPlay_singleton wf reads pending found (by simpa only [found] using checked) base inserted
+      | cons second later =>
+        apply advance_run_decision wf reads pending
+        change NonNeutralDecision ((runEffect s p src live play more effectAddPolicy).2.1 ++ rest)
+        rw [route, found]
+        rfl
+
+/-- A checked resolution-time Play selection terminates at a decision or its retained continuation. -/
+theorem advance_pickedEffectPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : pickedEffectPlayRunSupported s = true)
+    (base : keeps s.pending.tail)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  cases pending : s.pending with
+  | nil => simp [pickedEffectPlayRunSupported, pending] at checked
+  | cons f rest =>
+    cases f <;> try (simp [pickedEffectPlayRunSupported, pending] at checked; done)
+    case run p src env program =>
+      cases program with
+      | nil => simp [pickedEffectPlayRunSupported, pending] at checked
+      | cons effect more =>
+        cases effect <;> try (simp [pickedEffectPlayRunSupported, pending] at checked; done)
+        case prim pr =>
+          cases pr <;> try (simp [pickedEffectPlayRunSupported, pending] at checked; done)
+          case play sel =>
+            cases sel <;> try (simp [pickedEffectPlayRunSupported, pending] at checked; done)
+            case pick quantity side place filters =>
+              cases quantity <;> try (simp [pickedEffectPlayRunSupported, pending] at checked; done)
+              case one => exact advance_pickedPlay_cases wf reads pending checked (by simpa [pending] using base) inserted
+
+/-- Check live Play whether its card is known or chosen during resolution. -/
+def effectPlayRunSupported (s : GameState) : Bool :=
+  directEffectPlayRunSupported s || pickedEffectPlayRunSupported s
+
+/-- Dispatch checked Play to the retained continuation or the next input. -/
+theorem advance_effectPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : effectPlayRunSupported s = true)
+    (base : keeps s.pending.tail)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  rcases Bool.or_eq_true_iff.mp checked with direct | pick
+  · exact advance_directEffectPlayRun_checked wf reads direct base inserted
+  · exact advance_pickedEffectPlayRun_checked wf reads pick base inserted
 
 end Riftbound
 

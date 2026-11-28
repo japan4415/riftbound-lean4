@@ -378,6 +378,63 @@ meta def afterUse : Option (GameState × List Event) :=
     resolvedEvents.contains (Event.spellResolved p discarded)
   : Option Bool).getD false
 
+-- A Play selection can skip, bind its sole candidate, or wait for a legal answer.
+#guard (do
+  let start ← mainC 15
+  let p ← start.active
+  let q := otherQ p
+  let play := Effect.prim (.play (Selector.one .friendly .inTrash [.ofType .spell]))
+  let body := Effect.seq (EffectList.ofList [play, .prim (.gainXP .you (.const 2))])
+  let launcher : CardDef := { pinger with id := cid "T-PICK-PLAY", abilities :=
+    [.activated [.exhaustSelf] .normal (.of [] body) .unlimited] }
+  let cards := { start.cards with cards := launcher :: start.cards.cards }
+  let (start, source) ← putTok { start with cards := cards } p "T-PICK-PLAY" .base
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let resolve := fun s => do
+    let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ []⟩
+    let item ← (queued.zone .chain).head?
+    let passed ← stepOk queued ⟨.player p, .pass⟩
+    let (staged, _) ← applyDeclaredAction passed finalPass
+    let (atSequence, _) ← workStep staged
+    let (running, _) ← workStep atSequence
+    let ((settled, events), seen) ← (stepWithDisclosures 40 passed finalPass).toOption
+    some (item, running, settled, events, seen)
+  let (skippedItem, empty, skipped, skippedEvents, skippedSeen) ← resolve start
+  let (one, first) ← addObject start (newCard cards start p (cid "SP0")) (.player p .trash)
+  let (singleItem, singleton, cast, castEvents, castSeen) ← resolve one
+  let chosen ← castEvents.idxOf? (.chosenByAbility p first)
+  let moved ← castEvents.findSome? (fun
+    | .moved from_ to .chain => if from_ == first then some to else none
+    | _ => none)
+  let played ← castEvents.idxOf? (.played p moved)
+  let (both, second) ← addObject one (newCard cards one p (cid "SP0")) (.player p .trash)
+  let selectedCard ← both.obj? second
+  let (waitingItem, multiple, waiting, before, beforeSeen) ← resolve both
+  let .pickDo owner _ _ head others _ _ :: _ := waiting.pending | none
+  let answer : Action := ⟨.player p, .choose second⟩
+  let ((finished, after), afterSeen) ← (stepWithDisclosures 40 waiting answer).toOption
+  let selectedSpell ← after.findSome? (fun
+    | .moved from_ to .chain => if from_ == second then some to else none
+    | _ => none)
+  let inTrash ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == selectedCard.kind.phys?))
+  let resolvedAt ← after.idxOf? (.spellResolved p inTrash)
+  let selectedAt ← after.idxOf? (.chosenByAbility p second)
+  let playedAt ← after.idxOf? (.played p selectedSpell)
+  return effectPlayRunSupported empty && effectPlayRunSupported singleton && effectPlayRunSupported multiple &&
+    skippedEvents.contains (.skipped source) && (skipped.obj? skippedItem).isNone && skipped.xpOf p == start.xpOf p + 2 &&
+    skipped.pending == [Frame.priority p] && !(skippedEvents.contains (.drew p)) &&
+    cast.xpOf p == start.xpOf p + 2 && chosen < played && castEvents.contains (.drew p) &&
+    (cast.obj? singleItem).isNone && waiting.xpOf p == start.xpOf p && (waiting.obj? waitingItem).isSome &&
+    owner == p && (head :: others).length == 2 && (head :: others).contains first && (head :: others).contains second &&
+    !(before.contains (.chosenByAbility p first)) && !(before.contains (.chosenByAbility p second)) &&
+    chainPlayPickAnswerSupported waiting answer && (legalActions waiting).contains answer &&
+    selectedAt < playedAt && playedAt < resolvedAt && !(after.contains (.chosenByAbility p first)) && after.contains (.drew p) &&
+    (finished.zone (.player p .trash)).contains first && (finished.obj? waitingItem).isNone &&
+    finished.pending == [Frame.priority p] && finished.xpOf p == start.xpOf p + 2 &&
+    skippedSeen.isEmpty && castSeen.isEmpty && beforeSeen.isEmpty && afterSeen.isEmpty
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with
