@@ -55,19 +55,9 @@ private theorem advance_cleanup_to_preparedDecision {s : GameState} {rest : List
     (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
     ∃ t used events, AdvancePrefix s t used events ∧
       t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
-  obtain ⟨tail, pending, track⟩ := kept
-  obtain ⟨after, elapsed, events, _, path, ready | ⟨tracked, safe, cards, notQuiet⟩⟩ :=
-    advance_cleanup_with_adds_prepared_quiet wf reads pending (TriggerWorkTail rest) track
-      (fun _ keeps q ne => keeps.insert (isOrdinaryDecisionTail_front decision) q ne)
-  · exact ⟨after, elapsed, events, path, ready⟩
-  · rcases tracked with resumed | ⟨queue, nonempty, queued⟩
-    · have ready := GameState.prepared_idle_of_nonpriority
-        (resumed.symm ▸ isOrdinaryDecisionTail_boundary decision) (fun p tail equal =>
-          notQuiet ⟨p, tail, equal, quiet p tail (resumed.symm.trans equal)⟩)
-      exact ⟨after, elapsed, events, path, ready⟩
-    · obtain ⟨t, queuedSteps, _, _, _, more, _, _, ready⟩ :=
-        advance_triggers_to_preparedDecision after safe queue rest queued (cards ▸ reads) (Or.inl nonempty)
-      exact ⟨t, elapsed + queuedSteps, events, by simpa only [List.append_nil] using path.append more, ready⟩
+  obtain ⟨_, pending, track⟩ := kept
+  exact advance_cleanup_at_preparedDecision wf reads pending track
+    (isOrdinaryDecisionTail_boundary decision) (isOrdinaryDecisionTail_front decision) quiet
 
 /-- Follow the event observers, Cleanup and any leading ordinary queue to a prepared decision
 when a neutral continuation has no combat observation frame. -/
@@ -91,66 +81,6 @@ theorem advance_observed_cleanup_to_preparedDecision (raw : GameState) (notices 
   | empty => exact ⟨mid, used, events, path, GameState.prepared_idle_of_empty actual⟩
   | resume => exact run (actual.symm ▸ base)
   | queue q nonempty => exact run (actual.symm ▸ cleanupContinuation_insert decision base q nonempty)
-
-/-- Run any Cleanup that preparation schedules before returning a waiting decision. -/
-theorem advance_waiting_to_preparedDecision {s : GameState} (wf : s.WF)
-    (reads : MightRead.database s.cards) (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
-    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
-    ∃ t used events, AdvancePrefix s t used events ∧
-      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
-  rcases s.preparePriority_cases with unchanged | ⟨p, tail, stack, _, prepared⟩
-  · exact ⟨s, 0, [], by intro fuel events; simp, by simpa only [unchanged] using waiting⟩
-  · have staged : s.preparePriority.pending = .cleanup :: .priority p :: tail := by
-      rw [prepared]
-      exact congrArg (Frame.cleanup :: ·) stack
-    have check : MightRead.database s.preparePriority.cards := by rw [prepared]; exact reads
-    have agrees : s.preparePriority.preparePriority = s.preparePriority :=
-      GameState.preparePriority_of_work staged rfl
-    have same (fuel : Nat) (seen : List Event) : advance fuel s seen = advance fuel s.preparePriority seen := by
-      cases fuel <;> simp only [advance, agrees]
-    obtain ⟨t, used, events, path, ready⟩ :=
-      advance_observed_cleanup_to_preparedDecision s.preparePriority [] wf.preparePriority check staged rfl
-        (fun q suffix equal => by cases equal; exact quiet p tail stack)
-    rw [withTriggers_nil] at path
-    exact ⟨t, used, events, fun fuel seen => (same (used + fuel) seen).trans (path fuel seen), ready⟩
-
-/-- Apply the action's event observers before continuing from an ordinary decision. If
-preparation finds outstanding Cleanup at neutral priority, it runs before the decision. -/
-theorem step_observed_waiting_to_preparedDecision {s raw : GameState} {a : Action} {notices : List Event}
-    (legal : Legal s a) (regular : a.kind ≠ .concede) (noCost : s.actionDeathCostChoice a = none)
-    (applied : applyFrame0 s a = some (raw, notices)) (wf : raw.WF) (reads : MightRead.database raw.cards)
-    (waiting : raw.pending.head?.all (fun f => !f.isWork) = true)
-    (quiet : ∀ p tail, raw.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
-    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
-      (∀ extra, step (used + extra) s a = advance extra t events) ∧
-      step used s a = .ok (t, events) := by
-  apply step_observed_frame_to_preparedDecision legal noCost regular applied wf reads
-  intro next observed safe checked stack
-  obtain ⟨mid, used, events, path, midWF, cards, route⟩ :=
-    advance_observed_work next observed safe checked
-  rw [stack] at route
-  by_cases neutral : ∃ p tail, raw.pending = .priority p :: tail
-  · obtain ⟨p, tail, priority⟩ := neutral
-    rw [priority] at route
-    generalize actual : mid.pending = frames at route
-    cases route with
-    | empty => exact ⟨mid, used, events, path, GameState.prepared_idle_of_empty actual⟩
-    | resume =>
-      obtain ⟨t, later, emitted, more, ready⟩ :=
-        advance_waiting_to_preparedDecision midWF (cards ▸ checked) (by rw [actual]; rfl)
-          (fun q suffix same => by
-            rw [actual, List.cons.injEq] at same
-            exact same.2 ▸ quiet p tail priority)
-      exact ⟨t, used + later, events ++ emitted, path.append more, ready⟩
-    | queue q nonempty =>
-      have pending : mid.pending = .triggers q :: .priority p :: tail := actual
-      obtain ⟨t, later, _, _, _, more, _, _, ready⟩ :=
-        advance_triggers_to_preparedDecision mid midWF q _ pending (cards ▸ checked) (Or.inl nonempty)
-      exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append more, ready⟩
-  · obtain ⟨t, later, more, ready⟩ :=
-      advance_observed_prepared_decision mid raw.pending midWF (cards ▸ checked) route waiting
-        (fun p tail same => neutral ⟨p, tail, same⟩)
-    exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append more, ready⟩
 
 private theorem standardMove_frame {s : GameState} {p : PlayerId} {u : ObjId}
     {dest : MoveDest} {pay : Cost} {rest : List Frame}

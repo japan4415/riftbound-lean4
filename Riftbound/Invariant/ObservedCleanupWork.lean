@@ -534,6 +534,49 @@ theorem advance_cleanup_with_adds {s : GameState} {rest : List Frame} (wf : s.WF
       Or.inl (by simpa only [GameState.preparePriority_of_idle prepared] using prepared)⟩
   · exact ⟨t, used, events, positive, path, Or.inr ⟨track, sound, cards⟩⟩
 
+/-- Resolve Cleanup and any queued ordinary triggers before returning to a waiting decision. -/
+theorem advance_cleanup_at_preparedDecision {s : GameState} {rest original : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .cleanup :: rest) (tracked : TriggerWorkTail original rest)
+    (decision : original.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (quiet : ∀ p tail, original = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨after, used, events, _, path, stop | ⟨track, safe, cards, notQuiet⟩⟩ :=
+    advance_cleanup_with_adds_prepared_quiet wf reads pending (TriggerWorkTail original) tracked
+      (fun _ keeps q ne => keeps.insert front q ne)
+  · exact ⟨after, used, events, path, stop⟩
+  · rcases track with resumed | ⟨queue, nonempty, queued⟩
+    · have stop := GameState.prepared_idle_of_nonpriority (resumed.symm ▸ decision)
+        (fun p tail equal => notQuiet ⟨p, tail, equal, quiet p tail (resumed.symm.trans equal)⟩)
+      exact ⟨after, used, events, path, stop⟩
+    · obtain ⟨t, more, _, _, _, later, _, _, stop⟩ :=
+        advance_triggers_to_preparedDecision after safe queue original queued (cards ▸ reads) (Or.inl nonempty)
+      exact ⟨t, used + more, events, by simpa only [List.append_nil] using path.append later, stop⟩
+
+/-- Run any Cleanup that preparation schedules before returning a waiting decision. -/
+theorem advance_waiting_to_preparedDecision {s : GameState} (wf : s.WF)
+    (reads : MightRead.database s.cards) (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, tail, stack, _, prepared⟩
+  · exact ⟨s, 0, [], by intro fuel events; simp, by simpa only [unchanged] using waiting⟩
+  · have staged : s.preparePriority.pending = .cleanup :: .priority p :: tail := by
+      rw [prepared]
+      exact congrArg (Frame.cleanup :: ·) stack
+    have check : MightRead.database s.preparePriority.cards := by rw [prepared]; exact reads
+    have agrees : s.preparePriority.preparePriority = s.preparePriority :=
+      GameState.preparePriority_of_work staged rfl
+    have same (fuel : Nat) (seen : List Event) : advance fuel s seen = advance fuel s.preparePriority seen := by
+      cases fuel <;> simp only [advance, agrees]
+    obtain ⟨t, used, events, path, ready⟩ :=
+      advance_cleanup_at_preparedDecision wf.preparePriority check staged (Or.inl rfl) rfl
+        (fun _ head => by cases head; exact ⟨rfl, by intro q eq; cases eq⟩)
+        (fun q suffix equal => by cases equal; exact quiet p tail stack)
+    exact ⟨t, used, events, fun fuel seen => (same (used + fuel) seen).trans (path fuel seen), ready⟩
+
 end Riftbound
 
 end

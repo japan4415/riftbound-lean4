@@ -534,6 +534,17 @@ theorem step_predictAnswer_waits_to_decision {s : Riftbound.GameState} {a : Rift
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_predictAnswer_waits_to_decision wf (mightReads_of_registered cards) legal checked
 
+/-- A registered Predict answer that returns directly to a decision includes any priority Cleanup. -/
+theorem step_predictAnswer_waits_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.predictAnswerWaits s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_predictAnswer_waits_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
 /-- A checked choice or chance order can resume straight to an ordinary decision. -/
 theorem step_decisionRunAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
     (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
@@ -541,6 +552,18 @@ theorem step_decisionRunAnswer_checked_to_decision {s : Riftbound.GameState} {a 
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_decisionRunAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered checked program answer that returns to a decision succeeds in finite fuel. -/
+theorem step_decisionRunAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.decisionRunAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.chainAnswerContinuation? (raw.pending.dropWhile Riftbound.isRunFrame) = some (.priority p :: tail) →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_decisionRunAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
 
 /-- For registered cards, check the top item's actual Run programs and follow the final
 Chain Pass through deferred limited Spell declarations to a decision. -/

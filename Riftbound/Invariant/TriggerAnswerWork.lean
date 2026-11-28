@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Invariant.MovementWork
+public import Riftbound.Invariant.ChainAnswerWork
 
 /-!
 # Trigger decisions and locked trigger declarations (I12)

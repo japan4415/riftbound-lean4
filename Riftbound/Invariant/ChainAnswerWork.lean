@@ -255,6 +255,44 @@ theorem step_observed_action_waits {s raw : GameState} {a : Action} {notices : L
     advance_observed_decision mid next.pending midWF (cards ▸ checked) route (stack.symm ▸ waiting)
   exact ⟨t, used + more, added, by simpa only [List.append_nil] using entered.append run, stop⟩
 
+/-- Apply the action's event observers before continuing from an ordinary decision. If
+preparation finds outstanding Cleanup at neutral priority, it runs before the decision. -/
+theorem step_observed_waiting_to_preparedDecision {s raw : GameState} {a : Action} {notices : List Event}
+    (legal : Legal s a) (regular : a.kind ≠ .concede) (noCost : s.actionDeathCostChoice a = none)
+    (applied : applyFrame0 s a = some (raw, notices)) (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (waiting : raw.pending.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, raw.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  apply step_observed_frame_to_preparedDecision legal noCost regular applied wf reads
+  intro next observed safe checked stack
+  obtain ⟨mid, used, events, path, midWF, cards, route⟩ :=
+    advance_observed_work next observed safe checked
+  rw [stack] at route
+  by_cases neutral : ∃ p tail, raw.pending = .priority p :: tail
+  · obtain ⟨p, tail, priority⟩ := neutral
+    rw [priority] at route
+    generalize actual : mid.pending = frames at route
+    cases route with
+    | empty => exact ⟨mid, used, events, path, GameState.prepared_idle_of_empty actual⟩
+    | resume =>
+      obtain ⟨t, later, emitted, more, ready⟩ :=
+        advance_waiting_to_preparedDecision midWF (cards ▸ checked) (by rw [actual]; rfl)
+          (fun q suffix same => by
+            rw [actual, List.cons.injEq] at same
+            exact same.2 ▸ quiet p tail priority)
+      exact ⟨t, used + later, events ++ emitted, path.append more, ready⟩
+    | queue q nonempty =>
+      have pending : mid.pending = .triggers q :: .priority p :: tail := actual
+      obtain ⟨t, later, _, _, _, more, _, _, ready⟩ :=
+        advance_triggers_to_preparedDecision mid midWF q _ pending (cards ▸ checked) (Or.inl nonempty)
+      exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append more, ready⟩
+  · obtain ⟨t, later, more, ready⟩ :=
+      advance_observed_prepared_decision mid raw.pending midWF (cards ▸ checked) route waiting
+        (fun p tail same => neutral ⟨p, tail, same⟩)
+    exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append more, ready⟩
+
 /-- The three effect decisions that resume with a Run program. -/
 def isChainEffectAnswer (s : GameState) (a : Action) : Bool :=
   match s.pending.head?, a.kind with
@@ -431,6 +469,28 @@ theorem step_predictAnswer_waits_to_decision {s : GameState} {a : Action}
     exact step_observed_action_waits legal regular noCost applied
       (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads) wait
 
+/-- A Predict answer that returns directly to a waiting decision includes any Cleanup
+needed to prepare ordinary priority. -/
+theorem step_predictAnswer_waits_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (checked : predictAnswerWaits s a = true)
+    (quiet : ∀ raw emitted p tail, applyFrame0 s a = some (raw, emitted) →
+      raw.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  unfold predictAnswerWaits at checked
+  obtain ⟨isPredict, wait⟩ := Bool.and_eq_true_iff.mp checked
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at wait
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some] at wait
+    obtain ⟨noCost, regular, cards⟩ := predictionAnswer_rule isPredict applied
+    exact step_observed_waiting_to_preparedDecision legal regular noCost applied
+      (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads) wait
+      (fun p tail => quiet raw events p tail applied)
+
 /-- Inspect the actual Runs scheduled by a choice on the Chain. The check also recognizes the
 item finish and a waiting decision, with or without an ordinary trigger queue. -/
 def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
@@ -507,6 +567,41 @@ theorem step_decisionRunAnswer_checked_to_decision {s : GameState} {a : Action}
         (isOrdinaryDecisionTail_front ready) ?_
       intro t _ _ resumed
       exact ⟨t, 0, [], by intro fuel prior; simp, resumed.symm ▸ isOrdinaryDecisionTail_boundary ready⟩
+
+/-- A checked program answer and its trigger queue reach a prepared decision in finite fuel. -/
+theorem step_decisionRunAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : decisionRunAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted p tail, applyFrame0 s a = some (raw, emitted) →
+      chainAnswerContinuation? (raw.pending.dropWhile isRunFrame) = some (.priority p :: tail) →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  unfold decisionRunAnswerWorkSupported at supported
+  obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at condition
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some, Bool.and_eq_true_iff] at condition
+    obtain ⟨programs, continuation⟩ := condition
+    cases parsed : chainAnswerContinuation? (raw.pending.dropWhile isRunFrame) with
+    | none => simp [parsed] at continuation
+    | some rest =>
+      obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
+      obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule answer applied
+      apply step_observed_frame_to_preparedDecision legal noCost regular applied
+        (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+      intro next observed safe checked stack
+      refine advance_observed_runs_then_prepared next observed safe checked
+        ⟨_, stack.trans List.takeWhile_append_dropWhile.symm, tracked⟩
+        (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member))
+        (isOrdinaryDecisionTail_front ready) ?_
+      intro t safe checked resumed
+      exact advance_waiting_to_preparedDecision safe checked (resumed.symm ▸ isOrdinaryDecisionTail_boundary ready)
+        (fun p tail priority => quiet raw events p tail applied
+          (parsed.trans (congrArg some (resumed.symm.trans priority))))
 
 end Riftbound
 

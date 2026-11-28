@@ -218,6 +218,8 @@ Add が資源を増やす量は、支払い後の残高に空のプールから�
 
 Predict は、カードを残すか Recycle するかを選ぶ入力と、必要な場合に Recycle の順番を抽選する入力まで追える。Predict の最終回答、カード名の指定、カード種別の推測は、実際に生成される効果と後続の処理を検査し、対応する Chain、Cleanup、通常の判断へ戻るまで追える。追加の fuel でも到達状態とイベント列は一致する。[ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [MovementWork.lean](../Riftbound/Invariant/MovementWork.lean)
 
+`predictAnswerWaits` を通る Predict の回答と、`decisionRunAnswerWorkSupported` を通る効果の回答では、実際の `step` が有限の fuel で次の入力か空のスタックとイベント列を返す。回答に続く命令列や誘発を処理し、通常の優先権に戻る際は必要な Cleanup を済ませる。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [MightRead.lean](../RiftboundCards/MightRead.lean)
+
 ### 3aa. War の投了と入力先の切り替え
 
 `concessionWorkSupported` は、War の投了で席と盤面上のオブジェクトを処理した直後の作業列を検査する。残り一席で試合が終わるとき、セットアップの入力や通常の判断に戻るとき、手番プレイヤーが投了して次のターンに進むときを扱う。手番を移す場合は Cleanup、Expiration、時計の判定、次のターンの各フェイズを通常の Pass と同じ証明で追う。観測や誘発が先に入力を求める場合も含み、追加の fuel で到達状態とイベント列は変わらない。[ConcessionWork.lean](../Riftbound/Invariant/ConcessionWork.lean)
