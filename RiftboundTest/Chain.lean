@@ -144,6 +144,34 @@ meta def afterUse : Option (GameState × List Event) :=
     automatic.pending == [Frame.priority p] && seen.isEmpty && laterSeen.isEmpty && autoSeen.isEmpty
   : Option Bool).getD false
 
+-- Owner-zone changes preserve the physical cards and record their order and actors.
+#guard (do
+  let start ← mainC 5
+  let p ← start.active
+  let q := otherQ p
+  let base := Zone.player q .base
+  let deck := Zone.player q .mainDeck
+  let hand := Zone.player q .hand
+  let banishment := Zone.player q .banishment
+  let (s, toHand) ← addObject start (newCard start.cards start q (cid "V0")) base
+  let (s, toBanish) ← addObject s (newCard s.cards s q (cid "V1")) base
+  let (s, toDeck) ← addObject s (newCard s.cards s q (cid "V0")) base
+  let program := EffectList.ofList [
+    .prim (.returnToHand (.slot 0)), .prim (.banish (.slot 1)), .prim (.topdeck (.slot 2))]
+  let frame := Frame.run p toHand { slots := [.obj toHand, .obj toBanish, .obj toDeck] } program
+  let started := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 12 started [] []).toOption
+  let [Event.moved h h' hZone, Event.moved b b' bZone, Event.banished actor owner banished,
+      Event.moved d d' dZone] := events | none
+  let samePhysical (old new : ObjId) :=
+    (s.obj? old).bind (·.kind.phys?) == (finished.obj? new).bind (·.kind.phys?)
+  return runFrameSupported frame && finished.pending == [Frame.priority p] && seen.isEmpty &&
+    h == toHand && hZone == hand && (finished.zone hand).contains h' && samePhysical h h' &&
+    b == toBanish && bZone == banishment && (finished.zone banishment).contains b' &&
+    actor == p && owner == q && banished == b' && samePhysical b b' &&
+    d == toDeck && dZone == deck && (finished.zone deck).head? == some d' && samePhysical d d'
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

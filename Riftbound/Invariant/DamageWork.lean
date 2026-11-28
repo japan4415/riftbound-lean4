@@ -288,47 +288,6 @@ theorem Effect.ObservedFinite.splitUnitDamage (dealer targets : Selector) (index
       exact .applyUnitSplitDamage h link
     exact advance_run_via wf reads pending choices finite base inserted
 
-private def NoAttach (events : List Event) : Prop :=
-  ∀ gear unit, Event.attached gear unit ∉ events
-
-private theorem NoAttach.nil : NoAttach [] := by
-  intro gear unit
-  simp
-
-private theorem NoAttach.append {first other : List Event} (left : NoAttach first)
-    (right : NoAttach other) : NoAttach (first ++ other) := by
-  intro gear unit
-  simp [left gear unit, right gear unit]
-
-private theorem NoAttach.replacementFrames {events : List Event} (noAttach : NoAttach events)
-    (s : GameState) : attachmentReplacementFrames s events = [] := by
-  apply List.flatMap_eq_nil_iff.mpr
-  intro e member
-  cases e <;> try rfl
-  rename_i gear unit
-  exact False.elim (noAttach gear unit member)
-
-private theorem sendObj_noAttach (k : ZoneKind) (s : GameState) (id : ObjId) :
-    NoAttach (sendObj k s id).2 := by
-  unfold sendObj
-  split
-  · dsimp only
-    split
-    · intro gear unit
-      unfold Object.ownerMoveEvents
-      split <;> simp
-    · exact .nil
-  · exact .nil
-
-private theorem banishCardEvents_noAttach (p : PlayerId) (s : GameState) (id : ObjId)
-    (moves : List Event) : NoAttach (banishCardEvents p s id moves) := by
-  intro gear unit member
-  unfold banishCardEvents at member
-  split at member
-  · obtain ⟨e, _, h⟩ := List.mem_filterMap.mp member
-    split at h <;> cases h
-  · contradiction
-
 private theorem killObj_noAttach (s : GameState) (id : ObjId) :
     NoAttach (killObj s id).2 := by
   unfold killObj
@@ -351,14 +310,6 @@ private theorem sendHome_silent (s : GameState) (id : ObjId) : (sendHome s id).2
   split
   · split <;> rfl
   · rfl
-
-private theorem setExhausted_noAttach (ex : Bool) (s : GameState) (id : ObjId) :
-    NoAttach (setExhausted ex s id).2 := by
-  unfold setExhausted
-  split
-  · intro gear unit
-    cases ex <;> dsimp only <;> split <;> simp
-  · exact .nil
 
 private theorem recallFx_noAttach (ex : Bool) (s : GameState) (id : ObjId) :
     NoAttach (recallFx ex s id).2 := by
@@ -427,14 +378,6 @@ private theorem dealObj_noAttach (n : Nat) (s : GameState) (id : ObjId)
             · intro gear unit
               simp
   · exact .nil
-
-private theorem applyEach_noAttach {α : Type} (g : GameState → α → GameState × List Event)
-    (trusted : ∀ s a, NoAttach (g s a).2) (s : GameState) (items : List α) :
-    NoAttach (applyEach g s items).2 := by
-  induction items generalizing s with
-  | nil => exact .nil
-  | cons first next ih =>
-    exact (trusted s first).append (ih (g s first).1)
 
 private theorem exchangeDamage_noAttach (s : GameState) (a b : ObjId) :
     NoAttach (exchangeDamage s a b).2 := by

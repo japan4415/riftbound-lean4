@@ -64,6 +64,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .nop | .retainTargetSet _ | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.discard ..)
   | .prim (.score ..) | .prim (.win _)
   | .prim (.ready _) | .prim (.exhaust _) | .prim (.buff _) | .prim (.stun _)
+  | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _)
   | .prim (.allowFacedownInspection _)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
   | .prim (.lookTop _) | .prim (.recycleTop _) | .prim (.predict _)
@@ -123,6 +124,9 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case exhaust selector => exact Effect.ObservedFinite.exhaust selector
     case buff selector => exact Effect.ObservedFinite.buff selector
     case stun selector => exact Effect.ObservedFinite.stun selector
+    case returnToHand selector => exact Effect.ObservedFinite.returnToHand selector
+    case banish selector => exact Effect.ObservedFinite.banish selector
+    case topdeck selector => exact Effect.ObservedFinite.topdeck selector
     case allowFacedownInspection whose => exact (Effect.SingleRun.allowFacedownInspection whose).observed
     case deal target amount => exact Effect.ObservedFinite.deal target amount
     case exchangeDamage a b => exact Effect.ObservedFinite.exchangeDamage a b

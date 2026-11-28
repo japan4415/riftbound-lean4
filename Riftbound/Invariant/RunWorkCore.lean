@@ -407,47 +407,79 @@ theorem Effect.SingleRun.allowFacedownInspection (whose : PlayerSel) :
   by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;>
     cases whose.resolve s p env <;> exact ⟨_, _, rfl⟩
 
-private def noAttachments (events : List Event) : Prop :=
+/-- Events that cannot schedule attachment replacements. -/
+def NoAttach (events : List Event) : Prop :=
   ∀ gear unit, Event.attached gear unit ∉ events
 
-private theorem noAttachments.append {a b : List Event}
-    (first : noAttachments a) (second : noAttachments b) : noAttachments (a ++ b) := by
-  intro gear unit found
-  rcases List.mem_append.mp found with l | r
-  · exact first gear unit l
-  · exact second gear unit r
+theorem NoAttach.nil : NoAttach [] := by
+  intro gear unit
+  simp
+
+theorem NoAttach.append {first other : List Event} (left : NoAttach first)
+    (right : NoAttach other) : NoAttach (first ++ other) := by
+  intro gear unit
+  simp [left gear unit, right gear unit]
+
+theorem NoAttach.replacementFrames {events : List Event} (noAttach : NoAttach events)
+    (s : GameState) : attachmentReplacementFrames s events = [] := by
+  apply List.flatMap_eq_nil_iff.mpr
+  intro e member
+  cases e <;> try rfl
+  rename_i gear unit
+  exact False.elim (noAttach gear unit member)
+
+theorem sendObj_noAttach (k : ZoneKind) (s : GameState) (id : ObjId) :
+    NoAttach (sendObj k s id).2 := by
+  unfold sendObj
+  split
+  · dsimp only
+    split
+    · intro gear unit
+      unfold Object.ownerMoveEvents
+      split <;> simp
+    · exact .nil
+  · exact .nil
+
+theorem banishCardEvents_noAttach (p : PlayerId) (s : GameState) (id : ObjId)
+    (moves : List Event) : NoAttach (banishCardEvents p s id moves) := by
+  intro gear unit member
+  unfold banishCardEvents at member
+  split at member
+  · obtain ⟨e, _, h⟩ := List.mem_filterMap.mp member
+    split at h <;> cases h
+  · contradiction
 
 private theorem recycleOne_noAttachments (s : GameState) (id : ObjId) :
-    noAttachments (recycleOne s id).2 := by
+    NoAttach (recycleOne s id).2 := by
   unfold recycleOne
   split
   · dsimp only
     split
-    · simp [noAttachments]
-    · split <;> simp [noAttachments]
-  · simp [noAttachments]
+    · simp [NoAttach]
+    · split <;> simp [NoAttach]
+  · simp [NoAttach]
 
-private theorem applyEach_noAttachments (f : GameState → ObjId → GameState × List Event)
-    (noAttachmentsOne : ∀ s id, noAttachments (f s id).2) (s : GameState) (ids : List ObjId) :
-    noAttachments (applyEach f s ids).2 := by
-  induction ids generalizing s with
-  | nil => simp [applyEach, noAttachments]
-  | cons first more ih =>
-    exact (noAttachmentsOne s first).append (ih (f s first).1)
+theorem applyEach_noAttach {α : Type} (g : GameState → α → GameState × List Event)
+    (trusted : ∀ s a, NoAttach (g s a).2) (s : GameState) (items : List α) :
+    NoAttach (applyEach g s items).2 := by
+  induction items generalizing s with
+  | nil => exact .nil
+  | cons first next ih =>
+    exact (trusted s first).append (ih (g s first).1)
 
 private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (events : List Event) :
-    noAttachments (spellCompletion s src events true) := by
+    NoAttach (spellCompletion s src events true) := by
   unfold spellCompletion
   simp only [ite_true]
   split
   · split
-    · split <;> simp [noAttachments]
-    · simp [noAttachments]
-  · simp [noAttachments]
+    · split <;> simp [NoAttach]
+    · simp [NoAttach]
+  · simp [NoAttach]
 
 private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {sel : Selector} {events : List Event} (outcome : applyPrim s p src env (.recycle sel) = some (t, events)) :
-    noAttachments events := by
+    NoAttach events := by
   unfold applyPrim at outcome
   cases selected : Selector.eval s p src env sel with
   | none => simp [selected] at outcome
@@ -455,20 +487,12 @@ private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : Ob
     simp only [selected, Option.map_some] at outcome
     have eventsEq := (Prod.mk.inj (Option.some.inj outcome)).2
     rw [← eventsEq]
-    apply noAttachments.append
-    · apply (applyEach_noAttachments recycleOne recycleOne_noAttachments s ids).append
-      split <;> simp [noAttachments]
+    apply NoAttach.append
+    · apply (applyEach_noAttach recycleOne recycleOne_noAttachments s ids).append
+      split <;> simp [NoAttach]
     · split
       · exact spellCompletion_noAttachments s src _
-      · simp [noAttachments]
-
-private theorem attachments_empty (s : GameState) {events : List Event} (h : noAttachments events) :
-    attachmentReplacementFrames s events = [] := by
-  unfold attachmentReplacementFrames
-  apply List.flatMap_eq_nil_iff.mpr
-  intro event found
-  cases event <;> try rfl
-  exact False.elim (h _ _ found)
+      · simp [NoAttach]
 
 private def directPrimResult (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
     (more : EffectList) : GameState × List Frame × List Event :=
@@ -480,14 +504,14 @@ private theorem Effect.SingleRun.directPrim (pr : Prim)
     (dispatch : ∀ s p src env more,
       runEffect s p src env (.prim pr) more effectAddPolicy = directPrimResult s p src env pr more)
     (plainEvents : ∀ {s t p src env events},
-      applyPrim s p src env pr = some (t, events) → noAttachments events) :
+      applyPrim s p src env pr = some (t, events) → NoAttach events) :
     (Effect.prim pr).SingleRun := by
   intro s p src env more
   rw [dispatch]
   unfold directPrimResult
   split
   · rename_i r applied
-    rw [attachments_empty _ (plainEvents applied), List.nil_append]
+    rw [(plainEvents applied).replacementFrames _, List.nil_append]
     exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 
@@ -498,7 +522,7 @@ private theorem Effect.SingleRun.selectedPrim (pr : Prim) (selector : Selector)
       runPrimEffect s p src env pr more effectAddPolicy = directPrimResult s p src env pr more)
     (targets : ∀ s p src env,
       applyPrim s p src env pr = onSelected s p src env selector (changeObject p env))
-    (plain : ∀ p env s id, noAttachments (changeObject p env s id).2) :
+    (plain : ∀ p env s id, NoAttach (changeObject p env s id).2) :
     (Effect.prim pr).SingleRun := by
   apply Effect.SingleRun.directPrim pr
   · intro s p src env more
@@ -512,14 +536,25 @@ private theorem Effect.SingleRun.selectedPrim (pr : Prim) (selector : Selector)
     | some ids =>
       simp only [selected, Option.map_some, Option.some.injEq] at outcome
       rw [← (Prod.mk.inj outcome).2]
-      exact applyEach_noAttachments _ (plain p env) s ids
+      exact applyEach_noAttach _ (plain p env) s ids
 
-private theorem setExhausted_noAttachments (exhausted : Bool) (s : GameState) (id : ObjId) :
-    noAttachments (setExhausted exhausted s id).2 := by
+theorem setExhausted_noAttach (exhausted : Bool) (s : GameState) (id : ObjId) :
+    NoAttach (setExhausted exhausted s id).2 := by
   unfold setExhausted
   split
-  · cases exhausted <;> split <;> simp [noAttachments]
-  · simp [noAttachments]
+  · cases exhausted <;> split <;> simp [NoAttach]
+  · simp [NoAttach]
+
+private theorem replaceChosenHarm_noAttach (env : Env)
+    (changeObject : GameState → ObjId → GameState × List Event)
+    (plain : ∀ s id, NoAttach (changeObject s id).2) (s : GameState) (id : ObjId) :
+    NoAttach (replaceChosenHarm env changeObject s id).2 := by
+  unfold replaceChosenHarm
+  split
+  · split
+    · exact .nil
+    · exact plain s id
+  · exact plain s id
 
 private theorem Effect.SingleRun.ready (sel : Selector) (direct : (Effect.prim (.ready sel)).pickSel? = none) :
     (Effect.prim (.ready sel)).SingleRun := by
@@ -530,8 +565,8 @@ private theorem Effect.SingleRun.ready (sel : Selector) (direct : (Effect.prim (
   · intro _ _ s id
     unfold readyEffect
     split
-    · simp [noAttachments]
-    · exact setExhausted_noAttachments false s id
+    · simp [NoAttach]
+    · exact setExhausted_noAttach false s id
 
 private theorem Effect.SingleRun.exhaust (sel : Selector) (direct : (Effect.prim (.exhaust sel)).pickSel? = none) :
     (Effect.prim (.exhaust sel)).SingleRun := by
@@ -540,7 +575,7 @@ private theorem Effect.SingleRun.exhaust (sel : Selector) (direct : (Effect.prim
     simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
     by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
   · intro _ _ s id
-    exact setExhausted_noAttachments true s id
+    exact setExhausted_noAttach true s id
 
 private theorem Effect.SingleRun.buff (sel : Selector) (direct : (Effect.prim (.buff sel)).pickSel? = none) :
     (Effect.prim (.buff sel)).SingleRun := by
@@ -554,9 +589,9 @@ private theorem Effect.SingleRun.buff (sel : Selector) (direct : (Effect.prim (.
     dsimp only
     split
     · split
-      · simp [noAttachments]
-      · split <;> simp [noAttachments]
-    · simp [noAttachments]
+      · simp [NoAttach]
+      · split <;> simp [NoAttach]
+    · simp [NoAttach]
 
 private theorem Effect.SingleRun.stun (sel : Selector) (direct : (Effect.prim (.stun sel)).pickSel? = none) :
     (Effect.prim (.stun sel)).SingleRun := by
@@ -568,11 +603,37 @@ private theorem Effect.SingleRun.stun (sel : Selector) (direct : (Effect.prim (.
   · intro p env s id
     unfold stunObj
     split
-    · unfold replaceChosenHarm
-      split
-      · split <;> simp [addMightMod, noAttachments]
-      · simp [noAttachments]
-    · simp [noAttachments]
+    · exact replaceChosenHarm_noAttach env _ (fun _ _ => by simp [NoAttach]) s id
+    · exact .nil
+
+private theorem Effect.SingleRun.returnToHand (sel : Selector)
+    (direct : (Effect.prim (.returnToHand sel)).pickSel? = none) :
+    (Effect.prim (.returnToHand sel)).SingleRun := by
+  refine .selectedPrim (.returnToHand sel) sel (fun _ env => replaceChosenHarm env (sendObj .hand)) direct
+    ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ env s id
+    exact replaceChosenHarm_noAttach env (sendObj .hand) (sendObj_noAttach .hand) s id
+
+private theorem Effect.SingleRun.banish (sel : Selector) (direct : (Effect.prim (.banish sel)).pickSel? = none) :
+    (Effect.prim (.banish sel)).SingleRun := by
+  refine .selectedPrim (.banish sel) sel (fun p _ => banishObj p) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro p _ s id
+    exact (sendObj_noAttach .banishment s id).append (banishCardEvents_noAttach p s id _)
+
+private theorem Effect.SingleRun.topdeck (sel : Selector) (direct : (Effect.prim (.topdeck sel)).pickSel? = none) :
+    (Effect.prim (.topdeck sel)).SingleRun := by
+  refine .selectedPrim (.topdeck sel) sel (fun _ _ => sendObj .mainDeck) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ _ s id
+    exact sendObj_noAttach .mainDeck s id
 
 /-- A direct primitive can also choose one object during resolution, continuing its bound
 instruction after a singleton or yielding to the player when several candidates remain. -/
@@ -661,6 +722,19 @@ theorem Effect.ObservedFinite.buff (sel : Selector) : (Effect.prim (.buff sel)).
 theorem Effect.ObservedFinite.stun (sel : Selector) : (Effect.prim (.stun sel)).ObservedFinite :=
   .selectedPrimitive (.stun sel) (Effect.SingleRun.stun sel) (Effect.SingleRun.stun (.var pickVar) rfl)
 
+/-- Returning selected objects to their owners' hands reaches a choice or the next instruction. -/
+theorem Effect.ObservedFinite.returnToHand (sel : Selector) : (Effect.prim (.returnToHand sel)).ObservedFinite :=
+  .selectedPrimitive (.returnToHand sel) (Effect.SingleRun.returnToHand sel)
+    (Effect.SingleRun.returnToHand (.var pickVar) rfl)
+
+/-- Banishing selected objects reaches a choice or the next instruction. -/
+theorem Effect.ObservedFinite.banish (sel : Selector) : (Effect.prim (.banish sel)).ObservedFinite :=
+  .selectedPrimitive (.banish sel) (Effect.SingleRun.banish sel) (Effect.SingleRun.banish (.var pickVar) rfl)
+
+/-- Putting selected objects on top of their owners' decks reaches a choice or the next instruction. -/
+theorem Effect.ObservedFinite.topdeck (sel : Selector) : (Effect.prim (.topdeck sel)).ObservedFinite :=
+  .selectedPrimitive (.topdeck sel) (Effect.SingleRun.topdeck sel) (Effect.SingleRun.topdeck (.var pickVar) rfl)
+
 /-- Awarding points consumes one Run step before any resulting win is observed. -/
 theorem Effect.SingleRun.score (who : PlayerSel) (amount : Amount) :
     (Effect.prim (.score who amount)).SingleRun := by
@@ -719,11 +793,11 @@ theorem Effect.SingleRun.recycleRevealed (side : Side) : (Effect.prim (.recycle 
   .directRecycle (.revealedDeck side) (Or.inr (Or.inr ⟨side, rfl⟩))
 
 private theorem drawLookedCard_noAttachments (p : PlayerId) (looked : List ObjId) (s : GameState) (id : ObjId) :
-    noAttachments (drawLookedCard p looked s id).2 := by
+    NoAttach (drawLookedCard p looked s id).2 := by
   unfold drawLookedCard
   split
-  · split <;> simp [noAttachments]
-  · simp [noAttachments]
+  · split <;> simp [NoAttach]
+  · simp [NoAttach]
 
 /-- Draw cards selected from a reveal without generating additional resolution frames. -/
 theorem Effect.SingleRun.drawRevealed (side : Side) : (Effect.prim (.drawLooked (.revealedDeck side))).SingleRun := by
@@ -736,7 +810,7 @@ theorem Effect.SingleRun.drawRevealed (side : Side) : (Effect.prim (.drawLooked 
     simp only [applyPrim, onSelected] at applied
     obtain ⟨ids, _, shape⟩ := Option.map_eq_some_iff.mp applied
     rw [← (Prod.mk.inj shape).2]
-    exact applyEach_noAttachments _ (drawLookedCard_noAttachments p env.lookedCards) s ids
+    exact applyEach_noAttach _ (drawLookedCard_noAttachments p env.lookedCards) s ids
 
 private theorem retainTargetSetFrame_cases (p : PlayerId) (src : ObjId) (env : Env)
     (groups : List (List ObjId)) (more : EffectList) :
