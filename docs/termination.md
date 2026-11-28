@@ -264,6 +264,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 通常のターン境界で制限時間による勝敗が決まると、`advanceWithDisclosures_beginTurn_clock` は1ステップで終局し、それまでのイベントとカード開示をそのまま返す。サドンデスで合法な Burn Out の得点先を選ぶと、`stepWithDisclosures_burnOutTarget_suddenDeath` は任意の fuel で得点した側の勝利を返し、残っていたドローを取り消す。記録には1点の加算だけが加わり、カードの開示はない。[BeginTurnWork.lean](../Riftbound/Invariant/BeginTurnWork.lean) [Clock.lean](../Riftbound/Invariant/Clock.lean)
 
+### 3ai. 効果による得点と勝利
+
+効果命令列の停止検査は `score` と `win` を扱う。どちらも1ステップで処理し、観測処理で終局が確定した場合は残りの命令へ進まない。サドンデスの得点と、2対2で効果がチームに勝利を与える場合に、後続のドローやカード開示がないことをテストで確認する。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [RunWork.lean](../Riftbound/Invariant/RunWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

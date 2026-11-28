@@ -117,6 +117,20 @@ meta def passToEnd : Nat → GameState → GameState
     scored.zone main == waiting.zone main && scored.zone (.player p .hand) == waiting.zone (.player p .hand) &&
     es == [Event.pointsGained recipient 1] && seen.isEmpty).getD false
 
+-- A scoring effect can also end sudden death before its following instructions.
+#guard (do
+  let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 7
+  let p ← s.active
+  let source ← s.battlefields.head?
+  let program := EffectList.ofList [.prim (.score .you (.const 1)), .prim (.draw .you (.const 1))]
+  let frame := Frame.run p source {} program
+  let scoring := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 1 scoring [] []).toOption
+  return runFrameSupported frame && finished.result == some (GameResult.won [p]) &&
+    finished.pending.isEmpty && finished.pointsOf p == s.pointsOf p + 1 &&
+    finished.zone (.player p .hand) == s.zone (.player p .hand) &&
+    events == [Event.pointsGained p 1] && seen.isEmpty).getD false
+
 -- Sudden death respects the Final Point restriction on Conquer, including the replacement draw.
 #guard (do
   let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 7

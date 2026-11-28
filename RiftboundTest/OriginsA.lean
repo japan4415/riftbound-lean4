@@ -1823,10 +1823,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let ally : PlayerId := ⟨1⟩
   let config := { s.config with mode := Mode.teamDuel }
   let effect := EffectList.ofList [.prim (.win .you), .prim (.draw .you (.const 1))]
-  let start := { s with config, pending := [.run p s.bf0 {} effect, .priority p] }
-  let (done, events) ← (advance 100 start []).toOption
-  return done.result == some (.won [p, ally]) && done.pending.isEmpty &&
-    done.points == start.points && done.handN p == start.handN p && events == [.won p, .won ally]
+  let frame := Frame.run p s.bf0 {} effect
+  let start := { s with config, pending := [frame, .priority p] }
+  let ((done, events), seen) ← (advanceWithDisclosures 1 start [] []).toOption
+  return runFrameSupported frame && done.result == some (.won [p, ally]) && done.pending.isEmpty &&
+    done.points == start.points && done.handN p == start.handN p && events == [.won p, .won ally] &&
+    seen.isEmpty
 
 -- Possession keeps the damage and the status of the unit it takes (Ready stays Ready, Exhausted
 -- stays Exhausted)

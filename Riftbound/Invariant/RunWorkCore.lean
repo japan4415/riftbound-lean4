@@ -491,6 +491,41 @@ private theorem Effect.SingleRun.directPrim (pr : Prim)
     exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 
+/-- Awarding points consumes one Run step before any resulting win is observed. -/
+theorem Effect.SingleRun.score (who : PlayerSel) (amount : Amount) :
+    (Effect.prim (.score who amount)).SingleRun := by
+  refine .directPrim (.score who amount) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events outcome gear unit attached
+    cases selected : who.resolve s p env <;> cases count : amount.evalS s p src env <;>
+      simp only [applyPrim, selected, count, Option.bind_none, Option.bind_some,
+        Option.map_none, Option.map_some, reduceCtorEq, Option.some.injEq, Prod.mk.injEq] at outcome
+    rw [← outcome.2] at attached
+    split at attached
+    · exact List.not_mem_nil attached
+    · obtain ⟨_, _, impossible⟩ := List.mem_map.mp attached
+      cases impossible
+
+/-- A declared win consumes one Run step before the observer clears the unfinished work. -/
+theorem Effect.SingleRun.win (who : PlayerSel) : (Effect.prim (.win who)).SingleRun := by
+  refine .directPrim (.win who) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events outcome gear unit attached
+    cases selected : who.resolve s p env with
+    | none => simp [applyPrim, selected] at outcome
+    | some candidates =>
+      simp only [applyPrim, selected, Option.map_some, Option.some.injEq, Prod.mk.injEq] at outcome
+      rw [← outcome.2] at attached
+      obtain ⟨_, _, side⟩ := List.mem_flatMap.mp attached
+      obtain ⟨_, _, impossible⟩ := List.mem_map.mp side
+      cases impossible
+
 private theorem Effect.SingleRun.directRecycle (sel : Selector)
     (direct : sel = .self ∨ (∃ i, sel = .slot i) ∨ ∃ side, sel = .revealedDeck side) :
     (Effect.prim (.recycle sel)).SingleRun := by
