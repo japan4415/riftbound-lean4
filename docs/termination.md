@@ -312,6 +312,12 @@ Unit トークンの登場先や置換、Accelerate を決める処理を停止�
 
 Heimerdinger による一部置換、Dragonsoul Sage で Energy を確保してからの Accelerate、Up from the Deep の2体の登場先、Mirror Image のトークン登場後のコピーをシナリオで確認した。[RadianceAU.lean](../RiftboundTest/RadianceAU.lean) [VendettaA.lean](../RiftboundTest/VendettaA.lean) [UnleashedA.lean](../RiftboundTest/UnleashedA.lean)
 
+### 3at. Kill と死亡置換の回答
+
+対象を選ぶ Kill と複数体をまとめて処理する Kill を停止検査に含める。死亡置換の候補があれば入力を待ち、回答後は実際の盤面で再検査する。死亡や Banish のイベントと、置換のコストに含まれる Kill も処理する。死亡後に続く命令は、効果の指定に従って対象のコントローラーに実行させるか、元の Kill が死亡を引き起こした場合に実行する。ターン終了時に備えて死亡数を記録する命令も検査に含める。[KillWork.lean](../Riftbound/Invariant/KillWork.lean)
+
+The Ruination で同時に処理する Unit の順番を選び、すでに使った置換の候補を選び直すことを確かめた。Hidden Blade のドロー、Deathgrip の Might 増加、Hexplosive Minefield のターン終了時のトークン登場もシナリオで照合した。[OriginsA.lean](../RiftboundTest/OriginsA.lean) [SpiritforgedA.lean](../RiftboundTest/SpiritforgedA.lean) [RadianceAO.lean](../RiftboundTest/RadianceAO.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

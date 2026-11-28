@@ -312,6 +312,20 @@ theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env :
     advance_observed_nonNeutralDecision mid raw.pending midWF (midCards ▸ reads) route waits
   exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append remaining, Or.inl stop⟩
 
+/-- A runtime instruction either waits for a decision or schedules certified Runs before its suffix. -/
+theorem Effect.ObservedFinite.ofDecisionOrForks {effect : Effect}
+    (routes : ∀ s p src env more,
+      let frames := (runEffect s p src env effect more effectAddPolicy).2.1
+      (∃ forks, frames = forks ++ [.run p src env more] ∧ ∀ f ∈ forks, f.FiniteRun) ∨
+        (∃ f tail, frames = f :: tail ∧ NonNeutralDecision (f :: tail))) : effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  rcases routes s p src (env.withMight s.mightTable) more with ⟨forks, stack, finite⟩ | ⟨f, tail, choice, idle⟩
+  · exact advance_run_forks wf reads pending stack finite base inserted
+  · apply advance_run_decision wf reads pending
+    dsimp only
+    rw [choice]
+    exact idle
+
 /-- A feasible optional instruction yields to its decision before running its body. -/
 theorem Effect.ObservedFinite.may (body : Effect) : (Effect.may body).ObservedFinite := by
   intro s p src env more rest keeps wf reads pending base inserted

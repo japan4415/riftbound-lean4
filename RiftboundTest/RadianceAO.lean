@@ -32,9 +32,15 @@ private meta def bombsAt (s : GameState) (p : PlayerId) (field : ObjId) : List O
   let s := createOne ⟨"RAD-T02"⟩ p (some away) true s
   let first ← (bombsAt s p field).head?
   let second ← (bombsAt s p away).head?
-  let after ← play s p minefield [first, second]
+  let played : Action := ⟨.player p, .playCard minefield (payOf s minefield) [first, second]⟩
+  let (chain, _) ← (step 100 (s.rich p) played).toOption
+  let (passed, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := passed.pending | none
+  let (resolved, _) ← (step 100 passed ⟨.player last, .pass⟩).toOption
+  let after := settleChain {} 12 resolved
   let atEnd ← fire after [.phaseStarted p .ending] { obj := (· == away) }
-  return (bombsAt after p field).isEmpty && (bombsAt after p away).isEmpty &&
+  return last == q && chainPassWorkSupported passed last continuation &&
+    (bombsAt after p field).isEmpty && (bombsAt after p away).isEmpty &&
     after.countIn p .trash "RAD-142" == 1 && (bombsAt atEnd p field).isEmpty &&
     (bombsAt atEnd p away).length == 2 &&
     (bombsAt atEnd p away).all (fun bomb => atEnd.tired bomb == some false)

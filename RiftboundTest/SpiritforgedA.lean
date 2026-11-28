@@ -1539,12 +1539,21 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let withKill ← play s p c [victim, recipient]
   let (withGear, firstGear) ← put s p "OGN-077" .base
   let (withGear, secondGear) ← put withGear p "OGN-077" .base
-  let withFirst ← play withGear p c [victim, recipient] { yes := true }
-  let withSecond ← play withGear p c [victim, recipient] { yes := false }
+  let played : Action := ⟨.player p, .playCard c (payOf withGear c) [victim, recipient]⟩
+  let (chain, _) ← (step 100 (withGear.rich p) played).toOption
+  let (passed, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := passed.pending | none
+  let (choice, _) ← (step 100 passed ⟨.player last, .pass⟩).toOption
+  let select : Action := ⟨.player p, .decide true⟩
+  let alternative : Action := ⟨.player p, .decide false⟩
+  let (withFirst, _) ← (step 100 choice select).toOption
+  let (withSecond, _) ← (step 100 choice alternative).toOption
   let withBanish ← play (s.addTurnFxOn s.you victim .banishInstead) p c [victim, recipient]
   let original := s.mightNow recipient
   let might ← s.mightNow victim
-  return (withKill.obj? victim).isNone && withKill.mightNow recipient == original.map (· + might) &&
+  return chainPassWorkSupported passed last continuation &&
+    chainAnswerWorkSupported choice select && chainAnswerWorkSupported choice alternative &&
+    (withKill.obj? victim).isNone && withKill.mightNow recipient == original.map (· + might) &&
     withKill.countIn p .trash "OGN-001" == 1 &&
     [withFirst, withSecond].all (fun board => (board.obj? victim).any (·.exhausted) &&
       board.countIn p .trash "OGN-077" == 1 && board.mightNow recipient == original) &&

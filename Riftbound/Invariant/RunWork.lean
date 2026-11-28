@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Invariant.DamageWork
+public import Riftbound.Invariant.KillWork
 public import Riftbound.Invariant.RecyclePaymentWork
 public import Riftbound.Invariant.DisclosureWork
 public import Riftbound.Invariant.ObservedCleanupWork
@@ -67,7 +67,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .prim (.score ..) | .prim (.win _)
   | .prim (.ready _) | .prim (.exhaust _) | .prim (.buff _) | .prim (.stun _)
   | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _) | .prim (.bin _) | .prim (.castInline _)
-  | .prim (.copyAttachedFrom _) | .prim (.detach _) | .prim (.becomeCopy ..)
+  | .prim (.copyAttachedFrom _) | .prim (.detach _) | .prim (.becomeCopy ..) | .prim (.kill _)
   | .prim (.create ..) | .prim (.createAt ..) | .prim (.createAtPrev ..) | .prim (.cloneToken _)
   | .prim (.playUnitToken _) | .prim (.playReadyUnitToken _) | .prim (.playUnitTokenAt ..)
   | .prim (.playReadyUnitTokenAt ..)
@@ -85,6 +85,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .recordNestedDeathDecision .. | .orderRuneRecycle .. | .recordRuneRecycle ..
   | .finishTrashRecycle .. | .recycleTrashTargets .. | .recycleFromTrash ..
   | .chooseTrashRecycle .. | .recordTrashRecycle .. | .completeActivation .. => true
+  | .killThenAtEnd .. => true
   | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. | .playUnitTokensThen .. => true
   | .planPermanentPlay .. | .finishReducedPermanent .. | .finishFundedPermanent .. | .fundPermanentFromEffect ..
   | .planBanishReplay .. | .prim (.playAtBase _) => true
@@ -95,7 +96,8 @@ def Effect.observedWorkSupported : Effect → Bool
   | .lookAtTop _ body | .revealHand _ body | .revealDeckTops _ body => body.observedWorkSupported
   | .repeatN _ body | .bind _ _ body | .forEach _ body | .eachPlayer _ body => body.observedWorkSupported
   | .doThen (.prim cost) body => cost.linkedCostSupported && body.observedWorkSupported
-  | .payThen _ body _ | .paySelected _ body _ => body.observedWorkSupported
+  | .payThen _ body _ | .paySelected _ body _ | .killThenForController _ body | .killThenIfKilled _ body =>
+    body.observedWorkSupported
   | .prim primitive => (Effect.prim primitive).isTriggerAdd
   | _ => false
 termination_by structural effect => effect
@@ -144,6 +146,7 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case copyAttachedFrom selector => exact Effect.ObservedFinite.copyAttachedFrom selector
     case detach selector => exact Effect.ObservedFinite.detach selector
     case becomeCopy targets source => exact Effect.ObservedFinite.becomeCopy targets source
+    case kill targets => exact Effect.ObservedFinite.kill targets
     case create name count place ready => exact Effect.ObservedFinite.create name count place ready
     case createAt name count dest ready => exact Effect.ObservedFinite.createAt name count dest ready
     case createAtPrev name count ready => exact Effect.ObservedFinite.createAtPrev name count ready
@@ -230,6 +233,9 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case recordTrashRecycle side count upTo picked => exact .recordTrashRecycle side count upTo picked
   case completeActivation source index baseEnergy targets filters =>
     exact .completeActivation source index baseEnergy targets filters
+  case killThenAtEnd targets index => exact .killThenAtEnd targets index
+  case killThenForController slot body => exact .killThenForController slot (body.observedFinite_of_supported supported)
+  case killThenIfKilled slot body => exact .killThenIfKilled slot (body.observedFinite_of_supported supported)
   case planUnitTokenEntries batch plan => exact .planUnitTokenEntries batch plan
   case fundTokenAccelerate batch payment adds => exact .fundTokenAccelerate batch payment adds
   case finishUnitTokens batch payment adds => exact .finishUnitTokens batch payment adds

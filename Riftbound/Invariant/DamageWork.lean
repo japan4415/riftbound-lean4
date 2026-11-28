@@ -345,6 +345,10 @@ private theorem killOrSaveFrom_noAttach (root : ObjId) (fuel : Nat) (s : GameSta
         | some _ => exact ih _ _ _
       exact prior.append (completeDeathSave_noAttach _ _ _ _ _)
 
+/-- A Kill, including every nested death replacement, cannot attach Equipment. -/
+theorem killOrSave_noAttach (s : GameState) (id : ObjId) : NoAttach (killOrSave s id).2 :=
+  killOrSaveFrom_noAttach id _ s id []
+
 private theorem dealObj_noAttach (n : Nat) (s : GameState) (id : ObjId)
     (controller responsible : Option PlayerId) : NoAttach (dealObj n s id controller responsible).2 := by
   unfold dealObj
@@ -363,7 +367,7 @@ private theorem dealObj_noAttach (n : Nat) (s : GameState) (id : ObjId)
             intro gear unit member
             rcases List.mem_cons.mp member with eq | member
             · contradiction
-            · exact killOrSaveFrom_noAttach id _ t id [] gear unit member
+            · exact killOrSave_noAttach t id gear unit member
           split
           · exact prepend
           · split

@@ -5669,10 +5669,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (casting, _) ← (step 100 (before.rich p)
     ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
   let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := priority.pending | none
   let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
-  let (saved, _) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
-  let (banished, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
-  return (saved.obj? unit).any (·.loc.isNone) && saved.countIn q .trash "OGN-077" == 1 &&
+  let rescue : Action := ⟨.player q, .decide true⟩
+  let banish : Action := ⟨.player q, .decide false⟩
+  let (saved, _) ← (step 100 offer rescue).toOption
+  let (banished, _) ← (step 100 offer banish).toOption
+  return last == q && chainPassWorkSupported priority last continuation &&
+    chainAnswerWorkSupported offer rescue && chainAnswerWorkSupported offer banish &&
+    (saved.obj? unit).any (·.loc.isNone) && saved.countIn q .trash "OGN-077" == 1 &&
     saved.handN q == before.handN q + 2 && banished.countIn q .banishment "OGN-136" == 1 &&
     (banished.obj? gear).isSome && banished.handN q == before.handN q
 
@@ -5813,14 +5818,18 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let noted := noted.addTurnFxOn q later (.chosenDeathGear spent)
   let (casting, _) ← (step 100 noted ⟨.player p, .playCard spell (payOf noted spell) []⟩).toOption
   let (offer, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
-  let (ordering, _) ← (step 100 offer ⟨.player q, .pass⟩).toOption
+  let .chainPass last _ :: continuation := offer.pending | none
+  let (ordering, passEvents) ← (step 100 offer ⟨.player last, .pass⟩).toOption
   let .eitherDo _ _ _ (.recordDeathOrder _ firstOption) _ _ :: _ := ordering.pending | none
-  let (reopen, earlierEvents) ← (step 100 ordering
-    ⟨.player q, .decide (firstOption == first)⟩).toOption
+  let order : Action := ⟨.player q, .decide (firstOption == first)⟩
+  let (reopen, earlierEvents) ← (step 100 ordering order).toOption
   let .eitherDo chooser _ _ (.recordDeathReselection _ [prior] victim (.gear source)) _ _ :: _ :=
     reopen.pending | none
-  let (saved, events) ← (step 100 reopen ⟨.player q, .decide (source == replacement)⟩).toOption
-  return chooser == q && prior == first && victim == later && earlierEvents.isEmpty &&
+  let choose : Action := ⟨.player q, .decide (source == replacement)⟩
+  let (saved, events) ← (step 100 reopen choose).toOption
+  return last == q && chainPassWorkSupported offer last continuation && chainAnswerWorkSupported ordering order &&
+    chainAnswerWorkSupported reopen choose && passEvents.isEmpty &&
+    chooser == q && prior == first && victim == later && earlierEvents.isEmpty &&
     (saved.obj? first).any (·.exhausted) &&
     (saved.obj? later).any (fun o => o.exhausted && o.loc.isNone) &&
     (saved.obj? kept).isSome && (saved.obj? replacement).isNone &&
