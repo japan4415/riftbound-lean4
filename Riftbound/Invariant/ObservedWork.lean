@@ -337,6 +337,21 @@ theorem AdvanceTo.resume {s : GameState} {keeps : List Frame → Prop} (wf : s.W
     (kept : keeps s.pending) : AdvanceTo s keeps :=
   ⟨s, 0, [], by intro fuel past; simp, Or.inr ⟨kept, wf, rfl⟩⟩
 
+/-- Resolve triggers before the tracked decision, retaining its board invariant on resumption. -/
+theorem advance_trigger_tail_until_decision {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (tail : TriggerWorkTail rest s.pending) :
+    AdvanceTo s (· = rest) := by
+  obtain ⟨t, used, path, stop⟩ := advance_trigger_tail_prepared s rest wf reads tail
+  exact ⟨t, used, [], path, stop⟩
+
+/-- A tracked waiting continuation also gives a decision boundary before priority preparation. -/
+theorem AdvanceTo.atDecision {s : GameState} {rest : List Frame}
+    (path : AdvanceTo s (· = rest)) (waiting : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨t, used, events, ran, ready | ⟨resumed, _, _⟩⟩ := path
+  · exact ⟨t, used, events, ran, GameState.idle_of_prepared ready⟩
+  · exact ⟨t, used, events, ran, resumed.symm ▸ waiting⟩
+
 /-- Run the next segment if the first segment reached its tracked continuation. -/
 theorem AdvanceTo.then {s : GameState} {first last : List Frame → Prop}
     (before : AdvanceTo s first) (reads : MightRead.database s.cards)

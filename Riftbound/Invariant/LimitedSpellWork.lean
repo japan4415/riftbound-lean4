@@ -342,6 +342,17 @@ theorem advance_limited_finalization {s : GameState} {p : PlayerId} {src card : 
   advance_limited_work keeps inserted s 4 (.finalizeLimitedSpell card) p src env rest wf reads
     (.finalize card) pending ⟨[], by simp, rest, rfl, base⟩
 
+/-- Finalize deferred declarations, retaining the original continuation if no new decision opens. -/
+theorem advance_limited_until_decision {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
+    {rest original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.finalizeLimitedSpell card) .nil) :: rest)
+    (queued : TriggerWorkTail original rest)
+    (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q) :
+    AdvanceTo s (· = original) :=
+  (advance_limited_finalization wf reads pending (TriggerWorkTail original) queued
+    (fun _ tail q ne => tail.insert front q ne)).then reads
+      (fun _ safe known tail => advance_trigger_tail_until_decision safe known tail)
+
 /-- A deferred declaration above a decision stack reaches a decision or ends the game. -/
 theorem advance_limited_to_decision {s : GameState} {p : PlayerId} {src card : ObjId} {env : Env}
     {rest original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
@@ -350,15 +361,8 @@ theorem advance_limited_to_decision {s : GameState} {p : PlayerId} {src card : O
     (front : ∀ f, original.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
     (decision : original.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, AdvancePrefix s t used events ∧
-      t.pending.head?.all (fun f => !f.isWork) = true := by
-  obtain ⟨mid, used, events, path, stop | ⟨tracked, midWF, cards⟩⟩ :=
-    advance_limited_finalization wf reads pending (TriggerWorkTail original) queued
-      (fun _ tail q ne => tail.insert front q ne)
-  · exact ⟨mid, used, events, path, by simpa only [GameState.preparePriority_of_idle stop] using stop⟩
-  · obtain ⟨t, elapsed, run, boundary | ⟨resumed, _, _⟩⟩ :=
-      advance_trigger_tail mid original midWF (cards ▸ reads) tracked
-    · exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append run, boundary⟩
-    · exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append run, resumed.symm ▸ decision⟩
+      t.pending.head?.all (fun f => !f.isWork) = true :=
+  (advance_limited_until_decision wf reads pending queued front).atDecision decision
 
 end Riftbound
 

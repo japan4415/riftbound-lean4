@@ -500,13 +500,11 @@ def chainAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
       | .finishSpell _ :: tail => (chainAnswerContinuation? tail).isSome
       | _ => false)
 
-/-- A checked legal program answer on the Chain reaches the next
-decision through the actual dispatcher. Any later Cleanup consumes the remaining fuel. -/
-theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
-    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+private theorem chainAnswerWorkSupported_sound {s : GameState} {a : Action}
     (supported : chainAnswerWorkSupported s a = true) :
-    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s a = advance extra t events := by
+    ∃ raw events item tail original, applyFrame0 s a = some (raw, events) ∧
+      isRunProgramAnswer s a = true ∧ (raw.pending.takeWhile isRunFrame).all runFrameSupported = true ∧
+      raw.pending.dropWhile isRunFrame = .finishSpell item :: tail ∧ chainAnswerContinuation? tail = some original := by
   unfold chainAnswerWorkSupported at supported
   obtain ⟨effect, body⟩ := Bool.and_eq_true_iff.mp supported
   cases applied : applyFrame0 s a with
@@ -519,18 +517,62 @@ theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
     · rename_i item tail layout
       cases parsed : chainAnswerContinuation? tail with
       | none => simp [parsed] at finishes
-      | some original =>
-        obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
-        obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule effect applied
-        have rawWF := applyFrame_wf0 wf (legal.frame regular) applied
-        have pending : raw.pending = raw.pending.takeWhile isRunFrame ++ .finishSpell item :: tail := by
-          rw [← layout, List.takeWhile_append_dropWhile]
-        apply step_observed_frame_to_decision legal noCost regular applied rawWF (cards.symm ▸ reads)
-        intro next observed safe checked stack
-        exact advance_observed_chain_runs_to_decision next observed safe checked
-          (stack.trans pending) programs tracked (isOrdinaryDecisionTail_front ready)
-          (isOrdinaryDecisionTail_boundary ready)
+      | some original => exact ⟨raw, events, item, tail, original, rfl, effect, programs, layout, parsed⟩
     · contradiction
+
+/-- A checked legal program answer on the Chain reaches the next
+decision through the actual dispatcher. Any later Cleanup consumes the remaining fuel. -/
+theorem step_chainAnswer_checked_to_decision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : chainAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s a = advance extra t events := by
+  obtain ⟨raw, _, item, tail, _, applied, effect, programs, layout, parsed⟩ :=
+    chainAnswerWorkSupported_sound supported
+  obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
+  obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule effect applied
+  have rawWF := applyFrame_wf0 wf (legal.frame regular) applied
+  have pending : raw.pending = raw.pending.takeWhile isRunFrame ++ .finishSpell item :: tail := by
+    rw [← layout, List.takeWhile_append_dropWhile]
+  apply step_observed_frame_to_decision legal noCost regular applied rawWF (cards.symm ▸ reads)
+  intro next observed safe checked stack
+  exact advance_observed_chain_runs_to_decision next observed safe checked
+    (stack.trans pending) programs tracked (isOrdinaryDecisionTail_front ready)
+    (isOrdinaryDecisionTail_boundary ready)
+
+/-- A checked answer finishing a Chain item reaches a prepared decision, including any
+deferred declarations and ordinary priority Cleanup. -/
+theorem step_chainAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : chainAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted item tail p rest, applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile isRunFrame = .finishSpell item :: tail →
+      chainAnswerContinuation? tail = some (.priority p :: rest) → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  obtain ⟨raw, events, item, tail, original, applied, effect, programs, layout, parsed⟩ :=
+    chainAnswerWorkSupported_sound supported
+  obtain ⟨tracked, ready⟩ := chainAnswerContinuation_sound parsed
+  obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule effect applied
+  have pending : raw.pending = raw.pending.takeWhile isRunFrame ++ .finishSpell item :: tail := by
+    rw [← layout, List.takeWhile_append_dropWhile]
+  have front := isOrdinaryDecisionTail_front ready
+  apply step_observed_frame_to_preparedDecision legal noCost regular applied
+    (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+  intro next observed safe checked stack
+  refine advance_observed_run_prefix_then_prepared next observed safe checked
+    (keeps := ResolutionPrefix [.finishSpell item] (TriggerWorkTail original))
+    ⟨_, stack.trans pending, tail, rfl, tracked⟩
+    (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member)) ?_ ?_
+  · intro _ kept q ne
+    exact kept.insert (fun f member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ route added nonempty => route.insert front added nonempty) q ne
+  · intro _ wellFormed known kept
+    obtain ⟨_, finishing, queued⟩ := kept
+    exact (advance_finish_chain_until_decision wellFormed known finishing queued front).atPreparedDecision known
+      (isOrdinaryDecisionTail_boundary ready)
+      (fun p rest priority => quiet raw events item tail p rest applied layout (parsed.trans (congrArg some priority)))
 
 /-- Check effect answers that return straight to a decision after their generated Runs. -/
 def decisionRunAnswerWorkSupported (s : GameState) (a : Action) : Bool :=

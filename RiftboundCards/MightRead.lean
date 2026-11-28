@@ -227,6 +227,18 @@ theorem step_chainAnswer_checked_to_decision {s : Riftbound.GameState} {a : Rift
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_chainAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
 
+/-- A checked answer finishing a Chain item with the registered cards reaches a prepared decision. -/
+theorem step_chainAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.chainAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted item tail p rest, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .finishSpell item :: tail →
+      Riftbound.chainAnswerContinuation? tail = some (.priority p :: rest) → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_chainAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
 /-- Complete a trigger declaration in the registered database, including a replacement
 prompt and the remaining ordinary queue when the underlying stack is already at a decision. -/
 theorem step_putTrigger_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
@@ -596,6 +608,21 @@ theorem step_chainPass_last_checked_to_decision {s : Riftbound.GameState} {p : R
       ongoing pending last checked front decision
   exact ⟨t, used, events, positive, stopped, continues⟩
 
+/-- A checked last Chain Pass with the registered cards includes any priority Cleanup. -/
+theorem step_chainPass_last_checked_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, 0 < used ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
+  Riftbound.step_chainPass_last_checked_to_preparedDecision wf (mightReads_of_registered cards)
+    ongoing pending last checked front decision quiet
+
 /-- For registered cards, a last Chain Pass follows each supported Repeat execution using
 the definition and targets that are available when it starts. -/
 theorem step_chainPass_last_repeated {s : Riftbound.GameState} {p : Riftbound.PlayerId}
@@ -613,6 +640,25 @@ theorem step_chainPass_last_repeated {s : Riftbound.GameState} {p : Riftbound.Pl
         Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
   Riftbound.step_chainPass_last_repeated wf (mightReads_of_registered cards) ongoing pending last
     chain found printed repeated front decision
+
+/-- A final Repeat pass with the registered cards returns the prepared decision, or
+identifies the first unsupported execution. -/
+theorem step_chainPass_last_repeated_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} {item : Riftbound.ObjId}
+    {older : List Riftbound.ObjId} {object : Riftbound.Object} {definition : Riftbound.CardDef}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (chain : s.zone .chain = item :: older) (found : s.obj? item = some object)
+    (printed : s.cardDef? item = some definition) (repeated : object.spellPick.hasExecutionChoices = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, 0 < used ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      ((t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) ∨ Riftbound.RepeatWorkUnsupported t) :=
+  Riftbound.step_chainPass_last_repeated_to_preparedDecision wf (mightReads_of_registered cards) ongoing pending last
+    chain found printed repeated front decision quiet
 
 /-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
 cards, including the Battlefield entry used after a concession. -/

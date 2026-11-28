@@ -577,6 +577,20 @@ theorem advance_waiting_to_preparedDecision {s : GameState} (wf : s.WF)
         (fun q suffix equal => by cases equal; exact quiet p tail stack)
     exact ⟨t, used, events, fun fuel seen => (same (used + fuel) seen).trans (path fuel seen), ready⟩
 
+/-- Complete a finite prefix at a waiting continuation by preparing its ordinary priority. -/
+theorem AdvanceTo.atPreparedDecision {s : GameState} {rest : List Frame}
+    (before : AdvanceTo s (· = rest)) (reads : MightRead.database s.cards)
+    (waiting : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨mid, used, events, path, ready | ⟨resumed, wf, cards⟩⟩ := before
+  · exact ⟨mid, used, events, path, ready⟩
+  · obtain ⟨t, more, emitted, finished, ready⟩ :=
+      advance_waiting_to_preparedDecision wf (cards ▸ reads) (resumed.symm ▸ waiting)
+        (fun p tail priority => quiet p tail (resumed.symm.trans priority))
+    exact ⟨t, used + more, events ++ emitted, path.append finished, ready⟩
+
 end Riftbound
 
 end

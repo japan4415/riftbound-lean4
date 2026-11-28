@@ -150,21 +150,23 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 ### 3p. Chain の最後の Pass と先頭項目の解決
 
-[`RiftboundCards.step_chainPass_last_checked`](../RiftboundCards/MightRead.lean) は、最後の Pass で先頭項目を解決するとき、エンジンがその局面で生成する Run の命令列を検査する。対応する命令列なら、実際の効果と即時 Add、項目を Chain から移す処理、必要な Recycle、Cleanup まで有限回で進む。効果でプレイされ、宣言の確定を待つ Spell がある場合も §3r の処理を経て決定点に進む。
+最後の Pass で先頭項目を解決するときは、エンジンがその局面で生成する Run の命令列を検査する。対応する命令列なら、実際の効果と即時 Add、項目を Chain から移す処理、必要な Recycle、Cleanup を処理する。効果でプレイされ、宣言の確定を待つ Spell も §3r の処理を経て次の入力に進む。[RiftboundCards.MightRead](../RiftboundCards/MightRead.lean)
 
 検査は条件分岐、繰り返し、変数束縛、対象やプレイヤーごとに行う処理、ドロー、資源処理、ダメージ（§3t）などを扱う。プレイヤー判断が途中に入る場合はそこで止まり、通常の誘発は残っている解決フレームの後ろに積む。個別の選択付きで Repeat した Spell の実行は §3q に示す。効果でプレイされた Spell の宣言確定は §3r に示す。未対応の効果命令には引き続き証明が必要である。
+
+`step_chainPass_last_checked_to_preparedDecision` と `step_chainAnswer_checked_to_preparedDecision` は、検査を通る最後の Pass と効果への回答について、実際の `step` が有限の fuel で次の入力か空のスタックまで進み、状態とイベント列を返すことを示す。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがない条件で、入力を返す準備が積む Cleanup も含める。[RiftboundCards.MightRead](../RiftboundCards/MightRead.lean)
 
 ### 3q. 個別の対象やモードを記録した Repeat
 
 [`RiftboundCards.step_chainPass_last_repeated`](../RiftboundCards/MightRead.lean) は、記録された実行を順に処理する。各実行を始める時点でカードの定義とモードを読み直し、元の対象をその時点の盤面で検査する。残せる対象の組が複数あるならプレイヤー判断に進む。ドローと即時 Add、Chain の終了処理は §3o と §3p の証明につながる。
 
-すべての実行が対応する命令列なら、後続 Spell の宣言確定が必要な場合も含め、次の決定点か空のスタックに進む。対応外の命令列に達した場合は、その実行の手前までを証明し、対象とモード、そこまでの状態とイベントを保持する。対象を選ぶ効果、捨て札、複数の選択肢を出す効果も、実行がプレイヤー判断に達するところまで検査できる。
+`step_chainPass_last_repeated_to_preparedDecision` は、登録カードで Repeat の各実行が途中の入力まで処理できる場合、§3p と同じ条件で `step` の成功を示す。後続 Spell の宣言確定と優先権を返す準備も含む。対応外の命令列に達した場合は、その実行の手前までを証明し、対象とモード、そこまでの状態とイベントを保持する。対象を選ぶ効果、捨て札、複数の選択肢を出す効果も、実行がプレイヤー判断に達するところまで検査できる。[RiftboundCards.MightRead](../RiftboundCards/MightRead.lean)
 
 ### 3r. 効果でプレイされた保留 Spell の宣言確定
 
 [`advance_limited_finalization`](../Riftbound/Invariant/LimitedSpellWork.lean) は、確定候補を生成し、対象や支払いに選択があればプレイヤー判断まで進む。合法な候補が一つなら自動処理を続け、宣言を確定して Chain の優先権へ移る場合、死亡置換の判断を求める場合、取り消して元のゾーンへ戻す場合を扱う。複数の保留 Spell が続く場合は、Chain の項目数と宣言確定の段階を順に比較する。取り消しに成功して次の Spell に移るたび、Chain の項目数が減る。即時 Add でゾーンの内容は変わらないため、観測を挟んでもこの減少は保たれる。
 
-[`RiftboundCards.step_chainPass_last_checked_to_decision`](../RiftboundCards/MightRead.lean) は、対応する命令列であれば、最後の Pass からこの宣言確定を含めて次の選択に続く状態か試合終了まで進むことを示す。通常の優先権の前に残る Cleanup は、そこから残りの fuel で処理する。個別の対象を記録した Repeat の証明も、後続の保留 Spell を同じ処理へ渡す。
+最後の Pass と Repeat の証明は、後続の保留 Spell をこの処理へ渡す。宣言確定から元の入力へ戻る場合も、必要に応じて §3p の Cleanup を経て状態とイベント列を返す。
 
 ### 3s. Showdown の最後の Pass とダメージ割り当ての確定
 
