@@ -217,13 +217,6 @@ private theorem combat_result_head (bf : ObjId) (rest : List Frame) :
   obtain rfl := Option.some.inj h
   exact ⟨rfl, by intro q e; cases e⟩
 
-private theorem advance_to_boundary {s : GameState} {keeps : List Frame → Prop}
-    (work : AdvanceTo s keeps) (boundary : ∀ stack, keeps stack → stack.head?.all (fun f => !f.isWork) = true) :
-    ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
-  obtain ⟨t, used, events, path, stop | ⟨tracked, _, _⟩⟩ := work
-  · exact ⟨t, used, events, path, GameState.idle_of_prepared stop⟩
-  · exact ⟨t, used, events, path, boundary t.pending tracked⟩
-
 private theorem advance_combat_damage_to_cleanup {s : GameState} {bf : ObjId} {att : PlayerId}
     {rest : List Frame} {keeps : List Frame → Prop} (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : ResolutionPrefix [.cleanup, .combatResolve bf att]
@@ -387,15 +380,30 @@ private theorem advance_combat_cleanups {s : GameState} {rest : List Frame} (cle
       done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
     exact before.then reads (fun _ safe checked keeps => ih safe checked keeps)
 
-private theorem advance_combat_to_decision {s : GameState} {rest : List Frame} {cleanups : Nat}
+private theorem advance_combat_until_decision {s : GameState} {rest : List Frame} {cleanups : Nat}
     (reads : MightRead.database s.cards) (run : AdvanceTo s (CombatContinuation cleanups rest))
     (decision : rest.head?.all (fun f => !f.isWork) = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false) :
-    ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
-  apply advance_to_boundary
-    (run.then reads fun _ wf checked tail => advance_combat_cleanups cleanups wf checked tail decision front)
-  intro _ atRest
-  exact atRest.symm ▸ decision
+    AdvanceTo s (· = rest) :=
+  run.then reads (fun _ wf checked tail => advance_combat_cleanups cleanups wf checked tail decision front)
+
+private theorem step_combat_prepared {s : GameState} {a : Action} {rest : List Frame}
+    (legal : Legal s a)
+    (declared : ∃ initial before, applyDeclaredAction s a = some (initial, before) ∧
+      MightRead.database initial.cards ∧ AdvanceTo initial (· = rest))
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  obtain ⟨initial, before, applied, reads, work⟩ := declared
+  obtain ⟨t, used, events, path, ready⟩ := work.atPreparedDecision reads decision quiet
+  refine ⟨t, used, before ++ events, ready, ?_, ?_⟩
+  · intro extra
+    simp only [step, ite_eq_left legal, applied]
+    exact path extra before
+  · simp only [step, ite_eq_left legal, applied]
+    exact path.finish ready before
 
 private theorem applyDeclaredAction_showdownPass {s : GameState} {bf : ObjId} {p : PlayerId}
     {passes : Nat} {rest : List Frame} (pending : s.pending = .showdown bf p passes :: rest)
@@ -410,17 +418,14 @@ private theorem applyDeclaredAction_showdownPass {s : GameState} {bf : ObjId} {p
   unfold applyAction applyFrame
   simp only [applyFrame0, pending, Nat.not_lt.mpr last, ite_false, Option.map_some, extraEvents, List.append_nil]
 
-/-- The last Showdown Pass yields to damage replacement or assignment, or completes the
-automatic control/scoring route when there is no player decision. -/
-theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : PlayerId}
+private theorem advance_showdownPass_last_until_decision {s : GameState} {bf : ObjId} {p : PlayerId}
     {passes cleanups : Nat} {rest : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
     (last : s.participatingCount ≤ passes + 1)
-    (legal : Legal s ⟨.player p, .pass⟩)
     (boundary : rest.head?.all (fun f => !f.isWork) = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false) :
-    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events := by
+    ∃ initial before, applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, before) ∧
+      MightRead.database initial.cards ∧ AdvanceTo initial (· = rest) := by
   let action : Action := ⟨.player p, .pass⟩
   let suffix := List.replicate cleanups Frame.cleanup ++ rest
   let result := showdownEnd s bf suffix
@@ -478,11 +483,38 @@ theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : Pla
           (fun _ track q ne => track.insert generated insertTail q ne)
       exact entered.then observedReads (fun _ tWF tReads track =>
         advance_draw_frames 1 (endShowdown_frames s bf true) tWF tReads track insertTail)
-  obtain ⟨t, used, events, path, stop⟩ := advance_combat_to_decision observedReads work boundary front
-  refine ⟨t, used, result.2 ++ events, stop, fun extra => ?_⟩
-  change step (used + extra) s action = _
-  simp only [step, ite_eq_left (show Legal s action from legal), declaration]
-  exact path extra result.2
+  exact ⟨_, _, declaration, observedReads, advance_combat_until_decision observedReads work boundary front⟩
+
+/-- The last Showdown Pass yields to damage replacement or assignment, or completes the
+automatic control/scoring route when there is no player decision. -/
+theorem step_showdownPass_last_to_decision {s : GameState} {bf : ObjId} {p : PlayerId}
+    {passes cleanups : Nat} {rest : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Legal s ⟨.player p, .pass⟩)
+    (boundary : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events := by
+  obtain ⟨_, before, applied, _, work⟩ := advance_showdownPass_last_until_decision wf reads pending last boundary front
+  obtain ⟨t, used, events, path, idle⟩ := work.atDecision boundary
+  refine ⟨t, used, before ++ events, idle, fun extra => ?_⟩
+  simp only [step, ite_eq_left legal, applied]
+  exact path extra before
+
+/-- Complete the decision, including any remaining Cleanup before ordinary priority. -/
+theorem step_showdownPass_last_to_preparedDecision {s : GameState} {bf : ObjId} {p : PlayerId}
+    {passes cleanups : Nat} {rest : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Legal s ⟨.player p, .pass⟩)
+    (boundary : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events) ∧
+      step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
+  step_combat_prepared legal (advance_showdownPass_last_until_decision wf reads pending last boundary front) boundary quiet
 
 private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat × Nat) :
     (Effect.endCombatDamage excess).ObservedFinite :=
@@ -522,18 +554,15 @@ private theorem applyDeclaredAction_assignDone {s : GameState} {bf : ObjId} {att
   simp only [applyDeclaredAction, GameState.actionDeathCostChoice, pending, applyAction, applyFrame,
     applyFrame0, Option.map_some, extraEvents, List.append_nil]
 
-/-- After an assignment is confirmed, the real action observer and work dispatcher reach
-the other side's assignment, a replacement decision, another decision, or game end. -/
-theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : PlayerId}
+private theorem advance_assignDone_until_decision {s : GameState} {bf : ObjId} {att side : PlayerId}
     {acc : List ObjId} {done : List (ObjId × Nat)} {cleanups : Nat} {rest : List Frame}
     (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending =
       .assign bf att side acc done :: combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
-    (legal : Legal s ⟨.player side, .assignDone⟩)
     (boundary : rest.head?.all (fun f => !f.isWork) = true)
     (front : ∀ f, rest.head? = some f → f.isResolution = false) :
-    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
-      ∀ extra, step (used + extra) s ⟨.player side, .assignDone⟩ = advance extra t events := by
+    ∃ initial before, applyDeclaredAction s ⟨.player side, .assignDone⟩ = some (initial, before) ∧
+      MightRead.database initial.cards ∧ AdvanceTo initial (· = rest) := by
   let action : Action := ⟨.player side, .assignDone⟩
   let suffix := List.replicate cleanups Frame.cleanup ++ rest
   let tail := combatSteps bf ++ suffix
@@ -621,11 +650,40 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
         pendingEq.trans (congrArg GameState.pending atCleanup)
       have base : waiting next.pending := ⟨tail, stack, Or.inl rfl⟩
       exact (advance_action_observation next notices nextWF nextReads base insertWaiting).then observedReads proceed
-  obtain ⟨t, used, events, path, stop⟩ := advance_combat_to_decision observedReads work boundary front
-  refine ⟨t, used, result.2 ++ events, stop, fun extra => ?_⟩
-  change step (used + extra) s action = _
-  simp only [step, ite_eq_left (show Legal s action from legal), declaration]
-  exact path extra result.2
+  exact ⟨_, _, declaration, observedReads, advance_combat_until_decision observedReads work boundary front⟩
+
+/-- After an assignment is confirmed, the real action observer and work dispatcher reach
+the other side's assignment, a replacement decision, another decision, or game end. -/
+theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : PlayerId}
+    {acc : List ObjId} {done : List (ObjId × Nat)} {cleanups : Nat} {rest : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending =
+      .assign bf att side acc done :: combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Legal s ⟨.player side, .assignDone⟩)
+    (boundary : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, step (used + extra) s ⟨.player side, .assignDone⟩ = advance extra t events := by
+  obtain ⟨_, before, applied, _, work⟩ := advance_assignDone_until_decision wf reads pending boundary front
+  obtain ⟨t, used, events, path, idle⟩ := work.atDecision boundary
+  refine ⟨t, used, before ++ events, idle, fun extra => ?_⟩
+  simp only [step, ite_eq_left legal, applied]
+  exact path extra before
+
+/-- Complete the decision, including any remaining Cleanup before ordinary priority. -/
+theorem step_assignDone_to_preparedDecision {s : GameState} {bf : ObjId} {att side : PlayerId}
+    {acc : List ObjId} {done : List (ObjId × Nat)} {cleanups : Nat} {rest : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending =
+      .assign bf att side acc done :: combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Legal s ⟨.player side, .assignDone⟩)
+    (boundary : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s ⟨.player side, .assignDone⟩ = advance extra t events) ∧
+      step used s ⟨.player side, .assignDone⟩ = .ok (t, events) :=
+  step_combat_prepared legal (advance_assignDone_until_decision wf reads pending boundary front) boundary quiet
 
 end Riftbound
 

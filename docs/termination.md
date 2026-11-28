@@ -170,9 +170,9 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 ### 3s. Showdown の最後の Pass とダメージ割り当ての確定
 
-`step_showdownPass_last_to_decision` と `step_assignDone_to_decision` は、実際の入力処理とイベント観測を経て、次の選択に続く状態か空のスタックに到達することを示す。前者は Combat のダメージ置換順や割り当ての選択、割り当て不要の Combat、Combat がない場合の支配確定を扱う。後者はもう一方の割り当て、致死ダメージで生じる死亡置換の選択、ダメージ適用からリコール・戦闘結果・支配確定・Cleanup までを扱う。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
+`step_showdownPass_last_to_preparedDecision` と `step_assignDone_to_preparedDecision` は、実際の `step` が有限の fuel で次の入力か空のスタックまで進み、状態とイベント列を返すことを示す。前者は Combat のダメージ置換順や割り当ての選択、割り当て不要の Combat、Combat がない場合の支配確定を扱う。後者はもう一方の割り当て、致死ダメージで生じる死亡置換の選択、ダメージ適用からリコール・戦闘結果・支配確定・Cleanup までを扱う。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
 
-継続スタックには、通常の移動で残る Cleanup を含められる。連続する Cleanup を消化した後、先頭が通常の優先権などの入力フレームか空になる場合を扱う。通常の誘発は残る解決フレームの後ろに積み、即時 Add は観測時に実行する。ダメージ置換などの入力が出た場合はそこで止まる。登録カード用の定理は4人戦の投了後も使え、fuel を増やしても状態とイベント列は一致する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+継続スタックには、通常の移動で残る Cleanup を含められる。通常の誘発は残る解決フレームの後ろに積み、即時 Add は観測時に実行する。ダメージ置換などの入力が出た場合はそこで止まる。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがない条件で、優先権を返す準備が積む Cleanup も扱う。登録カード用の定理は4人戦の投了後も使え、fuel を増やしても状態とイベント列は一致する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
 ### 3t. Spell と能力によるダメージ
 

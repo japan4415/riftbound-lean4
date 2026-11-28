@@ -201,6 +201,22 @@ theorem step_showdownPass_last_to_decision {s : Riftbound.GameState} {bf : Riftb
   exact Riftbound.step_showdownPass_last_to_decision wf (mightReads_of_registered cards)
     pending last legal decision front
 
+/-- A final Showdown Pass with the registered cards completes preparation for the next decision. -/
+theorem step_showdownPass_last_to_preparedDecision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {p : Riftbound.PlayerId} {passes cleanups : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
+  Riftbound.step_showdownPass_last_to_preparedDecision wf (mightReads_of_registered cards)
+    pending last legal decision front quiet
+
 /-- Assignment confirmation with the registered cards advances to a decision or game end,
 including when lethal damage needs a replacement choice. -/
 theorem step_assignDone_to_decision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
@@ -217,6 +233,24 @@ theorem step_assignDone_to_decision {s : Riftbound.GameState} {bf : Riftbound.Ob
       ∀ extra, Riftbound.step (used + extra) s ⟨.player side, .assignDone⟩ = Riftbound.advance extra t events := by
   exact Riftbound.step_assignDone_to_decision wf (mightReads_of_registered cards)
     pending legal decision front
+
+/-- Confirming an assignment with the registered cards returns a prepared decision. -/
+theorem step_assignDone_to_preparedDecision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {att side : Riftbound.PlayerId} {acc : List Riftbound.ObjId}
+    {done : List (Riftbound.ObjId × Nat)} {cleanups : Nat}
+    {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .assign bf att side acc done ::
+      Riftbound.combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Riftbound.Legal s ⟨.player side, .assignDone⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player side, .assignDone⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player side, .assignDone⟩ = .ok (t, events) :=
+  Riftbound.step_assignDone_to_preparedDecision wf (mightReads_of_registered cards)
+    pending legal decision front quiet
 
 /-- With the registered cards, a checked answer to a Chain effect advances to the next
 decision's continuation or game end, preserving the state and events along that prefix. -/
