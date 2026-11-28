@@ -306,6 +306,12 @@ Spell を解決する実際の命令列を検査し、Spell 本体、Trash へ�
 
 効果の先頭を実行して生成される Run を調べ、すべてが停止検査を通る場合は、イベント処理と即時 Add を経て順に実行できる。Equipment を装着したときに追加される置換効果と元の効果の残りもこの検査で扱う。Shady Spectacles の Equip では、最後の Pass で装着してからコピー元を選ぶ。Combat Chef で Equip コストを払う経路でも、支払いと装着の後にコピー元を選べる。どちらの経路でも装着イベントを確認し、コピーや取り外しで Unit の現物を保つ。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [VendettaA.lean](../RiftboundTest/VendettaA.lean)
 
+### 3as. Unit トークンの登場先、置換、Accelerate
+
+Unit トークンの登場先や置換、Accelerate を決める処理を停止検査に含める。自動で進む置換処理は、残りの置換の数、処理段階、未処理のトークン数の順に測度が減る。候補が複数あれば入力を待つ。Accelerate の支払いに必要な Add を選ぶ間も、支払わずに登場する選択を残し、確定時に支払いを再確認する。トークン登場後のコピーを実行する命令と、元の効果への復帰も検査できる。[UnitTokenWork.lean](../Riftbound/Invariant/UnitTokenWork.lean) [RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
+
+Heimerdinger による一部置換、Dragonsoul Sage で Energy を確保してからの Accelerate、Up from the Deep の2体の登場先、Mirror Image のトークン登場後のコピーをシナリオで確認した。[RadianceAU.lean](../RiftboundTest/RadianceAU.lean) [VendettaA.lean](../RiftboundTest/VendettaA.lean) [UnleashedA.lean](../RiftboundTest/UnleashedA.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

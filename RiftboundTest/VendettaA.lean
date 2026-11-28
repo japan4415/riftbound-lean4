@@ -3276,12 +3276,15 @@ meta def chooseEffectPlay (accept : Effect → Bool) :
   let tentacle ← s.tokenCard "Tentacle"
   let (waiting, _) ← (step 100 s ⟨.player p, .playCard spell ⟨3, []⟩ []⟩).toOption
   let waiting := settleChain {} 2 waiting
-  let (placed, _) ← (step 100 waiting ⟨.player p, .decide false⟩).toOption
-  let (done, _) ← (step 100 placed ⟨.player p, .decide true⟩).toOption
+  let battlefield : Action := ⟨.player p, .decide false⟩
+  let atBase : Action := ⟨.player p, .decide true⟩
+  let (placed, _) ← (step 100 waiting battlefield).toOption
+  let (done, _) ← (step 100 placed atBase).toOption
   let tokenAt (t : GameState) (bf : ObjId) :=
     (t.zone .battlefieldZone).filter (fun u => (t.cardDef? u).any (·.id == tentacle.id) &&
       (t.obj? u).any (fun o => o.loc == some bf && o.exhausted))
-  return s.unitTokenDestinations p tentacle == [none, some field] &&
+  return chainAnswerWorkSupported waiting battlefield && chainAnswerWorkSupported placed atBase &&
+    s.unitTokenDestinations p tentacle == [none, some field] &&
     tentacle.tags == [⟨"Bilgewater"⟩] &&
     (tokenAt placed field).length == 1 && placed.countNamed p .base "Tentacle" == 0 &&
     tokenAt done field == tokenAt placed field && done.countNamed p .base "Tentacle" == 1 &&

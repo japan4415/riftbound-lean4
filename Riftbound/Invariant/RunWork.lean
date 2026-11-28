@@ -4,6 +4,7 @@ public import Riftbound.Invariant.DamageWork
 public import Riftbound.Invariant.RecyclePaymentWork
 public import Riftbound.Invariant.DisclosureWork
 public import Riftbound.Invariant.ObservedCleanupWork
+public import Riftbound.Invariant.UnitTokenWork
 
 /-!
 # Checking Run programs for termination (I12)
@@ -66,7 +67,10 @@ def Effect.observedWorkSupported : Effect → Bool
   | .prim (.score ..) | .prim (.win _)
   | .prim (.ready _) | .prim (.exhaust _) | .prim (.buff _) | .prim (.stun _)
   | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _) | .prim (.bin _) | .prim (.castInline _)
-  | .prim (.copyAttachedFrom _) | .prim (.detach _)
+  | .prim (.copyAttachedFrom _) | .prim (.detach _) | .prim (.becomeCopy ..)
+  | .prim (.create ..) | .prim (.createAt ..) | .prim (.createAtPrev ..) | .prim (.cloneToken _)
+  | .prim (.playUnitToken _) | .prim (.playReadyUnitToken _) | .prim (.playUnitTokenAt ..)
+  | .prim (.playReadyUnitTokenAt ..)
   | .prim (.turnEffect _) | .prim (.hideAt ..) | .prim (.empower _) | .prim (.disempower _) | .prim (.spendBuff _)
   | .prim (.allowFacedownInspection _)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
@@ -81,6 +85,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .recordNestedDeathDecision .. | .orderRuneRecycle .. | .recordRuneRecycle ..
   | .finishTrashRecycle .. | .recycleTrashTargets .. | .recycleFromTrash ..
   | .chooseTrashRecycle .. | .recordTrashRecycle .. | .completeActivation .. => true
+  | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. | .playUnitTokensThen .. => true
   | .planPermanentPlay .. | .finishReducedPermanent .. | .finishFundedPermanent .. | .fundPermanentFromEffect ..
   | .planBanishReplay .. | .prim (.playAtBase _) => true
   | .seq program => program.observedWorkSupported
@@ -138,6 +143,15 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case castInline selector => exact Effect.ObservedFinite.castInline selector
     case copyAttachedFrom selector => exact Effect.ObservedFinite.copyAttachedFrom selector
     case detach selector => exact Effect.ObservedFinite.detach selector
+    case becomeCopy targets source => exact Effect.ObservedFinite.becomeCopy targets source
+    case create name count place ready => exact Effect.ObservedFinite.create name count place ready
+    case createAt name count dest ready => exact Effect.ObservedFinite.createAt name count dest ready
+    case createAtPrev name count ready => exact Effect.ObservedFinite.createAtPrev name count ready
+    case cloneToken target => exact Effect.ObservedFinite.cloneToken target
+    case playUnitToken name => exact Effect.ObservedFinite.playUnitToken name false
+    case playReadyUnitToken name => exact Effect.ObservedFinite.playUnitToken name true
+    case playUnitTokenAt name dest => exact Effect.ObservedFinite.playUnitTokenAt name dest false
+    case playReadyUnitTokenAt name dest => exact Effect.ObservedFinite.playUnitTokenAt name dest true
     case playAtBase selector => exact Effect.ObservedFinite.playAtBase selector
     case turnEffect effect => exact (Effect.SingleRun.turnEffect effect).observed
     case hideAt cards battlefields => exact (Effect.SingleRun.hideAt cards battlefields).observed
@@ -216,6 +230,10 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case recordTrashRecycle side count upTo picked => exact .recordTrashRecycle side count upTo picked
   case completeActivation source index baseEnergy targets filters =>
     exact .completeActivation source index baseEnergy targets filters
+  case planUnitTokenEntries batch plan => exact .planUnitTokenEntries batch plan
+  case fundTokenAccelerate batch payment adds => exact .fundTokenAccelerate batch payment adds
+  case finishUnitTokens batch payment adds => exact .finishUnitTokens batch payment adds
+  case playUnitTokensThen name count place ready index target => exact .playUnitTokensThen name count place ready index target
   case planPermanentPlay card terms => exact .planPermanentPlay card terms
   case finishReducedPermanent card terms plan => exact .finishReducedPermanent card terms plan
   case finishFundedPermanent card terms plan adds => exact .finishFundedPermanent card terms plan adds

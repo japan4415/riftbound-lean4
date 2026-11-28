@@ -1287,15 +1287,17 @@ private meta def paidAttackTarget (code : String) (mustBeEnemy : Bool) : Bool :=
   let (castMirror, _) ← (step 100 funded ⟨.player p, .playCard mirror ⟨3, [.mind, .mind]⟩ [model]⟩).toOption
   let .chainPass first _ :: _ := castMirror.pending | none
   let (afterFirst, _) ← (step 100 castMirror ⟨.player first, .pass⟩).toOption
-  let .chainPass second _ :: _ := afterFirst.pending | none
+  let .chainPass second _ :: rest := afterFirst.pending | none
   let (window, events) ← (step 100 afterFirst ⟨.player second, .pass⟩).toOption
   let .chainPass current _ :: _ := window.pending | none
   let [ability] := window.zone .chain | none
   let token ← window.firstOf p .base "UNL-T06"
   let stopped ← cast window p retreat (payOf window retreat) [token]
   let (opponentWindow, _) ← (step 100 window ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: copyTail := opponentWindow.pending | none
   let answered ← cast opponentWindow q gust (payOf opponentWindow gust) [other]
-  return current == p && (window.obj? ability).any (fun o =>
+  return chainPassWorkSupported afterFirst second rest && chainPassWorkSupported opponentWindow last copyTail &&
+    current == p && (window.obj? ability).any (fun o =>
       o.eventObjects == [token] && o.triggerSubject == some model) &&
     events.any (fun | .unitTokensFor _ _ _ _ _ [id] none => id == token | _ => false) &&
     window.tired token == some false && !window.hasKw token .temporary &&

@@ -27,12 +27,16 @@ private meta def playedTokens (s : GameState) (p : PlayerId) : List ObjId :=
   let pending := [.run p heimer env (.cons body .nil), .priority p]
   let before := { s with pending }
   let (asked, _) ← (advance 100 before []).toOption
-  let (second, _) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
-  let (formed, events) ← (step 100 second ⟨.player p, .decide true⟩).toOption
+  let replace : Action := ⟨.player p, .decide false⟩
+  let keep : Action := ⟨.player p, .decide true⟩
+  let (second, _) ← (step 100 asked replace).toOption
+  let (formed, events) ← (step 100 second keep).toOption
   let home := before.modObj heimer (fun o => { o with loc := none })
   let (unmodified, _) ← (advance 100 home []).toOption
   let tokens := playedTokens formed p
-  return (playedTokens asked p).isEmpty && (playedTokens second p).isEmpty && tokens.length == 2 &&
+  return body.observedWorkSupported && decisionRunAnswerWorkSupported asked replace &&
+    decisionRunAnswerWorkSupported second keep &&
+    (playedTokens asked p).isEmpty && (playedTokens second p).isEmpty && tokens.length == 2 &&
     (events.filter (fun | .tokenPlayed .. => true | _ => false)).length == 2 &&
     tokens.all (fun id => (formed.obj? id).any (fun o => o.loc == some field && !o.exhausted)) &&
     tokens.any (fun id => (formed.cardDef? id).any (·.name == "Mech")) &&
@@ -121,14 +125,46 @@ private meta def playedTokens (s : GameState) (p : PlayerId) : List ObjId :=
   let pending := [.run p hideout {} (.cons body .nil), .priority p]
   let before := ({ triggered with pending } : GameState).fund p 1 (fury := 1)
   let (offered, _) ← (advance 100 before []).toOption
-  let (paid, _) ← (step 100 offered ⟨.player p, .decide false⟩).toOption
-  let (skipped, _) ← (step 100 offered ⟨.player p, .decide true⟩).toOption
+  let buy : Action := ⟨.player p, .decide false⟩
+  let decline : Action := ⟨.player p, .decide true⟩
+  let (paid, _) ← (step 100 offered buy).toOption
+  let (skipped, _) ← (step 100 offered decline).toOption
   let tokens := playedTokens paid p
-  return (playedTokens offered p).isEmpty && tokens.length == 2 &&
+  return body.observedWorkSupported && decisionRunAnswerWorkSupported offered buy &&
+    decisionRunAnswerWorkSupported offered decline &&
+    (playedTokens offered p).isEmpty && tokens.length == 2 &&
     (tokens.filter (fun id => paid.tired id == some false)).length == 1 &&
     (paid.poolOf p).energy == 0 && (paid.poolOf p).fury == 0 &&
     (playedTokens skipped p).all (fun id => skipped.tired id == some true) &&
     (skipped.poolOf p).energy == 1 && (skipped.poolOf p).fury == 1 &&
     !(paid.fxOf p).contains .nextUnitAccelerate && !(skipped.fxOf p).contains .nextUnitAccelerate
+
+-- Accelerate can project a Sage Add and then either commit it or enter without paying.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, hideout) ← putBf s p "RAD-162"
+  let triggered ← fire (s.control p hideout) [.scored p hideout true]
+  let (before, sage) ← put (triggered.fund p 0 (fury := 1)) p "UNL-093" .base
+  let body := Effect.prim (.create "Recruit" (.const 2) .atBase false)
+  let (offer, _) ← (advance 100 { before with pending := [.run p hideout {} (.cons body .nil), .priority p] }
+    []).toOption
+  let accelerate : Action := ⟨.player p, .decide false⟩
+  let select : Action := ⟨.player p, .decide true⟩
+  let (funding, _) ← (step 100 offer accelerate).toOption
+  let (confirmation, _) ← (step 100 funding select).toOption
+  let (done, events) ← (step 100 confirmation select).toOption
+  let (declined, _) ← (step 100 confirmation accelerate).toOption
+  let ready := (playedTokens done p).filter (fun id => done.tired id == some false)
+  let add ← events.findIdx? (fun
+    | .activated actor source 0 _ => actor == p && source == sage
+    | _ => false)
+  let entry ← events.findIdx? (fun | .tokenPlayed .. => true | _ => false)
+  return decisionRunAnswerWorkSupported offer accelerate && decisionRunAnswerWorkSupported funding select &&
+    decisionRunAnswerWorkSupported confirmation select && decisionRunAnswerWorkSupported confirmation accelerate &&
+    (playedTokens confirmation p).isEmpty && confirmation.tired sage == some false &&
+    ready.length == 1 && (playedTokens done p).length == 2 && done.tired sage == some true && add < entry &&
+    (done.poolOf p).energy == 0 && (done.poolOf p).fury == 0 &&
+    declined.tired sage == some false && (declined.poolOf p).fury == 1 &&
+    (playedTokens declined p).all (fun id => declined.tired id == some true)
 
 end RiftboundTest

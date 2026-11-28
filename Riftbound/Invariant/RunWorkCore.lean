@@ -119,7 +119,8 @@ theorem advance_run_program {s : GameState} {p : PlayerId} {src : ObjId} {env : 
   have rule : microStep0 t = some (raw, []) := by simp only [microStep0, stack, raw]
   exact .rule stack rfl rule (microStep_wf0 tWF rule) rfl tReads tracked inserted
 
-private theorem Effect.ObservedFinite.ofPrograms {effect : Effect}
+/-- A scheduled, finite prefix of the same Run executes before its original suffix. -/
+theorem Effect.ObservedFinite.ofPrograms {effect : Effect}
     (programs : ∀ s p src env more, ∃ program : EffectList, program.ObservedFinite ∧
       (runEffect s p src env effect more effectAddPolicy).2.1 = [.run p src env (program.append more)]) :
     effect.ObservedFinite := by
@@ -775,7 +776,8 @@ private theorem Effect.pickSel_one {effect : Effect} {selector : Selector}
         exact ⟨_, _, _, rfl⟩
       · contradiction
 
-private theorem Effect.ObservedFinite.withResolutionPick (effect : Effect)
+/-- An instruction can resolve its direct or bound effect, skip, or ask about a resolution pick. -/
+theorem Effect.ObservedFinite.withResolutionPick (effect : Effect)
     (direct : effect.pickSel? = none → effect.ObservedFinite) (bound : effect.withPick.ObservedFinite)
     (automatic : ∀ side place filters body, effect ≠ .chooseObject side place filters body) :
     effect.ObservedFinite := by
@@ -898,6 +900,30 @@ theorem Effect.ObservedFinite.copyAttachedFrom (sel : Selector) :
     (Effect.prim (.copyAttachedFrom sel)).ObservedFinite :=
   .selectedPrimitive (.copyAttachedFrom sel) (Effect.SingleRun.copyAttachedFrom sel)
     (Effect.SingleRun.copyAttachedFrom (.var pickVar) rfl)
+
+/-- Applying a linked copy changes the selected tokens without another attachment replacement. -/
+theorem Effect.ObservedFinite.becomeCopy (targets source : Selector) :
+    (Effect.prim (.becomeCopy targets source)).ObservedFinite := by
+  apply Effect.SingleRun.observed
+  refine .directPrim (.becomeCopy targets source) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim] at applied
+    split at applied
+    · rename_i model _ _
+      unfold onSelected at applied
+      cases selected : targets.eval s p src env with
+      | none => simp [selected] at applied
+      | some objects =>
+        simp only [selected, Option.map_some, Option.some.injEq] at applied
+        rw [← (Prod.mk.inj applied).2]
+        apply applyEach_noAttach (becomeCopyOf model) (fun board id => ?_) s objects
+        unfold becomeCopyOf
+        split <;> exact .nil
+    · contradiction
 
 /-- Binning selected objects also records completion of any resolving Spell. -/
 theorem Effect.ObservedFinite.bin (sel : Selector) : (Effect.prim (.bin sel)).ObservedFinite :=
