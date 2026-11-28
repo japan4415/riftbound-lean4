@@ -260,6 +260,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 `step_declareDraw_terminal` は、合法な引き分け宣言が任意の fuel で引き分けを返し、残る入力と作業を空にすることを示す。スタックを空にした結果として Might の計算が変わる場合でも、終局後に誘発を積まない。[Draw.lean](../Riftbound/Invariant/Draw.lean)
 
+### 3ah. 制限時間とサドンデスの終局を記録する
+
+通常のターン境界で制限時間による勝敗が決まると、`advanceWithDisclosures_beginTurn_clock` は1ステップで終局し、それまでのイベントとカード開示をそのまま返す。サドンデスで合法な Burn Out の得点先を選ぶと、`stepWithDisclosures_burnOutTarget_suddenDeath` は任意の fuel で得点した側の勝利を返し、残っていたドローを取り消す。記録には1点の加算だけが加わり、カードの開示はない。[BeginTurnWork.lean](../Riftbound/Invariant/BeginTurnWork.lean) [Clock.lean](../Riftbound/Invariant/Clock.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

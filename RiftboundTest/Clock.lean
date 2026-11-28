@@ -97,11 +97,25 @@ meta def passToEnd : Nat → GameState → GameState
 #guard (do
   let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 6
   let (overtime, _) ← (step 100 s ⟨.player (s.active.getD ⟨0⟩), .pass⟩).toOption
-  let waiting := { overtime with pending := [.chooseBurnOut ⟨1⟩] }
-  let (scored, es) ← (step 100 waiting ⟨.player ⟨1⟩, .burnOutTarget ⟨0⟩⟩).toOption
+  let p ← overtime.active
+  let recipient := otherPlayer p
+  let main := Zone.player p .mainDeck
+  let trash := Zone.player p .trash
+  let emptyDeck ← (overtime.zone main).foldlM
+    (fun board card => (moveObj board card trash).map Prod.fst) overtime
+  let drawing := { emptyDeck with pending := [.draw p 1, .priority p] }
+  let (shuffling, _) ← (advance 10 drawing []).toOption
+  let order := (shuffling.zone trash).reverse
+  let (waiting, _) ← (step 10 shuffling ⟨.chance, .arrange order⟩).toOption
+  let ((scored, es), seen) ←
+    (stepWithDisclosures 0 waiting ⟨.player p, .burnOutTarget recipient⟩).toOption
   return s.clock == some (RoundClock.elimination 6 true) && overtime.turn == 7 && overtime.result.isNone &&
-    scored.result == some (GameResult.won [⟨0⟩]) && scored.pending.isEmpty &&
-    es.contains (Event.pointsGained ⟨0⟩ 1)).getD false
+    shuffling.pending.head? == some (Frame.chanceBurnOut p) &&
+    waiting.pending == [Frame.chooseBurnOut p, Frame.draw p 1, Frame.priority p] &&
+    scored.result == some (GameResult.won [recipient]) && scored.pending.isEmpty &&
+    scored.pointsOf recipient == waiting.pointsOf recipient + 1 &&
+    scored.zone main == waiting.zone main && scored.zone (.player p .hand) == waiting.zone (.player p .hand) &&
+    es == [Event.pointsGained recipient 1] && seen.isEmpty).getD false
 
 -- Sudden death respects the Final Point restriction on Conquer, including the replacement draw.
 #guard (do

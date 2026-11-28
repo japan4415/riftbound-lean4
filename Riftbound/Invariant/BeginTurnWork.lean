@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.Step
 public import Riftbound.Invariant.TriggerWork
+public import Riftbound.Engine.Observe
 
 /-!
 # Automatic work at the turn boundary
@@ -139,13 +140,12 @@ theorem advance_beginTurn {s : GameState} {rest : List Frame} (wf : s.WF)
   exact ⟨t, used, positive, trace, wellFormed,
     stop.imp_left (fun awake => ⟨awake.1, awake.2.1, awake.2.2.1⟩)⟩
 
-/-- A clock conclusion on the normal turn boundary ends the game in one work step. -/
-theorem advance_beginTurn_clock {s : GameState} {result : GameResult}
+/-- A clock conclusion at the normal turn boundary clears the stack without observing gameplay. -/
+theorem workStep_beginTurn_clock {s : GameState} {result : GameResult}
     (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = [.beginTurn])
     (deadline : s.clockConclusion = some result) :
-    let done := { s with result := some result, pending := [] }
-    AdvancePrefix s done 1 [] ∧ advance 1 s [] = .ok (done, []) := by
-  intro done
+    workStep s = some ({ s with result := some result, pending := [] }, []) := by
+  let done := { s with result := some result, pending := [] }
   have combat : done.combatNow = s.combatNow := by
     unfold GameState.combatNow
     simp only [done, pending, List.findSome?_cons, List.findSome?_nil]
@@ -159,14 +159,34 @@ theorem advance_beginTurn_clock {s : GameState} {result : GameResult}
   have quiet : s.workTransitionEvents done = [] := by
     simp only [GameState.workTransitionEvents, pending, exhausted, mighty,
       GameState.mightReductionEvents, List.nil_append]
-  have work : workStep s = some (done, []) := by
-    simp only [workStep, pending, microStep, microStep0, beginTurnStep, deadline, Option.map_some,
-      List.nil_append]
-    change some (done.withTriggers (s.workTransitionEvents done), []) = _
-    rw [quiet, withTriggers_nil]
+  simp only [workStep, pending, microStep, microStep0, beginTurnStep, deadline, Option.map_some,
+    List.nil_append]
+  change some (done.withTriggers (s.workTransitionEvents done), []) = _
+  rw [quiet, withTriggers_nil]
+
+/-- A clock conclusion on the normal turn boundary ends the game in one work step. -/
+theorem advance_beginTurn_clock {s : GameState} {result : GameResult}
+    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = [.beginTurn])
+    (deadline : s.clockConclusion = some result) :
+    let done := { s with result := some result, pending := [] }
+    AdvancePrefix s done 1 [] ∧ advance 1 s [] = .ok (done, []) := by
+  intro done
   have same : AdvancePrefix done done 0 [] := by intro fuel before; simp
-  have path : AdvancePrefix s done 1 [] := same.prepend pending rfl work
+  have path : AdvancePrefix s done 1 [] :=
+    same.prepend pending rfl (workStep_beginTurn_clock wf database pending deadline)
   exact ⟨path, path.finish rfl []⟩
+
+/-- Recording the deadline preserves earlier events and disclosures without starting another turn. -/
+theorem advanceWithDisclosures_beginTurn_clock {s : GameState} {result : GameResult}
+    (wf : s.WF) (database : MightRead.database s.cards) (pending : s.pending = [.beginTurn])
+    (deadline : s.clockConclusion = some result) (fuel : Nat) (events : List Event)
+    (seen : List CardDisclosure) :
+    advanceWithDisclosures (fuel + 1) s events seen =
+      .ok (({ s with result := some result, pending := [] }, events), seen) := by
+  rw [advanceWithDisclosures, GameState.preparePriority_of_work pending rfl, pending]
+  simp only [Frame.isWork, ite_true, workStep_beginTurn_clock wf database pending deadline,
+    CardDisclosure.capture, List.zipIdx_nil, List.filterMap_nil, List.append_nil]
+  cases fuel <;> rfl
 
 /-- The blank Battlefield added after a concession cannot add a Might observer. -/
 theorem CardDB.mightTriggersAreOrdinary_withConcessionBattlefield {db : CardDB}

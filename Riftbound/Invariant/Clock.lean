@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.Turn
+public import Riftbound.Engine.Observe
 
 /-!
 # The clock (TR 408)
@@ -106,6 +107,73 @@ theorem suddenDeath_ends {s : GameState} {es : List Event} {p : PlayerId}
     (s.withTriggers es).result = some (.won (s.config.mode.sideSeats p)) ∧
       (s.withTriggers es).pending = [] := by
   simp [GameState.withTriggers, GameState.eventWinner, scored]
+
+/-- A legal Burn Out award ends sudden death without resuming the interrupted draw or exposing
+any cards. The recorded answer contains just the awarded point. -/
+theorem stepWithDisclosures_burnOutTarget_suddenDeath {s : GameState} {clock : RoundClock}
+    {p recipient : PlayerId} (legal : Legal s ⟨.player p, .burnOutTarget recipient⟩)
+    (playing : s.phase ≠ .setup) (timed : s.clock = some clock)
+    (allows : clock.allowsSuddenDeath = true) (overdue : clock.lastTurn < s.turn) (fuel : Nat) :
+    ∃ final, final.result = some (.won (s.config.mode.sideSeats recipient)) ∧
+      final.pending = [] ∧ final.points = (s.gainPoints recipient 1).points ∧
+      stepWithDisclosures fuel s ⟨.player p, .burnOutTarget recipient⟩ =
+        .ok ((final, [.pointsGained recipient 1]), []) := by
+  let action : Action := ⟨.player p, .burnOutTarget recipient⟩
+  have ordinary : action.kind ≠ .concede := by intro equal; cases equal
+  have answer := legal.frame ordinary
+  obtain ⟨rest, menu⟩ : ∃ rest, s.pending = .chooseBurnOut p :: rest ∨
+      ∃ owner first more, s.pending = .chooseBurnOutAmong owner first more :: rest := by
+    cases stack : s.pending with
+    | nil => simp [LegalFrame, stack] at answer
+    | cons frame rest =>
+      cases frame <;> simp [LegalFrame, stack] at answer
+      case chooseBurnOut owner =>
+        obtain rfl := answer.1
+        exact ⟨rest, Or.inl rfl⟩
+      case chooseBurnOutAmong owner first more =>
+        exact ⟨rest, Or.inr ⟨owner, first, more, rfl⟩⟩
+  let raw := { s.gainPoints recipient 1 with pending := rest }
+  let next := s.paySurcharge action raw
+  let events := [Event.pointsGained recipient 1]
+  let observed := events ++ s.actionTransitionEvents next action
+  let final := next.withTriggers observed
+  have fields : next.phase = s.phase ∧ next.result = s.result ∧ next.clock = s.clock ∧
+      next.turn = s.turn ∧ next.config = s.config ∧ next.points = raw.points := by
+    rcases s.paySurcharge_cases action raw with unchanged | ⟨owner, pool, paid⟩
+    · change next = raw at unchanged
+      rw [unchanged]
+      exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · change next = raw.setPool owner pool at paid
+      rw [paid]
+      exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+  obtain ⟨phase, ongoing, clockKept, turn, config, score⟩ := fields
+  have scorer : next.suddenDeathScorer observed = some recipient := by
+    simp [GameState.suddenDeathScorer, observed, events, phase, ongoing, clockKept, turn,
+      playing, legal.1, timed, allows, overdue]
+  have ended := suddenDeath_ends scorer
+  have points : final.points = (s.gainPoints recipient 1).points := by
+    have winner : next.eventWinner observed = some recipient := by
+      simp [GameState.eventWinner, scorer]
+    change (next.withTriggers observed).points = raw.points
+    unfold GameState.withTriggers
+    rw [winner]
+    exact score
+  have noCost : s.actionDeathCostChoice action = none := by
+    rcases menu with menu | ⟨_, _, _, menu⟩ <;> simp [GameState.actionDeathCostChoice, menu]
+  have rawApplied : applyFrame0 s action = some (raw, events) := by
+    rcases menu with menu | ⟨_, _, _, menu⟩ <;> simp [applyFrame0, action, menu, raw, events]
+  have applied : applyDeclaredAction s action = some (final, events) := by
+    rw [applyDeclaredAction, noCost, applyAction_of_ne ordinary, applyFrame, rawApplied]
+    rfl
+  have noPending : final.pending = [] := ended.2
+  refine ⟨final, by simpa only [config] using ended.1, noPending, points, ?_⟩
+  change stepWithDisclosures fuel s action = _
+  rw [stepWithDisclosures, ite_eq_left legal, applied]
+  change advanceWithDisclosures fuel final events (CardDisclosure.capture s final 0 events) = _
+  have hidden : CardDisclosure.capture s final 0 events = [] := rfl
+  rw [hidden]
+  have prepared : final.preparePriority = final := by unfold GameState.preparePriority; rw [noPending]
+  cases fuel <;> simp only [advanceWithDisclosures, prepared, noPending, events]
 
 end Riftbound
 
