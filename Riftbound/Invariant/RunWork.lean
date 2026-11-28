@@ -79,6 +79,8 @@ def Effect.observedWorkSupported : Effect → Bool
   | .recordNestedDeathDecision .. | .orderRuneRecycle .. | .recordRuneRecycle ..
   | .finishTrashRecycle .. | .recycleTrashTargets .. | .recycleFromTrash ..
   | .chooseTrashRecycle .. | .recordTrashRecycle .. | .completeActivation .. => true
+  | .planPermanentPlay .. | .finishReducedPermanent .. | .finishFundedPermanent .. | .fundPermanentFromEffect ..
+  | .planBanishReplay .. | .prim (.playAtBase _) => true
   | .seq program => program.observedWorkSupported
   | .eitherOf (.cons only .nil) => only.observedWorkSupported
   | .eitherOf _ => true
@@ -130,6 +132,7 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case returnToHand selector => exact Effect.ObservedFinite.returnToHand selector
     case banish selector => exact Effect.ObservedFinite.banish selector
     case topdeck selector => exact Effect.ObservedFinite.topdeck selector
+    case playAtBase selector => exact Effect.ObservedFinite.playAtBase selector
     case turnEffect effect => exact (Effect.SingleRun.turnEffect effect).observed
     case hideAt cards battlefields => exact (Effect.SingleRun.hideAt cards battlefields).observed
     case empower selector => exact Effect.ObservedFinite.empower selector
@@ -207,6 +210,11 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case recordTrashRecycle side count upTo picked => exact .recordTrashRecycle side count upTo picked
   case completeActivation source index baseEnergy targets filters =>
     exact .completeActivation source index baseEnergy targets filters
+  case planPermanentPlay card terms => exact .planPermanentPlay card terms
+  case finishReducedPermanent card terms plan => exact .finishReducedPermanent card terms plan
+  case finishFundedPermanent card terms plan adds => exact .finishFundedPermanent card terms plan adds
+  case fundPermanentFromEffect card terms plan adds => exact .fundPermanentFromEffect card terms plan adds
+  case planBanishReplay card location => exact .planBanishReplay card location
 termination_by structural effect
 
 /-- A supported program is finite through the real observer. -/

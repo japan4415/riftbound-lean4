@@ -69,12 +69,15 @@ open Riftbound
   let plan ← (permanentPlayPlans funded p devourer terms).find?
     (fun plan => plan.extraObject == some mord && plan.battlefield.isNone)
   let play : Effect := .finishFundedPermanent devourer terms plan []
-  let frames := [.run p field {} (.cons play .nil), .priority p]
+  let frame := Frame.run p field {} (.cons play .nil)
+  let frames := [frame, Frame.priority p]
   let (asked, _) ← (advance 100 { funded with pending := frames } []).toOption
   let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
-  let (saved, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return controller == p && victim == mord && cost == ally &&
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, _) ← (step 100 asked answer).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported asked answer &&
+    controller == p && victim == mord && cost == ally &&
     asked.poolOf p == funded.poolOf p && asked.countIn p .hand "RAD-125" == 1 &&
     (saved.zone (.player p .base)).contains mord &&
     saved.countIn p .trash "V0" == 1 && saved.countIn p .base "RAD-125" == 1 &&

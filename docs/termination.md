@@ -284,6 +284,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 Banish、Disempower、Exhaust、Buff の消費を前段とする効果は、前段が実際に成立した場合にだけ後続の命令を実行する。エンジンが解決中の対象選択を提示した場合はその入力で止まる。Rune Pool からの支払いは、可能な内訳が1つなら支払い後に進み、複数なら内訳の選択を待つ。選択を受け取った後は支払いを再確認する。後続の命令が停止検査を通るときに、これらの処理を証明の対象にした。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
 
+### 3an. 効果による Unit や Gear のプレイの確定
+
+効果によるプレイの計画、支払い候補の提示、プレイの確定を停止検査で扱う。追加コストの死亡置換を選ぶ局面では入力を待ち、成功した場合は場に出たカードの新しい識別子を同じ Run の後続命令に渡す。Base に置く指定と、Banishment から再プレイする計画も対象に含む。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

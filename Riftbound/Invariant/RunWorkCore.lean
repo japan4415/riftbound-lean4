@@ -48,6 +48,14 @@ inductive EffectList.ObservedFinite : EffectList → Prop where
   | cons {effect : Effect} {more : EffectList} :
       effect.ObservedFinite → more.ObservedFinite → EffectList.ObservedFinite (.cons effect more)
 
+/-- Each member of a list supplies the certificate for its place in the Run program. -/
+theorem EffectList.ObservedFinite.ofList {effects : List Effect}
+    (finite : ∀ effect ∈ effects, effect.ObservedFinite) : (EffectList.ofList effects).ObservedFinite := by
+  induction effects with
+  | nil => exact .nil
+  | cons first later ih =>
+    exact .cons (finite first List.mem_cons_self) (ih fun e mem => finite e (List.mem_cons_of_mem _ mem))
+
 /-- Dispatch the instruction and account for all immediate Adds and ordinary trigger insertion. -/
 theorem advance_run_rule {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {effect : Effect} {more : EffectList} {rest : List Frame} {keeps : List Frame → Prop}
@@ -1002,15 +1010,16 @@ theorem EffectDef.recheckTargetGroup_observed (e : EffectDef) (s : GameState) (p
 /-- A dispatcher instruction with a direct continuation or a choice is finite in either case. -/
 private theorem Effect.ObservedFinite.ofDecisionOrRun {effect : Effect}
     (routes : ∀ s p src env more, let frames := (runEffect s p src env effect more effectAddPolicy).2.1
-      frames = [.run p src env more] ∨ ∃ f tail, frames = f :: tail ∧ NonNeutralDecision (f :: tail)) :
+      (∃ nextEnv, frames = [.run p src nextEnv more]) ∨
+        ∃ f tail, frames = f :: tail ∧ NonNeutralDecision (f :: tail)) :
     effect.ObservedFinite := by
   intro s p src env more rest keeps wf reads pending base inserted
   let live := env.withMight s.mightTable
-  rcases routes s p src live more with resumes | ⟨f, tail, choice, decision⟩
+  rcases routes s p src live more with ⟨nextEnv, resumes⟩ | ⟨f, tail, choice, decision⟩
   · refine advance_run_rule wf reads pending ?_ (fun _ route q ne => route.insert inserted q ne)
     dsimp only
     rw [resumes]
-    exact ⟨live, rest, rfl, base⟩
+    exact ⟨nextEnv, rest, rfl, base⟩
   · apply advance_run_decision wf reads pending
     dsimp only
     rw [choice]
@@ -1044,10 +1053,10 @@ theorem Effect.ObservedFinite.chooseObject (side : Side) (place : Place) (filter
   rw [← show effect = Effect.chooseObject side place filters body from rfl, same]
   unfold frames
   cases selected with
-  | none => exact Or.inl rfl
+  | none => exact Or.inl ⟨env, rfl⟩
   | some objects =>
     cases objects with
-    | nil => exact Or.inl rfl
+    | nil => exact Or.inl ⟨env, rfl⟩
     | cons first rest =>
       cases rest with
       | nil => exact Or.inr ⟨.pickDo p src env first [] effect.withPick more, [], rfl, rfl⟩
@@ -1060,13 +1069,13 @@ theorem Effect.ObservedFinite.discard (who : PlayerSel) (amount : Amount) :
   intro s p src env more
   simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect]
   cases selected : who.resolve s p env with
-  | none => exact Or.inl rfl
+  | none => exact Or.inl ⟨env, rfl⟩
   | some players =>
     cases count : amount.evalS s p src env with
-    | none => exact Or.inl rfl
+    | none => exact Or.inl ⟨env, rfl⟩
     | some n =>
       cases players with
-      | nil => exact Or.inl rfl
+      | nil => exact Or.inl ⟨env, rfl⟩
       | cons first rest => exact Or.inr ⟨_, _, rfl, rfl⟩
 
 /-- An alternative with at least two branches yields before it executes a branch. -/
@@ -1075,6 +1084,154 @@ theorem Effect.ObservedFinite.eitherChoice (first second : Effect) (rest : Effec
   intro s p src env more tail keeps wf reads pending _ _
   apply advance_run_decision wf reads pending
   cases rest <;> rfl
+
+/-- Declining is always offered. If it is the only option, execute it directly. -/
+private theorem Effect.ObservedFinite.eitherWithDecline (options : List Effect) :
+    (Effect.eitherOf (EffectList.ofList (options ++ [.nop]))).ObservedFinite := by
+  cases options with
+  | nil => exact .eitherOf (.cons Effect.SingleRun.nop.observed .nil)
+  | cons first rest =>
+    cases rest with
+    | nil => exact .eitherChoice first .nop .nil
+    | cons second later => exact .eitherChoice first second (EffectList.ofList (later ++ [.nop]))
+
+/-- An unfunded finalization rechecks its plan, can wait for a death replacement, and binds
+the identifier of the permanent that enters play on success. -/
+theorem Effect.ObservedFinite.finishReducedPermanent (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) : (Effect.finishReducedPermanent card terms plan).ObservedFinite := by
+  apply Effect.ObservedFinite.ofDecisionOrRun
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, runEffect1]
+  by_cases valid : (permanentPlayPlans s p card terms).contains plan = true
+  · rw [ite_eq_left valid]
+    cases pendingCost : permanentDeathCostChoice s card plan with
+    | none =>
+      cases applied : applyReducedPermanent s p card plan with
+      | none => exact Or.inl ⟨env, rfl⟩
+      | some result =>
+        obtain ⟨next, entered, events⟩ := result
+        exact Or.inl ⟨env.bind pickVar (.obj entered), rfl⟩
+    | some replacement =>
+      obtain ⟨victim, controller, first, other⟩ := replacement
+      exact Or.inr ⟨_, _, rfl, rfl⟩
+  · rw [ite_eq_right valid]
+    exact Or.inl ⟨env, rfl⟩
+
+/-- The funded finalization either waits at the same replacement decision or evaluates the
+atomic payment and play, preserving the caller's program. -/
+theorem Effect.ObservedFinite.finishFundedPermanent (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (adds : List EffectAdd) :
+    (Effect.finishFundedPermanent card terms plan adds).ObservedFinite := by
+  apply Effect.ObservedFinite.ofDecisionOrRun
+  intro s p src env more
+  simp only [runEffect, Effect.pickSel?, runEffect1]
+  cases pendingCost : permanentDeathCostChoice s card plan with
+  | none =>
+    cases applied : finishFundedPermanentPlay s p card terms plan adds effectAddPolicy with
+    | none => exact Or.inl ⟨env, rfl⟩
+    | some result =>
+      obtain ⟨next, entered, events⟩ := result
+      exact Or.inl ⟨env.bind pickVar (.obj entered), rfl⟩
+  | some replacement =>
+    obtain ⟨victim, controller, first, other⟩ := replacement
+    exact Or.inr ⟨_, _, rfl, rfl⟩
+
+/-- The ordinary permanent planner executes its only available plan or waits at a choice. -/
+theorem Effect.ObservedFinite.planPermanentPlay (card : ObjId) (terms : EffectPlayTerms) :
+    (Effect.planPermanentPlay card terms).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  cases plans : permanentPlayPlans s p card terms with
+  | nil => exact ⟨.nil, .nil, by simp [runEffect, Effect.pickSel?, runEffect1, plans, EffectList.append]⟩
+  | cons first rest =>
+    let plans' := first :: rest
+    let options := plans'.map (Effect.finishReducedPermanent card terms)
+    let decline := if plans'.all (fun plan => !plan.battlefieldFees.isEmpty) then [Effect.nop] else []
+    have finite : (EffectList.ofList (options ++ decline)).ObservedFinite := by
+      apply EffectList.ObservedFinite.ofList
+      intro effect present
+      rcases List.mem_append.mp present with allowed | declined
+      · obtain ⟨plan, _, rfl⟩ := List.mem_map.mp allowed
+        exact .finishReducedPermanent card terms plan
+      · dsimp only [decline] at declined
+        split at declined
+        · obtain rfl := List.mem_singleton.mp declined
+          exact Effect.SingleRun.nop.observed
+        · contradiction
+    exact ⟨.cons (.eitherOf (EffectList.ofList (options ++ decline))) .nil, .cons (.eitherOf finite) .nil,
+      by simp [runEffect, Effect.pickSel?, runEffect1, plans, plans', options, decline, EffectList.append]⟩
+
+/-- A projected funding action never executes a second projection automatically. Decline is
+always available, so asking about another Add needs a decision even if it is the only Add. -/
+theorem Effect.ObservedFinite.fundPermanentFromEffect (card : ObjId) (terms : EffectPlayTerms)
+    (plan : ReducedPermanentPlay) (adds : List EffectAdd) :
+    (Effect.fundPermanentFromEffect card terms plan adds).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  let options := fundPermanentOptions s p card terms plan adds effectAddPolicy
+  have includesDecline : ∃ later, options = later ++ [.nop] := by
+    unfold options fundPermanentOptions
+    split
+    · split
+      · exact ⟨_, rfl⟩
+      · exact ⟨[], rfl⟩
+    · exact ⟨[], rfl⟩
+  obtain ⟨later, offered⟩ := includesDecline
+  refine ⟨.cons (.eitherOf (EffectList.ofList options)) .nil, ?_, rfl⟩
+  rw [offered]
+  exact .cons (.eitherWithDecline later) .nil
+
+/-- Offering an already fundable play reaches its required choice or proceeds with the
+single certified option. -/
+theorem fundedPermanentOptions_observedFinite (s : GameState) (p : PlayerId) (card : ObjId)
+    (terms : EffectPlayTerms) (funding : EffectAddPolicy) :
+    (fundedPermanentOptions s p card terms funding).ObservedFinite := by
+  unfold fundedPermanentOptions
+  apply Effect.ObservedFinite.eitherOf
+  apply EffectList.ObservedFinite.ofList
+  intro effect present
+  rcases List.mem_append.mp present with offered | declined
+  · obtain ⟨⟨plan, needsAdds⟩, _, rfl⟩ := List.mem_map.mp offered
+    cases needsAdds
+    · exact .finishFundedPermanent card terms plan []
+    · exact .fundPermanentFromEffect card terms plan []
+  · split at declined
+    · obtain rfl := List.mem_singleton.mp declined
+      exact Effect.SingleRun.nop.observed
+    · contradiction
+
+/-- A permanent previously Banished by an effect uses the certified funding options. -/
+theorem Effect.ObservedFinite.planBanishReplay (card : ObjId) (location : Option ObjId) :
+    (Effect.planBanishReplay card location).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  let terms : EffectPlayTerms := {
+    price := .ignoreBase
+    requirements := [none :: location.toList.map some] ++ env.hiddenPlayRequirements }
+  let options := fundedPermanentOptions s p card terms effectAddPolicy
+  exact ⟨.cons options .nil, .cons (fundedPermanentOptions_observedFinite s p card terms _) .nil, rfl⟩
+
+private theorem Effect.ObservedFinite.playAtBaseDirect (sel : Selector)
+    (direct : (Effect.prim (.playAtBase sel)).pickSel? = none) :
+    (Effect.prim (.playAtBase sel)).ObservedFinite := by
+  apply Effect.ObservedFinite.ofForks
+  intro s p src env more
+  let terms : EffectPlayTerms := { price := .ignoreBase, requirements := [none] :: env.hiddenPlayRequirements }
+  let program := EffectList.ofList (((sel.eval s p src env).getD []).map (Effect.planPermanentPlay · terms))
+  refine ⟨[.run p src env program], ?_, ?_⟩
+  · simp only [runEffect, direct, runEffect1, runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro frame member
+    obtain rfl := List.mem_singleton.mp member
+    refine ⟨_, _, _, _, rfl, EffectList.ObservedFinite.ofList ?_⟩
+    intro e included
+    obtain ⟨card, _, rfl⟩ := List.mem_map.mp included
+    exact .planPermanentPlay card terms
+
+/-- Playing at the Base uses the permanent planner, including a resolution pick if needed. -/
+theorem Effect.ObservedFinite.playAtBase (sel : Selector) : (Effect.prim (.playAtBase sel)).ObservedFinite :=
+  .withResolutionPick _ (.playAtBaseDirect sel) (.playAtBaseDirect (.var pickVar) rfl)
+    (fun _ _ _ _ impossible => by cases impossible)
 
 /-- Paying a cost takes the unique payment or waits for a choice among several payments. -/
 theorem Effect.ObservedFinite.payThen (cost : Cost) (gearPower : Bool) {body : Effect}

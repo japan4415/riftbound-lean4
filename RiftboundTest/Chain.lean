@@ -243,6 +243,27 @@ meta def afterUse : Option (GameState × List Event) :=
     unable.xpOf p == s.xpOf p && unable.pending == [Frame.priority p] && events.isEmpty && seen.isEmpty
   : Option Bool).getD false
 
+-- A Base-only play uses its generated plan. A directly scheduled plan binds the new identifier.
+#guard (do
+  let (s, p, _, source, _, _) ← scene
+  let (s, card) ← addObject s (newCard s.cards s p (cid "V1")) (.player p .trash)
+  let original ← s.obj? card
+  let frame := Frame.run p source { slots := [.obj card] } (.cons (.prim (.playAtBase (.slot 0))) .nil)
+  let terms : EffectPlayTerms := { price := .ignoreBase, requirements := [[none]] }
+  let plan := Frame.run p source {} (.ofList [.planPermanentPlay card terms, .prim (.buff (.var pickVar))])
+  let run (work : Frame) := advanceWithDisclosures 40 { s with pending := [work, .priority p] } [] []
+  let ((atBase, baseEvents), baseSeen) ← (run frame).toOption
+  let ((finished, events), seen) ← (run plan).toOption
+  let newId (board : GameState) := (board.zone (.player p .base)).find? (fun id =>
+    (board.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let played ← newId atBase
+  let arrived ← newId finished
+  return runFrameSupported frame && runFrameSupported plan && atBase.pending == [Frame.priority p] &&
+    baseEvents.contains (Event.played p played) && baseSeen.isEmpty &&
+    finished.pending == [Frame.priority p] && (finished.obj? arrived).any (·.buffed) &&
+    events.contains (Event.played p arrived) && events.contains (Event.buffedBy arrived p) && seen.isEmpty
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

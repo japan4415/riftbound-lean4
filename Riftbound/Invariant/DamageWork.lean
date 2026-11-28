@@ -218,13 +218,6 @@ theorem Effect.ObservedFinite.applyUnitSplitDamage (hits : List (ObjId × Nat)) 
     refine advance_run_via wf reads pending ?_ (.resolveDamage batch none) base inserted
     simp only [runEffect, Effect.pickSel?, runEffect1, ite_eq_right disabled, batch]
 
-private theorem EffectList.ObservedFinite.ofList {effects : List Effect}
-    (finite : ∀ effect ∈ effects, effect.ObservedFinite) : (EffectList.ofList effects).ObservedFinite := by
-  induction effects with
-  | nil => exact .nil
-  | cons first later ih =>
-    exact .cons (finite first List.mem_cons_self) (ih fun e mem => finite e (List.mem_cons_of_mem _ mem))
-
 /-- A split prompts if there are several distributions, or applies the unique one. -/
 theorem Effect.ObservedFinite.splitDamage (targets : Selector) (total : Nat) :
     (Effect.splitDamage targets total).ObservedFinite := by
