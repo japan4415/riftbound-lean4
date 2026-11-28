@@ -305,21 +305,10 @@ def isRunFrame : Frame → Bool
   | .run .. => true
   | _ => false
 
-/-- Whether the frame is a Run whose complete program is supported. -/
-def runFrameSupported : Frame → Bool
-  | .run _ _ _ program => program.observedWorkSupported
-  | _ => false
-
 /-- Check the actual Run instructions generated for the newest Chain item at this final Pass. -/
 def chainPassWorkSupported (s : GameState) (p : PlayerId) (rest : List Frame) : Bool :=
   let initial := ({ s with pending := .resolveChain :: rest }).setPool p (s.poolOf p)
   ((resolveFrames initial rest).takeWhile isRunFrame).all runFrameSupported
-
-/-- Every accepted Run frame carries the observed termination proof for its program. -/
-theorem runFrameSupported_finite {f : Frame} (supported : runFrameSupported f = true) :
-    f.FiniteRun := by
-  cases f <;> try (simp [runFrameSupported] at supported; done)
-  exact ⟨_, _, _, _, rfl, EffectList.observedFinite_of_supported _ supported⟩
 
 private theorem takeWhile_ChainRuns (body : List Frame) (item : ObjId) (rest : List Frame)
     (onlyRuns : ∀ f ∈ body, ∃ p src env program, f = .run p src env program) :

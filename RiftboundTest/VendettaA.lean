@@ -328,14 +328,24 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     damage := 1, exhausted := true, buffed := true, tempKws := [(⟨.ganking, .none⟩, .turn)] })
   let funded := s.fund p 1 (order := 1)
   let (chain, _) ← (step 100 funded ⟨.player p, .activate gear 1 ⟨1, [.order], none⟩ [unit]⟩).toOption
-  let waiting ← awaitCopyChoice 6 chain
+  let (passed, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let finalPass : Action := ⟨.player s.you, .pass⟩
+  let (started, initialEvents) ← applyDeclaredAction passed finalPass
+  let (attaching, entered) ← workStep started
+  let (waiting, attachmentEvents) ← (step 100 passed finalPass).toOption
+  let (replayed, replayEvents) ← (advance 100 attaching (initialEvents ++ entered)).toOption
   let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
   let legal := legalActions waiting
-  let (copied, _) ← (step 100 waiting (choose model)).toOption
-  let detached := (detachObj copied gear).1
+  let (copied, pickedEvents) ← (step 100 waiting (choose model)).toOption
+  let detach := Frame.run p gear {} (.cons (.prim (.detach .self)) .nil)
+  let (detached, _) ← (advance 100 { copied with pending := detach :: copied.pending } []).toOption
   let o ← copied.obj? unit
   let traits ← copied.cardDef? unit
-  return (waiting.obj? gear).any (·.attached == some unit) && waiting.copyStamp? unit == none &&
+  return generatedRunsSupported attaching && liveChainRunSupported attaching &&
+    replayed.pending == waiting.pending && replayEvents == attachmentEvents &&
+    attachmentEvents.contains (.attached gear unit) && !(attachmentEvents.contains (.chosenByAbility p model)) &&
+    chainAnswerWorkSupported waiting (choose model) && pickedEvents.contains (.chosenByAbility p model) &&
+    (waiting.obj? gear).any (·.attached == some unit) && waiting.copyStamp? unit == none &&
     legal.contains (choose model) && legal.contains (choose other) &&
     !(legal.contains (choose unit)) && !(legal.contains (choose enemy)) &&
     traits.id.code == "SFD-050" && traits.cost == some ⟨6, [.domain .calm]⟩ &&
@@ -343,7 +353,48 @@ meta def awaitCopyChoice : Nat → GameState → Option GameState
     o.kind.phys? == ((s.obj? unit).bind (·.kind.phys?)) && o.damage == 1 && o.exhausted &&
     o.buffed && o.empowerCount == 0 && copied.hasKw unit .ganking && !(copied.hasKw unit .shield) &&
     (copied.poolOf p).energy == 0 && (copied.poolOf p).order == 0 &&
-    (detached.cardDef? unit).any (·.id.code == "VEN-074") && detached.mightNow unit == some 3
+    runFrameSupported detach && (detached.cardDef? unit).any (·.id.code == "VEN-074") && detached.mightNow unit == some 3
+
+-- Retain the events that precede paying the Equip cost in the current Chain Item.
+private meta def paidAttachment : Nat → GameState → List Event → Option (GameState × List Event)
+  | 0, _, _ => none
+  | fuel + 1, state, events =>
+    match state.pending with
+    | .run _ _ _ (.cons (.prim (.attachPaying ..)) _) :: .finishSpell _ :: _ => some (state, events)
+    | frame :: _ => do
+      if !frame.isWork then none else
+        let (next, emitted) ← workStep state
+        paidAttachment fuel next (events ++ emitted)
+    | _ => none
+
+-- Combat Chef pays the Equip cost before the copied traits are chosen.
+#guard vendettaCase fun s => do
+  let p := s.me
+  let (s, chef) ← put s p "SFD-092" .hand
+  let (s, gear) ← put s p "VEN-137" .base
+  let (s, model) ← put s p "SFD-050" .base
+  let (s, _) ← put s p "VEN-014" .base
+  let played ← castStop s p chef
+  let take ← (legalFrameActions played).find? (fun action => match action.kind with
+    | .putTrigger _ [target] (.pay ..) => target == gear
+    | _ => false)
+  let (queued, _) ← (step 100 played take).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let finalPass : Action := ⟨.player s.you, .pass⟩
+  let (staged, initial) ← applyDeclaredAction passed finalPass
+  let (running, before) ← paidAttachment 8 staged initial
+  let wearer ← running.firstOf p .base "SFD-092"
+  let (waiting, events) ← (step 100 passed finalPass).toOption
+  let (retaken, replayEvents) ← (advance 100 running before).toOption
+  let choice : Action := ⟨.player p, .choose model⟩
+  let (done, copied) ← (step 100 waiting choice).toOption
+  return (legalActions passed).contains finalPass && generatedRunsSupported running && liveChainRunSupported running &&
+    events == replayEvents && retaken.pending == waiting.pending &&
+    (waiting.poolOf p).energy + 1 == (running.poolOf p).energy &&
+    (waiting.poolOf p).order + 1 == (running.poolOf p).order &&
+    events.contains (.attached gear wearer) && (waiting.obj? gear).any (·.attached == some wearer) &&
+    chainAnswerWorkSupported waiting choice && copied.contains (.chosenByAbility p model) &&
+    (done.cardDef? wearer).any (·.id.code == "SFD-050")
 
 -- Svellsongur copies Plaza Guardian during Equip. A later trait copy changes the
 -- Unit's own definition, but the attached Effect Text still contributes Deflect.

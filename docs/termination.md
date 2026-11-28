@@ -302,6 +302,10 @@ Spell を解決する実際の命令列を検査し、Spell 本体、Trash へ�
 
 候補がなければ元の効果の残りを実行し、候補が複数あれば選択を待つ。候補が1枚の場合と、プレイヤーが合法な候補を選んだ場合は、選択イベントの処理後に先頭の Play を検査する。その時点で Play が先頭にあり検査を通る経路では、通常の誘発を保持したまま Play と Chain Item の解決を進められる。選択の直後に即時 Add が先頭に載る経路は、追加の合成が残る。実際の起動、最後の Pass、複数候補への回答を通して、選択とプレイのイベント順、未選択カード、元の効果の再開を確かめる。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [Chain.lean](../RiftboundTest/Chain.lean)
 
+### 3ar. Equipment の装着で追加される処理
+
+効果の先頭を実行して生成される Run を調べ、すべてが停止検査を通る場合は、イベント処理と即時 Add を経て順に実行できる。Equipment を装着したときに追加される置換効果と元の効果の残りもこの検査で扱う。Shady Spectacles の Equip では、最後の Pass で装着してからコピー元を選ぶ。Combat Chef で Equip コストを払う経路でも、支払いと装着の後にコピー元を選べる。どちらの経路でも装着イベントを確認し、コピーや取り外しで Unit の現物を保つ。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean) [VendettaA.lean](../RiftboundTest/VendettaA.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

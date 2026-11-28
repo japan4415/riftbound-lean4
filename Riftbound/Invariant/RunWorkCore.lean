@@ -859,6 +859,46 @@ private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
   .withResolutionPick _ (fun h => (direct h).observed) bound.observed
     (fun _ _ _ _ impossible => by cases impossible)
 
+private theorem Effect.SingleRun.copyAttachedFrom (sel : Selector)
+    (direct : (Effect.prim (.copyAttachedFrom sel)).pickSel? = none) :
+    (Effect.prim (.copyAttachedFrom sel)).SingleRun := by
+  refine .directPrim (.copyAttachedFrom sel) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, direct, runEffect1, runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim, onSelected] at applied
+    cases selected : sel.eval s p src env with
+    | none => simp [selected] at applied
+    | some models =>
+      simp only [selected, Option.map_some, Option.some.injEq] at applied
+      rw [← (Prod.mk.inj applied).2]
+      apply applyEach_noAttach (copyAttachedUnit src) (fun board model => ?_) s models
+      unfold copyAttachedUnit
+      split
+      · split <;> exact .nil
+      · exact .nil
+
+private theorem Effect.SingleRun.detach (sel : Selector)
+    (direct : (Effect.prim (.detach sel)).pickSel? = none) :
+    (Effect.prim (.detach sel)).SingleRun := by
+  refine .selectedPrim (.detach sel) sel (fun _ _ => detachObj) direct ?_
+    (fun _ _ _ _ => rfl) (fun _ _ _ _ => .nil)
+  intro s p src env more
+  simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+  by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+
+/-- Removing an attachment also goes through the observed target-selection rules. -/
+theorem Effect.ObservedFinite.detach (sel : Selector) : (Effect.prim (.detach sel)).ObservedFinite :=
+  .selectedPrimitive (.detach sel) (Effect.SingleRun.detach sel) (Effect.SingleRun.detach (.var pickVar) rfl)
+
+/-- Copying a model for attached Equipment can wait for a target, or copy a bound target
+and continue without creating another attachment replacement. -/
+theorem Effect.ObservedFinite.copyAttachedFrom (sel : Selector) :
+    (Effect.prim (.copyAttachedFrom sel)).ObservedFinite :=
+  .selectedPrimitive (.copyAttachedFrom sel) (Effect.SingleRun.copyAttachedFrom sel)
+    (Effect.SingleRun.copyAttachedFrom (.var pickVar) rfl)
+
 /-- Binning selected objects also records completion of any resolving Spell. -/
 theorem Effect.ObservedFinite.bin (sel : Selector) : (Effect.prim (.bin sel)).ObservedFinite :=
   .selectedPrimitive (.bin sel) (Effect.SingleRun.bin sel) (Effect.SingleRun.bin (.var pickVar) rfl)
