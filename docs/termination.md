@@ -268,6 +268,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 効果命令列の停止検査は `score` と `win` を扱う。どちらも1ステップで処理し、観測処理で終局が確定した場合は残りの命令へ進まない。サドンデスの得点と、2対2で効果がチームに勝利を与える場合に、後続のドローやカード開示がないことをテストで確認する。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [RunWork.lean](../Riftbound/Invariant/RunWork.lean)
 
+### 3aj. Ready、Exhaust、Buff、Stun
+
+停止検査は選択済みの対象への効果に加え、解決中に対象を1つ選ぶ場合も扱う。候補がなければ効果を飛ばし、1つなら対象を確定して効果を実行する。複数なら誰も選ばれていない状態で次の入力を待ち、合法な回答の後に対象へ効果を適用する。それぞれ、誘発の観測を含めて次の入力か残りの命令まで有限に進む。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

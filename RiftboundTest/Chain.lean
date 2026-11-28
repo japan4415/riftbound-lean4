@@ -117,6 +117,33 @@ meta def afterUse : Option (GameState × List Event) :=
     | .error _ => none
   | none => none
 
+-- A resolution pick may stop the Chain, or resume its bound instruction immediately.
+#guard (do
+  let (_, p, q, source, target, other) ← scene
+  let (queued, _) ← afterUse
+  let item ← (queued.zone .chain).head?
+  let selector := Selector.one .enemy .atBase [.ofType .unit]
+  let program := EffectList.ofList [
+    .prim (.ready (.slot 0)), .prim (.exhaust (.slot 0)), .prim (.buff (.slot 0)), .prim (.stun selector)]
+  let work := Frame.run p source { slots := [.obj source] } program
+  let stack := [work, Frame.finishSpell item, Frame.priority p]
+  let started := { queued with pending := stack }
+  let ((waiting, before), seen) ← (advanceWithDisclosures 20 started [] []).toOption
+  let .pickDo owner _ _ first rest _ _ :: _ := waiting.pending | none
+  let choose : Action := ⟨.player p, .choose target⟩
+  let ((answered, after), laterSeen) ← (stepWithDisclosures 20 waiting choose).toOption
+  let (one, _) ← moveObj started other (.player q .trash)
+  let ((automatic, withoutChoice), autoSeen) ← (advanceWithDisclosures 20 one [] []).toOption
+  return runFrameSupported work && chainAnswerWorkSupported waiting choose && owner == p &&
+    (first :: rest).length == 2 && (first :: rest).contains target && (first :: rest).contains other &&
+    before.contains (Event.readied source) && before.contains (Event.exhausted source) &&
+    before.contains (Event.buffedBy source p) && !(waiting.obj? target).any (·.stunned) &&
+    (answered.obj? target).any (·.stunned) && !(answered.obj? other).any (·.stunned) &&
+    after.contains (Event.stunnedBy target p) && answered.pending == [Frame.priority p] &&
+    (automatic.obj? target).any (·.stunned) && withoutChoice.contains (Event.stunnedBy target p) &&
+    automatic.pending == [Frame.priority p] && seen.isEmpty && laterSeen.isEmpty && autoSeen.isEmpty
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

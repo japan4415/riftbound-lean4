@@ -491,6 +491,176 @@ private theorem Effect.SingleRun.directPrim (pr : Prim)
     exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 
+private theorem Effect.SingleRun.selectedPrim (pr : Prim) (selector : Selector)
+    (changeObject : PlayerId → Env → GameState → ObjId → GameState × List Event)
+    (direct : (Effect.prim pr).pickSel? = none)
+    (dispatch : ∀ s p src env more,
+      runPrimEffect s p src env pr more effectAddPolicy = directPrimResult s p src env pr more)
+    (targets : ∀ s p src env,
+      applyPrim s p src env pr = onSelected s p src env selector (changeObject p env))
+    (plain : ∀ p env s id, noAttachments (changeObject p env s id).2) :
+    (Effect.prim pr).SingleRun := by
+  apply Effect.SingleRun.directPrim pr
+  · intro s p src env more
+    simp only [runEffect, direct]
+    exact dispatch s p src env more
+  · intro s t p src env events outcome
+    rw [targets] at outcome
+    unfold onSelected at outcome
+    cases selected : selector.eval s p src env with
+    | none => simp [selected] at outcome
+    | some ids =>
+      simp only [selected, Option.map_some, Option.some.injEq] at outcome
+      rw [← (Prod.mk.inj outcome).2]
+      exact applyEach_noAttachments _ (plain p env) s ids
+
+private theorem setExhausted_noAttachments (exhausted : Bool) (s : GameState) (id : ObjId) :
+    noAttachments (setExhausted exhausted s id).2 := by
+  unfold setExhausted
+  split
+  · cases exhausted <;> split <;> simp [noAttachments]
+  · simp [noAttachments]
+
+private theorem Effect.SingleRun.ready (sel : Selector) (direct : (Effect.prim (.ready sel)).pickSel? = none) :
+    (Effect.prim (.ready sel)).SingleRun := by
+  refine .selectedPrim (.ready sel) sel (fun _ _ => readyEffect) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ _ s id
+    unfold readyEffect
+    split
+    · simp [noAttachments]
+    · exact setExhausted_noAttachments false s id
+
+private theorem Effect.SingleRun.exhaust (sel : Selector) (direct : (Effect.prim (.exhaust sel)).pickSel? = none) :
+    (Effect.prim (.exhaust sel)).SingleRun := by
+  refine .selectedPrim (.exhaust sel) sel (fun _ _ => setExhausted true) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ _ s id
+    exact setExhausted_noAttachments true s id
+
+private theorem Effect.SingleRun.buff (sel : Selector) (direct : (Effect.prim (.buff sel)).pickSel? = none) :
+    (Effect.prim (.buff sel)).SingleRun := by
+  refine .selectedPrim (.buff sel) sel (fun p _ s id => buffObj s id (some p)) direct
+    ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro p _ s id
+    unfold buffObj
+    dsimp only
+    split
+    · split
+      · simp [noAttachments]
+      · split <;> simp [noAttachments]
+    · simp [noAttachments]
+
+private theorem Effect.SingleRun.stun (sel : Selector) (direct : (Effect.prim (.stun sel)).pickSel? = none) :
+    (Effect.prim (.stun sel)).SingleRun := by
+  refine .selectedPrim (.stun sel) sel (fun p env s id => stunObj s id env (some p)) direct
+    ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro p env s id
+    unfold stunObj
+    split
+    · unfold replaceChosenHarm
+      split
+      · split <;> simp [addMightMod, noAttachments]
+      · simp [noAttachments]
+    · simp [noAttachments]
+
+/-- A direct primitive can also choose one object during resolution, continuing its bound
+instruction after a singleton or yielding to the player when several candidates remain. -/
+private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
+    (direct : (Effect.prim pr).pickSel? = none → (Effect.prim pr).SingleRun)
+    (bound : (Effect.prim pr).withPick.SingleRun) : (Effect.prim pr).ObservedFinite := by
+  let effect := Effect.prim pr
+  cases pick : effect.pickSel? with
+  | none => exact (direct pick).observed
+  | some selector =>
+    obtain ⟨side, place, filters, rfl⟩ : ∃ side place filters, selector = .pick .one side place filters := by
+      have fromPrim := pick
+      change (match pr.pickSel? with
+        | some (.pick .one side place filters) => some (.pick .one side place filters)
+        | _ => none) = some selector at fromPrim
+      split at fromPrim
+      · exact ⟨_, _, _, (Option.some.inj fromPrim).symm⟩
+      · contradiction
+    intro s p src env more rest keeps wf reads pending base inserted
+    let live := env.withMight s.mightTable
+    let selected := requiredPlayCandidates s p src live effect effectAddPolicy <|>
+      s.pickCandidates p src live side place filters (!effect.isLinkedCost)
+    let frames : List Frame := match selected with
+      | some [o] => [.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)]
+      | some (o :: other :: rest) => [.pickDo p src live o (other :: rest) effect.withPick more]
+      | _ => [.run p src live more]
+    have route : (runEffect s p src live effect more effectAddPolicy).2.1 = frames := by
+      simp only [runEffect, pick]
+      change (match selected with
+        | some [o] =>
+          (s, [Frame.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)],
+            effect.pickEvents s p src o)
+        | some (o :: other :: rest) => (s, [.pickDo p src live o (other :: rest) effect.withPick more], [])
+        | _ => (s, [.run p src live more], [Event.skipped src])).2.1 = frames
+      unfold frames
+      cases selected with
+      | none => rfl
+      | some objects =>
+        cases objects with
+        | nil => rfl
+        | cons first rest => cases rest <;> rfl
+    have resumes (sel : frames = [.run p src live more]) :
+        AdvanceTo s (RunContinuation p src more keeps) := by
+      apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+      change RunContinuation p src more keeps ((runEffect s p src live effect more effectAddPolicy).2.1 ++ rest)
+      rw [route, sel]
+      exact ⟨live, rest, rfl, base⟩
+    cases candidates : selected with
+    | none => exact resumes (by simp [frames, candidates])
+    | some objects =>
+      cases objects with
+      | nil => exact resumes (by simp [frames, candidates])
+      | cons first others =>
+        cases others with
+        | nil =>
+          let boundProgram := EffectList.cons effect.withPick more
+          have firstRun : AdvanceTo s (RunContinuation p src boundProgram keeps) := by
+            apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
+            change RunContinuation p src boundProgram keeps
+              ((runEffect s p src live effect more effectAddPolicy).2.1 ++ rest)
+            rw [route]
+            exact ⟨live.bindPick first (effect.pickIsTarget s first), rest, by simp [frames, candidates, boundProgram], base⟩
+          apply firstRun.then reads
+          intro t safe checked continued
+          obtain ⟨chosen, tail, stack, kept⟩ := continued
+          exact bound.observed t p src chosen more tail keeps safe checked stack kept inserted
+        | cons another later =>
+          have waiting : NonNeutralDecision (frames ++ rest) := by simp [frames, candidates, NonNeutralDecision, Frame.isWork]
+          apply advance_run_decision wf reads pending
+          change NonNeutralDecision ((runEffect s p src live effect more effectAddPolicy).2.1 ++ rest)
+          rwa [route]
+
+/-- Readying selected objects stops at any resolution choice or resumes the program. -/
+theorem Effect.ObservedFinite.ready (sel : Selector) : (Effect.prim (.ready sel)).ObservedFinite :=
+  .selectedPrimitive (.ready sel) (Effect.SingleRun.ready sel) (Effect.SingleRun.ready (.var pickVar) rfl)
+
+/-- Exhausting selected objects stops at any resolution choice or resumes the program. -/
+theorem Effect.ObservedFinite.exhaust (sel : Selector) : (Effect.prim (.exhaust sel)).ObservedFinite :=
+  .selectedPrimitive (.exhaust sel) (Effect.SingleRun.exhaust sel) (Effect.SingleRun.exhaust (.var pickVar) rfl)
+
+/-- Buffing selected objects stops at any resolution choice or resumes the program. -/
+theorem Effect.ObservedFinite.buff (sel : Selector) : (Effect.prim (.buff sel)).ObservedFinite :=
+  .selectedPrimitive (.buff sel) (Effect.SingleRun.buff sel) (Effect.SingleRun.buff (.var pickVar) rfl)
+
+/-- Stunning selected objects stops at any resolution choice or resumes the program. -/
+theorem Effect.ObservedFinite.stun (sel : Selector) : (Effect.prim (.stun sel)).ObservedFinite :=
+  .selectedPrimitive (.stun sel) (Effect.SingleRun.stun sel) (Effect.SingleRun.stun (.var pickVar) rfl)
+
 /-- Awarding points consumes one Run step before any resulting win is observed. -/
 theorem Effect.SingleRun.score (who : PlayerSel) (amount : Amount) :
     (Effect.prim (.score who amount)).SingleRun := by
