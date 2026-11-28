@@ -349,6 +349,30 @@ meta def burnOutScenario (resumeMain : Bool := false) : Option (GameState × Gam
   | some (_, final) => final.pending == [.priority p0] && final.phase == .main && final.pointsOf p1 == 1
   | none => false
 
+-- The replacement draw for a Conquer can burn out before Combat Finish.
+#guard (do
+  let s ← finished 4
+  let field ← s.battlefields.head?
+  let (s, unit) ← addObject s { newCard s.cards s p0 (cid "V0") with loc := some field } .battlefieldZone
+  let main := Zone.player p0 .mainDeck
+  let trash := Zone.player p0 .trash
+  let deck := s.zone main
+  let s := s.gainPoints p0 (s.victoryScore - 1)
+  let scoring := { s with
+    zones := (s.zones.insert main.key []).insert trash.key deck
+    combat := some { battlefield := field, attacker := p0, defender := p1, units := [unit] }
+    pending := [.combatControl field, .combatFinish field, .priority p0] }
+  let (shuffling, scored) ← (advance 100 scoring []).toOption
+  let shuffle : Action := ⟨.chance, .arrange (shuffling.zone trash).reverse⟩
+  let (choosing, burned) ← (step 100 shuffling shuffle).toOption
+  let target : Action := ⟨.player p0, .burnOutTarget p1⟩
+  let (final, finished) ← (step 100 choosing target).toOption
+  return burnOutAnswerWorkSupported shuffling shuffle && burnOutAnswerWorkSupported choosing target &&
+    scored.contains (.scored p0 field true) && burned.contains (.burnedOut p0) &&
+    finished.contains (.pointsGained p1 1) && finished.contains (.combatEnded field [unit]) &&
+    final.combat.isNone && final.pending == [.priority p0] && count p0 .hand final == count p0 .hand s + 1
+  : Option Bool).getD false
+
 -- illegal answers are refused
 #guard match start with
   | some s => (match step 100 s ⟨.player p0, .mulliganDone⟩ with

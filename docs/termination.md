@@ -250,7 +250,7 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 ### 3ae. Burn Out の抽選と得点先の選択
 
-`step_burnOutAnswer_checked_to_preparedDecision` は、Trash を山札へ戻す順番を記録した抽選と、1点を得る相手を選ぶ回答を扱う。投了で選べる相手が変わった場合も、実際の `applyFrame0` が残す処理を検査する。検査を通る合法手では、残りのドロー、対応する効果命令、Cleanup、Main や Chain の終了処理を経て、次の入力待ちか空のスタックまで有限の fuel で進む。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがないことを仮定する。[BurnOutWork.lean](../Riftbound/Invariant/BurnOutWork.lean)
+`step_burnOutAnswer_checked_to_preparedDecision` は、Trash を山札へ戻す順番を記録した抽選と、1点を得る相手を選ぶ回答を扱う。投了で選べる相手が変わった場合も、実際の `applyFrame0` が残す処理を検査する。検査を通る合法手では、残りのドロー、対応する効果命令、Cleanup、Main、Chain や Combat の終了処理を経て、次の入力待ちか空のスタックまで有限の fuel で進む。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがないことを仮定する。[BurnOutWork.lean](../Riftbound/Invariant/BurnOutWork.lean)
 
 ## 4. 進め方の案（単位に分ける）
 

@@ -140,7 +140,8 @@ theorem advance_combat_control {s : GameState} {bf : ObjId} {rest : List Frame}
   exact ⟨u, used, events, path,
     done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
 
-private theorem advance_combat_finish_queue {s : GameState} {bf : ObjId} {rest : List Frame}
+/-- Proceed from the final Combat stage while resolving any ordinary trigger queue ahead of it. -/
+theorem advance_combat_finish_queue {s : GameState} {bf : ObjId} {rest : List Frame}
     {keeps : List Frame → Prop} (wf : s.WF) (reads : MightRead.database s.cards)
     (waiting : TriggerWorkTail (.combatFinish bf :: rest) s.pending)
     (base : keeps rest)
@@ -795,7 +796,8 @@ private theorem combatAnswerSuffix_sound {stack suffix : List Frame}
       · contradiction
   · contradiction
 
-private theorem combatFinish_head (bf : ObjId) (suffix : List Frame) :
+/-- Ordinary triggers can interrupt the stack immediately before Combat Finish. -/
+theorem combatFinish_head (bf : ObjId) (suffix : List Frame) :
     ∀ f, (.combatFinish bf :: suffix : List Frame).head? = some f →
       f.isResolution = false ∧ ∀ q, f ≠ .triggers q := by
   intro f head

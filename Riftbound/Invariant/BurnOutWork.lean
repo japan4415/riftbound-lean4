@@ -1,6 +1,6 @@
 module
 
-public import Riftbound.Invariant.ChainAnswerWork
+public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.TurnPhaseWork
 
 /-! # Work after Burn Out answers (I12) -/
@@ -75,6 +75,9 @@ private inductive BurnOutTail (rest : List Frame) : List Frame → Prop where
   | waiting {frames : List Frame} (tracked : TriggerWorkTail rest frames) : BurnOutTail rest frames
   | finish (item : ObjId) {frames : List Frame}
       (tracked : ResolutionPrefix [.finishSpell item] (TriggerWorkTail rest) frames) : BurnOutTail rest frames
+  | combatFinish (field : ObjId) {suffix frames : List Frame}
+      (stage : TriggerWorkTail (.combatFinish field :: suffix) frames)
+      (tracked : TriggerWorkTail rest suffix) : BurnOutTail rest frames
 
 private theorem BurnOutTail.insert {rest frames : List Frame} (tail : BurnOutTail rest frames)
     (boundary : BurnOutBoundary rest) (q : List PendTrigger) (ne : q ≠ []) :
@@ -84,11 +87,15 @@ private theorem BurnOutTail.insert {rest frames : List Frame} (tail : BurnOutTai
   | finish item tracked =>
     exact .finish item (tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
       (fun _ kept added nonempty => kept.insert boundary.front added nonempty) q ne)
+  | combatFinish field stage tracked =>
+    exact .combatFinish field (stage.insert (combatFinish_head _ _) q ne) tracked
 
 /-- Locate the decision or Main Phase after outstanding Burn Out work. -/
 def burnOutContinuation? (stack : List Frame) : Option (List Frame) :=
   match stack with
   | .finishSpell _ :: rest => waiting? rest
+  | .combatFinish _ :: rest => waiting? rest
+  | .triggers (_ :: _) :: .combatFinish _ :: rest => waiting? rest
   | _ => waiting? stack
 where
   waiting? : List Frame → Option (List Frame)
@@ -115,6 +122,10 @@ private theorem burnOutContinuation_sound {stack rest : List Frame}
   · obtain ⟨tracked, boundary⟩ := burnOutWaiting_sound ready
     exact ⟨.finish _ ⟨_, rfl, tracked⟩, boundary⟩
   · obtain ⟨tracked, boundary⟩ := burnOutWaiting_sound ready
+    exact ⟨.combatFinish _ (Or.inl rfl) tracked, boundary⟩
+  · obtain ⟨tracked, boundary⟩ := burnOutWaiting_sound ready
+    exact ⟨.combatFinish _ (Or.inr ⟨_, by simp, rfl⟩) tracked, boundary⟩
+  · obtain ⟨tracked, boundary⟩ := burnOutWaiting_sound ready
     exact ⟨.waiting tracked, boundary⟩
 
 private theorem advance_burnOutEnd {s : GameState} {rest : List Frame} (wf : s.WF)
@@ -127,6 +138,10 @@ private theorem advance_burnOutEnd {s : GameState} {rest : List Frame} (wf : s.W
     | finish item tracked =>
       obtain ⟨_, atFinish, waiting⟩ := tracked
       exact advance_finish_chain_until_decision wf reads atFinish waiting boundary.front
+    | combatFinish field stage tracked =>
+      exact (advance_combat_finish_queue wf reads stage tracked
+        (fun _ kept q ne => kept.insert boundary.front q ne)).then reads
+          (fun _ safe known kept => advance_trigger_tail_until_decision safe known kept)
   cases boundary with
   | decision ready => exact work.atPreparedDecision reads (isOrdinaryDecisionTail_boundary ready) quiet
   | main p =>
@@ -172,7 +187,7 @@ def burnOutAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
       (burnOutContinuation? (result.1.pending.dropWhile isBurnOutWorkFrame)).isSome)
 
 /-- Both Burn Out answers reach the next prepared input, including a resumed draw batch,
-Main Phase or Chain conclusion when those frames pass the check. -/
+Main Phase, Chain conclusion or Combat finish when those frames pass the check. -/
 theorem step_burnOutAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (checked : burnOutAnswerWorkSupported s a = true)
