@@ -175,7 +175,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let s := (channelEx p 0 2 s).1
   let runes := s.runesOf p
   let cost := 12 - runes.length
-  let activateBear (pay : Nat) : Action := ⟨.player p, .activate bear 0 ⟨pay, []⟩ []⟩
+  let activateBear (pay : Nat) : Action := ⟨.player p, .activate bear 0 ⟨pay, [], none⟩ []⟩
   let (casting, _) ← (step 100 (s.fund p cost) (activateBear cost)).toOption
   let done := settleChain {} 8 casting
   return runes.length >= 2 && s.deflectOf bear == 0 && s.kwAmount bear .shield == 0 &&
@@ -376,7 +376,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let played ← play s p hand
   let egg ← played.firstOf p .base "VEN-075"
   let ready := (readyEffect played egg).1
-  let empower : Action := ⟨.player p, .activate egg 1 ⟨1, []⟩ []⟩
+  let empower : Action := ⟨.player p, .activate egg 1 ⟨1, [], none⟩ []⟩
   let (casting, _) ← (step 100 (ready.fund p 1) empower).toOption
   let empowered := settleChain {} 8 casting
   let (ready, otherItem) ← onChain (ready.fund p 0) q "OGN-095"
@@ -454,7 +454,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
 #guard verifiedCase fun s => do
   let p := s.me
   let (s, dame) ← put s p "VEN-079" .base
-  let action : Action := ⟨.player p, .activate dame 2 ⟨5, [.body]⟩ []⟩
+  let action : Action := ⟨.player p, .activate dame 2 ⟨5, [.body], none⟩ []⟩
   let funded := s.fund p 5 (body := 1)
   let (waiting, _) ← (step 100 funded action).toOption
   let done := settleChain {} 12 waiting
@@ -475,7 +475,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let possible ← firePicks s [.scored p field true]
   let nowPossible ← firePicks fortified [.scored p field true]
   let result ← fire fortified [.scored p field true] { pick := (· == [expensive]) }
-  let skipped ← fire s [.scored p field true] { pick := List.isEmpty }
+  let skipped ← fire s [.scored p field true] { yes := false }
   let held ← fire s [.scored p field false]
   return fortified.mightNow demo == some 2 && possible == [cheap] && nowPossible.contains expensive &&
     result.countIn p .trash "VEN-062" == 1 && (result.obj? cheap).isSome &&
@@ -559,7 +559,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let s := s.control p s.bf0
   let empowered ← activate s p disc 0
   let ready := (readyEffect empowered disc).1
-  let (queued, _) ← (step 100 (ready.fund p 1) ⟨.player p, .activate disc 1 ⟨1, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 (ready.fund p 1) ⟨.player p, .activate disc 1 ⟨1, [], none⟩ []⟩).toOption
   let done := settleChain {} 8 queued
   let mech ← (done.zone (.player p .base)).find? (fun id => (done.cardDef? id).any (·.name == "Mech"))
   return empowered.tired disc == some true &&
@@ -620,7 +620,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, sibling) ← putAt s p "VEN-097" field
   let s := (s.control p field).modObj hidden
     (fun o => { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
-  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, [], none⟩ []⟩).toOption
   let done := settleChain {} 8 queued
   let flipped ← (done.unitsAtOf field p).find? (fun id =>
     id != sibling && (done.cardDef? id).any (·.id == cid "VEN-097"))
@@ -675,7 +675,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (waiting, _) ← (step 100 s (playAt field)).toOption
   let chosen := settleChain { pick := (· == [opposing]) } 10 waiting
   let back := settleChain { pick := (· == [friendly]) } 10 waiting
-  let stayed := settleChain { pick := List.isEmpty } 10 waiting
+  let stayed := settleChain { yes := false } 10 waiting
   return !(legalActions s).contains (playAt occupied) && !(waiting.trigPicks.contains dragon) &&
     (waiting.unitsAtOf field p).any (fun id => (waiting.cardDef? id).any (·.id == cid "VEN-115")) &&
     chosen.countIn q .hand "VEN-014" == 1 && back.countIn p .hand "VEN-014" == 1 &&
@@ -689,7 +689,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, ally) ← putAt s p "VEN-014" field
   let s := (s.control p field).modObj hidden
     (fun o => { o with hiddenAt := some field, hiddenTurn := some (s.turn - 1) })
-  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 s ⟨.player p, .activate hidden 2 ⟨0, [], none⟩ []⟩).toOption
   let done := settleChain {} 8 queued
   let unit ← (done.unitsAtOf field p).find? (fun id => (done.cardDef? id).any (·.id == cid "VEN-117"))
   let (extra, _) ← putAt done p "VEN-014" field
@@ -822,7 +822,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let unit ← s.firstOf p .base soldier.code
   let model : Says := { obj := (· == azir) }
   let equip (t : GameState) := activate t p spectacles 1 [unit] ⟨1, [.order]⟩ model
-  let use : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm]⟩ [azir]⟩
+  let use : Action := ⟨.player p, .activate unit 0 ⟨0, [.calm], none⟩ [azir]⟩
   let first ← equip s
   let stamp ← first.copyStamp? unit
   let (queued, _) ← (step 100 (first.rich p) use).toOption
@@ -944,7 +944,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (empowered, events) := empowerObj p s ally
   let source ← fire empowered events
   let now := { source.fund p 0 (mind := 1) with pending := [.priority p] }
-  let act (id : ObjId) : Action := ⟨.player p, .activate legend 1 ⟨0, [.mind]⟩ [id]⟩
+  let act (id : ObjId) : Action := ⟨.player p, .activate legend 1 ⟨0, [.mind], none⟩ [id]⟩
   let (waiting, _) ← (step 100 now (act target)).toOption
   let done := settleChain {} 8 waiting
   return !(legalActions now).contains (act gear) &&
@@ -1057,7 +1057,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let p := s.me
   let (s, unit) ← put s p "VEN-001" .base
   let s := s.fund p 2
-  let action : Action := ⟨.player p, .activate unit 0 ⟨2, []⟩ []⟩
+  let action : Action := ⟨.player p, .activate unit 0 ⟨2, [], none⟩ []⟩
   let (casting, _) ← (step 100 s action).toOption
   let done := settleChain {} 8 casting
   return s.deflectOf unit == 0 && casting.kwAmount unit .assault == 0 &&
@@ -1185,7 +1185,8 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, renekton) ← put s p "VEN-019" .hand
   let (s, first) ← putAt s q "VEN-071" field
   let (s, second) ← putAt s q "VEN-071" field
-  let (s, friendly) ← putAt s p "VEN-071" field
+  let (s, friendly) ← put s p "VEN-071" .base
+  let s := (s.control q field).modObj friendly (fun o => { o with exhausted := false })
   let (s, elsewhere) ← put s q "VEN-071" .base
   let runes (t : GameState) := (t.zone (.player p .base)).countP
     (fun id => (t.cardDef? id).any (·.hasType .rune))
@@ -1195,8 +1196,11 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let attack (t : GameState) : Option (GameState × ObjId) := do
     let played ← cast (t.fund p 7 (fury := 1)) p renekton ⟨7, [.fury]⟩
     let unit ← played.firstOf p .base "VEN-019"
-    let (moving, _) ← (step 100 (played.control q field)
-      ⟨.player p, .standardMove unit (.battlefield field)⟩).toOption
+    let send (state : GameState) (kind : ActionKind) := (step 100 state ⟨.player p, kind⟩).toOption
+    let (group, _) ← send played (.startGroupMove (.battlefield field) Cost.zero)
+    let (group, _) ← send group (.choose unit)
+    let (group, _) ← send group (.choose friendly)
+    let (moving, _) ← send group (.decide true)
     return (settleChain {} 8 moving, unit)
   let (fourRunes, attacker) ← attack s
   let (fiveRunes, _) ← attack five
@@ -1238,7 +1242,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (movingEmpowered, _) ← move powered
   let done := settleChain { pick := (· == [first]) } 8 moving
   let stronger := settleChain { pick := (· == [second]) } 8 movingEmpowered
-  let declined := settleChain { pick := List.isEmpty } 8 moving
+  let declined := settleChain { yes := false } 8 moving
   let damage (t : GameState) (id : ObjId) := (t.obj? id).map (·.damage)
   return s.mightNow akali == some 3 && powered.mightNow akali == some 4 &&
     moving.trigPicks.contains first && moving.trigPicks.contains second &&
@@ -1260,7 +1264,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (queued, _) ← (step 100 moving ⟨.player p, .putTrigger 0 [target]⟩).toOption
   let (answering, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
   let (withBlade, _) ← (step 100 answering
-    ⟨.player q, .activate blade 1 ⟨0, []⟩ [akali]⟩).toOption
+    ⟨.player q, .activate blade 1 ⟨0, [], none⟩ [akali]⟩).toOption
   let resolved := settleChain {} 12 withBlade
   return resolved.countIn p .trash "VEN-021" == 1 &&
     resolved.countIn q .trash "OGN-213" == 1 &&
@@ -1325,7 +1329,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
     (stripped.obj? enemy).any (·.empowerCount == 0) && stripped.inPlay.contains enemy &&
     stripped.inPlay.contains friendly
 
--- Riven's Weaponmaster moves an attached Equipment for one less Power, and her attack counts both.
+-- Riven's Weaponmaster pays Hand Hammer's Calm cost, and her attack counts both Equipment.
 #guard verifiedCase fun s => do
   let p := s.me
   let q := s.you
@@ -1337,7 +1341,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let (s, elsewhere) ← put s q "VEN-071" .base
   let (s, target) ← putAt s q "VEN-091" field
   let initial := (attachTo other (s.control q field) helm).1
-  let played ← cast (initial.fund p 3 (calm := 1)) p riven ⟨3, [.calm]⟩
+  let played ← cast (initial.fund p 3 (calm := 2)) p riven ⟨3, [.calm]⟩
     [] { pick := (· == [helm]) }
   let unit ← played.firstOf p .base "VEN-041"
   let geared ← activate played p brutalizer 0 [unit] ⟨0, [.calm]⟩
@@ -1350,6 +1354,7 @@ private meta def verifiedCase (f : GameState → Option Bool) : Bool :=
   let single := settleChain { pick := (· == [target]) } 8 oneGear
   return (initial.obj? helm).any (·.attached == some other) &&
     (played.obj? helm).any (·.attached == some unit) &&
+    (played.poolOf p).calm == 0 &&
     waiting.trigPicks == [target] && !waiting.trigPicks.contains elsewhere &&
     (struck.obj? target).any (·.damage == 4) && (single.obj? target).any (·.damage == 2)
 

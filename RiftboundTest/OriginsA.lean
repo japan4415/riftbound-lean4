@@ -21,6 +21,221 @@ meta def t (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+-- Brazen Buccaneer quotes its discounted price only when another card pays the cost.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, buccaneer) ← put s p "OGN-002" .hand
+  let (s, payment) ← put s p "OGN-136" .hand
+  let (s, opponentCard) ← put s q "OGN-136" .hand
+  let s := s.rich p
+  let action (energy : Nat) (cost : List ObjId) : Action :=
+    ⟨.player p, .playCard buccaneer ⟨energy, []⟩ cost⟩
+  let options := legalFrameActions s
+  let (entry, events) ← (step 100 s (action 4 [payment])).toOption
+  let entered ← entry.firstOf p .base "OGN-002"
+  let discarded ← events.findIdx? (fun | .discarded who _ _ => who == p | _ => false)
+  let enteredAt ← events.findIdx? (fun | .played who id => who == p && id == entered | _ => false)
+  return options.contains (action 6 []) && options.contains (action 4 [payment]) &&
+    !options.contains (action 4 []) && !options.contains (action 4 [buccaneer]) &&
+    !options.contains (action 4 [opponentCard]) && !options.contains (action 6 [payment]) &&
+    discarded < enteredAt && (entry.obj? entered).any (·.discardPaid) &&
+    entry.countIn p .trash "OGN-136" == s.countIn p .trash "OGN-136" + 1
+
+-- Effect plays see the same hand payment and discount before funding the lowered cost.
+#guard t fun s => do
+  let p := s.me
+  let (s, buccaneer) ← put s p "OGN-002" .trash
+  let (s, payment) ← put s p "OGN-136" .hand
+  let quote := permanentPlayOptions s p buccaneer { price := .reduceEnergy 1 }
+  let cost (discard : Option ObjId) := quote.findSome? (fun plan =>
+    if plan.battlefield.isNone && plan.extraObject == discard then some plan.cost.energy else none)
+  return cost none == some 5 && cost (some payment) == some 3 &&
+    (cost (some buccaneer)).isNone
+
+-- Discarded Flame Chompers is paid for while its ability is finalized, after Brazen enters.
+#guard t fun s => do
+  let p := s.me
+  let (s, buccaneer) ← put s p "OGN-002" .hand
+  let (s, chompers) ← put s p "OGN-006" .hand
+  let s := s.fund p 4 (fury := 1)
+  let playBrazen : Action := ⟨.player p, .playCard buccaneer ⟨4, []⟩ [chompers]⟩
+  let (offered, _) ← (step 100 s playBrazen).toOption
+  let discarded ← offered.firstOf p .trash "OGN-006"
+  let finalize ← (legalFrameActions offered).find? (fun action =>
+    action.actor == .player p && match action.kind with
+      | .putTrigger _ _ (.pay ..) => true
+      | _ => false)
+  let (paid, _) ← (step 100 offered finalize).toOption
+  let resolved := settleChain {} 12 paid
+  let declined := settleChain { yes := false } 12 offered
+  return offered.countIn p .base "OGN-002" == 1 && (offered.poolOf p).fury == 1 &&
+    paid.locate discarded == some (.player p .trash) && (paid.poolOf p).fury == 0 &&
+    resolved.countIn p .base "OGN-006" == 1 && declined.countIn p .trash "OGN-006" == 1 &&
+    (declined.poolOf p).fury == 1
+
+-- Chemtech Enforcer adds its printed Assault and requires a discard when played.
+#guard t fun s => do
+  let p := s.me
+  let (s, enforcer) ← put s p "OGN-003" .hand
+  let resolved ← play s p enforcer
+  let entered ← resolved.firstOf p .base "OGN-003"
+  return resolved.kwAmount entered .assault == 2 &&
+    resolved.handN p + 2 == s.handN p &&
+    (resolved.zone (.player p .trash)).length == (s.zone (.player p .trash)).length + 1
+
+-- Dangerous Duo can choose an opposing Unit once its own player has played another card.
+#guard t fun s => do
+  let p := s.me
+  let (s, duo) ← put s p "OGN-016" .hand
+  let (s, earlier) ← put s p "OGN-136" .hand
+  let (s, foe) ← put s s.you "OGN-136" .base
+  let alone ← play s p duo [] { pick := (· == [foe]) }
+  let afterEarlier ← play s p earlier
+  let gained ← play afterEarlier p duo [] { pick := (· == [foe]) }
+  return alone.mightNow foe == s.mightNow foe &&
+    gained.mightNow foe == (s.mightNow foe).map (· + 2)
+
+-- Scrapyard Champion prompts for two separate discards and draws only after both.
+#guard t fun s => do
+  let p := s.me
+  let (s, champion) ← put s p "OGN-020" .hand
+  let (s, earlier) ← put s p "OGN-136" .hand
+  let (s, first) ← put s p "OGN-136" .hand
+  let (s, second) ← put s p "OGN-136" .hand
+  let alone ← play s p champion
+  let pre ← play s p earlier
+  let send (state : GameState) (q : PlayerId) (kind : ActionKind) :=
+    (step 100 state ⟨.player q, kind⟩).toOption
+  let (entered, _) ← send (pre.rich p) p (.playCard champion (payOf pre champion) [])
+  let (passed, _) ← send entered p .pass
+  let (waiting, early) ← send passed s.you .pass
+  let (one, middle) ← send waiting p (.discardPick first)
+  let (resolved, last) ← send one p (.discardPick second)
+  let draws (events : List Event) := events.countP (· == .drew p)
+  return alone.handN p + 1 == s.handN p && draws early == 0 && draws middle == 0 &&
+    draws last == 2 && resolved.handN p == waiting.handN p &&
+    resolved.countIn p .trash "OGN-136" == s.countIn p .trash "OGN-136" + 2
+
+-- A teammate's Magma Wurm readies Units as they enter in a team game.
+#guard t fun labState => do
+  let mode := Mode.teamDuel
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let initial := GameState.empty { mode, ruleSet := .coreOnly } labState.cards
+  let (s, _) ← put initial p "OGN-011" .base
+  let (s, ally) ← put s teammate "OGN-136" .hand
+  let (s, foe) ← put s opponent "OGN-136" .hand
+  let (s, gear) ← put s teammate "OGN-021" .hand
+  let (s, tokens) ← put s teammate "SFD-076" .hand
+  let (s, _) ← put s teammate "OGN-136" .mainDeck
+  let turnOf (seat : PlayerId) : GameState :=
+    { s with
+      active := some seat
+      phase := .main
+      turn := 3
+      pending := [.priority seat]
+      turnOrder := Mode.teamTurnOrder true }
+  let allied ← play (turnOf teammate) teammate ally
+  let opposed ← play (turnOf opponent) opponent foe
+  let created ← play (turnOf teammate) teammate tokens
+  let token ← (created.zone (.player teammate .base)).find? (fun id =>
+    (created.cardDef? id).any (·.name == "Mech"))
+  let allyInPlay ← allied.firstOf teammate .base "OGN-136"
+  let foeInPlay ← opposed.firstOf opponent .base "OGN-136"
+  let gearDefinition ← s.cardDef? gear
+  return allied.tired allyInPlay == some false && opposed.tired foeInPlay == some true &&
+    created.tired token == some false && !s.readyNow teammate gear gearDefinition
+
+-- Real Hold scoring supplies the turn player's decisions and units, even on printed fields
+-- brought by the other player.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, altar) ← putBf s q "OGN-275"
+  let (s, grove) ← putBf s q "OGN-280"
+  let (s, peak) ← putBf s q "OGN-288"
+  let bringUnder (board : GameState) (field : ObjId) : Option GameState := do
+    let (withUnit, _) ← putAt board p "OGN-136" field
+    return withUnit.modObj field (fun o => { o with control := some p })
+  let s ← [altar, grove, peak].foldlM bringUnder s
+  let start := { s with pending := [.scoreHolds, .priority p] }
+  let (scored, events) ← (advance 100 start []).toOption
+  let declines := settleChain { yes := false } 30 scored
+  let accepts := settleChain {} 30 scored
+  let newRune := (accepts.runesOf p).filter (fun id => !(s.runesOf p).contains id)
+  let recruit ← (accepts.zone (.player p .base)).find? (fun id =>
+    (accepts.cardDef? id).any (·.name == "Recruit"))
+  return [altar, grove, peak].all (fun field => events.contains (.scored p field false)) &&
+    accepts.pending == [.priority p] && declines.pending == [.priority p] &&
+    accepts.pointsOf p == s.pointsOf p + 3 && declines.pointsOf p == s.pointsOf p + 3 &&
+    accepts.handN p == s.handN p + 1 && declines.handN p == s.handN p + 1 &&
+    accepts.handN q == s.handN q && accepts.countNamed p .base "Recruit" == 1 &&
+    declines.countNamed p .base "Recruit" == 1 && accepts.tired recruit == some true &&
+    newRune.length == 1 && newRune.all (fun rune => accepts.tired rune == some true) &&
+    declines.runesOf p == s.runesOf p && accepts.runesOf q == s.runesOf q
+
+-- Navori Fighting Pit offers both units at the held battlefield and no target in Base.
+#guard t fun s => do
+  let p := s.me
+  let (s, pit) ← putBf s s.you "OGN-283"
+  let (s, first) ← putAt s p "OGN-136" pit
+  let (s, second) ← putAt s p "OGN-136" pit
+  let (s, outside) ← put s p "OGN-136" .base
+  let board := { s.modObj pit (fun o => { o with control := some p }) with
+    pending := [.scoreHolds, .priority p] }
+  let (scored, _) ← (advance 100 board []).toOption
+  let choices := (legalFrameActions scored).filterMap (fun action => match action.kind with
+    | .putTrigger _ [target] (.pay ..) => some target
+    | _ => none)
+  let resolved := settleChain { pick := fun targets => targets == [second] } 12 scored
+  return choices.contains first && choices.contains second && !choices.contains outside &&
+    (resolved.obj? second).any (·.buffed) && !(resolved.obj? first).any (·.buffed) &&
+    !(resolved.obj? outside).any (·.buffed)
+
+-- Obelisk of Power and The Arena's Greatest track a seat's own first Beginning even when
+-- a War seat earlier in the regular turn order has conceded.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let departed : PlayerId := ⟨2⟩
+  let fourth : PlayerId := ⟨3⟩
+  let (s, _) ← putBf s p "OGN-284"
+  let (s, _) ← putBf s p "OGN-290"
+  let config := { s.config with mode := .ffa4 }
+  let start := { s with config, turnOrder := [p, departed, q, fourth], turn := 1 }
+  let first := beginTurnStep (start.withdrawSeat departed) []
+  let second := (List.range 3).foldl (fun state _ => beginTurnStep state []) first
+  let beginning (state : GameState) : Option GameState := do
+    let board := { state with pending := [.phase .beginning, .priority q] }
+    let (prompt, _) ← (advance 100 board []).toOption
+    return settleChain {} 24 prompt
+  let firstResult ← beginning first
+  let secondResult ← beginning second
+  let newRunes := (firstResult.runesOf q).filter (fun rune => !(s.runesOf q).contains rune)
+  return first.active == some q && second.active == some q &&
+    first.turnsTaken q == 1 && second.turnsTaken q == 2 &&
+    firstResult.pointsOf q == s.pointsOf q + 1 && firstResult.pointsOf p == s.pointsOf p &&
+    newRunes.length == 1 && newRunes.all (fun rune => firstResult.tired rune == some false) &&
+    firstResult.runesOf p == s.runesOf p &&
+    secondResult.runesOf q == s.runesOf q && secondResult.pointsOf q == s.pointsOf q
+
+-- Only a unit at Windswept Hillock can use its added standard movement, and the keyword
+-- ceases to apply when the unit enters a different battlefield.
+#guard t fun s => do
+  let p := s.me
+  let elsewhere := s.bf0
+  let (s, hillock) ← putBf s s.you "OGN-297"
+  let (s, warCamp) ← putBf s s.you "OGN-294"
+  let (s, starts) ← putAt s p "OGN-136" hillock
+  let (s, other) ← putAt s p "OGN-136" elsewhere
+  let move (id : ObjId) : Action := ⟨.player p, .standardMove id (.battlefield warCamp) Cost.zero⟩
+  let (moved, _) ← (step 100 s (move starts)).toOption
+  return (legalActions s).contains (move starts) && !(legalActions s).contains (move other) &&
+    (moved.obj? starts).bind (·.loc) == some warCamp && moved.mightNow starts == some 3 &&
+    !moved.hasKw starts .ganking && moved.mightNow other == some 2
+
 -- Rebuke (OGN-172): a unit at a battlefield goes back to its owner's hand
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-172" .hand
@@ -75,6 +290,40 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-104" .hand
   let (s2, u) ← put s1 s.you "OGN-001" .base
   return (play s2 s.me c [u]).isNone
+
+-- Watchful Sentry draws for its controller; Soaring Scout channels an exhausted Rune instead.
+#guard t fun s => do
+  let p := s.me
+  let (s, sentry) ← put s p "OGN-096" .base
+  let (s, scout) ← put s p "OGN-216" .base
+  let (s, top) ← put s p "UNL-111" .mainDeck
+  let (sentryDead, sentryEvents) := killObj s sentry
+  let (scoutDead, scoutEvents) := killObj s scout
+  let drew ← fire sentryDead sentryEvents
+  let channeled ← fire scoutDead scoutEvents
+  let runes := channeled.zone (.player p .base) |>.filter (fun id =>
+    !(s.zone (.player p .base)).contains id && (channeled.cardDef? id).any (·.hasType .rune))
+  return drew.countIn p .hand "UNL-111" == 1 &&
+    drew.zone (.player p .mainDeck) == (s.zone (.player p .mainDeck)).erase top &&
+    drew.handN s.you == s.handN s.you && drew.zone (.player p .runeDeck) == s.zone (.player p .runeDeck) &&
+    (channeled.zone (.player p .runeDeck)).length + 1 == (s.zone (.player p .runeDeck)).length &&
+    runes.length == 1 && runes.all (fun id => channeled.tired id == some true) &&
+    channeled.handN p == s.handN p && channeled.zone (.player s.you .runeDeck) == s.zone (.player s.you .runeDeck)
+
+-- Harnessed Dragon only offers enemy Units and can be played when the opponent has none.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, dragon) ← put s p "OGN-234" .hand
+  let (s, friendly) ← put s p "UNL-111" .base
+  let empty ← play s p dragon
+  let (s, base) ← put s q "OGN-001" .base
+  let (s, field) ← putAt s q "UNL-111" s.bf0
+  let options ← castStop s p dragon
+  let done ← play s p dragon [] { pick := (· == [field]) }
+  return empty.countIn p .base "OGN-234" == 1 && (empty.obj? friendly).isSome &&
+    options.trigPicks.length == 2 && options.trigPicks.contains base && options.trigPicks.contains field &&
+    done.countIn q .trash "UNL-111" == 1 && (done.obj? base).isSome && (done.obj? friendly).isSome
 
 -- Rune Prison (OGN-050): the unit is stunned
 #guard t fun s => do
@@ -184,6 +433,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
     -- a buffed enemy unit is not counted
     enemy.mightNow u == two.mightNow u
 
+-- Its battlefield bonus includes a teammate there, and applies only at a Battlefield.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, sett) ← putAt s p "OGN-240" field
+  let (s, teammate) ← putAt s ally "OGN-136" field
+  let (s, atBase) ← put s p "OGN-240" .base
+  let (s, other) ← put s p "OGN-136" .base
+  let buffed := (s.buff teammate).buff other
+  return buffed.mightNow sett == some 6 && buffed.mightNow atBase == some 5 &&
+    buffed.hasKw sett .tank
+
 -- Lee Sin (OGN-151): other buffed friendly units at my battlefield have +2 Might
 #guard t fun s => do
   let (s1, u) ← putAt s s.me "OGN-151" s.bf0
@@ -193,6 +456,16 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b := (s4.buff v).buff e
   return b.mightNow v == (s4.mightNow v).map (· + 3) && b.mightNow w == s4.mightNow w &&
     b.mightNow e == (s4.mightNow e).map (· + 1) && b.mightNow u == s4.mightNow u
+
+-- Lee Sin can Accelerate by paying the printed additional Body Power and Energy.
+#guard t fun s => do
+  let p := s.me
+  let (s, lee) ← put (s.fund p 7 (body := 1)) p "OGN-151" .hand
+  let regular ← cast s p lee ⟨6, []⟩
+  let accelerated ← cast s p lee ⟨7, [.body]⟩
+  let before ← regular.firstOf p .base "OGN-151"
+  let after ← accelerated.firstOf p .base "OGN-151"
+  return regular.tired before == some true && accelerated.tired after == some false
 
 -- Arena Bar (OGN-124): exhaust it to buff an exhausted friendly unit
 #guard t fun s => do
@@ -216,12 +489,14 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let u ← s2.firstOf s.me .base "OGN-139"
   return (s2.obj? u).map (·.buffed) == some false
 
--- Peak Guardian (OGN-223): when played, buff itself
+-- Peak Guardian buffs only itself when played to Base.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-223" .hand
-  let s2 ← play s1 s.me c
-  let u ← s2.firstOf s.me .base "OGN-223"
-  return (s2.obj? u).map (·.buffed) == some true
+  let p := s.me
+  let (s, guardian) ← put s p "OGN-223" .hand
+  let (s, ally) ← put s p "OGN-001" .base
+  let entered ← play s p guardian
+  let unit ← entered.firstOf p .base "OGN-223"
+  return (entered.obj? unit).any (·.buffed) && (entered.obj? ally).any (!·.buffed)
 
 -- Cithria reacts to units only, and only to the plays of its player's side
 #guard t fun s => do
@@ -246,19 +521,30 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let s3 := s2.buff v
   return s3.mightNow u == s1.mightNow u
 
--- Peak Guardian at a battlefield: it buffs itself and the other friendly units there (the
--- ability is put on the stack by hand: a unit cannot be played to a battlefield yet)
-#guard t fun s => do
-  let (s1, g) ← putAt s s.me "OGN-223" s.bf0
-  let (s2, v) ← putAt s1 s.me "OGN-001" s.bf0
-  let (s3, w) ← put s2 s.me "OGN-001" .base
-  let (s4, e) ← putAt s3 s.you "OGN-001" s.bf0
-  let pend := detectOne s4 (.played s.me g)
-  let s5 := { s4 with pending := .triggers pend :: s4.pending }
-  let s6 := settleChain {} 12 (← (advance 100 s5 []).toOption).1
-  return pend.length == 1 && (s6.obj? g).map (·.buffed) == some true &&
-    (s6.obj? v).map (·.buffed) == some true && (s6.obj? w).map (·.buffed) == some false &&
-    (s6.obj? e).map (·.buffed) == some false
+-- When an effect plays Peak Guardian to a Battlefield, only friendly units there share its buff.
+#guard t fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let field := s.bf0
+  let elsewhere ← s.battlefields.find? (· != field)
+  let (s, guardian) ← put s p "OGN-223" .hand
+  let (s, away) ← putAt s p "OGN-001" elsewhere
+  let (allied, mateUnit) ← putAt s mate "OGN-001" field
+  let (entered, events) := playFreeAt p field allied guardian
+  let resolved ← fire entered events
+  let unit ← (resolved.unitsAt field).find? (fun id =>
+    (resolved.cardDef? id).any (fun card => card.id == cid "OGN-223"))
+  let (contested, ownUnit) ← putAt s p "OGN-001" field
+  let (contested, enemyUnit) ← putAt contested enemy "OGN-001" field
+  let (reinforced, events) := playFreeAt p field contested guardian
+  let after ← fire reinforced events
+  return [unit, mateUnit].all (fun id => (resolved.obj? id).any (·.buffed)) &&
+    (resolved.obj? away).any (!·.buffed) && (after.obj? ownUnit).any (·.buffed) &&
+    (after.obj? enemyUnit).any (!·.buffed)
 
 -- Salvage (OGN-224): you may kill a gear (you choose which when there are two), then draw 1
 #guard t fun s => do
@@ -381,6 +667,19 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, u) ← put s s.me "OGN-125" .base
   return !s1.hasKw u .ganking && (s1.buff u).hasKw u .ganking
+#guard t fun s => do
+  let bf1 ← s.battlefields[1]?
+  let (s, bar) ← put s s.me "OGN-124" .base
+  let (s, bully) ← putAt s s.me "OGN-125" s.bf0
+  let s := s.modObj s.bf0 (fun field => { field with control := some s.me })
+  let dest : MoveDest := .battlefield bf1
+  let move : Action := ⟨.player s.me, .standardMove bully dest ⟨0, []⟩⟩
+  let exhausted := s.tire bully
+  let buffed ← activate exhausted s.me bar 0 [bully]
+  let ready := buffed.modObj bully (fun u => { u with exhausted := false })
+  let (moved, _) ← (step 100 ready move).toOption
+  return !(legalActions s).contains move && !(legalActions buffed).contains move &&
+    (legalActions ready).contains move && moved.hereOf bully == some bf1
 
 -- Taric (OGN-074): other friendly units here have Shield 1, not those elsewhere, not the enemy's
 #guard t fun s => do
@@ -397,6 +696,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s2, v) ← putAt s1 s.me "OGN-136" s.bf0
   let (s3, w) ← put s2 s.me "OGN-136" .base
   return s3.kwAmount v .assault == 1 && s3.kwAmount w .assault == 0 && s3.kwAmount t .assault == 0
+
+-- The continuous effects include teammates at the same Battlefield and read the Unit's position.
+#guard t fun s => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial s.cards config (List.replicate 4 goodDeck)
+  let game ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := game.me
+  let mate ← game.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let foe ← game.players.find? (fun q => !config.mode.sameSide p q)
+  let field := game.bf0
+  let (game, _) ← putAt game p "OGN-074" field
+  let (game, _) ← putAt game p "OGN-015" field
+  let (game, friendly) ← putAt game mate "OGN-136" field
+  let (game, opposing) ← putAt game foe "OGN-136" field
+  let (game, atBase) ← put game mate "OGN-136" .base
+  return game.kwAmount friendly .shield == 1 && game.kwAmount friendly .assault == 1 &&
+    game.kwAmount opposing .shield == 0 && game.kwAmount opposing .assault == 0 &&
+    game.kwAmount atBase .shield == 0 && game.kwAmount atBase .assault == 0
 
 -- the floor reads the Might the rules read: a passive bonus counts (Lee Sin gives +2 to a buffed
 -- unit here), and a unit already below the floor is not changed
@@ -443,6 +760,33 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.stunned) == some true && (a.obj? f).map (·.stunned) == some false &&
     (a.obj? l).map (·.stunned) == some false && (b.obj? e).map (·.stunned) == some false
 
+-- Leona's attack can Stun either enemy seat at the Battlefield. A teammate is friendly.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, other) ← putBf s q "OGN-276"
+  let (s, leona) ← putAt s p "OGN-238" field
+  let (s, ally) ← putAt s mate "OGN-001" field
+  let (s, left) ← putAt s q "OGN-001" field
+  let (s, right) ← putAt s r "OGN-001" field
+  let (s, elsewhere) ← putAt s q "OGN-001" other
+  let combat := [.combatStarted field p]
+  let choices ← firePicks s combat
+  let stunned ← fire s combat { pick := (· == [right]) }
+  return choices.contains left && choices.contains right && !choices.contains ally &&
+    !choices.contains elsewhere && (stunned.obj? right).any (·.stunned) &&
+    !(stunned.obj? ally).any (·.stunned) && s.kwAmount leona .shield == 1
+
 -- Ahri (OGN-119): -2 Might to an enemy unit here, to a minimum of 1, when she attacks or defends
 #guard t fun s => do
   let (s1, _) ← putAt s s.me "OGN-119" s.bf0
@@ -475,6 +819,27 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).map (·.damage) == (s2.mightNow y).map Int.toNat && (s2.mightNow y).isSome &&
     (b.obj? e).map (·.damage) == some 4
 
+-- Yasuo's target must still be an enemy Unit here when the trigger resolves (CR 359.3.f.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, yasuo) ← putAt s p "OGN-076" field
+  let (s, foe) ← putAt s q "OGN-116" field
+  let (s, outside) ← put s q "OGN-116" .base
+  let offered := insertTriggers (s.detect [.combatStarted field p]) (below s.pending)
+  let (waiting, _) ← (advance 100 { s with pending := offered } []).toOption
+  let choice ← (legalFrameActions waiting).find? (fun answer => match answer.kind with
+    | .putTrigger _ [target] (.pay ..) => target == foe
+    | _ => false)
+  let (chain, _) ← (step 100 waiting choice).toOption
+  let relocated := settleChain {} 12 (recallFx false chain yasuo).1
+  let newAlly := settleChain {} 12 (chain.modObj foe (fun unit => { unit with controller := p }))
+  let stolenSource := settleChain {} 12 (chain.modObj yasuo (fun unit => { unit with controller := q }))
+  return waiting.trigPicks == [foe] && (relocated.obj? yasuo).any (·.loc.isNone) &&
+    (relocated.obj? foe).any (·.damage == 0) && (newAlly.obj? foe).any (·.damage == 0) &&
+    (stolenSource.obj? foe).any (·.damage == 6) && (stolenSource.obj? outside).any (·.damage == 0)
+
 -- Dune Drake (OGN-131): +2 Might when it attacks, only if a ready enemy unit is here
 #guard t fun s => do
   let (s1, d) ← putAt s s.me "OGN-131" s.bf0
@@ -482,6 +847,36 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire s2 [.combatStarted s.bf0 s.me]
   let b ← fire (s2.tire e) [.combatStarted s.bf0 s.me]
   return a.mightNow d == (s2.mightNow d).map (· + 2) && b.mightNow d == s2.mightNow d
+
+-- Warwick enters ready, then kills damaged enemies at his attacking Battlefield as one group.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-159" .hand
+  let entered ← play s p card
+  let ready ← entered.firstOf p .base "OGN-159"
+  let (s, _) ← putAt s p "OGN-159" s.bf0
+  let (s, first) ← putAt s q "OGN-001" s.bf0
+  let (s, second) ← putAt s q "OGN-001" s.bf0
+  let (s, unhurt) ← putAt s q "OGN-001" s.bf0
+  let (s, home) ← put s q "OGN-001" .base
+  let damaged := [first, second, home].foldl (fun st id => st.modObj id (fun o => { o with damage := 1 })) s
+  let attacked ← fire damaged [.combatStarted s.bf0 p]
+  return entered.tired ready == some false && attacked.countIn q .trash "OGN-001" == 2 &&
+    (attacked.obj? unhurt).isSome && (attacked.obj? home).isSome
+
+-- Trifarian Gloryseeker's Legion sees an earlier card played by the same seat this turn.
+#guard t fun s => do
+  let p := s.me
+  let (s, card) ← put s p "OGN-217" .hand
+  let (s, earlier) ← put s p "OGN-051" .hand
+  let first ← play s p card
+  let before ← play s p earlier
+  let sameTurn ← play before p card
+  let nextTurn ← play { before with turn := before.turn + 1 } p card
+  let buffed (state : GameState) : Bool :=
+    ((state.firstOf p .base "OGN-217").bind state.obj?).any (·.buffed)
+  return !buffed first && buffed sameTurn && !buffed nextTurn
 
 -- Grove of the God-Willow (OGN-280), Zaun Warrens (OGN-298): the holder draws, the conqueror
 -- discards and draws
@@ -557,9 +952,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-057" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
   let (s3, w) ← put s2 s.me "OGN-136" .base
-  let a ← play s3 s.me c [v]
+  let (s4, enemy) ← put s3 s.you "OGN-136" .base
+  let a ← play s4 s.me c [v]
+  let b ← play s4 s.me c [enemy]
   return a.kwAmount v .shield == 3 && a.hasKw v .tank && !a.hasKw w .tank &&
-    a.kwAmount w .shield == 0 && !(a.mapObjects endTurnObj).hasKw v .tank
+    a.kwAmount w .shield == 0 && !(a.mapObjects endTurnObj).hasKw v .tank &&
+    b.kwAmount enemy .shield == 3 && b.hasKw enemy .tank && !(b.mapObjects endTurnObj).hasKw enemy .tank
 
 -- Blastcone Fae (OGN-097) and Teemo (OGN-197): when played
 #guard t fun s => do
@@ -568,13 +966,30 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, f) ← put s2 s.you "OGN-136" .base
   let a ← play s3 s.me c [] { pick := fun ts => ts.contains e }
   let b ← play s3 s.me c [] { pick := fun ts => ts.contains f }
+  let hidden ← activate (s3.control s.me s.bf0) s.me c 1 [s.bf0] ⟨0, [.fury]⟩
+  let card ← (hidden.zone (.player s.me .hidden)).head?
+  let revealed ← activate { hidden with turn := hidden.turn + 1 } s.me card 2 []
+    ⟨0, []⟩ { pick := fun ts => ts.contains e }
   return a.mightNow e == some 3 && a.mightNow f == some 2 && b.mightNow f == some 1 &&
-    b.mightNow e == some 5
+    b.mightNow e == some 5 && revealed.mightNow e == some 3 &&
+    (revealed.mapObjects endTurnObj).mightNow e == some 5
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-197" .hand
   let a ← play s1 s.me c
   let t ← a.firstOf s.me .base "OGN-197"
   return a.mightNow t == some 4 && (a.mapObjects endTurnObj).mightNow t == some 1
+
+-- Hidden also plays Teemo, putting him at the hiding Battlefield and granting Might.
+#guard t fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, teemo) ← put s p "OGN-197" .hand
+  let hidden ← activate (s.control p field) p teemo 1 [field] ⟨0, [.fury]⟩
+  let card ← hidden.firstOf p .hidden "OGN-197"
+  let revealed ← activate { hidden with turn := hidden.turn + 1 } p card 2
+  let entered ← (revealed.unitsOf p field).find? (fun id =>
+    (revealed.cardDef? id).any (·.id == cid "OGN-197"))
+  return revealed.mightNow entered == some 4 && (revealed.mapObjects endTurnObj).mightNow entered == some 1
 
 -- Fight or Flight (OGN-168): a unit at a battlefield goes to its base; one at a base cannot
 #guard t fun s => do
@@ -590,12 +1005,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, c) ← put s s.me "OGN-017" .hand
   let (s2, e) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let a ← play s1 s.me c
+  let (a, _) ← (step 100 (s1.rich s.me) ⟨.player s.me, .playCard c (payOf s1 c) []⟩).toOption
   let g ← a.firstOf s.me .base "OGN-017"
   let b := s3.rich s.me
   let (b1, g2) ← put b s.me "OGN-017" .base
   let x ← activate b1 s.me g2 1 [e]
-  return a.tired g == some true && (activate a s.me g 1 [e]).isNone &&
+  return a.tired g == some true && a.zone .chain == [] && a.pending == [.priority s.me] &&
     (x.obj? e).map (·.damage) == some 2 && x.tired g2 == some true &&
     (activate b1 s.me g2 1 [f]).isNone
 
@@ -627,15 +1042,21 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.countNamed s.you .base "Recruit" == 1 && a.countNamed s.me .base "Recruit" == 0 &&
     b.countNamed s.me .base "Recruit" == 0 && b.countNamed s.you .base "Recruit" == 0
 
--- Noxian Drummer (OGN-222): a Recruit token comes here when it moves to a battlefield
+-- Noxian Drummer creates one exhausted Recruit after moving to a Battlefield.
+-- Returning to a Base with friendly Units does not trigger it again.
 #guard t fun s => do
-  let (s1, d) ← putAt s s.me "OGN-222" s.bf0
-  let (s2, e) ← put s1 s.me "OGN-222" .base
-  let recruits (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
-    (x.cardDef? o).any (·.name == "Recruit")) |>.length
-  let a ← fire s2 [.standardMoved d (some s.bf0)]
-  let b ← fire s2 [.standardMoved e none]
-  return recruits a == 1 && recruits b == 0 && recruits s2 == 0
+  let p := s.me
+  let field := s.bf0
+  let (s, drummer) ← put (s.control p field) p "OGN-222" .base
+  let (s, _) ← put s p "OGN-049" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove drummer (.battlefield field)⟩).toOption
+  let finished := settleChain {} 12 queued
+  let [recruit] := (finished.unitsAtOf field p).filter (fun id =>
+    (finished.cardDef? id).any (·.name == "Recruit")) | none
+  let returned ← play finished p flash [drummer]
+  return (queued.zone .chain).length == 1 && finished.tired recruit == some true &&
+    returned.unitsAtOf field p == [recruit] && returned.countNamed p .base "Recruit" == 0
 
 -- Bounty Hunter (OGN-267), a Legend: exhaust it, a unit has Ganking this turn
 #guard t fun s => do
@@ -669,6 +1090,33 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? ha).map (·.buffed) == some true && a.handN s.me == s2.handN s.me &&
     (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s1.handN s.me - 1
 
+-- The Poro is checked when Herder enters. Returning it in response leaves the ability on the Chain.
+#guard t fun s => do
+  let p := s.me
+  let (s, herder) ← put (s.fund p 4 (calm := 1)) p "OGN-061" .hand
+  let (s, poro) ← put s p "OGN-013" .base
+  let (s, retreat) ← put s p "OGN-104" .hand
+  let run (s : GameState) (kind : ActionKind) := (step 100 s ⟨.player p, kind⟩).toOption
+  let (confirmed, _) ← run s (.playCard herder ⟨3, [.calm]⟩ [])
+  let (responded, _) ← run confirmed (.playCard retreat ⟨1, []⟩ [poro])
+  let resolved := settleChain {} 12 responded
+  let played ← resolved.firstOf p .base "OGN-061"
+  return resolved.locate poro == none && resolved.countIn p .hand "OGN-013" == 1 &&
+    (resolved.obj? played).any (·.buffed) && resolved.handN p == confirmed.handN p + 1
+
+-- The Herder checks its controller's own Units in 2v2.
+#guard t fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let (s, herder) ← put (s.fund p 3 (calm := 1)) p "OGN-061" .hand
+  let (s, _) ← put s mate "OGN-013" .base
+  let (s, _) ← (step 100 s ⟨.player p, .playCard herder ⟨3, [.calm]⟩ []⟩).toOption
+  let unit ← s.firstOf p .base "OGN-061"
+  return s.pending == [.priority p] && (s.obj? unit).any (!·.buffed)
+
 -- Solari Chief (OGN-225): an enemy unit is stunned, or killed if it already is
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-225" .hand
@@ -679,6 +1127,29 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← play t2 s.me c [] { pick := fun ts => ts.contains e2 }
   return (a.obj? e).map (·.stunned) == some true && a.countIn s.you .trash "OGN-001" == 0 &&
     (b.obj? e2).isNone && b.countIn s.you .trash "OGN-001" == 1
+
+-- Solari Chief's declared target can belong to either enemy seat, or be absent entirely.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, turn := 3, active := some p
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, chief) ← put s p "OGN-225" .hand
+  let (s, ours) ← put s p "OGN-001" .base
+  let (s, guest) ← put s ally "OGN-001" .base
+  let empty ← play s p chief
+  let (s, enemy) ← put s q "OGN-001" .base
+  let (s, second) ← put s r "OGN-001" .base
+  let waiting ← castStop s p chief
+  let legal := legalFrameActions waiting
+  let pick (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [id]⟩
+  return empty.countIn p .base "OGN-225" == 1 && !(empty.obj? ours).any (·.stunned) &&
+    !(empty.obj? guest).any (·.stunned) && legal.contains (pick enemy) &&
+    legal.contains (pick second) && !legal.contains (pick ours) && !legal.contains (pick guest)
 
 -- Last Breath (OGN-260), Challenge (OGN-128), Carnivorous Snapvine (OGN-149): damage by Might
 #guard t fun s => do
@@ -732,16 +1203,22 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? ha).map (·.buffed) == some false && a.handN s.me == s2.handN s.me - 1 &&
     (b.obj? hb).map (·.buffed) == some false && b.handN s.me == s3.handN s.me - 1
 
--- Eclipse Herald (OGN-059) and Radiant Dawn (OGN-261): when an enemy unit is stunned
+-- Eclipse Herald readies and gains Might when its controller is the seat stunning the enemy.
 #guard t fun s => do
   let (s1, h) ← put s s.me "OGN-059" .base
   let (s2, c) ← put s1 s.me "OGN-225" .hand
   let (s3, e) ← put s2 s.you "OGN-001" .base
   let (s4, f) ← put s3 s.me "OGN-001" .base
   let a ← play (s4.tire h) s.me c [] { pick := fun ts => ts.contains e }
-  let b ← fire (s4.tire h) [.stunned f]
+  let b ← fire (s4.tire h) [.stunnedBy f s.me]
+  let opposing ← fire (s4.tire h) [.stunnedBy e s.you]
+  let (expired, _) ← microStep { a with pending := [.expireTurn] }
   return a.tired h == some false && a.mightNow h == (s4.mightNow h).map (· + 1) &&
-    b.tired h == some true && b.mightNow h == s4.mightNow h
+    b.tired h == some true && b.mightNow h == s4.mightNow h &&
+    opposing.tired h == some true && opposing.mightNow h == s4.mightNow h &&
+    expired.mightNow h == s4.mightNow h
+
+-- Radiant Dawn grants a Buff to a friendly Unit following the enemy's Stun.
 #guard t fun s => do
   let (s1, _) ← put s s.me "OGN-261" .legendZone
   let (s2, c) ← put s1 s.me "OGN-225" .hand
@@ -793,14 +1270,60 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.mightNow j == (s5.mightNow j).map (· + 1) && b.mightNow j == s5.mightNow j &&
     b.tired j == some true
 
--- Radiant Dawn: only my units can be buffed (the opponent's unit is not offered)
+-- A single whole-hand discard answers the trigger once for each player's own Jinx.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mine) ← put s p "OGN-202" .base
+  let (s, opposing) ← put s q "OGN-202" .base
+  let retainTwo (s : GameState) (seat : PlayerId) :=
+    s.setZone (.player seat .hand) ((s.zone (.player seat .hand)).take 2)
+  let ready := retainTwo (retainTwo ((s.tire mine).tire opposing) p) q
+  let (s, spell) ← put ready p "OGN-201" .hand
+  let action : Action := ⟨.player p, .playCard spell ⟨3, [.chaos]⟩ []⟩
+  let (chain, _) ← (step 100 (s.fund p 3 (chaos := 1)) action).toOption
+  let resolved := settleChain {} 24 chain
+  return resolved.tired mine == some false && resolved.tired opposing == some false &&
+    resolved.mightNow mine == (s.mightNow mine).map (· + 1) &&
+    resolved.mightNow opposing == (s.mightNow opposing).map (· + 1)
+
+-- Radiant Dawn: friendly Units can be buffed after its controller Stuns an enemy.
 #guard t fun s => do
   let (s1, _) ← put s s.me "OGN-261" .legendZone
   let (s2, e) ← put s1 s.you "OGN-001" .base
   let (s3, f) ← put s2 s.me "OGN-136" .base
   let (s4, g) ← put s3 s.me "OGN-001" .base
-  let picks ← firePicks s4 [.stunned e]
+  let picks ← firePicks s4 [.stunnedBy e s.me]
   return picks.contains f && picks.contains g && !picks.contains e
+
+-- One Stun instruction fires Radiant Dawn once, even across both opposing seats.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, turn := 3, active := some p
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, legend) ← put s p "OGN-261" .legendZone
+  let (s, friendly) ← put s ally "OGN-001" .base
+  let (s, first) ← put s q "OGN-001" .base
+  let (s, second) ← put s r "OGN-001" .base
+  let notice (state : GameState) (actor : PlayerId) (units : List ObjId) :=
+    applyPrim state actor legend { slots := units.map Value.obj } (.stun (.slotsFrom 0))
+  let (group, both) ← notice s p [first, second]
+  let (teammate, byTeammate) ← notice s ally [first, second]
+  let (closed, repeated) ← notice group p [first, second]
+  let (once, one) ← notice s p [first]
+  let (again, two) ← notice once p [second]
+  let triggers (g : GameState) (events : List Event) :=
+    (g.detect events).filter (·.source == legend)
+  let stopped ← fire group both { pick := fun ids => ids == [friendly] }
+  return both == [.stunnedBy first p, .stunnedBy second p] &&
+    (triggers group both).length == 1 && (triggers teammate byTeammate).isEmpty &&
+    (triggers closed repeated).isEmpty && (triggers once one).length == 1 &&
+    (triggers again two).length == 1 && (stopped.obj? friendly).any (·.buffed)
 
 -- Wielder of Water (OGN-055): +2 Might only while it attacks or defends alone
 #guard t fun s => do
@@ -809,7 +1332,9 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← putAt s2 s.me "OGN-136" s.bf0
   let b := s3.inCombatAt s.bf0 s.me
   let c := s2.inCombatAt s.bf0 s.you
-  return c.mightNow w == (s2.mightNow w).map (· + 2) && b.mightNow w == s3.mightNow w &&
+  let a := s2.inCombatAt s.bf0 s.me
+  return a.mightNow w == (s2.mightNow w).map (· + 2) &&
+    c.mightNow w == a.mightNow w && b.mightNow w == s3.mightNow w &&
     s2.mightNow w == (s1.mightNow w) && s3.mightNow v == some 2
 
 -- Mask of Foresight (OGN-060): +1 Might for a friendly unit that attacks (a) or defends (b)
@@ -837,6 +1362,34 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (r.obj? e).map (·.damage) == some 2 && (r.obj? f).map (·.damage) == some 0 &&
     (r.obj? a).map (·.damage) == some 0 && (q.obj? e).map (·.damage) == some 0
 
+-- Cannon Barrage and Anivia each finish their damage before Cleanup can kill either enemy.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, first) ← putAt (s.control q bf) q "OGN-051" bf
+  let (s, other) ← putAt s q "OGN-051" bf
+  let resolve (initial : GameState) (amount : Nat) : Option Bool := do
+    let .chainPass incoming _ :: _ := initial.pending | none
+    let (passed, _) ← (step 100 initial ⟨.player incoming, .pass⟩).toOption
+    let .chainPass outgoing _ :: _ := passed.pending | none
+    let (after, events) ← (step 100 passed ⟨.player outgoing, .pass⟩).toOption
+    let death := events.findIdx (fun
+      | .moved before _ (.player owner .trash) => owner == q && (before == first || before == other)
+      | _ => false)
+    return after.locate first == none && after.locate other == none &&
+      death < events.length && events.idxOf (.damaged first amount) < death &&
+      events.idxOf (.damaged other amount) < death
+  let (s1, scare) ← put s p "OGN-001" .base
+  let (s1, barrage) ← put (s1.fund p 2 (body := 1)) p "OGN-127" .hand
+  let (combat, _) ← (step 100 s1 ⟨.player p, .standardMove scare (.battlefield bf)⟩).toOption
+  let (placed, _) ← (step 100 combat ⟨.player p, .playCard barrage ⟨2, [.body]⟩ []⟩).toOption
+  let batch ← resolve placed 2
+  let (s2, bird) ← put s p "OGN-148" .base
+  let (triggered, _) ← (step 100 s2 ⟨.player p, .standardMove bird (.battlefield bf)⟩).toOption
+  let attack ← resolve triggered 3
+  return batch && attack
+
 -- Kadregrin the Infernal (OGN-038): draw 1 for each of my Mighty units
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-038" .hand
@@ -847,6 +1400,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← play s4 s.me c
   -- Kadregrin itself (Might 9) is Mighty and counts
   return a.handN s.me == s1.handN s.me - 1 + 1 && b.handN s.me == s4.handN s.me - 1 + 2
+
+-- The draw counts the acting seat's Mighty Units, including Kadregrin, in 2v2.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let empty := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { empty with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, kadregrin) ← put s p "OGN-038" .hand
+  let (s, _) ← put s ally "OGN-001" .base
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let entered ← play s p kadregrin
+  return entered.countIn p .base "OGN-038" == 1 && entered.handN p == 1 && entered.handN ally == 0
+
+-- Darius strengthens teammates in his location and does not strengthen another Base.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, ally) ← putAt s mate "OGN-136" field
+  let (s, foe) ← putAt s enemy "OGN-136" field
+  let (s, away) ← put s mate "OGN-136" .base
+  let (withDarius, _) ← putAt s p "OGN-243" field
+  return withDarius.mightNow ally == (s.mightNow ally).map (· + 1) &&
+    withDarius.mightNow foe == s.mightNow foe && withDarius.mightNow away == s.mightNow away
 
 -- Fiora (OGN-232): Deflect, Ganking and Shield only while she is Mighty (Might 4, buffed 5)
 #guard t fun s => do
@@ -1032,6 +1617,26 @@ meta def t (f : GameState → Option Bool) : Bool :=
     return es.contains (.phaseStarted s.me .beginning) && s3.handN s.me == one.handN s.me + 1
   | .error _ => none
 
+-- Loose Cannon checks hand size at resolution, after reactions can change it.
+#guard t fun s => do
+  let p := s.me
+  let (s, _) ← put s p "OGN-251" .legendZone
+  let hand := s.zone (.player p .hand)
+  let first ← hand[0]?
+  let second ← hand[1]?
+  let queue (cards : List ObjId) : Option GameState := do
+    let state := s.setZone (.player p .hand) cards
+    let triggered := state.withTriggers [.phaseStarted p .beginning]
+    return (← (advance 100 triggered []).toOption).1
+  let fromTwo ← queue [first, second]
+  let fromOne ← queue [first]
+  let (gained, _) ← put fromOne p "OGN-001" .hand
+  let reduced := fromTwo.setZone (.player p .hand) [first]
+  let reduced := settleChain {} 12 reduced
+  let gained := settleChain {} 12 gained
+  return fromTwo.zone .chain != [] && fromOne.zone .chain != [] &&
+    reduced.handN p == 2 && gained.handN p == 2
+
 -- The Arena's Greatest (OGN-290) and Obelisk of Power (OGN-284): in each player's first Beginning
 -- Phase, that player gains 1 point / channels 1 rune; not in the second
 #guard t fun s => do
@@ -1073,13 +1678,6 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s1, _) ← putBf s s.you "OGN-290"
   let a ← fire { s1 with turn := 2 } [.phaseStarted s.you .beginning]
   return a.pointsOf s.you == s1.pointsOf s.you + 1 && a.pointsOf s.me == s1.pointsOf s.me
-
--- Dark Child (OGS-017) now sets off its end-of-turn ability; a choice of two runes is not
--- understood yet, so the game goes on without it
-#guard t fun s => do
-  let (s1, _) ← put s s.me "OGS-017" .base
-  let a ← fire s1 [.phaseStarted s.me .ending]
-  return a.pending.length ≤ s1.pending.length + 1
 
 -- Zenith Blade (OGN-262): stun an enemy unit at a battlefield; I may move a friendly unit there
 #guard t fun s => do
@@ -1142,20 +1740,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← put s2 s.me "OGN-001" .trash
   let (s4, _) ← put s3 s.me "OGN-004" .trash
   let (s5, _) ← put s4 s.you "OGN-016" .trash
-  let a ← play s5 s.me c [] { obj := fun o => o == v }
+  let deciding ← castStop s5 s.me c
+  let a ← play s5 s.me c [] { pick := (· == [v]) }
   let b ← play (s5.setZone (.player s.me .trash) []) s.me c
-  return a.countIn s.me .hand "OGN-001" == s5.countIn s.me .hand "OGN-001" + 1 &&
+  let targets := (legalFrameActions deciding).filterMap (fun act => match act.kind with
+    | .putTrigger _ [id] (.pay ..) => some id
+    | _ => none)
+  return targets.length == 2 && targets.contains u && targets.contains v &&
+    a.countIn s.me .hand "OGN-001" == s5.countIn s.me .hand "OGN-001" + 1 &&
     a.countIn s.me .trash "OGN-001" == 0 && a.countIn s.me .trash "OGN-136" == 1 &&
     a.countIn s.you .hand "OGN-016" == s5.countIn s.you .hand "OGN-016" &&
     b.handN s.me == s5.handN s.me - 1 && (a.obj? u).isSome
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-170" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.you "OGN-001" .trash
-  let a ← play s4 s.me c
-  return a.countIn s.me .hand "OGN-136" == 1 && a.countIn s.me .hand "OGN-004" == 0 &&
-    a.countIn s.you .hand "OGN-001" == s4.countIn s.you .hand "OGN-001"
+  let p := s.me
+  let q := s.you
+  let (s, c) ← put s p "OGN-170" .hand
+  let (s, unit) ← put s p "OGN-136" .trash
+  let (s, fallback) ← put s p "OGN-051" .trash
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, opposing) ← put s q "OGN-001" .trash
+  let s := s.rich p
+  let action (ts : List ObjId) : Action := ⟨.player p, .playCard c (payOf s c) ts⟩
+  let legal := legalFrameActions s
+  let (queued, events) ← (step 100 s (action [unit])).toOption
+  let (removed, _) ← moveObj queued unit (.player p .mainDeck)
+  let a := settleChain {} 12 queued
+  let b := settleChain {} 12 removed
+  return legal.contains (action [unit]) && legal.contains (action [fallback]) &&
+    !legal.contains (action []) && !legal.contains (action [spell]) && !legal.contains (action [opposing]) &&
+    events.contains (.chosenBySpell p unit) &&
+    a.countIn p .hand "OGN-136" == 1 && a.countIn p .hand "OGN-004" == 0 &&
+    a.countIn q .hand "OGN-001" == s.countIn q .hand "OGN-001" &&
+    (b.zone (.player p .trash)).contains fallback && b.countIn p .hand "OGN-051" == 0
 
 -- Possession (OGN-203): take control of an enemy unit at a battlefield, and recall it to my Base
 #guard t fun s => do
@@ -1177,8 +1793,42 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let six ← units 6 s1
   let a ← fire seven [.scored s.me bf false]
   let b ← fire six [.scored s.me bf false]
-  let v := s.config.mode.victoryScore
-  return v ≤ a.pointsOf s.me && b.pointsOf s.me < v
+  let conquer ← fire seven [.scored s.me bf true]
+  return a.result == some (.won [s.me]) && a.pointsOf s.me == seven.pointsOf s.me &&
+    a.pending.isEmpty && b.result.isNone && conquer.result.isNone
+
+-- A Hold at The Grand Plaza can win War even when two opponents tie above the threshold.
+#guard t fun s => do
+  let p := s.me
+  let others := (allPlayers 4).filter (· != p)
+  let config := { s.config with mode := Mode.ffa4 }
+  let (s, plaza) ← putBf { s with config, turnOrder := p :: others } s.you "OGN-293"
+  let s ← (List.range 7).foldlM (fun g _ => (putAt g p "OGN-136" plaza).map Prod.fst) s
+  let tied := (others.take 2).foldl (fun g q => g.gainPoints q 20) (s.gainPoints p 1)
+  let start := { tied.control p plaza with phase := .beginning, pending := [.scoreHolds, .priority p] }
+  let (holding, events) ← (advance 100 start []).toOption
+  let pass (state : GameState × List Event) (_ : Nat) : Option (GameState × List Event) := do
+    let .chainPass player _ :: _ := state.1.pending | none
+    let (next, observed) ← (step 100 state.1 ⟨.player player, .pass⟩).toOption
+    return (next, state.2 ++ observed)
+  let (done, logs) ← (List.range 4).foldlM pass (holding, [])
+  return holding.result.isNone && events.contains (.scored p plaza false) &&
+    done.result == some (.won [p]) && done.pending.isEmpty && logs == [.won p] &&
+    done.pointsOf p == start.pointsOf p + 1 &&
+    others.all (fun q => done.pointsOf q == start.pointsOf q)
+
+-- A card-awarded win ends a team game before later instructions in the effect are run.
+#guard t fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let config := { s.config with mode := Mode.teamDuel }
+  let effect := EffectList.ofList [.prim (.win .you), .prim (.draw .you (.const 1))]
+  let frame := Frame.run p s.bf0 {} effect
+  let start := { s with config, pending := [frame, .priority p] }
+  let ((done, events), seen) ← (advanceWithDisclosures 1 start [] []).toOption
+  return runFrameSupported frame && done.result == some (.won [p, ally]) && done.pending.isEmpty &&
+    done.points == start.points && done.handN p == start.handN p && events == [.won p, .won ally] &&
+    seen.isEmpty
 
 -- Possession keeps the damage and the status of the unit it takes (Ready stays Ready, Exhausted
 -- stays Exhausted)
@@ -1205,8 +1855,7 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let elsewhere ← add 4 s.me bf s1 >>= add 3 s.me other
   let a ← fire mixed [.scored s.me bf false]
   let b ← fire elsewhere [.scored s.me bf false]
-  let v := s.config.mode.victoryScore
-  return a.pointsOf s.me < v && b.pointsOf s.me < v
+  return a.result.isNone && b.result.isNone
 
 -- Mystic Poro (OGN-171), [Vision]: when I play it, I may recycle the top card of my Main Deck
 #guard t fun s => do
@@ -1245,6 +1894,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
     crowd.mightNow u == (s4.mightNow u).map (· + 1) && crowd.mightNow w == s4.mightNow w &&
     atBase.mightNow v == (s3.mightNow v).map (· + 2) &&
     baseCrowd.mightNow v == (t1.mightNow v).map (· + 1) && baseCrowd.mightNow x == t1.mightNow x
+
+-- En Garde can target a teammate's Unit, while the extra Might counts only the caster's Units.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, active := some p, turn := 3
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s p "OGN-276"
+  let (s, spell) ← put s p "OGN-046" .hand
+  let (s, ours) ← putAt (s.control p field) p "OGN-136" field
+  let (s, theirs) ← putAt s partner "OGN-136" field
+  let owned ← play s p spell [ours]
+  let shared ← play s p spell [theirs]
+  return owned.mightNow ours == (s.mightNow ours).map (· + 2) &&
+    shared.mightNow theirs == (s.mightNow theirs).map (· + 1) &&
+    shared.mightNow ours == s.mightNow ours
 
 -- Siphon Power (OGN-266): friendly units at the chosen battlefield +1, enemy units there -1 (min 1)
 #guard t fun s => do
@@ -1356,12 +2023,39 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.countNamed s.me .base "Recruit" == 1 && b.countNamed s.me .base "Recruit" == 0 &&
     c.countNamed s.me .base "Recruit" == tk.countNamed s.me .base "Recruit"
 
+-- Viktor witnesses each qualifying death only while he remains on the Board (CR 383.2.c.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, viktor) ← put s p "OGN-246" .base
+  let (s, first) ← put s p "OGN-052" .base
+  let (s, second) ← put s p "OGN-052" .base
+  let (s, rival) ← put s q "OGN-052" .base
+  let (survived, deaths) := resolveDeathGroupWith s [first, second, rival] killObj
+  let (killed, together) := resolveDeathGroupWith s [viktor, first] killObj
+  let advanced ← fire survived deaths
+  let wiped ← fire killed together
+  return advanced.countNamed p .base "Recruit" == 2 &&
+    advanced.countNamed q .base "Recruit" == 0 && wiped.countNamed p .base "Recruit" == 0
+
 -- Draven (OGN-028): his Might is increased by my points
 #guard t fun s => do
   let (s1, d) ← put s s.me "OGN-028" .base
   let more := (s1.gainPoints s.me 3).gainPoints s.you 2
   return more.mightNow d == (s1.mightNow d).map (· + 3) &&
     (s1.gainPoints s.you 2).mightNow d == s1.mightNow d
+
+-- In 2v2, Draven reads the shared score of his controller's side.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, draven) ← put s p "OGN-028" .base
+  let ownScore := (s.gainPoints p 1).gainPoints ally 2
+  let rivalScore := s.gainPoints opponent 4
+  return s.mightNow draven == some 3 && ownScore.mightNow draven == some 6 &&
+    rivalScore.mightNow draven == some 3
 
 -- Relentless Storm (OGN-249), a Legend: when I play a Mighty unit, I may exhaust it to channel 1
 -- rune exhausted
@@ -1374,8 +2068,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← play s3 s.me small
   let c ← play (s3.tire l) s.me big
   let d ← play s3 s.me big [] { yes := false }
+  let (s4, draven) ← put s3 s.me "OGN-028" .hand
+  let passive ← play (s4.gainPoints s.me 2) s.me draven
+  let (withToken, events) := playUnitTokenAt s3 s.me "Recruit" none
+  let token ← events.findSome? (fun | .tokenPlayed _ id => some id | _ => none)
+  let mightyToken ← fire (setBaseMight 5 withToken token).1 events
   return a.tired l == some true && runes a + 1 == runes s3 && b.tired l == some false &&
-    runes b == runes s3 && runes c == runes s3 && d.tired l == some false
+    runes b == runes s3 && runes c == runes s3 && d.tired l == some false &&
+    passive.tired l == some true && runes passive + 1 == runes s4 &&
+    mightyToken.tired l == some true && runes mightyToken + 1 == runes withToken
 
 -- Dr. Mundo (OGN-109): his Might is increased by the cards in my Trash; at the start of my
 -- Beginning Phase I recycle 3 from it
@@ -1387,11 +2088,15 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s5, _) ← put s4 s.me "OGN-136" .trash
   let trash (x : GameState) := (x.zone (.player s.me .trash)).length
   let deck (x : GameState) := (x.zone (.player s.me .mainDeck)).length
-  let a ← fire s5 [.phaseStarted s.me .beginning]
+  let waiting ← fire s5 [.phaseStarted s.me .beginning]
+  let .chanceRecycleTrash p _ cards :: _ := waiting.pending | none
+  let (a, _) ← (step 100 waiting ⟨.chance, .arrange cards.reverse⟩).toOption
   let (t1, _) ← put s1 s.me "OGN-136" .trash
   let b ← fire t1 [.phaseStarted s.me .beginning]
   return s5.mightNow d == (s1.mightNow d).map (· + 4) && trash a + 3 == trash s5 &&
-    deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1
+    deck a == deck s5 + 3 && trash b == 0 && deck b == deck t1 + 1 &&
+    p == s.me && cards.length == 3 && trash waiting == trash s5 &&
+    a.mightNow d == (s1.mightNow d).map (· + 1)
 
 -- Wraith of Echoes: two friendly units dying at once draw 1, not 2; two Wraiths draw 1 each
 #guard t fun s => do
@@ -1403,17 +2108,38 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← fire t1 [.died x s.me]
   return a.handN s.me == s3.handN s.me + 1 && b.handN s.me == t1.handN s.me + 2
 
--- Dr. Mundo recycles the cards the player chooses, and not in the opponent's Beginning Phase
+-- Dr. Mundo chooses from the current Trash during resolution. None of the choices is a target.
 #guard t fun s => do
-  let (s1, _) ← put s s.me "OGN-109" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-001" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let (s5, d) ← put s4 s.me "OGN-016" .trash
-  let x ← fire s5 [.phaseStarted s.me .beginning] { obj := fun o => o != d }
-  let y ← fire s5 [.phaseStarted s.you .beginning]
-  return x.countIn s.me .trash "OGN-016" == 1 && (x.zone (.player s.me .trash)).length == 1 &&
-    (y.zone (.player s.me .trash)).length == 4
+  let p := s.me
+  let q := s.you
+  let (s, _) ← put s p "OGN-109" .base
+  let (s, first) ← put s p "OGN-136" .trash
+  let (s, second) ← put s p "OGN-001" .trash
+  let (s, third) ← put s p "OGN-004" .trash
+  let (s, left) ← put s p "OGN-016" .trash
+  let (s, enemy) ← put s q "OGN-010" .trash
+  let triggers := s.detect [.phaseStarted p .beginning]
+  let (initial, _) ← (advance 100 { s with pending := insertTriggers triggers (below s.pending) } []).toOption
+  let (passed, _) ← (step 100 initial ⟨.player p, .pass⟩).toOption
+  let (choosing, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let pick (state : GameState) (id : ObjId) := step 100 state ⟨.player p, .choose id⟩
+  let (a, firstEvents) ← (pick choosing third).toOption
+  let (b, secondEvents) ← (pick a first).toOption
+  let (waiting, thirdEvents) ← (pick b second).toOption
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let deck := Zone.player p .mainDeck
+  let (done, events) ← (step 100 waiting ⟨.chance, .arrange [second, third, first]⟩).toOption
+  let otherTurn ← fire s [.phaseStarted q .beginning]
+  let bottom := ((done.zone deck).drop (s.zone deck).length).filterMap (fun id =>
+    (done.cardDef? id).map (·.id))
+  return cards == [third, first, second] && firstEvents == [] && secondEvents == [] &&
+    thirdEvents == [] && events.contains (.recycled p) &&
+    !(pick choosing enemy).isOk && !(pick a third).isOk &&
+    !(step 100 choosing ⟨.player p, .decide false⟩).isOk &&
+    a.zone (.player p .trash) == s.zone (.player p .trash) &&
+    waiting.zone deck == s.zone deck && done.zone (.player p .trash) == [left] &&
+    done.zone (.player q .trash) == [enemy] && otherTurn.zone (.player p .trash) == s.zone (.player p .trash) &&
+    bottom == [cid "OGN-001", cid "OGN-004", cid "OGN-136"]
 
 -- Qiyana (OGN-155): when she conquers, draw 1 or channel 1 rune exhausted
 #guard t fun s => do
@@ -1426,24 +2152,37 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return a.handN s.me == s2.handN s.me + 1 && runes a == runes s2 &&
     b.handN s.me == s2.handN s.me && runes b + 1 == runes s2 && c.handN s.me == s2.handN s.me
 
--- Charm (OGN-043): move an enemy unit, to its base or to a battlefield I choose
+-- Charm (OGN-043) declares an enemy Unit and its destination before anyone responds.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-043" .hand
-  let (s2, e) ← putAt s1 s.you "OGN-136" s.bf0
+  let (s2, e) ← putAt (s1.control s.you s.bf0) s.you "OGN-136" s.bf0
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let other := (s.battlefields.filter (· != s.bf0)).head?.getD ⟨0⟩
-  let toBase ← play s3 s.me c [e]
-  let toBf ← play s3 s.me c [f] { yes := false, obj := fun o => o == other }
+  let other ← s.battlefields.find? (· != s.bf0)
+  let funded := s3.rich s.me
+  let pay := payOf s3 c
+  let move (unit : ObjId) (destination : Option ObjId) : Action :=
+    ⟨.player s.me, .playCard c pay [unit] none none (.destination destination)⟩
+  let (queued, _) ← (step 100 funded (move e none)).toOption
+  let toBase := settleChain {} 12 queued
+  let toBf ← cast funded s.me c pay [f] {} (.destination (some other))
   return (toBase.obj? e).bind (·.loc) == none && (toBase.zone (.player s.you .base)).contains e &&
-    (toBf.obj? f).bind (·.loc) == some other
+    (toBf.obj? f).bind (·.loc) == some other &&
+    (queued.obj? e).any (·.loc == some s.bf0) && (queued.zone .chain).length == 1 &&
+    !(legalFrameActions funded).contains (move e (some s.bf0)) &&
+    !(legalFrameActions funded).contains (move f none)
 
 -- Ride the Wind (OGN-173): move a friendly unit and ready it
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-173" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let tiredU := s2.tire u
-  let a ← play tiredU s.me c [u] { yes := false, obj := fun o => o == s.bf0 }
-  return (a.obj? u).bind (·.loc) == some s.bf0 && a.tired u == some false
+  let a ← cast (tiredU.rich s.me) s.me c (payOf tiredU c) [u] {} (.destination (some s.bf0))
+  let (s3, lair) ← putBf s2 s.me "OGN-295"
+  let (s4, trapped) ← putAt (s3.control s.me lair) s.me "OGN-136" lair
+  let before := (s4.tire trapped).rich s.me
+  let readied ← cast before s.me c (payOf before c) [trapped] {} (.destination none)
+  return (a.obj? u).bind (·.loc) == some s.bf0 && a.tired u == some false &&
+    (readied.obj? trapped).any (·.loc == some lair) && (readied.tired trapped) == some false
 
 -- Unforgiven (OGN-259), a Legend: for 2 Energy and exhausting it, move a friendly unit to or from
 -- my base
@@ -1483,19 +2222,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-043" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
-  return (play s2 s.me c [u]).isNone
+  return (cast (s2.rich s.me) s.me c (payOf s2 c) [u] {} (.destination (some s.bf0))).isNone
 
--- Singularity (OGN-105): 6 damage to each of up to two units (two different units)
+-- Singularity (OGN-105): 6 damage to each of up to two distinct declared targets.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-105" .hand
   let (s2, a) ← put s1 s.you "OGN-116" .base
   let (s3, b) ← put s2 s.you "OGN-116" .base
   let (s4, d) ← put s3 s.you "OGN-116" .base
-  let x ← play s4 s.me c [] { obj := fun o => o == a }
-  let n ← play s4 s.me c [] { yes := false }
+  let x ← play s4 s.me c [a, b]
+  let n ← play s4 s.me c []
   let dmg (y : GameState) (u : ObjId) := (y.obj? u).map (·.damage)
-  return dmg x a == some 6 && (dmg x b == some 6 || dmg x d == some 6) &&
-    !(dmg x b == some 6 && dmg x d == some 6) && dmg n a == some 0 && dmg n b == some 0
+  return dmg x a == some 6 && dmg x b == some 6 && dmg x d == some 0 &&
+    dmg n a == some 0 && dmg n b == some 0 && dmg n d == some 0 &&
+    (play s4 s.me c [a, a]).isNone && (play s4 s.me c [a, b, d]).isNone
 
 -- Kinkou Monk (OGN-141): buff up to two other friendly units, different ones, not itself
 #guard t fun s => do
@@ -1504,11 +2244,20 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let (s3, v) ← put s2 s.me "OGN-136" .base
   let (s4, w) ← put s3 s.me "OGN-136" .base
   let (s5, e) ← put s4 s.you "OGN-136" .base
-  let a ← play s5 s.me c [] { obj := fun o => o == u }
+  let waiting ← castStop s5 s.me c
+  let source ← waiting.firstOf s.me .base "OGN-141"
+  let pick (units : List ObjId) : Action := ⟨.player s.me, .putTrigger 0 units⟩
+  let legal := legalFrameActions waiting
+  let a ← play s5 s.me c [] { pick := (· == [u, v]) }
+  let decline ← play s5 s.me c [] { pick := List.isEmpty }
   let m ← a.firstOf s.me .base "OGN-141"
   let bf (y : GameState) (o : ObjId) := (y.obj? o).map (·.buffed)
   let count := [u, v, w].filter (fun o => bf a o == some true) |>.length
-  return count == 2 && bf a u == some true && bf a m == some false && bf a e == some false
+  return legal.contains (pick []) && legal.contains (pick [u]) && legal.contains (pick [u, v]) &&
+    !(legal.contains (pick [u, u])) && !(legal.contains (pick [u, v, w])) &&
+    !(legal.contains (pick [source])) && !(legal.contains (pick [e])) &&
+    count == 2 && bf a u == some true && bf a v == some true && bf a m == some false &&
+    bf a e == some false && bf decline u == some false && bf decline v == some false
 
 -- Back to Back (OGN-206): two friendly units get +2 Might each; with one unit, only +2
 #guard t fun s => do
@@ -1525,12 +2274,12 @@ meta def t (f : GameState → Option Bool) : Bool :=
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-105" .hand
   let (s2, a) ← put s1 s.me "OGN-116" .base
-  let x ← play s2 s.me c
+  let x ← play s2 s.me c [a]
   return (x.obj? a).map (·.damage) == some 6
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-141" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
-  let a ← play s2 s.me c
+  let a ← play s2 s.me c [] { pick := (· == [u]) }
   let m ← a.firstOf s.me .base "OGN-141"
   return (a.obj? u).map (·.buffed) == some true && (a.obj? m).map (·.buffed) == some false
 #guard t fun s => do
@@ -1611,6 +2360,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
     (activate mine s.me c 0 [s.bf0] ⟨0, []⟩).isNone &&
     (activate mine s.me c 0 [s.bf0] ⟨0, [.fury, .calm]⟩).isNone
 
+-- Shen can answer an enemy Spell by joining a controlled battlefield, where
+-- Shield adds two as a defender and Tank places him first in damage assignment.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, shen) ← put (s.control p field) p "OGN-241" .hand
+  let (s, ally) ← putAt s p "OGN-135" field
+  let (s, _) ← onChain s q "OGN-004"
+  let rich := s.rich p
+  let pay := payOf rich shen
+  let (answered, _) ← (step 100 rich ⟨.player p, .playCard shen pay [field]⟩).toOption
+  let placed ← answered.inPlay.find? (fun u => (answered.cardDef? u).any (·.id == cid "OGN-241"))
+  let order := (legalAssigns answered field q []).map (·.kind)
+  return (answered.obj? placed).any (·.loc == some field) &&
+    answered.combatMight placed false == 5 && answered.combatMight placed true == 3 &&
+    order == [.assignPick placed] && !(order.contains (.assignPick ally))
+
 -- Block (OGN-057), a spell: hidden, then played from hiding: Shield 3 and Tank, and into my Trash
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-057" .hand
@@ -1642,6 +2409,23 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let sp ← a.firstOf s.me .base "TKN-Sprite" <|> (a.zone (.player s.me .base)).find? (fun u =>
     (a.cardDef? u).any (·.name == "Sprite"))
   return a.tired sp == some false && a.hasKw sp .temporary && a.mightNow sp == some 3
+
+-- The same spell can be played for zero from Hidden on a later turn. Its Sprite
+-- goes to the Base and expires at its controller's next Beginning Phase.
+#guard t fun s => do
+  let p := s.me
+  let (s, call) ← put s p "OGN-094" .hand
+  let field := s.bf0
+  let controlled := s.control p field
+  let hidden ← activate controlled p call 0 [field] ⟨0, [.fury]⟩
+  let card ← hidden.firstOf p .hidden "OGN-094"
+  let next := { hidden with turn := hidden.turn + 1 }
+  let cast ← activate next p card 1
+  let sprite ← cast.firstOf p .base "TKN-Sprite"
+  let ended ← settleBeginning cast p
+  return (activate hidden p card 1).isNone && cast.tired sprite == some false &&
+    cast.countIn p .trash "OGN-094" == 1 && ended.countIn p .base "TKN-Sprite" == 0
+
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-220" .hand
   let (s2, f) ← putAt s1 s.me "OGN-136" s.bf0
@@ -1673,37 +2457,75 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let hide ← activate mine s.me c 0 [s.bf0] ⟨0, [.fury]⟩
   let h ← (hide.zone (.player s.me .hidden)).head?
   let next := { hide with turn := hide.turn + 1 }
-  match step 100 (next.rich s.me) ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+  match step 100 (next.rich s.me) ⟨.player s.me, .activate h 1 ⟨0, [], none⟩ [u]⟩ with
   | .ok (a1, _) =>
-    let twice := match step 100 a1 ⟨.player s.me, .activate h 1 ⟨0, []⟩ [u]⟩ with
+    let twice := match step 100 a1 ⟨.player s.me, .activate h 1 ⟨0, [], none⟩ [u]⟩ with
       | .ok (a2, _) => a2
       | .error _ => a1
     let done := settleChain {} 12 twice
     return done.kwAmount u .shield == 3 && done.countIn s.me .trash "OGN-057" == 1
   | .error _ => none
 
--- Vi (OGN-036): recycle 1 from my Trash: +1 Might this turn; with an empty Trash nothing happens
+-- Vi's Recycle is paid before the Chain resolves. A second use needs another card,
+-- and its Might bonus stacks with the first for the turn.
 #guard t fun s => do
-  let (s1, v) ← put s s.me "OGN-036" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
-  let a ← activate s2 s.me v 0
-  -- with an empty Trash the ability cannot be used
-  return trash a + 1 == trash s2 && a.mightNow v == (s2.mightNow v).map (· + 1) &&
-    (activate (s1.setZone (.player s.me .trash) []) s.me v 0).isNone
+  let p := s.me
+  let q := s.you
+  let (s, vi) ← put s p "OGN-036" .base
+  let (s, enemy) ← put s q "OGN-004" .trash
+  let act : Action := ⟨.player p, .activate vi 0 ⟨0, [], none⟩ []⟩
+  let (s1, own) ← put s p "OGN-136" .trash
+  let (paying, declared) ← (step 100 s1 act).toOption
+  let (paid, events) ← (step 100 paying ⟨.player p, .choose own⟩).toOption
+  let done := settleChain {} 12 paid
+  let (more, _) ← put done p "OGN-001" .trash
+  let twice ← activate more p vi 0
+  return !(step 100 s act).isOk && !(step 100 paying ⟨.player p, .choose enemy⟩).isOk &&
+    declared.isEmpty && paid.zone (.player p .trash) == [] &&
+    !(paid.zone .chain).isEmpty && events.contains (.recycled p) &&
+    events.contains (.activated p vi 0 (some 0)) && !events.contains (.chosenByAbility p own) &&
+    paid.mightNow vi == s1.mightNow vi && !(step 100 done act).isOk &&
+    done.mightNow vi == (s1.mightNow vi).map (· + 1) &&
+    twice.mightNow vi == (s1.mightNow vi).map (· + 2)
 
--- Garbage Grabber (OGN-099): for 1 Energy and exhausting it, recycle 3 from my Trash and draw 1
+-- Garbage Grabber pays 1 Energy, exhausts, and recycles exactly 3 cards before anyone can
+-- respond. The random decision records the order, not any additional target or player action.
 #guard t fun s => do
-  let (s1, g) ← put s s.me "OGN-099" .base
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let (s3, _) ← put s2 s.me "OGN-001" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let trash (x : GameState) := (x.zone (.player s.me .trash)).length
-  let a ← activate s4 s.me g 0 [] ⟨1, []⟩
-  let two := s3
-  -- with fewer than 3 cards in the Trash the ability cannot be used
-  return trash a == trash s4 - 3 && a.handN s.me == s4.handN s.me + 1 && a.tired g == some true &&
-    (activate two s.me g 0 [] ⟨1, []⟩).isNone && (activate a s.me g 0 [] ⟨1, []⟩).isNone
+  let p := s.me
+  let q := s.you
+  let (s, g) ← put s p "OGN-099" .base
+  let (s, enemy) ← put s q "OGN-016" .trash
+  let (s, a) ← put s p "OGN-136" .trash
+  let (s, b) ← put s p "OGN-001" .trash
+  let two := s.fund p 1
+  let (s, c) ← put s p "OGN-004" .trash
+  let (s, keep) ← put s p "OGN-010" .trash
+  let s := s.fund p 1
+  let act : Action := ⟨.player p, .activate g 0 ⟨1, [], none⟩ []⟩
+  let pick (state : GameState) (id : ObjId) := step 100 state ⟨.player p, .choose id⟩
+  let (paying, declared) ← (step 100 s act).toOption
+  let (one, selected) ← (pick paying a).toOption
+  let (twoPicked, _) ← (pick one b).toOption
+  let (waiting, _) ← (pick twoPicked c).toOption
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (paid, events) ← (step 100 waiting ⟨.chance, .arrange [c, a, b]⟩).toOption
+  let done := settleChain {} 12 paid
+  let deck := Zone.player p .mainDeck
+  let bottom := ((paid.zone deck).drop (s.zone deck).length).filterMap (fun id =>
+    (paid.cardDef? id).map (·.id))
+  let sequence := events.filter (fun | .recycled .. | .activated .. => true | _ => false)
+  return !(step 100 two act).isOk && !((legalFrameActions two).contains act) &&
+    (legalFrameActions s).contains act && !(step 100 paying ⟨.player q, .pass⟩).isOk &&
+    !(pick paying enemy).isOk && !(pick one a).isOk && selected.isEmpty &&
+    !declared.contains (.activated p g 0 (some 1)) && cards == [a, b, c] &&
+    !(step 100 waiting ⟨.player p, .arrange [c, a, b]⟩).isOk &&
+    !(step 100 waiting ⟨.chance, .arrange [c, a, keep]⟩).isOk &&
+    waiting.zone deck == s.zone deck && waiting.zone (.player p .trash) == s.zone (.player p .trash) &&
+    paid.pending.head?.any (fun | .chainPass .. => true | _ => false) &&
+    sequence == [.recycled p, .activated p g 0 (some 1)] && paid.tired g == some true &&
+    (paid.poolOf p).energy == 0 && paid.handN p == s.handN p &&
+    paid.zone (.player p .trash) == [keep] && paid.zone (.player q .trash) == [enemy] &&
+    bottom == [cid "OGN-004", cid "OGN-136", cid "OGN-001"] && done.handN p == s.handN p + 1
 
 -- Sett (OGN-164): buffed when played; spend the buff for +4 Might this turn (nothing without one)
 #guard t fun s => do
@@ -1717,20 +2539,57 @@ meta def t (f : GameState → Option Bool) : Bool :=
     spent.mightNow sett == (a.mightNow sett).map (· + 4 - 1) &&
     (activate t1 s.me plain 2).isNone
 
--- Forge of the Future (OGN-212): a Recruit token when played; kill it to recycle up to 4 cards
+-- Forge of the Future creates a Recruit and pays Kill this before anyone can respond.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-212" .hand
-  let a ← play s1 s.me c
-  let (t1, f) ← put s s.me "OGN-212" .base
-  let (t2, _) ← put t1 s.me "OGN-136" .trash
-  let (t3, _) ← put t2 s.you "OGN-001" .trash
-  let k ← activate t3 s.me f 1
-  let trashes (x : GameState) := (x.zone (.player s.me .trash)).length +
-    (x.zone (.player s.you .trash)).length
-  let deck (x : GameState) (p : PlayerId) := (x.zone (.player p .mainDeck)).length
-  -- the Forge itself, my card and the opponent's card are recycled: three cards, up to four
-  return a.countNamed s.me .base "Recruit" == 1 && trashes k == 0 &&
-    deck k s.me == deck t3 s.me + 2 && deck k s.you == deck t3 s.you + 1
+  let p := s.me
+  let q := s.you
+  let (s1, c) ← put s p "OGN-212" .hand
+  let played ← play s1 p c
+  let (s, f) ← put s p "OGN-212" .base
+  let (s, own) ← put s p "OGN-136" .trash
+  let (s, enemy) ← put s q "OGN-001" .trash
+  let (queued, events) ← (step 100 s ⟨.player p, .activate f 1 ⟨0, [], none⟩ []⟩).toOption
+  let forge ← queued.firstOf p .trash "OGN-212"
+  let waiting := settleChain {} 12 queued
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (done, recycled) ← (step 100 waiting ⟨.chance, .arrange [own, enemy, forge]⟩).toOption
+  let declined := settleChain { yes := false } 12 queued
+  let deck (state : GameState) (seat : PlayerId) := (state.zone (.player seat .mainDeck)).length
+  return played.countNamed p .base "Recruit" == 1 && queued.locate f == none &&
+    events.contains (.moved f forge (.player p .trash)) && events.contains (.died forge p) &&
+    queued.pending.head?.any (fun | .chainPass .. => true | _ => false) &&
+    queued.zone (.player p .trash) == waiting.zone (.player p .trash) &&
+    queued.zone (.player q .trash) == waiting.zone (.player q .trash) &&
+    cards.length == 3 && cards.contains forge && cards.contains own && cards.contains enemy &&
+    done.zone (.player p .trash) == [] && done.zone (.player q .trash) == [] &&
+    deck done p == deck s p + 2 && deck done q == deck s q + 1 &&
+    recycled.contains (.recycled p) && recycled.contains (.recycled q) &&
+    declined.zone (.player p .trash) == queued.zone (.player p .trash) &&
+    declined.zone (.player q .trash) == queued.zone (.player q .trash)
+
+-- Forge can stop after the first choice, and cannot choose a fifth card.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, forge) ← put s p "OGN-212" .base
+  let (s, first) ← put s q "OGN-136" .trash
+  let (s, second) ← put s q "OGN-001" .trash
+  let (s, third) ← put s q "OGN-004" .trash
+  let (s, fourth) ← put s q "OGN-016" .trash
+  let (s, fifth) ← put s q "OGN-010" .trash
+  let (queued, _) ← (step 100 s ⟨.player p, .activate forge 1 ⟨0, [], none⟩ []⟩).toOption
+  let (passed, _) ← (step 100 queued ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let (picking, _) ← (step 100 offer ⟨.player p, .decide true⟩).toOption
+  let (one, events) ← (step 100 picking ⟨.player p, .choose first⟩).toOption
+  let (done, _) ← (step 100 one ⟨.player p, .decide false⟩).toOption
+  let wanted := [first, second, third, fourth]
+  let waiting := settleChain { obj := wanted.contains } 12 queued
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  return events == [] && one.zone (.player q .trash) == queued.zone (.player q .trash) &&
+    !(done.zone (.player q .trash)).contains first &&
+    (done.zone (.player q .trash)).length == 4 && cards.length == 4 &&
+    cards.all wanted.contains && !cards.contains fifth
 
 -- Monastery of Hirana (OGN-282) and Wildclaw Shaman (OGN-147): spend a buff
 #guard t fun s => do
@@ -1742,6 +2601,42 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let n ← fire buffed [.scored s.me bf true] { yes := false }
   return a.handN s.me == buffed.handN s.me + 1 && (a.obj? u).map (·.buffed) == some false &&
     b.handN s.me == s2.handN s.me && n.handN s.me == buffed.handN s.me
+
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s q "OGN-282"
+  let (s, atBase) ← put s p "OGN-136" .base
+  let (s, atField) ← putAt s p "OGN-136" bf
+  let (s, enemy) ← put s q "OGN-136" .base
+  let start := s.buff atBase |>.buff atField |>.buff enemy
+  let triggers := start.detect [.scored p bf true]
+  let (waiting, _) ← (advance 100 { start with pending := [.triggers triggers, .priority p] } []).toOption
+  let pay (id : ObjId) : Action := ⟨.player p, .putTrigger 0 [] (.pay [id] none none [])⟩
+  let available := legalFrameActions waiting
+  let (paid, events) ← (step 100 waiting (pay atField)).toOption
+  let done := settleChain {} 12 paid
+  return available.contains (pay atBase) && available.contains (pay atField) &&
+    !available.contains (pay enemy) && events.contains (.buffSpent p) &&
+    !events.contains (.chosenByAbility p atField) && paid.handN p == start.handN p &&
+    (paid.obj? atField).map (·.buffed) == some false &&
+    done.handN p == start.handN p + 1 && done.handN q == start.handN q &&
+    (done.obj? atField).map (·.buffed) == some false &&
+    (done.obj? atBase).map (·.buffed) == some true &&
+    (done.obj? enemy).map (·.buffed) == some true
+
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s ally "OGN-282"
+  let (s, own) ← put s p "OGN-136" .base
+  let (s, teammate) ← putAt s ally "OGN-136" field
+  let start := s.buff own |>.buff teammate
+  let trigger ← (start.detect [.scored p field true]).head?
+  return trigPayments start trigger == [[own]] && trigPayments (start.modObj own (fun o =>
+    { o with buffed := false })) trigger == []
+
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-147" .hand
   let (s2, u) ← put s1 s.me "OGN-136" .base
@@ -1807,6 +2702,24 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b ← fire s1 [.phaseStarted s.me .beginning]
   return a.handN s.me == s2.handN s.me + 1 && b.handN s.me == s1.handN s.me
 
+-- A teammate's Hidden card does not give the Pouch's controller the Beginning Phase draw.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let initial := GameState.empty { labState.config with mode := .teamDuel } labState.cards
+  let (s, field) ← putBf initial p "OGN-275"
+  let (s, _) ← put s p "OGN-101" .base
+  let (s, _) ← put s p "OGN-001" .mainDeck
+  let (s, hiddenAlly) ← put s ally "OGN-135" .hidden
+  let s := s.modObj hiddenAlly (fun o => { o with hiddenAt := some field })
+  let (both, ownHidden) ← put s p "OGN-135" .hidden
+  let both := both.modObj ownHidden (fun o => { o with hiddenAt := some field })
+  let onlyAlly ← fire s [.phaseStarted p .beginning]
+  let ownTurn ← fire both [.phaseStarted p .beginning]
+  let allyTurn ← fire both [.phaseStarted ally .beginning]
+  return onlyAlly.handN p == 0 && ownTurn.handN p == 1 && allyTurn.handN p == 0 &&
+    ownTurn.handN ally == 0
+
 -- Sona (OGN-073): ready 4 of my runes at the end of my turn while she is at a battlefield
 #guard t fun s => do
   let (s1, _) ← putAt s s.me "OGN-073" s.bf0
@@ -1826,6 +2739,34 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let a ← fire (s2.tire r1) [.died x s.me]
   return a.tired r1 == some false && a.countIn s.me .trash "OGN-110" == 0 &&
     (a.zone (.player s.me .mainDeck)).length == (s2.zone (.player s.me .mainDeck)).length + 1
+
+-- Ekko is recycled while his Deathknell is finalized, before players can respond (CR 204.1.c).
+-- The controller's Runes ready only when it resolves. Paying is impossible if Ekko left the Trash.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, ekko) ← put s p "OGN-110" .base
+  let (s, own) ← put s p "R1" .base
+  let (s, teammate) ← put s ally "R1" .base
+  let (afterDeath, events) := killObj (s.tire own |>.tire teammate) ekko
+  let dead ← afterDeath.firstOf p .trash "OGN-110"
+  let (queued, _) ← (advance 100 (afterDeath.withTriggers events) []).toOption
+  let finalize : Action := ⟨.player p, .putTrigger 0 []⟩
+  let (paid, paidEvents) ← (step 100 queued finalize).toOption
+  let ordinary := settleChain {} 12 paid
+  let (removed, _) ← moveObj queued dead (.player p .banishment)
+  let afterResponse := settleChain {} 12 removed
+  return queued.countIn p .trash "OGN-110" == 1 && paid.countIn p .trash "OGN-110" == 0 &&
+    paid.countIn p .mainDeck "OGN-110" == 1 && paid.tired own == some true &&
+    paidEvents.contains (.recycled p) && ordinary.tired own == some false &&
+    ordinary.tired teammate == some true &&
+    ordinary.countIn p .mainDeck "OGN-110" == 1 &&
+    afterResponse.tired own == some true && afterResponse.tired teammate == some true &&
+    afterResponse.countIn p .banishment "OGN-110" == 1
 
 -- more edges of the cards of this batch: Sai Scout (Vision when played to a battlefield), Deadbloom
 -- Predator (where it goes, and not to a battlefield with only my units), Sona (exactly 4 runes,
@@ -1899,12 +2840,17 @@ meta def t (f : GameState → Option Bool) : Bool :=
   let b0 ← d[1]?
   let c0 ← d[2]?
   let d4 ← d[3]?
-  let r ← play s1 s.me c [] { obj := fun o => o == b0 }
-  let tail2 := (deck r).reverse.take 2
+  let waiting ← play s1 s.me c [] { obj := fun o => o == b0 }
+  let .chancePredict p _ _ recycled :: _ := waiting.pending | none
+  let (r, events) ← (step 100 waiting ⟨.chance, .arrange [a0, c0]⟩).toOption
+  let (reverse, _) ← (step 100 waiting ⟨.chance, .arrange [c0, a0]⟩).toOption
   -- the played card leaves the hand and one card of the deck comes into it
-  return r.handN s.me == s1.handN s.me && (deck r).length == d.length - 1 &&
+  return p == s.me && recycled == [a0, c0] && events.contains (.recycled s.me) &&
+    !(step 100 waiting ⟨.chance, .arrange [a0, b0]⟩).isOk &&
+    r.handN s.me == s1.handN s.me && (deck r).length == d.length - 1 &&
     !(deck r).contains b0 &&
-    (deck r).head? == some d4 && tail2.contains a0 && tail2.contains c0
+    (deck r).head? == some d4 && (deck r).reverse.take 2 == [c0, a0] &&
+    (deck reverse).reverse.take 2 == [a0, c0]
 
 -- Fading Memories (OGN-180): a unit at a battlefield or a gear gets Temporary
 #guard t fun s => do
@@ -1938,6 +2884,107 @@ meta def t (f : GameState → Option Bool) : Bool :=
   return (a.obj? e).isNone && (b.obj? m).isNone &&
     a.handN s.you == s3.handN s.you + 2 && a.handN s.me == s3.handN s.me - 1 &&
     b.handN s.me == s3.handN s.me - 1 + 2 && b.handN s.you == s3.handN s.you
+
+-- Hidden Blade attributes the Kill to the spell's controller before the target's controller draws.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s q "OGN-136" s.bf0
+  let paid := s.rich p
+  let run (state : GameState) (player : PlayerId) (action : ActionKind) :=
+    (step 100 state ⟨.player player, action⟩).toOption
+  let (casting, _) ← run paid p (.playCard blade (payOf paid blade) [target])
+  let (offered, _) ← run casting p .pass
+  let (done, events) ← run offered q .pass
+  let dead ← done.firstOf q .trash "OGN-136"
+  let effects := events.filter (fun | .died .. | .killedBySpell _ | .drew _ => true | _ => false)
+  return effects == [.died dead q, .killedBySpell p, .drew q, .drew q]
+
+-- Flash moves the target to Base before Hidden Blade resolves, so the linked draw is ignored.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (s, target) ← putAt s q "OGN-136" s.bf0
+  let paid := (s.rich p).rich q
+  let (casting, _) ← (step 100 paid ⟨.player p, .playCard blade (payOf paid blade) [target]⟩).toOption
+  let (response, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (saving, _) ← (step 100 response ⟨.player q, .playCard flash (payOf paid flash) [target]⟩).toOption
+  let done := settleChain {} 12 saving
+  return done.countIn q .base "OGN-136" == 1 && done.countIn q .trash "OGN-136" == 0 &&
+    done.handN q + 1 == paid.handN q && done.countIn p .trash "OGN-213" == 1
+
+-- Saving Mordekaiser kills the sacrifice under his effect, while Hidden Blade still draws for him.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s q "RAD-020" s.bf0
+  let (s, victim) ← put s q "OGN-136" .base
+  let paid := s.rich p
+  let (casting, _) ← (step 100 paid ⟨.player p, .playCard blade (payOf paid blade) [target]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (replacement, before) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let (done, events) ← (step 100 replacement ⟨.player q, .decide true⟩).toOption
+  let (other, _) ← (step 100 replacement ⟨.player q, .decide false⟩).toOption
+  let (selfKilled, ownEvents) ← (step 100 other ⟨.player q, .decide true⟩).toOption
+  let dead ← done.firstOf q .trash "OGN-136"
+  return (done.obj? target).any (fun o => o.loc.isNone && o.exhausted) &&
+    (done.obj? dead).any (·.formerId == some victim) && events.contains (.died dead q) &&
+    !(before.any (fun | .drew _ => true | _ => false)) && (events.countP (· == .drew q)) == 2 &&
+    !(events.any (fun | .killedBySpell _ => true | _ => false)) &&
+    selfKilled.countIn q .trash "RAD-020" == 1 && (selfKilled.obj? victim).isSome &&
+    !(ownEvents.any (fun | .drew _ | .killedBySpell _ => true | _ => false))
+
+-- Smite replaces Hidden Blade's Kill with a Banish and removes the referent for the draw.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, smite) ← put s p "UNL-007" .hand
+  let (s, target) ← putAt s q "OGN-001" s.bf0
+  let marked ← play (s.control q s.bf0) p smite [target]
+  let done ← play marked p blade [target]
+  return (marked.obj? target).any (·.damage == 3) && done.countIn q .banishment "OGN-001" == 1 &&
+    done.countIn q .trash "OGN-001" == 0 && done.handN q == marked.handN q
+
+-- Repeating Hidden Blade checks each execution; the same dead Unit cannot be targeted twice.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, first) ← putAt s q "OGN-136" s.bf0
+  let (s, second) ← putAt s q "OGN-136" s.bf0
+  let marked := (s.rich p).addTurnFx p .nextSpellRepeat
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let pay : RunePool.Payment := ⟨4, [.order, .order]⟩
+  let once ← cast marked p blade pay [first, first] (pick := pick)
+  let twice ← cast marked p blade pay [first, second] (pick := pick)
+  return once.handN q == s.handN q + 2 && once.countIn q .trash "OGN-136" == 1 &&
+    twice.handN q == s.handN q + 4 && twice.countIn q .trash "OGN-136" == 2
+
+-- In 2v2, only the current controller draws, even when their teammate owns the killed Unit.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let owner : PlayerId := ⟨2⟩
+  let controller : PlayerId := ⟨3⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, turn := 2, active := some p, turnOrder := Mode.teamTurnOrder true
+    pending := [.priority p] }
+  let (s, field) ← putBf s owner "OGN-275"
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, target) ← putAt s owner "OGN-136" field
+  let changed := (s.control controller field).modObj target (fun o => { o with controller })
+  let fill (state : GameState) (player : PlayerId) : Option GameState :=
+    List.range 2 |>.foldlM (fun t _ => (put t player "OGN-136" .mainDeck).map Prod.fst) state
+  let s ← fill changed owner
+  let s ← fill s controller
+  let done ← play s p blade [target]
+  return done.countIn owner .trash "OGN-136" == 1 && done.handN controller == 2 &&
+    done.handN owner == 0 && (done.zone (.player owner .mainDeck)).length == 2
 
 -- Reaver's Row (OGN-285): when I defend here, I may move a friendly unit here to my base
 #guard t fun s => do
@@ -1983,6 +3030,19 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
     energyNow s4 s.me c == energyNow s3 s.me c &&
     played.countIn s.me .base "OGN-195" == 1
 
+-- Rhasa uses its player's Trash, including when a teammate has a separate Trash.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, rhasa) ← put s p "OGN-195" .hand
+  let (mine, _) ← put s p "OGN-136" .trash
+  let (team, _) ← put mine mate "OGN-136" .trash
+  let (opponent, _) ← put team enemy "OGN-136" .trash
+  return energyNow mine p rhasa == (energyPrinted s rhasa).map (· - 1) &&
+    energyNow opponent p rhasa == energyNow mine p rhasa
+
 -- Eager Apprentice (OGN-084): my spells cost 1 less (at least 1) while it is at a battlefield
 #guard t fun s => do
   let (s1, k) ← put s s.me "OGN-093" .hand
@@ -2004,20 +3064,34 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   return energyNow s3 s.me dragon == (energyPrinted s2 dragon).map (· - 2) &&
     energyNow s3 s.me other == energyPrinted s2 other
 
--- more on cost changes: only another card counts for Legion (not the opponent's, not itself played
--- earlier and returned to the hand), and a card cannot be played for its printed cost when it costs
--- less
+-- The Herald discounts its controller's Dragons. A teammate pays the original price.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, own) ← put s p "OGN-001" .hand
+  let (s, partner) ← put s ally "OGN-001" .hand
+  let (ready, _) ← put s p "OGN-140" .base
+  return energyNow ready p own == (energyPrinted s own).map (fun n => max (n - 2) 1) &&
+    energyNow ready ally partner == energyPrinted s partner
+
+-- Legion uses another physical card finalized by this player. A fresh object ID for the
+-- same returned card does not count, while a distinct copy with the same printed name counts.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-012" .hand
-  let (s2, x) ← put s1 s.you "OGN-136" .hand
-  let theirs := s2.modObj x (fun o => { o with playedTurn := some s2.turn })
-  let (t1, y) ← put s1 s.me "OGN-136" .hand
-  let mine := t1.modObj y (fun o => { o with playedTurn := some t1.turn })
-  let own := s1.modObj c (fun o => { o with playedTurn := some s1.turn })
-  return energyNow theirs s.me c == energyPrinted s1 c &&
-    energyNow mine s.me c == (energyPrinted s1 c).map (· - 2) &&
-    energyNow own s.me c == energyPrinted s1 c &&
-    (cast (s1.rich s.me) s.me c ⟨(energyPrinted s1 c).getD 0 - 2, []⟩).isNone
+  let p := s.me
+  let q := s.you
+  let (s1, card) ← put s p "OGN-012" .hand
+  let (s2, other) ← put s1 q "OGN-136" .base
+  let theirs := s2.recordTurnEvents [.played q other]
+  let first ← play s1 p card
+  let entered ← first.firstOf p .base "OGN-012"
+  let (returned, same) ← moveObj first entered (.player p .hand)
+  let (two, copy) ← put returned p "OGN-012" .hand
+  return same != entered && energyNow theirs p card == some 4 &&
+    energyNow two p same == some 4 && energyNow two p copy == some 2 &&
+    (cast (two.rich p) p same ⟨2, []⟩).isNone &&
+    (cast (two.rich p) p copy ⟨4, []⟩).isNone &&
+    (cast (two.rich p) p copy ⟨2, []⟩).isSome
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-195" .hand
   let trash (x : GameState) (n : Nat) : Option GameState :=
@@ -2047,8 +3121,13 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s2, big) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, small) ← putAt s2 s.you "OGN-136" s.bf0
   let (s4, mine) ← put s3 s.me "OGN-001" .base
-  let a ← play s4 s.me c
-  return a.mightNow big == some 2 && a.mightNow small == some 1 && a.mightNow mine == some 5
+  let (s5, other) ← put s4 s.you "OGN-001" .base
+  let a ← play s5 s.me c
+  let accelerated ← cast (s5.rich s.me) s.me c ⟨8, [.mind, .mind]⟩
+  let ready ← accelerated.firstOf s.me .base "OGN-116"
+  return a.mightNow big == some 2 && a.mightNow small == some 1 &&
+    a.mightNow mine == some 5 && a.mightNow other == some 2 &&
+    (a.mapObjects endTurnObj).mightNow big == some 5 && accelerated.tired ready == some false
 
 -- Kog'Maw, Caustic (OGN-190): when it dies, 4 damage to every unit at its battlefield
 -- (Challenge: Kog'Maw deals 1 to the unit of Might 7 and takes 7)
@@ -2059,10 +3138,16 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   let (s4, f) ← putAt s3 s.me "OGN-001" s.bf0
   let (s5, far) ← put s4 s.you "OGN-001" .base
   let a ← play s5 s.me c [k, e]
+  let (s6, home) ← put s5 s.me "OGN-190" .base
+  let (s7, witness) ← put s6 s.me "OGN-001" .base
+  let (dead, events) := killObj s7 home
+  let b ← fire dead events
+  let damage (state : GameState) (id : ObjId) := (state.obj? id).map (·.damage)
   return (a.obj? e).map (·.damage) == some 5 && (a.obj? f).map (·.damage) == some 4 &&
-    (a.obj? far).map (·.damage) == some 0 && a.countIn s.me .trash "OGN-190" == 1
+    (a.obj? far).map (·.damage) == some 0 && a.countIn s.me .trash "OGN-190" == 1 &&
+    damage b witness == damage s7 witness && damage b e == damage s7 e && damage b f == damage s7 f
 
--- Sigil of the Storm (OGN-287): when I conquer here, recycle one of my runes (to the Rune Deck)
+-- Sigil of the Storm (OGN-287): recycle one of my runes on resolution, without a target.
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-287"
   let isRune (x : GameState) (r : ObjId) := (x.cardDef? r).any (·.hasType .rune)
@@ -2074,6 +3159,26 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
   return !runes.isEmpty && here.length + 1 == runes.length &&
     (a.zone (.player s.me .runeDeck)).length == deck + 1 &&
     (b.zone (.player s.me .runeDeck)).length == deck
+
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s q "OGN-287"
+  let (s, other) ← put s q "OGN-007" .base
+  let mine := s.runesOf p
+  let rune ← mine.getLast?
+  let triggers := s.detect [.scored p bf true]
+  let (onChain, _) ← (advance 100 { s with pending := [.triggers triggers, .priority p] } []).toOption
+  let (opponent, _) ← (step 100 onChain ⟨.player p, .pass⟩).toOption
+  let (picking, _) ← (step 100 opponent ⟨.player q, .pass⟩).toOption
+  let choose (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let available := legalFrameActions picking
+  let (done, events) ← (step 100 picking (choose rune)).toOption
+  let deck := Zone.player p .runeDeck
+  return picking.runesOf p == mine && available.length == mine.length &&
+    mine.all (fun id => available.contains (choose id)) && !available.contains (choose other) &&
+    !events.contains (.chosenByAbility p rune) && (done.runesOf p).length + 1 == mine.length &&
+    (done.zone deck).length == (s.zone deck).length + 1 && done.runesOf q == s.runesOf q
 
 -- Party Favors (OGN-071): the opponent chooses Cards (both draw 1) or Runes (both channel 1
 -- exhausted)
@@ -2088,20 +3193,29 @@ meta def energyPrinted (s : GameState) (c : ObjId) : Option Nat :=
     runes.handN s.me == s1.handN s.me - 1 && runes.handN s.you == s1.handN s.you &&
     runeN runes s.me == runeN s1 s.me + 1 && runeN runes s.you == runeN s1 s.you + 1
 
--- Soulgorger (OGN-196), The Harrowing (OGN-198), Spectral Matron (OGN-226), Portal Rescue
--- (OGN-102): play a unit from the Trash, or a unit on the board, for free
+-- Soulgorger (OGN-196) and The Harrowing (OGN-198) target a unit in their controller's Trash
+-- and waive its Energy. The chosen unit's Power still has to be paid on resolution.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-196" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .trash
-  let a ← play s2 s.me c [] { yes := true }
-  let b ← play s2 s.me c [] { yes := false }
-  let (t1, h) ← put s s.me "OGN-198" .hand
-  let (t2, _) ← put t1 s.me "OGN-136" .trash
-  let (t3, _) ← put t2 s.you "OGN-136" .trash
-  let d ← play t3 s.me h
-  return a.countIn s.me .base "OGN-136" == 1 && a.countIn s.me .trash "OGN-136" == 0 &&
-    b.countIn s.me .base "OGN-136" == 0 && b.countIn s.me .trash "OGN-136" == 1 &&
-    d.countIn s.me .base "OGN-136" == 1 && d.countIn s.you .trash "OGN-136" == 1
+  let p := s.me
+  let (s1, c) ← put s p "OGN-196" .hand
+  let (s2, unit) ← put s1 p "OGN-178" .trash
+  let a ← cast (s2.fund p 8 (chaos := 3)) p c ⟨8, [.chaos, .chaos]⟩ [] { pick := (· == [unit]) }
+  let b ← cast (s2.fund p 8 (chaos := 2)) p c ⟨8, [.chaos, .chaos]⟩ [] { pick := (· == [unit]) }
+  let declined ← play s2 p c [] { yes := false }
+  let (t1, h) ← put s p "OGN-198" .hand
+  let (t2, wanted) ← put t1 p "OGN-178" .trash
+  let (t3, rival) ← put t2 s.you "OGN-178" .trash
+  let price : RunePool.Payment := ⟨6, [.chaos, .chaos]⟩
+  let funded := t3.fund p 6 (chaos := 3)
+  let done ← cast funded p h price [wanted]
+  let noPower ← cast (t3.fund p 6 (chaos := 2)) p h price [wanted]
+  return a.countIn p .base "OGN-178" == 1 && (a.poolOf p).total == 0 &&
+    (b.zone (.player p .trash)).contains unit && (declined.zone (.player p .trash)).contains unit &&
+    done.countIn p .base "OGN-178" == 1 && (done.poolOf p).total == 0 &&
+    (noPower.zone (.player p .trash)).contains wanted &&
+    (cast funded p h price [rival]).isNone && (cast funded p h price []).isNone
+
+-- Spectral Matron can decline or target a unit within both printed cost limits.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-226" .hand
   let (s2, _) ← put s1 s.me "OGN-001" .trash
@@ -2153,7 +3267,7 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s2, other) ← put s1 s.me "OGN-136" .base
   let (s3, a) ← put s2 s.me "OGN-136" .hand
   let (s4, b) ← put s3 s.me "OGN-136" .hand
-  let played := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let played := s4.recordTurnEvents [.played s.me other]
   let on ← activate played s.me g 0
   let first ← play on s.me a
   let second ← play first s.me b
@@ -2173,19 +3287,68 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   return readyUnits second s.me == readyUnits on s.me + 2 && on.handN s.me == s3.handN s.me &&
     readyUnits plain s.me == readyUnits t1 s.me
 
+-- Confront affects the caster's own Units, including tokens, in a team game.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let teammate : PlayerId := ⟨1⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let start :=
+    { initial with
+      turnOrder := Mode.teamTurnOrder true
+      active := some p
+      phase := .main
+      turn := 3
+      pending := [.priority p] }
+  let (s, confront) ← put start p "OGN-129" .hand
+  let (s, _) ← put s p "OGN-136" .mainDeck
+  let resolved ← play s p confront
+  let definition ← resolved.tokenCard "Mech"
+  let (own, _) := playInstructedTokens resolved p definition none 1 false
+  let (both, _) := playInstructedTokens own teammate definition none 1 false
+  let yours ← both.firstOf p .base definition.id.code
+  let allied ← both.firstOf teammate .base definition.id.code
+  return both.tired yours == some false && both.tired allied == some true
+
 -- Raging Firebrand (OGN-031): the next spell this turn costs 5 less, only that one, this turn
 -- (The Harrowing costs 6)
 #guard t fun s => do
   let (s1, f) ← put s s.me "OGN-031" .hand
   let (s2, sp) ← put s1 s.me "OGN-198" .hand
   let (s3, sq) ← put s2 s.me "OGN-198" .hand
-  let on ← play s3 s.me f
+  let (board, target) ← put s3 s.me "OGN-136" .trash
+  let (board, normalUnit) ← put board s.me "OGN-136" .hand
+  let on ← play board s.me f
+  let afterUnit ← play on s.me normalUnit
   let cut (x : GameState) (p : PlayerId) (c : ObjId) : Option Nat :=
     (x.cardDef? c).bind (fun d => (x.effCost p c d).map (·.energy))
-  let cheap ← cast (on.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩
+  let cheap ← cast (afterUnit.rich s.me) s.me sp ⟨1, [.chaos, .chaos]⟩ [target]
   let next := { on with turn := on.turn + 1 }
-  return cut on s.me sp == some 1 && cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
+  return cut on s.me sp == some 1 && cut afterUnit s.me sp == some 1 &&
+    cut s3 s.me sp == some 6 && cut cheap s.me sq == some 6 &&
     cut on s.you sp == some 6 && cut next s.me sp == some 6
+
+-- A Spell played by an effect spends the caster's next-Spell discount, even when
+-- the Spell belongs to the opponent and goes back to the owner's Trash.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, firebrand) ← put s p "OGN-031" .hand
+  let (s, borrowed) ← put s q "OGN-094" .trash
+  let (s, next) ← put s p "OGN-094" .hand
+  let physical ← (s.obj? borrowed).bind (·.kind.phys?)
+  let on ← play s p firebrand
+  let source ← on.firstOf p .base "OGN-031"
+  let waiting := on.addTurnFx q (.nextSpellCostMinus 3)
+  let castBorrowed := Effect.prim (.play (Selector.one .enemy .inTrash [.ofType .spell]))
+  let (opened, _) ← (advance 100 { waiting with
+    pending := .run p source {} (.cons castBorrowed .nil) :: waiting.pending } []).toOption
+  let resolved := settleChain {} 24 opened
+  let finalization ← resolved.playLog.find? (fun play =>
+    play.moment == .finalized && play.physical == some physical)
+  return waiting.energyCost? p next == some 0 && resolved.energyCost? p next == some 3 &&
+    resolved.spellCutFx q == [3] && resolved.countIn q .trash "OGN-094" == 1 &&
+    resolved.countIn p .base "TKN-Sprite" == 1 && finalization.who == p &&
+    finalization.stamp.any (fun stamp => decide (waiting.nextTimestamp ≤ stamp))
 
 -- ... a card played earlier that is played again counts as the next card: Sun Disc
 #guard t fun s => do
@@ -2193,7 +3356,7 @@ meta def readyUnits (x : GameState) (p : PlayerId) : Nat :=
   let (s2, other) ← put s1 s.me "OGN-136" .base
   let (s3, again) ← put s2 s.me "OGN-136" .hand
   let (s4, b) ← put s3 s.me "OGN-136" .hand
-  let marked := s4.modObj other (fun o => { o with playedTurn := some s4.turn })
+  let marked := s4.recordTurnEvents [.played s.me other]
   let old := marked.modObj again
     (fun o => { o with playedTurn := some s4.turn, playedStamp := some 0 })
   let on ← activate old s.me g 0
@@ -2226,6 +3389,122 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   | .ok (x, _) => some x
   | .error _ => none
 
+-- Every Seal pays and Adds one Power of the printed domain, including while a Spell is waiting.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let seals : List (String × Domain) := [
+    ("OGN-040", .fury), ("OGN-081", .calm), ("OGN-120", .mind),
+    ("OGN-163", .body), ("OGN-204", .chaos), ("OGN-245", .order)]
+  return seals.all fun (code, domain) => (do
+    let (s, card) ← put s p code .hand
+    let (s, spell) ← put s q "OGN-129" .hand
+    let funded := (s.noRunes p).setPool p (({} : RunePool).addPower domain 1)
+    let paid ← cast funded p card ⟨0, [domain]⟩
+    let source ← paid.firstOf p .base code
+    let add : Action := ⟨.player p, .manaAbility source 0 ⟨0, []⟩⟩
+    let (neutral, _) ← (step 100 paid add).toOption
+    let otherTurn := { paid with
+      active := some q
+      pending := [.priority q] }
+    let waiting ← passBy (← castOpen otherTurn q spell []) q
+    let (charged, _) ← (step 100 waiting add).toOption
+    return (paid.poolOf p).total == 0 && paid.tired source == some false &&
+      (neutral.poolOf p).get domain == 1 && (neutral.poolOf p).total == 1 &&
+      neutral.tired source == some true && (step 100 neutral add).toOption.isNone &&
+      (charged.poolOf p).get domain == 1 && (charged.poolOf p).total == 1 &&
+      charged.poolOf q == waiting.poolOf q && charged.tired source == some true &&
+      (charged.zone .chain) == (waiting.zone .chain) && (charged.zone .chain).length == 1
+      : Option Bool).getD false
+
+-- Whiteflame Protector can give Might to either side or itself. The bonus expires with the turn.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-082" .hand
+  let (s, ally) ← put s p "OGN-136" .base
+  let (s, enemy) ← put s q "OGN-136" .base
+  let friendly ← play s p card [] { pick := (· == [ally]) }
+  let opposing ← play s p card [] { pick := (· == [enemy]) }
+  let waiting ← castStop s p card
+  let source ← waiting.firstOf p .base "OGN-082"
+  let (choseSelf, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [source]⟩).toOption
+  let self := settleChain {} 12 choseSelf
+  return friendly.mightNow ally == some 10 && friendly.mightNow enemy == some 2 &&
+    opposing.mightNow ally == some 2 && opposing.mightNow enemy == some 10 &&
+    (opposing.mapObjects endTurnObj).mightNow enemy == some 2 &&
+    self.mightNow source == (s.cardDef? card).bind (fun d => d.might.map (fun n => n + 8))
+
+-- CR 359.3.e.5: Flash strands the damage instruction, and Void Seeker still draws.
+-- Hextech Ray and Falling Comet apply the same Battlefield restriction on resolution.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, enemy) ← putAt (s.control q field) q "OGN-116" field
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (s, ray) ← put s p "OGN-009" .hand
+  let (s, voidSeeker) ← put s p "OGN-024" .hand
+  let (s, comet) ← put s p "OGN-085" .hand
+  let check (card : ObjId) (damage : Nat) (draw : Nat) : Option Bool := do
+    let normal ← play s p card [enemy]
+    let openChain ← castOpen s p card [enemy]
+    let response ← passBy openChain p
+    let returned ← play response q flash [enemy]
+    return (normal.obj? enemy).any (fun o => o.damage == damage) &&
+      (returned.obj? enemy).any (fun o => o.damage == 0 && o.loc.isNone) &&
+      (play (moveHome s enemy).1 p card [enemy]).isNone &&
+      normal.handN p + 1 == s.handN p + draw && returned.handN p + 1 == s.handN p + draw
+  return (← check ray 3 0) && (← check voidSeeker 4 1) && (← check comet 6 0)
+
+-- Gust removes one Singularity target after both have been declared. The second target survives
+-- the check, and the resolution never asks for a replacement for the first target.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, first) ← putAt (s.control q field) q "OGN-006" field
+  let (s, second) ← put s q "OGN-116" .base
+  let (s, backup) ← put s q "OGN-116" .base
+  let (s, spell) ← put s p "OGN-105" .hand
+  let (s, gust) ← put s q "OGN-169" .hand
+  let openChain ← castOpen s p spell [first, second]
+  let response ← passBy openChain p
+  let result ← play response q gust [first]
+  return result.handN q == s.handN q && result.countIn q .hand "OGN-006" == 1 &&
+    (result.obj? second).any (fun o => o.damage == 6) && (result.obj? backup).any (fun o => o.damage == 0) &&
+    result.countIn p .trash "OGN-105" == 1 && (result.zone .chain).isEmpty
+
+-- CR 758.2: both Falling Star instructions can choose the same Unit and each deals 3.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, unit) ← put s q "OGN-116" .base
+  let (s, other) ← put s q "OGN-116" .base
+  let (s, spell) ← put s p "OGN-029" .hand
+  let chain ← castOpen s p spell [unit, unit]
+  let response ← passBy chain p
+  let (settled, events) ← (step 100 response ⟨.player q, .pass⟩).toOption
+  return events.filter (fun | .damaged .. => true | _ => false) ==
+      [.damaged unit 3, .damaged unit 3] &&
+    (settled.obj? unit).any (fun o => o.damage == 6) &&
+    (settled.obj? other).any (fun o => o.damage == 0)
+
+-- Discipline can target an enemy Unit. If it leaves the Board before resolution,
+-- the independent instruction still draws for the caster.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, discipline) ← put s p "OGN-058" .hand
+  let (s, foe) ← put s q "OGN-136" .base
+  let buffed ← play s p discipline [foe]
+  let opened ← castOpen s p discipline [foe]
+  let (changed, returned) ← moveObj opened foe (.player q .hand)
+  let finished := settleChain {} 12 changed
+  return buffed.mightNow foe == some 4 && (buffed.mapObjects endTurnObj).mightNow foe == some 2 &&
+    buffed.handN p == s.handN p && finished.handN p == s.handN p &&
+    finished.locate returned == some (.player q .hand) && finished.countIn p .trash "OGN-058" == 1
+
 -- Wind Wall (OGN-064): counter a spell on the Chain (Confront would draw 1)
 #guard t fun s => do
   let (s1, conf) ← put s s.me "OGN-129" .hand
@@ -2246,8 +3525,9 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let (s4, comet) ← put s3 s.me "OGN-085" .hand
   let (s4b, star) ← put s4 s.me "OGN-029" .hand
   let (s5, u) ← putAt s4b s.you "OGN-136" s.bf0
+  let (s5, revived) ← put s5 s.me "OGN-136" .trash
   let small ← passBy (← castStop s5 s.me conf) s.me
-  let large ← passBy (← castStop s5 s.me big) s.me
+  let large ← passBy (← castOpen s5 s.me big [revived]) s.me
   let pricey ← passBy (← castOpen s5 s.me comet [u]) s.me
   let twoPower ← passBy (← castOpen s5 s.me star [u, u]) s.me
   let a ← play small s.you defy [← (small.zone .chain).head?]
@@ -2256,6 +3536,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   let refused2 := play pricey s.you defy [← (pricey.zone .chain).head?]
   return a.countIn s.me .trash "OGN-129" == 1 && a.turnFx.isEmpty && refused.isNone &&
     refused2.isNone && refused3.isNone
+
+-- Defy reads the printed cost: the exact limit is legal and a discount cannot change it.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, defy) ← put s q "OGN-045" .hand
+  let (s, sky) ← put s p "OGN-014" .hand
+  let (s, scorched) ← put s p "RAD-006" .hand
+  let (s, _) ← put s p "OGN-116" .base
+  let (s, enemy) ← putAt (s.control q s.bf0) q "OGN-001" s.bf0
+  let expensive ← passBy (← castOpen s p sky [enemy]) p
+  let boundary ← passBy (← castOpen s p scorched [enemy]) p
+  let expensiveTarget ← (expensive.zone .chain).head?
+  let boundaryTarget ← (boundary.zone .chain).head?
+  let countered ← play boundary q defy [boundaryTarget]
+  return energyNow s p sky == some 1 && (play expensive q defy [expensiveTarget]).isNone &&
+    (countered.obj? enemy).any (·.damage == 0) && countered.countIn p .trash "RAD-006" == 1
 
 -- Stormbringer, Volibear (OGN-250): damage equal to my unit's Might to the enemy units at a
 -- battlefield, then my unit moves there
@@ -2337,6 +3634,24 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     st.mightNow big == some 1 && st.mightNow small == some 1 && st.mightNow far == some 7 &&
     t4.mightNow big == some 7
 
+-- These two cards check every opponent's score in a free-for-all.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let r : PlayerId := ⟨2⟩
+  let s := { s with
+    config := { s.config with mode := { s.config.mode with players := 3 } }
+    turnOrder := [p, q, r] }
+  let (s, spell) ← put s p "OGN-047" .hand
+  let (s, leona) ← put s p "OGN-079" .hand
+  let goal := s.config.mode.victoryScore
+  let threatened := s.gainPoints r (goal - 3)
+  let distant := (s.gainPoints q (goal - 4)).gainPoints r (goal - 4)
+  let ready ← play threatened p leona
+  let exhausted ← play distant p leona
+  return energyNow threatened p spell == some 1 && energyNow distant p spell == some 3 &&
+    readyUnits ready p == readyUnits threatened p + 1 && readyUnits exhausted p == readyUnits distant p
+
 -- ... the Victory Score the passive abilities leave is the one it reads (Aspirant's Climb adds 1),
 -- and a Magma Wurm helps a second Wurm that is played, not itself
 #guard t fun s => do
@@ -2383,6 +3698,39 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
   return one.tired d == some true && one.mightNow d == some 6 &&
     two.tired d == some false && two.mightNow d == some 8 && three.mightNow d == some 8
 
+-- Darius can be the second card himself. Playing a token does not count as a card.
+#guard t fun s => do
+  let p := s.me
+  let (s, darius) ← put s p "OGN-027" .hand
+  let (s, first) ← put s p "OGN-136" .hand
+  let (token, tokenEvents) := playUnitTokenAt s p "Recruit" none
+  let withToken := token.withTriggers tokenEvents
+  let tokenOnly ← play withToken p darius
+  let earlier ← play s p first
+  let second ← play earlier p darius
+  let foundBefore ← tokenOnly.firstOf p .base "OGN-027"
+  let foundAfter ← second.firstOf p .base "OGN-027"
+  return token.countNamed p .base "Recruit" == 1 &&
+    tokenOnly.tired foundBefore == some true && tokenOnly.mightNow foundBefore == some 5 &&
+    second.tired foundAfter == some false && second.mightNow foundAfter == some 7
+
+-- A Spell countered after it was finalized does not advance Darius's count of resolved cards.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, darius) ← put s p "OGN-027" .base
+  let (s, spell) ← put (s.tire darius) p "OGN-129" .hand
+  let (s, counter) ← put s q "OGN-064" .hand
+  let (s, first) ← put s p "OGN-010" .hand
+  let (s, second) ← put s p "OGN-010" .hand
+  let waiting ← passBy (← castOpen s p spell []) p
+  let onChain ← (waiting.zone .chain).head?
+  let stopped ← play waiting q counter [onChain]
+  let once ← play stopped p first
+  let twice ← play once p second
+  return stopped.tired darius == some true && once.tired darius == some true &&
+    twice.tired darius == some false && twice.mightNow darius == some 7
+
 -- Stand United (OGN-053): buff a friendly unit; buffs give friendly units +1 Might more this turn
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-053" .hand
@@ -2426,32 +3774,62 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     ((yes.zone (.player s.me .base)).filter (fun u => (yes.cardDef? u).any (·.hasType .rune) &&
       !(buffed.zone (.player s.me .base)).contains u)).all (fun u => yes.tired u == some true)
 
--- The Candlelit Sanctum (OGN-291): when I conquer here, I may recycle either of the top two cards
+-- The Candlelit Sanctum (OGN-291) offers private ordering and Recycle after a real conquest.
 #guard t fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-291"
-  let deck := s1.zone (.player s.me .mainDeck)
-  let yes ← fire s1 [.scored s.me bf true] { yes := true }
-  let no ← fire s1 [.scored s.me bf true] { yes := false }
-  let other ← fire s1 [.scored s.you bf true] { yes := true }
-  let held ← fire s1 [.scored s.me bf false] { yes := true }
-  return deck.length > 3 && (no.zone (.player s.me .mainDeck)) == deck &&
-    (yes.zone (.player s.me .mainDeck)).take (deck.length - 2) == deck.drop 2 &&
-    ((yes.zone (.player s.me .mainDeck)).drop (deck.length - 2)).length == 2 &&
-    (other.zone (.player s.me .mainDeck)) == deck &&
-    (other.zone (.player s.you .mainDeck)) != s1.zone (.player s.you .mainDeck) &&
-    (held.zone (.player s.me .mainDeck)) == deck
+  let p := s.me
+  let q := s.you
+  let (s, bf) ← putBf s q "OGN-291"
+  let (s, _) ← putAt s p "OGN-136" bf
+  let board := { s.modObj bf (fun o => { o with contested := some p }) with
+    pending := [.showdown bf p 0, .priority p] }
+  let deck := Zone.player p .mainDeck
+  let first :: second :: rest := board.zone deck | none
+  let (passed, _) ← (step 0 board ⟨.player p, .pass⟩).toOption
+  let (scored, events) ← (step 100 passed ⟨.player q, .pass⟩).toOption
+  let predicting := settleChain {} 12 scored
+  let pick (state : GameState) (card : ObjId) (recycle : Bool) :=
+    (step 100 state ⟨.player p, .predictPick card recycle⟩).toOption.map Prod.fst
+  let keepSecond ← pick predicting second false
+  let reordered ← pick keepSecond first false
+  let discardSecond ← pick predicting second true
+  let keepFirst ← pick discardSecond first false
+  let discardFirst ← pick predicting first true
+  let keepSecondOnly ← pick discardFirst second false
+  let chance ← pick discardFirst second true
+  let (recycled, _) ← (step 100 chance ⟨.chance, .arrange [second, first]⟩).toOption
+  let held ← fire board [.scored p bf false]
+  return held.zone deck == first :: second :: rest && events.contains (.scored p bf true) && predicting.controlOf bf == some p &&
+    (predicting.resolutionZoneCardFaces p deck).any (fun cards => (cards.take 2).all Option.isSome) &&
+    predicting.resolutionZoneCardFaces q deck == board.zoneCardFaces q deck &&
+    predicting.zone deck == first :: second :: rest &&
+    reordered.zone deck == second :: first :: rest &&
+    keepFirst.zone deck == first :: (rest ++ [second]) &&
+    keepSecondOnly.zone deck == second :: (rest ++ [first]) &&
+    recycled.zone deck == rest ++ [second, first]
 
--- Fortified Position (OGN-279): when I defend here, a unit gains Shield 2
+-- Fortified Position (OGN-279) grants Shield to the defending player's choice through this Combat.
 #guard t fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-279"
-  let (s2, u) ← putAt s1 s.me "OGN-136" bf
-  let a ← fire s2 [.combatStarted bf s.you]
-  let att ← fire s2 [.combatStarted bf s.me]
-  let has (x : GameState) := (x.grantedKws u).any (fun k => k.keyword == .shield)
-  return has a && !has att && !has s2
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "OGN-279"
+  let (s, defender) ← putAt s p "OGN-116" field
+  let (s, other) ← put s p "OGN-116" .base
+  let (s, _) ← putAt s q "OGN-136" field
+  let board := s.modObj field (fun o => { o with control := some p, contested := some q })
+  let (combat, notices) := board.observeCombat [.showdown field q 0]
+  let s := { board with combat }
+  let whileAttacking ← fire s [.combatStarted field p]
+  let chosen ← fire s notices { pick := fun targets => targets == [defender] }
+  let (finished, events) ← (advance 100 { chosen with pending := [.combatFinish field, .priority q] } []).toOption
+  let shielded (board : GameState) (id : ObjId) :=
+    (board.grantedKws id).contains ⟨.shield, .amount 2⟩
+  return combat.isSome && notices.contains (.combatStarted field q) &&
+    shielded chosen defender && !shielded chosen other && !shielded whileAttacking defender &&
+    (finished.obj? defender).isSome && !shielded finished defender &&
+    finished.phase == .main && events.any (fun e => match e with
+      | .combatEnded bf _ => bf == field | _ => false)
 
--- Paying as an effect resolves. Flame Chompers (OGN-006): when it is discarded, I may pay Fury to
--- play it (with no Fury in the Pool, or if I decline, it stays in the Trash)
+-- Flame Chompers (OGN-006): the discard trigger can be finalized by paying Fury.
 #guard t fun s => do
   let (s1, x) ← put s s.me "OGN-006" .trash
   let funded := s1.fund s.me 0 (fury := 1)
@@ -2507,6 +3885,23 @@ meta def castOpen (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) :
     (no.poolOf s.me).energy == 1 && (no.obj? u).map (·.loc) == some (some s.bf0) &&
     broke.countIn s.me .hand "OGN-035" == 0 && (broke.obj? u).map (·.loc) == some (some s.bf0)
 
+-- Traveling Merchant asks for the discard before drawing after a move.
+#guard t fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, merchant) ← put (s.control p field) p "OGN-185" .base
+  let (s, discarded) ← put s p "OGN-001" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove merchant (.battlefield field)⟩).toOption
+  let passChain (state : GameState) : Option GameState := do
+    let .chainPass actor _ :: _ := state.pending | none
+    (step 100 state ⟨.player actor, .pass⟩).toOption.map Prod.fst
+  let waiting ← (passChain queued).bind passChain
+  let (finished, _) ← (step 100 waiting ⟨.player p, .discardPick discarded⟩).toOption
+  return waiting.zone (.player p .mainDeck) == s.zone (.player p .mainDeck) &&
+    finished.countIn p .trash "OGN-001" == s.countIn p .trash "OGN-001" + 1 &&
+    finished.handN p == s.handN p &&
+    (finished.zone (.player p .mainDeck)).length + 1 == (s.zone (.player p .mainDeck)).length
+
 -- Standard Moves counted in the turn. Yasuo, Windrider (OGN-205): the third time he moves in a
 -- turn, I score 1 point
 /-- Move the unit by a Standard Move; the state and the events. -/
@@ -2550,17 +3945,15 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return third.pointsOf s.me == c.pointsOf s.me + 1 && (c.obj? y).map (·.moves) == some 3 &&
     (back.obj? id').map (·.moves) == some 0
 
--- Additional costs, paid as the card is played: the cost they save is given back to the Pool
--- Brazen Buccaneer (OGN-002): discard a card, 2 Energy back
+-- Without choosing a discard, Brazen Buccaneer costs the printed six Energy.
 #guard t fun s => do
-  let (s1, c) ← put s s.me "OGN-002" .hand
-  let (s2, _) ← put s1 s.me "OGN-136" .hand
-  let yes ← play s2 s.me c [] { yes := true }
-  let no ← play s2 s.me c [] { yes := false }
-  let alone ← play (s1.setZone (.player s.me .hand) [c]) s.me c [] { yes := true }
-  return yes.countIn s.me .trash "OGN-136" == 1 && (yes.poolOf s.me).energy == 12 - 6 + 2 &&
-    no.countIn s.me .hand "OGN-136" == 1 && (no.poolOf s.me).energy == 12 - 6 &&
-    (alone.poolOf s.me).energy == 12 - 6
+  let p := s.me
+  let (s, card) ← put s p "OGN-002" .hand
+  let (spare, _) ← put s p "OGN-136" .hand
+  let declined ← play spare p card
+  let alone ← play (s.setZone (.player p .hand) [card]) p card
+  return declined.countIn p .hand "OGN-136" == 1 &&
+    (declined.poolOf p).energy == 12 - 6 && (alone.poolOf p).energy == 12 - 6
 
 -- Wallop (OGN-146) and Call to Glory (OGN-207): spend a buff, and the spell costs nothing
 #guard t fun s => do
@@ -2582,8 +3975,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (glory.poolOf s.me).energy == 12 && glory.mightNow a == some 5 &&
     (paid.poolOf s.me).energy == 9
 
--- Kraken Hunter (OGN-150): spend buffs, 1 Body each back; Cruel Patron (OGN-208): kill a friendly
--- unit; Commander Ledros (OGN-231): kill units, 1 Order each back
+-- Kraken Hunter (OGN-150): spend buffs, 1 Body each back; Commander Ledros (OGN-231):
+-- kill units, 1 Order each back.
 #guard t fun s => do
   let (s1, k) ← put s s.me "OGN-150" .hand
   let (s2, a) ← put s1 s.me "OGN-136" .base
@@ -2591,10 +3984,6 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let buffed := (s3.buff a).buff b
   let yes ← play buffed s.me k [] { yes := true }
   let no ← play buffed s.me k [] { yes := false }
-  let (t1, p) ← put s s.me "OGN-208" .hand
-  let (t2, u) ← put t1 s.me "OGN-136" .base
-  let sac ← play t2 s.me p
-  let lone ← play t1 s.me p
   let (v1, l) ← put s s.me "OGN-231" .hand
   let (v2, c) ← put v1 s.me "OGN-136" .base
   let (v3, d) ← put v2 s.me "OGN-136" .base
@@ -2604,10 +3993,39 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return (yes.obj? a).map (·.buffed) == some false && (yes.obj? b).map (·.buffed) == some false &&
     (yes.poolOf s.me).body == (no.poolOf s.me).body + 2 &&
     (no.obj? a).map (·.buffed) == some true &&
-    (sac.obj? u).isNone && sac.countIn s.me .base "OGN-208" == 1 &&
-    lone.countIn s.me .base "OGN-208" == 0 && lone.countIn s.me .trash "OGN-208" == 1 &&
     (led.obj? c).isNone && (led.obj? d).isNone && (led.obj? e).isSome &&
     (led.poolOf s.me).order == (keep.poolOf s.me).order + 2 && (keep.obj? c).isSome
+
+-- Cruel Patron requires a declared Unit. If Hourglass saves that Unit, the cost still counts
+-- as paid and Cruel Patron enters play (CR 357.2.a, Origins FAQ).
+#guard t fun s => do
+  let p := s.me
+  let (s, patron) ← put s p "OGN-208" .hand
+  let (s, enemy) ← put s s.you "OGN-136" .base
+  let (s, unit) ← put s p "OGN-136" .base
+  let paid ← play s p patron [unit]
+  let (withGear, gear) ← put s p "OGN-077" .base
+  let replaced ← play withGear p patron [unit]
+  return (play s p patron []).isNone && (play s p patron [enemy]).isNone &&
+    (paid.obj? unit).isNone && paid.countIn p .base "OGN-208" == 1 &&
+    (replaced.obj? unit).any (·.exhausted) && (replaced.obj? gear).isNone &&
+    replaced.countIn p .base "OGN-208" == 1
+
+-- In 2v2 a teammate's Unit can pay for Cruel Patron, and the teammate's Hourglass can save it.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2,
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s, patron) ← put s p "OGN-208" .hand
+  let (s, unit) ← put s ally "OGN-136" .base
+  let (s, gear) ← put s ally "OGN-077" .base
+  let (paid, events) ← (step 100 (s.rich p) ⟨.player p, .playCard patron (payOf s patron) [unit]⟩).toOption
+  return (paid.obj? unit).any (fun o => o.controller == ally && o.exhausted) &&
+    (paid.obj? gear).isNone && paid.countIn p .base "OGN-208" == 1 &&
+    events.any (fun | .died _ owner => owner == ally | _ => false)
 
 -- ... what is given back never exceeds what was paid: Wallop played for nothing gives nothing
 -- back, Kraken Hunter gives back at most its 2 Body, and Ledros at most its 4 Order
@@ -2637,7 +4055,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
 #guard t fun s => do
   let (s1, g) ← put s s.me "OGN-253" .base
   let (s2, other) ← put s1 s.me "OGN-136" .base
-  let played := s2.modObj other (fun o => { o with playedTurn := some s2.turn })
+  let played := s2.recordTurnEvents [.played s.me other]
   let pool0 := (s2.poolOf s.me).energy
   let use (x : GameState) : Option GameState :=
     match step 100 x ⟨.player s.me, .manaAbility g 0 ⟨0, []⟩⟩ with
@@ -2645,9 +4063,9 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     | .error _ => none
   let on ← use played
   let again := use on
-  let old := s2.modObj other (fun o => { o with playedTurn := some (s2.turn + 1) })
+  let old := { played with turn := played.turn + 1 }
   let (s3, f) ← put s2 s.you "OGN-136" .base
-  let theirs := s3.modObj f (fun o => { o with playedTurn := some s3.turn })
+  let theirs := s3.recordTurnEvents [.played s.you f]
   let (s4, c) ← put s2 s.me "OGN-136" .hand
   let real ← play s4 s.me c
   return (on.poolOf s.me).energy == pool0 + 1 && on.tired g == some true && (use s2).isNone &&
@@ -2701,20 +4119,26 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return !has s3 .assault && !has s3 .ganking && has mine .assault && has mine .ganking &&
     !has theirs .assault && !has later .ganking && has limit .ganking
 
--- Imperial Decree (OGN-221): a unit that takes damage this turn is killed
+-- Imperial Decree (OGN-221) puts a separate kill ability on the Chain for each Unit hit.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-221" .hand
   let (s2, u) ← put s1 s.me "OGN-001" .base
   let (s3, v) ← put s2 s.you "OGN-001" .base
   let on ← play s3 s.me c
-  let hit := (dealObj 1 on u).1
-  let hitFoe := (dealObj 1 on v).1
-  let none_ := (dealObj 1 s3 u).1
-  let zero := (dealObj 0 on u).1
-  let later := (dealObj 1 { on with turn := on.turn + 1 } u).1
-  return (hit.obj? u).isNone && hit.countIn s.me .trash "OGN-001" == 1 && (hitFoe.obj? v).isNone &&
-    (none_.obj? u).map (·.damage) == some 1 && (zero.obj? u).map (·.damage) == some 0 &&
-    (later.obj? u).map (·.damage) == some 1
+  let (hit, hitEvents) := dealObj 1 on u
+  let (hitFoe, foeEvents) := dealObj 1 on v
+  let (plain, plainEvents) := dealObj 1 s3 u
+  let (zero, zeroEvents) := dealObj 0 on u
+  let (later, laterEvents) := dealObj 1 { on with turn := on.turn + 1 } u
+  let (waiting, _) ← (advance 100 (hit.withTriggers hitEvents) []).toOption
+  let (waitingFoe, _) ← (advance 100 (hitFoe.withTriggers foeEvents) []).toOption
+  let done := settleChain {} 12 waiting
+  let doneFoe := settleChain {} 12 waitingFoe
+  return (waiting.obj? u).any (·.damage == 1) && (waiting.zone .chain).length == 1 &&
+    (done.obj? u).isNone && done.countIn s.me .trash "OGN-001" == 1 &&
+    (doneFoe.obj? v).isNone && (plain.delayedDamageTriggers plainEvents).isEmpty &&
+    (zero.delayedDamageTriggers zeroEvents).isEmpty &&
+    (later.delayedDamageTriggers laterEvents).isEmpty
 
 -- Noxian Guillotine (OGN-254): the chosen unit is killed the next time it takes damage this turn;
 -- with Legion, it is killed now
@@ -2723,24 +4147,60 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, u) ← put s1 s.you "OGN-001" .base
   let (s3, w) ← put s2 s.you "OGN-001" .base
   let (s4, other) ← put s3 s.me "OGN-136" .base
+  let funded := s4.fund s.me 4 (fury := 1) (mind := 1) (order := 1)
   let marked ← play s4 s.me c [u]
-  let legion ← play (s4.modObj other (fun o => { o with playedTurn := some s4.turn })) s.me c [u]
-  return (marked.obj? u).isSome && ((dealObj 1 marked u).1.obj? u).isNone &&
-    ((dealObj 1 marked w).1.obj? w).map (·.damage) == some 1 && (legion.obj? u).isNone &&
-    ((dealObj 0 marked u).1.obj? u).isSome
+  let paidOrder ← cast funded s.me c ⟨4, [.order]⟩ [u]
+  let legion ← play (s4.recordTurnEvents [.played s.me other]) s.me c [u]
+  let (zero, zeroEvents) := dealObj 0 marked u
+  let (otherHit, otherEvents) := dealObj 1 (zero.withTriggers zeroEvents) w
+  let (hit, events) := dealObj 1 (otherHit.withTriggers otherEvents) u
+  let (waiting, _) ← (advance 100 (hit.withTriggers events) []).toOption
+  let (secondHit, secondEvents) := dealObj 1 waiting u
+  let done := settleChain {} 12 (secondHit.withTriggers secondEvents)
+  return (zero.delayedDamageTriggers zeroEvents).isEmpty &&
+    (otherHit.delayedDamageTriggers otherEvents).isEmpty &&
+    (waiting.obj? u).any (·.damage == 1) && (waiting.zone .chain).length == 1 &&
+    (secondHit.delayedDamageTriggers secondEvents).isEmpty &&
+    (done.obj? u).isNone && (done.obj? w).isSome && (legion.obj? u).isNone &&
+    (paidOrder.poolOf s.me).order == 0 && (paidOrder.poolOf s.me).fury == 1 &&
+    (cast funded s.me c ⟨4, [.mind]⟩ [u]).isNone
 
--- ... also for the damage of a combat (`dealAll`), which sets off the deaths; a unit that takes no
--- damage is not killed
+-- Simultaneous damage queues both abilities. The controller orders them before they resolve.
 #guard t fun s => do
   let (s1, c) ← put s s.me "OGN-221" .hand
-  let (s2, a) ← put s1 s.me "OGN-190" .base
+  let (s2, a) ← put s1 s.me "OGN-001" .base
   let (s3, b) ← put s2 s.you "OGN-116" .base
   let on ← play s3 s.me c
-  let (done, evs) := dealAll on [(a, 1), (b, 2)]
+  let (damaged, events) := dealAll on [(a, 1), (b, 2)]
   let (plain, _) := dealAll s3 [(a, 1), (b, 2)]
-  let died := evs.filterMap (fun e => match e with | .died n _ => some n | _ => none)
-  return (done.obj? a).isNone && (done.obj? b).isNone && died.length == 2 &&
+  let (waiting, _) ← (advance 100 (damaged.withTriggers events) []).toOption
+  let done := settleChain {} 12 waiting
+  let subjects := (damaged.delayedDamageTriggers events).filterMap (·.subject)
+  return (damaged.obj? a).isSome && (damaged.obj? b).isSome &&
+    subjects.length == 2 && subjects.contains a && subjects.contains b &&
+    (done.obj? a).isNone && (done.obj? b).isNone &&
     (plain.obj? a).isSome && (plain.obj? b).map (·.damage) == some 2
+
+-- Vendetta FAQ: Imperial Decree's delayed ability credits the Spell's controller with the kill.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, decree) ← put s p "OGN-221" .hand
+  let (s, ray) ← put s p "OGN-009" .hand
+  let (s, dragon) ← putAt (s.control q s.bf0) q "UNL-118" s.bf0
+  let (s, _) ← put s p "OGN-037" .trash
+  let (s, _) ← put s q "OGN-037" .trash
+  let on ← play s p decree
+  let official ← play on p ray [dragon]
+  -- The recipient of kill credit is independent of which seat supplied the damage.
+  let (damaged, events) := dealObj 3 on dragon (some q)
+  let (waiting, _) ← (advance 100 (damaged.withTriggers events) []).toOption
+  let done := settleChain {} 16 waiting
+  let decline := settleChain { yes := false } 16 waiting
+  return (waiting.obj? dragon).any (·.damage == 3) &&
+    official.countIn q .trash "UNL-118" == 1 && official.countIn p .base "OGN-037" == 1 &&
+    done.countIn q .trash "UNL-118" == 1 && done.countIn p .base "OGN-037" == 1 &&
+    done.countIn q .trash "OGN-037" == 1 && decline.countIn p .trash "OGN-037" == 1
 
 -- Bonus Damage. Ravenborn Tome (OGN-032): the next spell I play this turn deals 1 more with each
 -- instance of damage (Hextech Ray deals 3)
@@ -2759,7 +4219,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     on.tired g == some true && (on.fxOf s.me).contains (.nextSpellBonus 1) &&
     (mine.obj? v).map (·.damage) == some 3
 
--- Void Gate (OGN-296): spells and abilities that affect the units at it deal 1 more
+-- Void Gate (OGN-296): only damage instances to units at this battlefield get the bonus.
 #guard t fun s => do
   let (s1, gate) ← putBf s s.me "OGN-296"
   let (s2, h) ← put s1 s.me "OGN-009" .hand
@@ -2772,6 +4232,16 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let c ← play t2 s.me h2 [v]
   return (a.obj? here).map (·.damage) == some 4 && (b.obj? far).map (·.damage) == some 3 &&
     (c.obj? v).map (·.damage) == some 3
+
+#guard t fun s => do
+  let awayField := s.bf0
+  let (s, gate) ← putBf s s.you "OGN-296"
+  let (s, tracker) ← put s s.me "RAD-003" .hand
+  let (s, here) ← putAt s s.you "OGN-001" gate
+  let (s, away) ← putAt s s.you "OGN-001" awayField
+  let both (targets : List ObjId) := targets.length == 2 && targets.contains here && targets.contains away
+  let done ← play s s.me tracker [] { pick := both }
+  return (done.obj? here).map (·.damage) == some 2 && (done.obj? away).map (·.damage) == some 1
 
 -- Brynhir Thundersong (OGN-026): when I play her, my opponents cannot play cards this turn
 #guard t fun s => do
@@ -2798,6 +4268,31 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     castable free s.you ray (payOf free ray) [u] &&
     !(legalPlays rich s.you).any
       (fun a => match a.kind with | .playCard c _ _ _ _ _ => c == ray | _ => false)
+
+-- Brynhir prohibits card plays from Hidden for both enemy seats, while Rune abilities remain legal.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let other : PlayerId := ⟨3⟩
+  let base := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { base with
+    phase := .main
+    turn := 3
+    active := some p
+    pending := [.priority p]
+    turnOrder := Mode.teamTurnOrder true }
+  let (s, field) ← putBf s foe "OGN-275"
+  let (s, brynhir) ← put s p "OGN-026" .hand
+  let (s, hidden) ← put (s.control foe field) foe "OGN-135" .hidden
+  let (s, rune) ← put s foe "OGN-126" .base
+  let s := s.modObj hidden (fun card => { card with hiddenAt := some field, hiddenTurn := some 2 })
+  let done ← play s p brynhir
+  let answering := { done with pending := [.chainPass foe 0, .priority p] }
+  let exhaust : Action := ⟨.player foe, .runeAbility rune .exhaust⟩
+  return s.abilityZoneOk foe hidden 1 && !done.abilityZoneOk foe hidden 1 &&
+    done.cantPlay foe && done.cantPlay other && !done.cantPlay partner &&
+    (legalFrameActions answering).contains exhaust
 
 -- The ability that watches an object gets it as its last slot. Pirate's Haven (OGN-143): when I
 -- ready a friendly unit, it gets +1 Might this turn
@@ -2955,6 +4450,53 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     c.handN s.me == calm.handN s.me && (c.obj? big).map (·.damage) == some 0 &&
     (c.obj? big).map (·.stunned) == some false
 
+-- Mindsplitter offers only the chosen opponent's revealed hand to the caster.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let first : PlayerId := ⟨2⟩
+  let second : PlayerId := ⟨3⟩
+  let initial := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { initial with
+    phase := .main, active := some p, turn := 3
+    pending := [.priority p], turnOrder := Mode.teamTurnOrder true }
+  let (s, mindsplitter) ← put s p "OGN-192" .hand
+  let (s, allyCard) ← put s mate "OGN-049" .hand
+  let (s, wrongEnemy) ← put s first "OGN-049" .hand
+  let (s, chosenCard) ← put s second "OGN-049" .hand
+  let (s, another) ← put s second "OGN-088" .hand
+  let waiting ← castStop s p mindsplitter
+  let pick (enemy : PlayerId) := Action.mk (.player p) (.putTrigger 0 [] (.pay [] (player := some enemy)))
+  let (queued, _) ← (step 100 waiting (pick second)).toOption
+  let rec pass : Nat → GameState → List Event → Option (GameState × List Event)
+    | 0, _, _ => none
+    | n + 1, state, events => do
+      match state.pending with
+      | .chainPass seat _ :: _ =>
+        let (next, more) ← (step 100 state ⟨.player seat, .pass⟩).toOption
+        pass n next (events ++ more)
+      | _ => some (state, events)
+  let (offered, revealed) ← pass 12 queued []
+  let take (id : ObjId) := Action.mk (.player p) (.choose id)
+  let (done, _) ← (step 100 offered (take chosenCard)).toOption
+  return (legalFrameActions waiting).contains (pick first) &&
+    !(legalFrameActions waiting).contains (pick mate) &&
+    revealed.contains (.handRevealed second (s.zone (.player second .hand))) &&
+    (legalFrameActions offered).contains (take another) && !(legalFrameActions offered).contains (take wrongEnemy) &&
+    !(legalFrameActions offered).contains (take allyCard) && done.countIn second .trash "OGN-049" == 1 &&
+    (done.zone (.player first .hand)).contains wrongEnemy && (done.zone (.player mate .hand)).contains allyCard
+
+-- Machine Evangel creates exactly three exhausted Recruits in its controller's Base.
+#guard t fun s => do
+  let p := s.me
+  let (s, source) ← putAt s p "OGN-239" s.bf0
+  let (dead, events) := killObj s source
+  let resolved ← fire dead events
+  let recruits := (resolved.zone (.player p .base)).filter (fun id =>
+    (resolved.cardDef? id).any (·.name == "Recruit"))
+  return recruits.length == 3 && recruits.all (fun id => resolved.tired id == some true) &&
+    resolved.countNamed s.you .base "Recruit" == 0
+
 -- Karthus, Eternal (OGN-236): my Deathknell abilities trigger an additional time
 #guard t fun s => do
   let (s1, k) ← putAt s s.me "OGN-190" s.bf0
@@ -3018,30 +4560,58 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return on.countIn s.me .trash "OGN-186" == 1 && on.handN s.me == s1.handN s.me + 1 &&
     runeN on == runeN s1 + 1 && none_.isNone && broke.isNone
 
--- Targon's Peak (OGN-289): when I conquer here, ready 2 runes at the end of this turn
+-- Targon's Peak (OGN-289): the conquering player targets up to two Runes at this turn's end.
 #guard t fun s => do
-  let (s0, bf) ← putBf s s.me "OGN-289"
-  let (s1, _) ← put s0 s.me "OGN-007" .base
-  let runes := (s1.zone (.player s.me .base)).filter
-    (fun u => (s1.cardDef? u).any (·.hasType .rune))
-  let tired := runes.foldl (fun g u => g.tire u) s1
-  let ready (g : GameState) := ((g.zone (.player s.me .base)).filter (fun u =>
-    (g.cardDef? u).any (·.hasType .rune) && g.tired u == some false)).length
-  let won ← fire tired [.scored s.me bf true]
-  let end_ ← fire won [.phaseStarted s.me .ending]
-  let none_ ← fire tired [.phaseStarted s.me .ending]
-  let theirs ← fire tired [.scored s.you bf true]
-  let theirsEnd ← fire theirs [.phaseStarted s.me .ending]
+  let p := s.me
+  let q := s.you
+  let (s1, bf) ← putBf s q "OGN-289"
+  let (s1, _) ← put s1 p "OGN-007" .base
+  let (s1, first) ← put s1 q "OGN-007" .base
+  let (s1, second) ← put s1 q "OGN-007" .base
+  let (s1, third) ← put s1 q "OGN-007" .base
+  let runes := s1.runesOf p
+  let own ← runes.head?
+  let tired := (runes ++ s1.runesOf q).foldl (fun g u => g.tire u) s1
+  let ready (g : GameState) (player : PlayerId) :=
+    (g.runesOf player).countP (fun u => g.tired u == some false)
+  let endPhase (g : GameState) := (advance 100 { g with pending := [.phase .ending, .priority p] } []).toOption
+  let sameTargets (want actual : List ObjId) := actual.length == want.length && want.all actual.contains
+  let finish (g : GameState) (targets : List ObjId := []) : Option GameState := do
+    let (ending, _) ← endPhase g
+    return settleChain { pick := sameTargets targets } 20 ending
+  let won ← fire tired [.scored p bf true]
+  let end_ ← finish won [first, second]
+  let zero ← finish won
+  let none_ ← finish tired
+  let theirs ← fire tired [.scored q bf true]
+  let (choices, _) ← endPhase theirs
+  let actions := legalFrameActions choices
+  let choose (targets : List ObjId) : Action := ⟨.player q, .putTrigger 0 targets (.pay [] none none [])⟩
+  let (zeroQueued, _) ← (step 100 choices (choose [])).toOption
+  let drawTwo ← actions.find? (fun action => match action.kind with
+    | .putTrigger _ targets (.pay ..) => action.actor == .player q && sameTargets [second, third] targets
+    | _ => false)
+  let (onChain, events) ← (step 100 choices drawTwo).toOption
+  let theirsEnd := settleChain {} 20 onChain
+  let (withoutField, _) ← moveObj theirs bf (.player q .outOfGame)
+  let withoutFieldEnd ← finish withoutField [second, third]
   -- only one exhausted rune: it is readied; a hold, or a note of an earlier turn, does nothing
   let one := (runes.take 1).foldl (fun g u => g.tire u) s1
-  let held ← fire tired [.scored s.me bf false]
-  let heldEnd ← fire held [.phaseStarted s.me .ending]
+  let held ← fire tired [.scored p bf false]
+  let heldEnd ← finish held
   let oldNote := { won with turn := won.turn + 1 }
-  let old ← fire oldNote [.phaseStarted s.me .ending]
-  let onlyOne ← fire (← fire one [.scored s.me bf true]) [.phaseStarted s.me .ending]
-  return ready heldEnd == 0 && ready old == 0 && ready onlyOne == ready one + 1 &&
-    runes.length == 3 && ready tired == 0 && ready won == 0 && ready end_ == 2 &&
-    ready none_ == 0 && ready theirsEnd == 0
+  let old ← finish oldNote
+  let onlyOne ← finish (← fire one [.scored p bf true]) [own]
+  return ready heldEnd p == 0 && ready old p == 0 && ready onlyOne p == ready one p + 1 &&
+    runes.length == 3 && ready won p == 0 && ready end_ p == 0 && ready end_ q == 2 &&
+    ready zero p == 0 && ready zero q == 0 && actions.contains (choose []) &&
+    !(zeroQueued.zone .chain).isEmpty &&
+    actions.contains (choose [own]) && events.contains (.chosenByAbility q second) &&
+    events.contains (.chosenByAbility q third) && ready onChain q == 0 &&
+    ready none_ p == 0 && ready none_ q == 0 && ready theirs q == 0 &&
+    ready theirsEnd p == 0 && ready theirsEnd q == 2 && theirsEnd.tired first == some true &&
+    theirsEnd.tired second == some false && theirsEnd.tired third == some false &&
+    (withoutFieldEnd.obj? bf).isNone && ready withoutFieldEnd q == 2
 
 -- Back-Alley Bar (OGN-277): when a unit moves from here, it gets +1 Might this turn
 #guard t fun s => do
@@ -3071,6 +4641,29 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (Filter.movedFromHere.holds stale bar {} here) == some false &&
     a'.mightNow here == some 3 && b'.mightNow there == some 2 && c'.mightNow here == some 3 &&
     d'.mightNow foe == some 3 && e'.mightNow there == some 2
+
+-- An effect that moves either player's unit from Back-Alley Bar to Base gives the same bonus.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let elsewhere := s.bf0
+  let (s, bar) ← putBf s q "OGN-277"
+  let (s, own) ← putAt s p "OGN-136" bar
+  let (s, other) ← putAt s q "OGN-116" bar
+  let (s, outside) ← putAt s p "OGN-088" elsewhere
+  let (s, spell) ← put s p "OGN-168" .hand
+  let played (target : ObjId) (whom : PlayerId) (code : String) : Option Bool := do
+    let moved ← play s p spell [target]
+    let after ← moved.firstOf whom .base code
+    let before ← s.mightNow target
+    let result ← moved.mightNow after
+    return result == before + (if target == outside then 0 else 1) &&
+      (moved.mapObjects endTurnObj).mightNow after == some before
+  let a ← played own p "OGN-136"
+  let b ← played other q "OGN-116"
+  let c ← played outside p "OGN-088"
+  return a && b && c
+
 
 -- Stealthy Pursuer (OGN-177): when a friendly unit moves from my location, I may be moved with it
 #guard t fun s => do
@@ -3176,20 +4769,45 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (s2, u) ← put s1 s.me "OGN-136" .base
   let (s3, foe) ← put s2 s.you "OGN-136" .base
   let funded := (s3.tire u).fund s.me 0 (body := 1)
-  let (a, ev) := buffObj funded u
+  let (a, ev) := buffObj funded u (some s.me)
+  let (choosing, _) ← (advance 100 (a.withTriggers ev) []).toOption
+  let accepted ← (legalFrameActions choosing).find? (fun act =>
+    match act.kind with | .putTrigger _ _ (.pay ..) => true | _ => false)
+  let (queued, _) ← (step 100 choosing accepted).toOption
   let yes ← fire a ev { yes := true }
   let no ← fire a ev { yes := false }
-  let (b, ev2) := buffObj (funded.buff u) u
+  let (b, ev2) := buffObj (funded.buff u) u (some s.me)
   let again ← fire b ev2 { yes := true }
-  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe
+  let (c, ev3) := buffObj ((s3.tire foe).fund s.me 0 (body := 1)) foe (some s.me)
   let theirs ← fire c ev3 { yes := true }
-  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u
+  let (d, ev4) := buffObj ((s3.tire u).fund s.me 0) u (some s.me)
   let broke ← fire d ev4 { yes := true }
-  let (e, ev5) := buffObj ((funded.tire g)) u
+  let (e, ev5) := buffObj (funded.tire g) u (some s.me)
   let spent ← fire e ev5 { yes := true }
+  let (f, ev6) := buffObj funded u (some s.you)
+  let rival ← fire f ev6 { yes := true }
   return yes.tired u == some false && yes.tired g == some true && (yes.poolOf s.me).body == 0 &&
     no.tired u == some true && again.tired u == some true && theirs.tired foe == some true &&
-    broke.tired u == some true && spent.tired u == some true
+    broke.tired u == some true && spent.tired u == some true && rival.tired u == some true &&
+    queued.tired u == some true && queued.tired g == some true && (queued.poolOf s.me).body == 0 &&
+    !(queued.zone .chain).isEmpty
+
+-- Mistfall can ready a teammate's buffed Unit when the Gear's controller performed the buff.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let game := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let main := { game with phase := .main, active := some p, pending := [.priority p],
+                           turnOrder := Mode.teamTurnOrder true }
+  let (s, gear) ← put main p "OGN-152" .base
+  let (s, target) ← put s mate "OGN-136" .base
+  let start := (s.tire target).fund p 0 (body := 1)
+  let (a, ownEvents) ← applyPrim start p target {} (.buff .self)
+  let (b, allyEvents) ← applyPrim start mate target {} (.buff .self)
+  let accepted ← fire a ownEvents
+  let untriggered ← fire b allyEvents
+  return accepted.tired target == some false && accepted.tired gear == some true &&
+    untriggered.tired target == some true && untriggered.tired gear == some false
 
 -- Ember Monk (OGN-167): when I play a card from Hidden (a unit or a spell), it gets +2 Might this
 -- turn; playing from the hand does not
@@ -3231,6 +4849,27 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     twice.mightNow wb == (wnext.mightNow wb).map (· + 2) &&
     fromHand.mightNow xm == x2.mightNow xm
 
+-- Kai'Sa can Accelerate when played. Only her controller's Conquer at her own
+-- Battlefield starts the draw in this scenario.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "OGN-039" .hand
+  let plain ← play s p card
+  let accelerated ← cast (s.rich p) p card ⟨5, [.fury]⟩
+  let plainUnit ← plain.firstOf p .base "OGN-039"
+  let acceleratedUnit ← accelerated.firstOf p .base "OGN-039"
+  let ownField := s.bf0
+  let otherField ← (s.battlefields.filter (· != ownField)).head?
+  let (board, _) ← putAt s p "OGN-039" ownField
+  let held ← fire board [.scored p ownField false]
+  let elsewhere ← fire board [.scored p otherField true]
+  let rival ← fire board [.scored q ownField true]
+  let conquered ← fire board [.scored p ownField true]
+  return plain.tired plainUnit == some true && accelerated.tired acceleratedUnit == some false &&
+    held.handN p == board.handN p && elsewhere.handN p == board.handN p &&
+    rival.handN p == board.handN p && conquered.handN p == board.handN p + 1
+
 -- Reckoner's Arena (OGN-286): when I hold here, the conquer effects of my units here are activated
 -- (Kai'Sa, Survivor, OGN-039: draw 1 when she conquers); the text says units here, so an enemy
 -- unit's effect is activated for its controller too; not units elsewhere, and not when I conquer
@@ -3248,35 +4887,47 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return a.handN s.me == s5.handN s.me + 2 && a.handN s.you == s5.handN s.you + 1 &&
     b.handN s.me == s5.handN s.me + 2 && c.handN s.me == t2.handN s.me
 
--- Hallowed Tomb (OGN-281): when I hold here, I may return my Chosen Champion (a Unit of my Legend's
--- Champion) from my Trash to my Champion Zone, if it is empty
+-- Hallowed Tomb (OGN-281) targets either same-name Champion copy in its holder's Trash.
 #guard t fun s => do
-  let empty := s.setZone (.player s.me .championZone) []
-  let (s1, bf) ← putBf empty s.me "OGN-281"
-  let (s2, _) ← put s1 s.me "OGN-247" .legendZone
-  let (s3, _) ← put s2 s.me "OGN-039" .trash
-  let (s4, _) ← put s3 s.me "OGN-136" .trash
-  let zone (g : GameState) (p : PlayerId) := g.zone (.player p .championZone)
-  let a ← fire s4 [.scored s.me bf false] { yes := true }
-  let no ← fire s4 [.scored s.me bf false] { yes := false }
-  let c ← fire s4 [.scored s.me bf true] { yes := true }
-  let (t1, _) ← put s4 s.me "OGN-039" .championZone
-  let full ← fire t1 [.scored s.me bf false] { yes := true }
-  let (u1, _) ← put s1 s.me "OGN-247" .legendZone
-  let (u2, _) ← put u1 s.me "OGN-136" .trash
-  let wrong ← fire u2 [.scored s.me bf false] { yes := true }
-  let (v1, _) ← put s1 s.me "OGN-039" .trash
-  let nolegend ← fire v1 [.scored s.me bf false] { yes := true }
-  let (w1, _) ← put s4 s.you "OGN-039" .trash
-  let theirs ← fire w1 [.scored s.you bf false] { yes := true }
-  let back ← (zone a s.me).head?
-  return (zone a s.me).length == 1 && (a.obj? back).map (·.owner) == some s.me &&
-    (a.cardDef? back).map (·.id) == some ⟨"OGN-039"⟩ &&
-    (a.zone (.player s.me .trash)).length == 1 && (zone no s.me).isEmpty &&
-    (no.zone (.player s.me .trash)).length == 2 && (zone c s.me).isEmpty &&
-    (zone full s.me).length == 1 && (full.zone (.player s.me .trash)).length == 2 &&
-    (zone wrong s.me).isEmpty && (zone nolegend s.me).isEmpty &&
-    (zone theirs s.you).length == (zone w1 s.you).length
+  let p := s.me
+  let q := s.you
+  let championZone := Zone.player p .championZone
+  let trash := Zone.player p .trash
+  let starting ← (s.zone championZone).head?
+  let (empty, _) ← moveObj s starting (.player p .banishment)
+  let registered ← addChosenChampion s.cards p empty (some (cid "RAD-112"))
+  let original ← (registered.zone championZone).head?
+  let identity ← (registered.obj? original).bind (·.kind.phys?)
+  let (registered, bf) ← putBf registered q "OGN-281"
+  let (registered, _) ← putAt registered p "OGN-136" bf
+  let registered := registered.modObj bf (fun field => { field with control := some p })
+  let (registered, copy) ← put registered p "RAD-112" .hand
+  let (inTrash, originalInTrash) ← moveObj registered original trash
+  let (both, copiedToTrash) ← moveObj inTrash copy trash
+  let copyIdentity ← (both.obj? copiedToTrash).bind (·.kind.phys?)
+  let (onlyCopy, copiedAlone) ← moveObj registered copy trash
+  let (removedOriginal, _) ← moveObj onlyCopy original (.player p .banishment)
+  let (held, events) ← (advance 100 { both with pending := [.scoreHolds, .priority p] } []).toOption
+  let yes := settleChain { pick := (· == [originalInTrash]) } 12 held
+  let copyYes := settleChain { pick := (· == [copiedToTrash]) } 12 held
+  let no := settleChain { yes := false } 12 held
+  let conquered ← fire both [.scored p bf true]
+  let returned ← (yes.zone championZone).head?
+  let alsoReturned ← (copyYes.zone championZone).head?
+  let withOccupied ← fire onlyCopy [.scored p bf false]
+  let copyAlone ← fire removedOriginal [.scored p bf false] { pick := (· == [copiedAlone]) }
+  let alone ← (copyAlone.zone championZone).head?
+  let offered (target : ObjId) : Bool :=
+    (legalFrameActions held).any (fun a => match a.kind with
+      | .putTrigger _ ts (.pay ..) => a.actor == .player p && ts == [target]
+      | _ => false)
+  return events.contains (.scored p bf false) && both.zone trash == [copiedToTrash, originalInTrash] &&
+    offered copiedToTrash && offered originalInTrash &&
+    (yes.obj? returned).bind (·.kind.phys?) == some identity &&
+    copyIdentity != identity && (copyYes.obj? alsoReturned).bind (·.kind.phys?) == some copyIdentity &&
+    yes.zone trash == [copiedToTrash] && no.zone championZone == [] &&
+    conquered.zone championZone == [] && withOccupied.zone championZone == [original] &&
+    (copyAlone.obj? alone).bind (·.kind.phys?) == some copyIdentity
 
 -- The Chosen Champion is played from the Champion Zone: a Unit there is played by paying its cost
 -- (the printed one), and goes to my Base; not for less, not from the hand's ability, not twice
@@ -3396,9 +5047,12 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let (t1, bf) ← putBf s2 s.me "OGN-287"
   let buffs (x : GameState) :=
     ((x.zone (.player s.me .base)).filter (fun v => (x.obj? v).any (·.buffed))).length
-  let a ← play s3 s.me c
+  let waiting ← play s3 s.me c
+  let .chancePredict _ _ _ bottom :: _ := waiting.pending | none
+  let (ordered, events) ← (step 100 waiting ⟨.chance, .arrange bottom⟩).toOption
+  let a := settleChain {} 12 ordered
   let rune ← fire t1 [.scored s.me bf true]
-  return 0 < buffs a && buffs rune == 0
+  return events.count (.recycled s.me) == 1 && buffs a == 1 && buffs rune == 0
 
 -- Hide (CR 811): one hidden card per battlefield; Bandle Tree (OGN-278): one additional card there
 #guard t fun s => do
@@ -3464,6 +5118,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     foe.countIn s.me .trash "OGN-252" == 1 && empty.countIn s.me .trash "OGN-252" == 1 &&
     inHand.countIn s.me .trash "OGN-136" == 0 && inBase.countIn s.me .trash "OGN-136" == 0 &&
     theirs.countIn s.you .trash "OGN-252" == 1
+
+-- Vengeance kills either player's Unit, at a Base or a Battlefield. A Gear at the
+-- same Base is outside its legal targets.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "OGN-229" .hand
+  let (s, ally) ← put s p "OGN-136" .base
+  let (s, enemy) ← putAt (s.control q s.bf0) q "OGN-136" s.bf0
+  let (s, gear) ← put s p "OGN-021" .base
+  let friendly ← play s p spell [ally]
+  let opposing ← play s p spell [enemy]
+  return (play s p spell [gear]).isNone &&
+    friendly.countIn p .trash "OGN-136" == 1 && friendly.countIn q .trash "OGN-136" == 0 &&
+    opposing.countIn q .trash "OGN-136" == 1 && opposing.countIn p .trash "OGN-136" == 0
 
 -- Immortal Phoenix (OGN-037): when I kill a unit with a spell, I may pay 1 Energy and Fury to play
 -- it from my Trash (not when I decline, not for the opponent's Trash, not from the hand)
@@ -3652,6 +5321,13 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     (buffObj one lee).2 == [Event.buffed lee] && (buffObj s2 other).2 == [Event.buffed other] &&
     (three.obj? lee).map (fun o => (Object.cleared o).extraBuffs) == some 0
 
+-- Lee Sin's Shield adds Might only while he defends.
+#guard t fun s => do
+  let (s, lee) ← putAt s s.me "OGN-078" s.bf0
+  let might := s.mightNow lee
+  return (s.inCombatAt s.bf0 s.you).mightNow lee == might.map (· + 1) &&
+    (s.inCombatAt s.bf0 s.me).mightNow lee == might
+
 -- Caitlyn, Patrolling (OGN-068): she must be assigned combat damage last; exhaust: deal damage
 -- equal to her Might to a unit at a battlefield, only while she is at a battlefield
 #guard t fun s => do
@@ -3667,8 +5343,8 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     match a.kind with | .assignPick u => some u | _ => none)
   let hit ← activate s3 s.me cait 1 [foe] ⟨0, []⟩
   let (h1, home) ← put s s.me "OGN-068" .base
-  let (h2, _) ← putAt h1 s.you "OGN-088" bf
-  let away := activate h2 s.me home 1 [] ⟨0, []⟩
+  let (h2, homeTarget) ← putAt h1 s.you "OGN-088" bf
+  let away := activate h2 s.me home 1 [homeTarget] ⟨0, []⟩
   -- a Tank (Blitzcrank, OGN-067) is first, then the others, Caitlyn last; she can be the only one
   let (k1, tank) ← putAt s2 s.me "OGN-067" bf
   let order (acc : List ObjId) := (legalAssigns k1 bf s.you acc).filterMap (fun a =>
@@ -3688,9 +5364,25 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     lone == [.assignPick only] && hit.tired cait == some true &&
     (away.map (·.tired home)) != some (some true)
 
+-- The source's location is checked at activation. The target's is also checked at
+-- resolution (CR 381, 399, 359.3.e).
+#guard t fun s => do
+  let (s1, cait) ← putAt s s.me "OGN-068" s.bf0
+  let (s2, foe) ← putAt s1 s.you "OGN-088" s.bf0
+  let (s3, flash) ← put s2 s.me "OGS-011" .hand
+  let (s4, theirFlash) ← put s3 s.you "OGS-011" .hand
+  let (queued, _) ← (step 100 (s4.rich s.me) ⟨.player s.me, .activate cait 1 ⟨0, [], none⟩ [foe]⟩).toOption
+  let sourceMoves ← play queued s.me flash [cait]
+  let (passed, _) ← (step 100 queued ⟨.player s.me, .pass⟩).toOption
+  let targetMoves ← play passed s.you theirFlash [foe]
+  return sourceMoves.where? cait == some (.player s.me .base) &&
+    (sourceMoves.obj? foe).any (·.damage == 3) &&
+    targetMoves.where? foe == some (.player s.you .base) &&
+    (targetMoves.obj? foe).any (·.damage == 0)
+
 -- Tryndamere, Barbarian (OGN-034): when he conquers, if I assigned 5 or more excess damage to
 -- enemy units, I score 1 point (the damage beyond what is lethal, counted for the enemy units of
--- the Combat only; the note of the last Combat of the turn stands)
+-- that Combat only).
 #guard t fun s => do
   let (s1, bf) ← putBf s s.me "OGN-294"
   let (s2, _) ← putAt s1 s.me "OGN-034" bf
@@ -3700,11 +5392,21 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let ex := excessOf s4 s.me [(foe, need + 5), (mine, 99)]
   let few := excessOf s4 s.me [(foe, need + 4)]
   let under := excessOf s4 s.me [(foe, need - 1)]
-  let hit ← fire (noteExcess s4 s.me 5) [.scored s.me bf true]
-  let miss ← fire (noteExcess s4 s.me 4) [.scored s.me bf true]
-  let old ← fire (noteExcess (noteExcess s4 s.me 5) s.me 1) [.scored s.me bf true]
-  let theirs ← fire (noteExcess s4 s.you 5) [.scored s.me bf true]
-  let hold ← fire (noteExcess s4 s.me 5) [.scored s.me bf false]
+  let combat (field : ObjId) (attackerExcess defenderExcess : Nat) : GameState :=
+    let g := (s4.addTurnFxOn s.me field (.excessDamage attackerExcess)).addTurnFxOn
+      s.you field (.excessDamage defenderExcess)
+    { g with
+      combat := some { battlefield := field, attacker := s.me, defender := s.you, units := [] }
+      pending := [.combatFinish field] }
+  let hit ← fire (combat bf 5 0) [.scored s.me bf true]
+  let miss ← fire (combat bf 4 0) [.scored s.me bf true]
+  let otherBattlefield ← fire (combat s.bf0 5 0) [.scored s.me bf true]
+  let theirs ← fire (combat bf 0 5) [.scored s.me bf true]
+  let hold ← fire (combat bf 5 0) [.scored s.me bf false]
+  let defender := combat bf 5 0
+  let defender := { defender with combat := defender.combat.map fun c =>
+    { c with attacker := s.you, defender := s.me } }
+  let defended ← fire defender [.scored s.me bf true]
   -- a damaged enemy needs less (more is excess); with two enemies only the last has an excess
   let (s5, foe2) ← putAt s4 s.you "OGN-136" s.bf0
   let hurt := s5.modObj foe (fun o => { o with damage := 3 })
@@ -3713,7 +5415,7 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   let pts (x : GameState) := x.pointsOf s.me
   return ex == 5 && few == 4 && under == 0 && damaged == 2 && two == 1 &&
     pts hit == pts s4 + 1 && pts miss == pts s4 &&
-    pts old == pts s4 && pts theirs == pts s4 && pts hold == pts s4
+    pts otherBattlefield == pts s4 && pts theirs == pts s4 && pts hold == pts s4 && pts defended == pts s4
 
 -- Volibear, Furious (OGN-041): when he attacks, deal 5 damage split among any number of enemy units
 -- here (five single damages, each to a unit I choose)
@@ -3913,28 +5615,360 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
     ready.tired boss == some false && two.countIn s.me .base "OGN-136" == 1 &&
     two.countIn s.me .trash "OGN-136" == 1 && theirsReady.tired boss == some true
 
--- Zhonya's Hourglass (OGN-077): the next time a friendly unit dies, the gear is killed and the
--- unit comes back exhausted (approximation: it dies, then returns); once, and not for an enemy unit
+-- The Gear dies instead, and the original Unit is healed and recalled exhausted without a play.
 #guard t fun s => do
-  let (s1, _) ← put s s.me "OGN-077" .base
-  let (s2, u) ← put s1 s.me "OGN-136" .base
-  let (s3, v) ← put s2 s.me "OGN-136" .base
-  let (s4, foe) ← put s3 s.you "OGN-136" .base
-  let die (x : GameState) (id : ObjId) : Option GameState :=
-    let (k, ev) := killObj x id
-    fire k ev
-  let a ← die s4 u
-  let theirs ← die s4 foe
-  let (k1, ev1) := killObj s4 u
-  let (k2, ev2) := killObj k1 v
-  let twice ← fire k2 (ev1 ++ ev2)
-  let back := (a.zone (.player s.me .base)).filter (fun x =>
-    (a.cardDef? x).any (·.id == cid "OGN-136"))
-  return a.countIn s.me .base "OGN-136" == 2 && a.countIn s.me .trash "OGN-136" == 0 &&
-    a.countIn s.me .trash "OGN-077" == 1 && a.countIn s.me .base "OGN-077" == 0 &&
-    back.all (fun x => (a.obj? x).any (fun o => o.exhausted || x == v)) &&
-    theirs.countIn s.you .trash "OGN-136" == 1 && theirs.countIn s.me .base "OGN-077" == 1 &&
-    twice.countIn s.me .trash "OGN-136" == 1 && twice.countIn s.me .base "OGN-136" == 1
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s p "OGN-077" .base
+  let (s, unit) ← putAt s p "OGN-096" s.bf0
+  let (s, foe) ← putAt s q "OGN-136" s.bf0
+  let before := s.modObj unit (fun o => { o with damage := 1, exhausted := false, buffed := true })
+  let (saved, events) := killOrSave before unit
+  let dead ← saved.firstOf p .trash "OGN-077"
+  let (used, _) := killOrSave saved unit
+  let (laterRetreat, _) := killOrSave (saved.addTurnFxOn p unit .saveOnce) unit
+  let (theirs, _) := killOrSave before foe
+  return (saved.obj? unit).any (fun o => o.loc.isNone && o.damage == 0 && o.exhausted && o.buffed) &&
+    (saved.zone (.player p .base)).contains unit &&
+    events.contains (.died dead p) && events.contains (.recalled unit) &&
+    (saved.detect events).isEmpty && !(events.any (fun | .played .. => true | _ => false)) &&
+    used.countIn p .trash "OGN-096" == 1 &&
+    (laterRetreat.obj? unit).isSome && (laterRetreat.tacticalRetreatFor unit).isNone &&
+    (theirs.obj? gear).isSome && theirs.countIn q .trash "OGN-136" == 1
+
+-- Hidden can be used at a different Battlefield from the Unit killed by Hidden Blade.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let targetField := s.bf0
+  let (s, hidingField) ← putBf s q "OGN-276"
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .hidden
+  let (s, unit) ← putAt s q "OGN-096" targetField
+  let before := ((s.control q targetField).control q hidingField).modObj gear
+    (fun o => { o with hiddenAt := some hidingField, hiddenTurn := some 0 })
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let reveal ← (legalFrameActions priority).find? (fun act => act.actor == .player q &&
+    match act.kind with | .activate id .. => id == gear | _ => false)
+  let (saving, _) ← (step 100 priority reveal).toOption
+  let done := settleChain {} 12 saving
+  return (done.obj? unit).any (fun o => o.loc.isNone && o.exhausted) &&
+    done.handN q == before.handN q + 2 && done.countIn q .trash "OGN-077" == 1 &&
+    done.countIn q .trash "OGN-096" == 0 && done.countIn p .trash "OGN-213" == 1
+
+-- When Smite and the Hourglass compete, the affected controller chooses the replacement.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .base
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := (s.control q s.bf0).addTurnFxOn p unit .banishInstead
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := priority.pending | none
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let rescue : Action := ⟨.player q, .decide true⟩
+  let banish : Action := ⟨.player q, .decide false⟩
+  let (saved, _) ← (step 100 offer rescue).toOption
+  let (banished, _) ← (step 100 offer banish).toOption
+  return last == q && chainPassWorkSupported priority last continuation &&
+    chainAnswerWorkSupported offer rescue && chainAnswerWorkSupported offer banish &&
+    (saved.obj? unit).any (·.loc.isNone) && saved.countIn q .trash "OGN-077" == 1 &&
+    saved.handN q == before.handN q + 2 && banished.countIn q .banishment "OGN-136" == 1 &&
+    (banished.obj? gear).isSome && banished.handN q == before.handN q
+
+-- In 2v2 the Gear's controller orders its applications to two simultaneous lethal deaths.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2, turnOrder := Mode.teamTurnOrder true
+    pending := [.cleanup, .priority p] }
+  let (s, gear) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-136" .base
+  let (s, b) ← put s ally "OGN-136" .base
+  let before := (s.modObj a (fun o => { o with damage := 12 })).modObj b
+    (fun o => { o with damage := 12 })
+  let (choices, events) ← (advance 100 before []).toOption
+  let .eitherDo chooser _ _ (.recordDeathOrder _ first) (.recordDeathOrder _ other) _ :: _ :=
+    choices.pending | none
+  let (saved, settled) ← (step 100 choices ⟨.player p, .decide (first == b)⟩).toOption
+  return chooser == p && events.isEmpty && [first, other].contains b &&
+    (saved.obj? b).any (fun o => o.damage == 0 && o.exhausted) &&
+    (saved.obj? a).isNone && (saved.obj? gear).isNone &&
+    (settled.countP (fun | .died .. => true | _ => false)) == 2
+
+-- A spent shared Gear reopens the later Unit's choice without committing an earlier event.
+#guard t fun s => do
+  let p := s.me
+  let (s, used) ← put s p "OGN-077" .base
+  let (s, spared) ← put s p "OGN-077" .base
+  let (s, chosen) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-136" .base
+  let (s, b) ← put s p "OGN-136" .base
+  let lethal := (s.modObj a (fun o => { o with damage := 12 })).modObj b
+    (fun o => { o with damage := 12 })
+  let marked := (lethal.addTurnFxOn p a (.chosenDeathGear used)).addTurnFxOn p b (.chosenDeathGear used)
+  let (ordering, _) ← (advance 100 { marked with pending := [.cleanup, .priority p] } []).toOption
+  let .eitherDo owner _ _ (.recordDeathOrder _ first) (.recordDeathOrder _ second) _ :: _ :=
+    ordering.pending | none
+  let (reopen, beforeEvents) ← (step 100 ordering ⟨.player p, .decide (first == a)⟩).toOption
+  let .eitherDo chooser _ _ (.recordDeathReselection group earlier victim (.gear source))
+      (.recordDeathReselection _ _ _ (.gear alternative)) _ :: _ := reopen.pending | none
+  let (saved, events) ← (step 100 reopen ⟨.player p, .decide (source == chosen)⟩).toOption
+  let (other, _) ← (step 100 reopen ⟨.player p, .decide (source != chosen)⟩).toOption
+  let rescued id := (saved.obj? id).any (fun o => o.damage == 0 && o.exhausted)
+  return owner == p && chooser == p && [first, second].contains a && earlier == [a] &&
+    victim == b && group.length == 2 && [source, alternative].contains chosen &&
+    [source, alternative].contains spared && beforeEvents.isEmpty &&
+    (reopen.obj? used).isSome && (reopen.obj? a).any (fun o => o.damage == 12) &&
+    rescued a && rescued b && (saved.obj? used).isNone && (saved.obj? chosen).isNone &&
+    (saved.obj? spared).isSome && (other.obj? spared).isNone && (other.obj? chosen).isSome &&
+    saved.countIn p .trash "OGN-077" == 2 &&
+    events.countP (fun | .died .. => true | _ => false) == 2 &&
+    (saved.deathGroupPrefix group).isEmpty
+
+-- CR 373.2: Soraka rescues the Recruits at only one of her two locations, depending on
+-- whether Guardian Angel recalls her before or after her sequence of replacements.
+#guard t fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, soraka) ← putAt s p "SFD-173" bf
+  let (s, guardian) ← put s p "SFD-051" .base
+  let recruit : Object :=
+    { kind := .token ⟨"VEN-T04"⟩, owner := p, controller := p, timestamp := ⟨0⟩ }
+  let (s, fieldA) ← addObject s { recruit with loc := some bf } .battlefieldZone
+  let (s, fieldB) ← addObject s { recruit with loc := some bf } .battlefieldZone
+  let (s, baseA) ← addObject s recruit (.player p .base)
+  let (s, baseB) ← addObject s recruit (.player p .base)
+  let group := [soraka, fieldA, fieldB, baseA, baseB]
+  let lethal := group.foldl (fun (board : GameState) id =>
+    board.modObj id (fun o => { o with damage := 12 })) (attachTo soraka (s.control p bf) guardian).1
+  let (ordering, beforeEvents) ← (advance 100 { lethal with pending := [.cleanup, .priority p] } []).toOption
+  let choose (board : GameState) (unit : ObjId) : Option (GameState × List Event) := do
+    let .eitherDo chooser _ _ (.recordDeathOrder _ first) other _ :: _ := board.pending | none
+    if chooser != p then none
+    else if first == unit then (step 100 board ⟨.player p, .decide true⟩).toOption
+    else
+      let (next, events) ← (step 100 board ⟨.player p, .decide false⟩).toOption
+      match other with
+      | .recordDeathOrder _ second => if second == unit then some (next, events) else none
+      | .eitherOf _ =>
+        let .eitherDo chooser _ _ (.recordDeathOrder _ second) (.recordDeathOrder _ third) _ :: _ :=
+          next.pending | none
+        if events.isEmpty && chooser == p && [second, third].contains unit then
+          (step 100 next ⟨.player p, .decide (second == unit)⟩).toOption
+        else none
+      | _ => none
+  let (atField, fieldEvents) ← choose ordering fieldA
+  let (baseOrdering, betweenEvents) ← choose ordering soraka
+  let (atBase, baseEvents) ← choose baseOrdering baseA
+  let rescued (board : GameState) (units : List ObjId) :=
+    units.all fun id => board.inPlay.contains id &&
+      (board.obj? id).any (fun o => o.damage == 0 && o.exhausted && o.loc.isNone)
+  let gone (board : GameState) (units : List ObjId) :=
+    units.all (!board.inPlay.contains ·)
+  let recalls := fieldEvents.filterMap fun | .recalled id => some id | _ => none
+  return beforeEvents.isEmpty && betweenEvents.isEmpty &&
+    rescued atField [soraka, fieldA, fieldB] && gone atField [guardian, baseA, baseB] &&
+    recalls == [fieldA, fieldB, soraka] &&
+    rescued atBase [soraka, baseA, baseB] && gone atBase [guardian, fieldA, fieldB] &&
+    baseEvents.contains (.recalled soraka)
+
+-- A nested Kill of an animated Hourglass does not interrupt its sequence (CR 373.2.a.1).
+#guard t fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, hourglass) ← put s p "OGN-077" .base
+  let (s, alternate) ← put s p "OGN-077" .base
+  let (s, guardian) ← put s p "SFD-051" .base
+  let (s, first) ← putAt s p "OGN-136" bf
+  let (s, second) ← putAt s p "OGN-136" bf
+  let (s, wearer) ← putAt s p "OGN-136" bf
+  let animated := animateGearObject (animateGearObject (s.control p bf) p bf hourglass) p bf alternate
+  let group := [first, wearer, second]
+  let equipped := (attachTo wearer animated guardian).1
+  let firstChosen := equipped.addTurnFxOn p first (.chosenDeathGear hourglass)
+  let secondChosen := firstChosen.addTurnFxOn p second (.chosenDeathGear hourglass)
+  let before := secondChosen.addTurnFxOn p wearer (.chosenDeathGear guardian)
+  let before := before.addTurnFxOn p first (.deathOrder group)
+  let (saved, events) := resolveDeathGroupWith before group cleanupResolveDeath
+  let recalls := events.filterMap fun | .recalled id => some id | _ => none
+  return recalls == [first, second, wearer] && events.contains (.exhausted hourglass) &&
+    [first, second, wearer].all (fun id => (saved.obj? id).any (·.exhausted)) &&
+    [hourglass, alternate, guardian].all (!saved.inPlay.contains ·) &&
+    events.countP (fun | .died .. => true | _ => false) == 3
+
+-- A spell that kills several Units uses the same revised choices and returns one event group.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "UNL-180" .hand
+  let (s, spent) ← put s q "OGN-077" .base
+  let (s, kept) ← put s q "OGN-077" .base
+  let (s, replacement) ← put s q "OGN-077" .base
+  let (s, first) ← put s q "OGN-136" .base
+  let (s, later) ← putAt s q "OGN-136" s.bf0
+  let noted := ((s.control q s.bf0).rich p).addTurnFxOn q first (.chosenDeathGear spent)
+  let noted := noted.addTurnFxOn q later (.chosenDeathGear spent)
+  let (casting, _) ← (step 100 noted ⟨.player p, .playCard spell (payOf noted spell) []⟩).toOption
+  let (offer, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := offer.pending | none
+  let (ordering, passEvents) ← (step 100 offer ⟨.player last, .pass⟩).toOption
+  let .eitherDo _ _ _ (.recordDeathOrder _ firstOption) _ _ :: _ := ordering.pending | none
+  let order : Action := ⟨.player q, .decide (firstOption == first)⟩
+  let (reopen, earlierEvents) ← (step 100 ordering order).toOption
+  let .eitherDo chooser _ _ (.recordDeathReselection _ [prior] victim (.gear source)) _ _ :: _ :=
+    reopen.pending | none
+  let choose : Action := ⟨.player q, .decide (source == replacement)⟩
+  let (saved, events) ← (step 100 reopen choose).toOption
+  return last == q && chainPassWorkSupported offer last continuation && chainAnswerWorkSupported ordering order &&
+    chainAnswerWorkSupported reopen choose && passEvents.isEmpty &&
+    chooser == q && prior == first && victim == later && earlierEvents.isEmpty &&
+    (saved.obj? first).any (·.exhausted) &&
+    (saved.obj? later).any (fun o => o.exhausted && o.loc.isNone) &&
+    (saved.obj? kept).isSome && (saved.obj? replacement).isNone &&
+    saved.countIn p .trash "UNL-180" == 1 &&
+    events.countP (fun | .died .. => true | _ => false) == 2
+
+-- The affected controller chooses Hourglass, Tactical Retreat, or Soraka before Hidden Blade's draw.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, gear) ← put s q "OGN-077" .base
+  let (s, soraka) ← putAt s q "SFD-173" s.bf0
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := (s.control q s.bf0).addTurnFxOn q unit .saveOnce
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let .eitherDo chooser _ _ (.chooseDeathGear affected source) (.eitherOf _) _ :: _ :=
+    offer.pending | none
+  let (withGear, gearEvents) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
+  let (other, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
+  let .eitherDo chooser' _ _ (.chooseDeathFree retreatUnit none)
+      (.chooseDeathFree rescueUnit (some rescuer)) _ :: _ := other.pending | none
+  let (withRetreat, retreatEvents) ← (step 100 other ⟨.player q, .decide true⟩).toOption
+  let (withSoraka, sorakaEvents) ← (step 100 other ⟨.player q, .decide false⟩).toOption
+  let (spent, _) := killOrSave withGear unit
+  let (dead, _) := killOrSave spent unit
+  let rescued (state : GameState) := (state.obj? unit).any (fun o => o.loc.isNone && o.exhausted) &&
+    state.handN q == before.handN q + 2
+  let deaths (events : List Event) := events.countP (fun | .died .. => true | _ => false)
+  return chooser == q && chooser' == q && affected == unit && source == gear &&
+    retreatUnit == unit && rescueUnit == unit && rescuer == soraka &&
+    [withGear, withRetreat, withSoraka].all rescued &&
+    (withGear.obj? gear).isNone && deaths gearEvents == 1 &&
+    (withRetreat.obj? gear).isSome && (withRetreat.tacticalRetreatFor unit).isNone &&
+    retreatEvents.contains (.recalled unit) && deaths retreatEvents == 0 &&
+    (withSoraka.obj? gear).isSome && (withSoraka.tacticalRetreatFor unit).isSome &&
+    sorakaEvents.contains (.recalled unit) && deaths sorakaEvents == 0 &&
+    (spent.obj? unit).isSome && (spent.tacticalRetreatFor unit).isNone && (dead.obj? unit).isNone
+
+-- A free rescue also competes with a Banish when no Gear can pay for the death.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, blade) ← put s p "OGN-213" .hand
+  let (s, unit) ← putAt s q "OGN-136" s.bf0
+  let before := ((s.control q s.bf0).addTurnFxOn p unit .banishInstead).addTurnFxOn q unit .saveOnce
+  let (casting, _) ← (step 100 (before.rich p)
+    ⟨.player p, .playCard blade (payOf before blade) [unit]⟩).toOption
+  let (priority, _) ← (step 100 casting ⟨.player p, .pass⟩).toOption
+  let (offer, _) ← (step 100 priority ⟨.player q, .pass⟩).toOption
+  let (saved, _) ← (step 100 offer ⟨.player q, .decide true⟩).toOption
+  let (banished, _) ← (step 100 offer ⟨.player q, .decide false⟩).toOption
+  return (saved.obj? unit).any (·.loc.isNone) && saved.handN q == before.handN q + 2 &&
+    banished.countIn q .banishment "OGN-136" == 1 && banished.handN q == before.handN q
+
+-- Each animated Hourglass can replace one Kill in the same series (CR 370.2).
+#guard t fun s => do
+  let p := s.me
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let s := animateGearObject (animateGearObject s p s.bf0 a) p s.bf0 b
+  let choose source := s.addTurnFxOn p a (.chosenDeathGear source)
+  let (keepA, firstEvents) := killOrSave (choose a) a
+  let (keepB, otherEvents) := killOrSave (choose b) a
+  let oneDeath (events : List Event) := events.countP (fun | .died .. => true | _ => false) == 1
+  return (keepA.obj? a).any (·.exhausted) && (keepA.obj? b).isNone &&
+    (keepB.obj? b).any (·.exhausted) && (keepB.obj? a).isNone &&
+    oneDeath firstEvents && oneDeath otherEvents
+
+-- The same animated Gear can be the subject of two distinct Kills (CR 370.2).
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let (s, c) ← put s p "OGN-077" .base
+  let (s, d) ← put s p "OGN-077" .base
+  let s := [a, b, c, d].foldl (fun board gear => animateGearObject board p s.bf0 gear) s
+  let run := Frame.run q s.bf0 { slots := [.obj a] } (.ofList [.prim (.kill (.slot 0))])
+  let (original, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let source : Effect → Option ObjId
+    | .chooseDeathGear _ gear | .recordNestedDeathDecision _ _ _ (.gear gear) _ => some gear
+    | _ => none
+  let rec selectGear (wanted : ObjId) (s : GameState) : Nat → Option GameState
+    | 0 => none
+    | fuel + 1 => do
+      let .eitherDo chooser _ _ first other _ :: _ := s.pending | none
+      if chooser != p then none else
+        let (next, events) ← (step 100 s ⟨.player p, .decide (source first == some wanted)⟩).toOption
+        if !events.isEmpty then none
+        else if source first == some wanted || source other == some wanted then some next
+        else selectGear wanted next fuel
+  let repeated ← selectGear a original 4
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root used victim (.gear _) none) _ _ :: _ :=
+    repeated.pending | none
+  let third ← selectGear b repeated 3
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root' used' victim' (.gear offered) none)
+      (.recordNestedDeathDecision _ _ _ (.gear alternative) none) _ :: _ := third.pending | none
+  let chosen := offered == c
+  let (keptC, events) ← (step 100 third ⟨.player p, .decide chosen⟩).toOption
+  let (keptD, other) ← (step 100 third ⟨.player p, .decide !chosen⟩).toOption
+  let settled (state : GameState) (keeping killed : ObjId) (events : List Event) :=
+    [a, b, keeping].all (fun id => state.tired id == some true) && (state.obj? killed).isNone &&
+    events.countP (fun | .died .. => true | _ => false) == 1 &&
+    !(state.turnFx.any (fun note => match note.kind with | .nestedDeathDecision .. => true | _ => false))
+  return root == a && victim == a && used == [(a, false)] &&
+    root' == a && victim' == b && used' == [(b, false), (a, false)] &&
+    [offered, alternative].contains c && [offered, alternative].contains d &&
+    settled keptC c d events && settled keptD d c other
+
+-- A prior simultaneous event can consume the Gear chosen for a nested Kill.
+#guard t fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spent) ← put s p "OGN-077" .base
+  let (s, a) ← put s p "OGN-077" .base
+  let (s, b) ← put s p "OGN-077" .base
+  let (s, c) ← put s p "OGN-077" .base
+  let (s, ordinary) ← put s p "OGN-136" .base
+  let s := [a, b, c].foldl (fun board gear => animateGearObject board p s.bf0 gear) s
+  let s := (s.addTurnFxOn p ordinary (.chosenDeathGear spent)).addTurnFxOn p a (.chosenDeathGear a)
+  let s := s.addTurnFxOn p a (.nestedDeathDecision a [(a, false)] (.gear spent) none)
+  let run := Frame.run q s.bf0 { slots := [.obj ordinary, .obj a] }
+    (.ofList [.prim (.kill (.slotsFrom 0))])
+  let (ordered, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let .eitherDo _ _ _ (.recordDeathOrder _ first) _ _ :: _ := ordered.pending | none
+  let (reopen, waiting) ← (step 100 ordered ⟨.player p, .decide (first == ordinary)⟩).toOption
+  let .eitherDo chooser _ _ (.recordNestedDeathDecision root used target (.gear gear)
+      (some (group, earlier))) _ _ :: _ := reopen.pending | none
+  let (saved, events) ← (step 100 reopen ⟨.player p, .decide (gear == b)⟩).toOption
+  return chooser == p && root == a && target == a && used == [(a, false)] &&
+    group == [ordinary, a] && earlier == [ordinary] && waiting.isEmpty &&
+    (reopen.obj? spent).isSome && (saved.obj? spent).isNone &&
+    [ordinary, a, b].all (fun id => saved.tired id == some true) &&
+    (saved.obj? c).isNone && events.countP (fun | .died .. => true | _ => false) == 2 &&
+    saved.turnFx.all (fun note => match note.kind with | .nestedDeathDecision .. => false | _ => true)
 
 -- Unlicensed Armory (OGN-023): discard 1, exhaust: choose a friendly unit; the next time it dies
 -- this turn, I may pay Fury to bring it back exhausted (approximation: it dies, then returns)
@@ -4045,6 +6079,51 @@ meta def moveTo (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
   return hit.handN s.me == s5.handN s.me && enemy.handN s.me + 1 == s5.handN s.me &&
     elsewhere.handN s.me + 1 == s5.handN s.me && twice.handN s.me == s5.handN s.me + 1 &&
     theirs.handN s.you == s5.handN s.you + 1
+
+-- A second Spell played in response to the Tree gets no second trigger.
+#guard t fun s => do
+  let p := s.me
+  let (s, tree) ← putBf s s.you "OGN-292"
+  let (s, first) ← putAt s p "OGN-136" tree
+  let (s, second) ← putAt s p "OGN-136" tree
+  let (s, cleave) ← put s p "OGN-004" .hand
+  let (s, flash) ← put s p "OGS-011" .hand
+  let start := (s.control p tree).rich p
+  let (casting, _) ← (step 100 start ⟨.player p, .playCard cleave (payOf start cleave) [first]⟩).toOption
+  let (responding, events) ←
+    (step 100 casting ⟨.player p, .playCard flash (payOf casting flash) [first, second]⟩).toOption
+  let treeItems (g : GameState) := (g.zone .chain).countP (fun id =>
+    (g.obj? id).any (fun o => match o.kind with
+      | .chainAbility card _ source => card == cid "OGN-292" && source == tree
+      | _ => false))
+  let done := settleChain {} 16 responding
+  return treeItems casting == 1 && treeItems responding == 1 &&
+    events.contains (.chosenBySpell p second) && done.handN p + 1 == start.handN p &&
+    done.locate first == some (.player p .base) && done.locate second == some (.player p .base)
+
+-- The first choice is keyed to this seat, Battlefield and turn, even if the trigger disappears.
+-- A teammate's Unit qualifies as friendly in a team game.
+#guard t fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let opponent : PlayerId := ⟨2⟩
+  let init := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { init with phase := .main, turn := 3, active := some p, turnOrder := Mode.teamTurnOrder true }
+  let (s, tree) ← putBf s opponent "OGN-292"
+  let (s, otherTree) ← putBf s ally "OGN-292"
+  let (s, first) ← putAt s ally "OGN-136" tree
+  let (s, second) ← putAt s ally "OGN-136" tree
+  let (s, other) ← putAt s p "OGN-136" otherTree
+  let target := Event.chosenBySpell p first
+  let chosen := s.withTriggers [target, .chosenBySpell p second]
+  let unqueued := { chosen with pending := [] }
+  let next := { unqueued with turn := unqueued.turn + 1 }
+  return (s.detect [target, .chosenBySpell p second]).length == 1 &&
+    unqueued.turnFx.length == 1 && (unqueued.detect [target]).isEmpty &&
+    (unqueued.detect [.chosenByAbility p first]).isEmpty &&
+    (unqueued.detect [.chosenBySpell opponent first]).isEmpty &&
+    (unqueued.detect [.chosenBySpell ally first]).length == 1 &&
+    (unqueued.detect [.chosenBySpell p other]).length == 1 && (next.detect [target]).length == 1
 
 -- Swift Scout (OGN-263): I may hide a card with Hidden for one Energy instead of one Power; one
 -- Energy, exhaust: put a Teemo unit I own into my hand from the Champion Zone or the board
@@ -4287,7 +6366,7 @@ private meta def gainedExhaustIndex (s : GameState) (src : ObjId) (code : String
   let (s2, lee) ← put s1 s.me "OGN-078" .base
   let leeIdx ← gainedExhaustIndex s2 hd "OGN-078"
   let used ← activate s2 s.me hd leeIdx [] ⟨0, []⟩
-  let (queued, _) ← (step 100 (s2.rich s.me) ⟨.player s.me, .activate hd leeIdx ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 (s2.rich s.me) ⟨.player s.me, .activate hd leeIdx ⟨0, [], none⟩ []⟩).toOption
   let gone := (sendObj .trash queued lee).1
   let resolved := settleChain {} 8 gone
   let (n1, nhd) ← put s s.me "OGN-111" .base

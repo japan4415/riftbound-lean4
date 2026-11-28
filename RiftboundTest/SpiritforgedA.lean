@@ -25,6 +25,177 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   | some s => (f s).getD false
   | none => false
 
+/-- A neutral main-phase fixture with all four seats available. -/
+private meta def teamMain (labState : GameState) : GameState :=
+  let game := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  { game with
+    phase := .main
+    turn := 3
+    active := some ⟨0⟩
+    pending := [.priority ⟨0⟩]
+    turnOrder := Mode.teamTurnOrder true }
+
+-- Against the Odds can target a teammate's Unit and counts only enemy Units at that Battlefield.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, other) ← putBf s foe "OGN-276"
+  let (s, ally) ← putAt s mate "OGN-051" field
+  let (s, _) ← putAt s p "OGN-051" field
+  let (s, _) ← putAt s foe "OGN-116" field
+  let (s, _) ← putAt s foe "OGN-116" other
+  let (s, spell) ← put s p "SFD-001" .hand
+  let finished ← play s p spell [ally]
+  return finished.mightNow ally == (s.mightNow ally).map (· + 2)
+
+-- Bushwhack applies to friendly Units, including those played by a teammate as tokens.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, spell) ← put (teamMain labState) p "SFD-004" .hand
+  let casted ← play s p spell
+  let ready (q : PlayerId) : Option Bool := do
+    let card ← casted.tokenCard "Mech"
+    let (next, _) := playInstructedTokens casted q card none 1 false
+    let token ← next.firstOf q .base card.id.code
+    next.tired token
+  let gold ← casted.firstOf p .base "SFD-T03"
+  return ready p == some false && ready mate == some false &&
+    ready foe == some true && casted.tired gold == some true &&
+    !({ casted with turn := casted.turn + 1 }).friendlyUnitsReady mate
+
+-- Bushwhack can be played from Hidden on a later turn without paying its printed cost.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← putAt s p "OGN-051" field
+  let (s, card) ← put (s.control p field) p "SFD-004" .hidden
+  let hiddenOn (turn : Nat) :=
+    s.modObj card (fun o => { o with hiddenAt := some field, hiddenTurn := some turn })
+  let older := { (hiddenOn 0).fund p 0 with turn := 1 }
+  let sameTurn := { (hiddenOn 1).fund p 0 with turn := 1 }
+  let reveal (state : GameState) := legalFrameActions state |>.find? (fun a =>
+    match a.kind with | .activate source .. => source == card | _ => false)
+  let answer ← reveal older
+  let (casting, _) ← (step 100 older answer).toOption
+  let resolved := settleChain {} 12 casting
+  let gold ← resolved.firstOf p .base "SFD-T03"
+  return (reveal sameTurn).isNone && resolved.friendlyUnitsReady p &&
+    resolved.tired gold == some true && (resolved.poolOf p).total == 0
+
+-- Eager Drakehound needs no Accelerate payment to enter ready.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-006" .hand
+  let resolved ← cast (s.fund p 3 (fury := 1)) p card ⟨3, [.fury]⟩
+  let entered ← resolved.firstOf p .base "SFD-006"
+  return resolved.tired entered == some false && (resolved.poolOf p).total == 0
+
+-- Blast Corps Cadet chooses a Unit at a Battlefield only if the additional cost was paid.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, card) ← put s p "SFD-013" .hand
+  let (s, victim) ← putAt s q "OGN-116" s.bf0
+  let (s, outside) ← put s q "OGN-116" .base
+  let plain ← cast (s.rich p) p card ⟨2, []⟩
+  let paid ← cast (s.rich p) p card ⟨3, [.fury]⟩ [] { pick := (· == [victim]) }
+  return (plain.obj? victim).any (·.damage == 0) &&
+    (paid.obj? victim).any (·.damage == 2) && (paid.obj? outside).any (·.damage == 0)
+
+-- Ferrous Forerunner creates two exhausted 3-Might Mechs at its controller's Base.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-021" .hand
+  let resolved ← play s p card
+  let source ← resolved.firstOf p .base "SFD-021"
+  let (dead, events) := killObj resolved source
+  let finished ← fire dead events
+  let mechs := (finished.zone (.player p .base)).filter
+    (fun id => (finished.cardDef? id).any (·.name == "Mech"))
+  return mechs.length == 2 &&
+    mechs.all (fun id => finished.tired id == some true && finished.mightNow id == some 3) &&
+    finished.countIn p .trash "SFD-021" == 1
+
+-- Production Surge's discount requires a Mech controlled by the caster.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, spell) ← put (teamMain labState) p "SFD-076" .hand
+  let (s, _) ← put s mate "SFD-062" .base
+  let (both, _) ← put s p "SFD-062" .base
+  return s.energyCost? p spell == some 4 && both.energyCost? p spell == some 2
+
+-- Vex treats her teammate's spells as friendly for both Energy and Power in Combat.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, _) ← putAt s p "SFD-146" field
+  let (s, _) ← putAt s foe "OGN-051" field
+  let (s, friendly) ← put s mate "OGN-024" .hand
+  let (s, enemy) ← put s foe "OGN-024" .hand
+  let fight := s.inShowdownAt field p
+  let cost (state : GameState) (q : PlayerId) (card : ObjId) :=
+    ((state.cardDef? card).bind (state.effCost q card)).map (fun c => (c.energy, c.power.length))
+  return cost s mate friendly == some (3, 1) && cost s foe enemy == some (3, 1) &&
+    cost fight mate friendly == some (2, 0) && cost fight foe enemy == some (4, 2)
+
+-- Serrated Dirk's Assault follows the holder, with its printed Equip payment.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, dirk) ← put s p "SFD-009" .base
+  let (s, first) ← put s p "OGN-051" .base
+  let (s, second) ← put s p "OGN-051" .base
+  let (s, angleShot) ← put s p "SFD-011" .hand
+  let pay : RunePool.Payment := ⟨0, [.fury]⟩
+  let equipped ← activate s p dirk 0 [first] pay
+  let transferred ← play equipped p angleShot [second, dirk] { fromEnd := some 1 }
+  return (activate equipped p dirk 0 [second] pay).isNone &&
+    s.kwAmount first .assault == 0 && equipped.kwAmount first .assault == 2 &&
+    equipped.kwAmount second .assault == 0 && transferred.kwAmount first .assault == 0 &&
+    transferred.kwAmount second .assault == 2
+
+-- Hidden Sudden Storm selects a Unit at the Battlefield where it was hidden.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, _) ← putAt (s.control p field) p "OGN-051" field
+  let (s, beside) ← putAt s q "OGN-116" field
+  let (s, other) ← putBf s q "OGN-276"
+  let (s, away) ← putAt s q "OGN-116" other
+  let (s, hidden) ← put s p "SFD-017" .hidden
+  let s := s.modObj hidden (fun o => { o with hiddenAt := some field, hiddenTurn := some 0 })
+  let waiting := { (s.fund p 0) with turn := 1 }
+  let reveal (targets : List ObjId) := legalFrameActions waiting |>.find? (fun a =>
+    match a.kind with | .activate source _ _ picked .. => source == hidden && picked == targets | _ => false)
+  let answer ← reveal [beside]
+  let (casting, _) ← (step 100 waiting answer).toOption
+  let finished := settleChain {} 12 casting
+  return (finished.obj? beside).any (·.damage == 2) && (reveal [away]).isNone
+
+-- Rengar can join an attack as a Reaction with another item already on the Chain.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf s q "OGN-275"
+  let (s, attacker) ← put s p "OGN-051" .base
+  let (s, _) ← putAt (s.control q field) q "OGN-116" field
+  let (s, rengar) ← put s p "SFD-025" .hand
+  let s := s.modObj attacker (fun o => { o with exhausted := false })
+  let (showdown, _) ← (step 100 s ⟨.player p, .standardMove attacker (.battlefield field)⟩).toOption
+  let (closed, spell) ← onChain showdown q "OGN-004"
+  let ready := { (closed.fund p 3 (fury := 1)) with pending := .chainPass p 0 :: showdown.pending }
+  let (answered, _) ← (step 100 ready ⟨.player p, .playCard rengar ⟨3, [.fury]⟩ [field]⟩).toOption
+  let joined ← (answered.unitsAt field).find? (fun id =>
+    (answered.cardDef? id).any (fun d => d.id == cid "SFD-025"))
+  return answered.kwAmount joined .assault == 2 && (answered.zone .chain).contains spell
+
 -- Quick-Draw (Sterak's Gage, SFD-056): played, it attaches itself to a unit its player controls
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-056" .hand
@@ -40,28 +211,29 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let gear := s3.inBase s.me "SFD-056"
   return gear.any (fun o => (s3.obj? o).any (·.attached == none))
 
--- Weaponmaster (Combat Chef, SFD-092): when played, the player may Equip one of their Equipment to
--- it for one Power less: Brutalizer (Equip: one Power) is free
+-- Weaponmaster (Combat Chef, SFD-092) discounts [A]. Brutalizer still requires Calm Power.
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-042" .base
   let s3 ← play s2 s.me chef
+  let unfunded ← cast (s2.fund s.me 5) s.me chef (payOf s2 chef)
   let chef' := s3.inBase s.me "SFD-092"
   return chef'.any (fun c => (s3.obj? gear).any (·.attached == some c)) &&
-    (s3.poolOf s.me).calm == 12 && (s3.poolOf s.me).energy == 7
--- Skyfall of Areion (Equip: 1 Energy and 1 Fury): one Power less leaves 1 Energy to pay
+    (s3.poolOf s.me).calm == 11 && (s3.poolOf s.me).energy == 7 &&
+    (unfunded.obj? gear).any (·.attached.isNone)
+-- Skyfall of Areion retains both its Energy and Fury cost.
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-030" .base
   let s3 ← play s2 s.me chef
   let chef' := s3.inBase s.me "SFD-092"
   return chef'.any (fun c => (s3.obj? gear).any (·.attached == some c)) &&
-    (s3.poolOf s.me).fury == 12 && (s3.poolOf s.me).energy == 6
+    (s3.poolOf s.me).fury == 11 && (s3.poolOf s.me).energy == 6
 -- ... and if the Energy is not there, the Equipment stays where it is
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
   let (s2, gear) ← put s1 s.me "SFD-030" .base
-  let s3 ← cast (s2.fund s.me 5) s.me chef (payOf s2 chef)
+  let s3 ← cast (s2.fund s.me 5 (fury := 1)) s.me chef (payOf s2 chef)
   return (s3.obj? gear).any (·.attached == none)
 -- "even if it's already attached": the Equipment of another unit moves to the new one
 #guard tsf fun s => do
@@ -84,6 +256,51 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let s2 ← play s1 s.me chef
   return s2.countIn s.me .base "SFD-092" == 1
 
+private meta def weaponmasterPlay (code : String) : Bool :=
+  tsf fun s => do
+    let p := s.me
+    let (s, card) ← put s p code .hand
+    let (s, original) ← put s p "OGN-135" .base
+    let (s, cape) ← put s p "SFD-190" .base
+    let s := s.modObj cape (fun o => { o with attached := some original })
+    let payment := payOf s card
+    let (first, _) ← (step 100 (s.rich p) ⟨.player p, .playCard card payment []⟩).toOption
+    let actions := legalFrameActions first
+    let take ← actions.find? (fun a => match a.kind with
+      | .putTrigger _ [target] (.pay ..) => target == cape
+      | _ => false)
+    let skip ← actions.find? (fun a => match a.kind with
+      | .putTrigger _ [] .skip => true
+      | _ => false)
+    let (accepted, _) ← (step 100 first take).toOption
+    let (declined, _) ← (step 100 first skip).toOption
+    let done := settleChain {} 12 accepted
+    let new ← done.firstOf p .base code
+    return (done.obj? cape).any (·.attached == some new) &&
+      (declined.obj? cape).any (·.attached == some original) &&
+      done.poolOf p == declined.poolOf p
+
+-- Each printed Weaponmaster can move Equipment already attached and can decline without paying.
+#guard weaponmasterPlay "SFD-002"
+#guard weaponmasterPlay "SFD-008"
+#guard weaponmasterPlay "SFD-092"
+#guard weaponmasterPlay "SFD-099"
+#guard weaponmasterPlay "SFD-127"
+
+-- Armed Assailant can buy Accelerate in the same play as its Weaponmaster trigger.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-002" .hand
+  let (s, cape) ← put s p "SFD-190" .base
+  let payment := payOf s card
+  let rich := s.rich p
+  let accelerated ← cast rich p card ⟨payment.energy + 1, payment.power ++ [.fury]⟩
+  let normal ← cast rich p card payment
+  let a ← accelerated.firstOf p .base "SFD-002"
+  let n ← normal.firstOf p .base "SFD-002"
+  return accelerated.tired a == some false && normal.tired n == some true &&
+    (accelerated.obj? cape).any (·.attached == some a) && (normal.obj? cape).any (·.attached == some n)
+
 -- Quick-Draw with several friendly units: the player picks the unit
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-056" .hand
@@ -95,12 +312,22 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let gear5 := s5.inBase s.me "SFD-056"
   return gear4.any (fun o => (s4.obj? o).any (·.attached == some v)) &&
     gear5.any (fun o => (s5.obj? o).any (·.attached == some u))
--- Weaponmaster: "may", so the player can decline
+-- Weaponmaster can be declined before choosing an Equipment or putting the ability on the Chain.
 #guard tsf fun s => do
-  let (s1, chef) ← put s s.me "SFD-092" .hand
-  let (s2, gear) ← put s1 s.me "SFD-042" .base
-  let s3 ← play s2 s.me chef [] { yes := false }
-  return (s3.obj? gear).any (·.attached == none) && (s3.poolOf s.me).calm == 12
+  let p := s.me
+  let (s1, chef) ← put s p "SFD-092" .hand
+  let (s2, gear) ← put s1 p "SFD-042" .base
+  let (waiting, _) ← (step 100 (s2.rich p) ⟨.player p, .playCard chef (payOf s2 chef) []⟩).toOption
+  let actions := legalFrameActions waiting
+  let skip ← actions.find? (fun action => match action.kind with
+    | .putTrigger _ [] .skip => true
+    | _ => false)
+  let (declined, events) ← (step 100 waiting skip).toOption
+  return actions.any (fun action => match action.kind with
+      | .putTrigger _ [target] (.pay ..) => target == gear
+      | _ => false) && (declined.zone .chain).isEmpty &&
+    !events.any (fun | .chosenByAbility _ target => target == gear | _ => false) &&
+    (declined.obj? gear).any (·.attached.isNone) && (declined.poolOf p).calm == 12
 -- ... one of several Equipment, as the player picks
 #guard tsf fun s => do
   let (s1, chef) ← put s s.me "SFD-092" .hand
@@ -127,7 +354,8 @@ meta def tsf (f : GameState → Option Bool) : Bool :=
   let (s2, gear) ← put s1 s.me "SFD-030" .base
   let r ← applyAttachPaying (s2.rich s.me) s.me chef { slots := [.obj gear] } (.slot 0) .self 1
   return (r.1.obj? gear).any (·.attached == some chef) &&
-    (r.1.poolOf s.me).energy + 1 == ((s2.rich s.me).poolOf s.me).energy
+    (r.1.poolOf s.me).energy + 1 == ((s2.rich s.me).poolOf s.me).energy &&
+    (r.1.poolOf s.me).fury + 1 == ((s2.rich s.me).poolOf s.me).fury
 
 /-- The damage on the object. -/
 meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat :=
@@ -243,6 +471,21 @@ meta def _root_.Riftbound.GameState.dmg (s : GameState) (u : ObjId) : Option Nat
   let s3 ← play s2 s.me c [u]
   return s3.dmg u == some 2
 
+-- When Flash moves the first target away, Piercing Light still deals its second hit.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, first) ← putAt (s.control q s.bf0) q "OGN-001" s.bf0
+  let (s, second) ← put s q "OGN-001" .base
+  let (s, spell) ← put s p "SFD-023" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨2, [.fury]⟩ [first, second]⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let settled ← play response q flash [first]
+  return settled.where? first == some (.player q .base) && settled.dmg first == some 0 &&
+    settled.dmg second == some 2
+
 /-- The player has `n` points. -/
 meta def _root_.Riftbound.GameState.setPoints (s : GameState) (p : PlayerId) (n : Nat) :
     GameState :=
@@ -285,16 +528,43 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return a.countIn s.me .base "SFD-032" == 1
 
 -- Guardian of the Passage (SFD-035): when it holds, a unit or gear (not a spell) from the Trash
--- may return to the hand
+-- may be targeted upon finalization or the player can decline the trigger.
 #guard tsf fun s => do
-  let (s1, bf) ← putBf s s.me "OGN-280"
-  let (s2, _) ← putAt s1 s.me "SFD-035" bf
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.me "OGN-051" .trash
-  let a ← fire s4 [.scored s.me bf false]
-  let b ← fire s4 [.scored s.me bf false] { yes := false }
-  return a.countIn s.me .hand "OGN-051" == 1 && a.countIn s.me .hand "OGN-004" == 0 &&
-    b.countIn s.me .hand "OGN-051" == 0
+  let p := s.me
+  let (s, bf) ← putBf s p "OGN-280"
+  let (s, _) ← putAt s p "SFD-035" bf
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, gear) ← put s p "SFD-056" .trash
+  let (s, opposing) ← put s s.you "SFD-056" .trash
+  let holds := [Event.scored p bf false]
+  let picks ← firePicks s holds
+  let a ← fire s holds { pick := (· == [gear]) }
+  let b ← fire s holds { yes := false }
+  return picks.contains gear && picks.contains unit && !picks.contains spell && !picks.contains opposing &&
+    a.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056" + 1 &&
+    b.zone (.player p .trash) == s.zone (.player p .trash)
+
+-- Aspiring Engineer chooses a Gear while the ability is put on the Chain.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, engineer) ← put s p "SFD-061" .hand
+  let (s, gear) ← put s p "SFD-056" .trash
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, rivalGear) ← put s s.you "SFD-056" .trash
+  let deciding ← castStop s p engineer
+  let action ← (legalFrameActions deciding).find? (fun act => match act.kind with
+    | .putTrigger _ [id] (.pay ..) => id == gear
+    | _ => false)
+  let (queued, _) ← (step 100 deciding action).toOption
+  let (removed, _) ← moveObj queued gear (.player p .mainDeck)
+  let found := settleChain {} 12 queued
+  let lost := settleChain {} 12 removed
+  return !(legalFrameActions deciding).any (fun act => match act.kind with
+      | .putTrigger _ [id] (.pay ..) => id == unit || id == rivalGear
+      | _ => false) &&
+    found.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056" + 1 &&
+    lost.countIn p .hand "SFD-056" == s.countIn p .hand "SFD-056"
 
 -- Ribbon Dancer (SFD-038): when it moves to a battlefield, another friendly unit has +1 Might
 #guard tsf fun s => do
@@ -333,12 +603,26 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     (play s5 s.me c [s.bf0, w]).isNone && (play s5 s.me c [s.bf0, lo, lo]).isNone &&
     (play s5 s.me c []).isNone
 
--- Simian Ancestor (SFD-047): when buffed, it readies
-#guard tsf fun s => do
-  let (s1, u) ← put s s.me "SFD-047" .base
-  let s2 := s1.tire u
-  let r ← fire s2 [.buffed u]
-  return s2.tired u == some true && r.tired u == some false
+-- Simian Ancestor readies when its controller buffs it, even in a team game.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let foe : PlayerId := ⟨2⟩
+  let (s, unit) ← put (teamMain labState) p "SFD-047" .base
+  let exhausted := s.tire unit
+  let buff (giver : PlayerId) := applyPrim exhausted giver unit {} (.buff .self)
+  let (own, ownEvents) ← buff p
+  let (ally, allyEvents) ← buff mate
+  let (enemy, enemyEvents) ← buff foe
+  let ownDone ← fire own ownEvents
+  let allyDone ← fire ally allyEvents
+  let enemyDone ← fire enemy enemyEvents
+  let (twice, repeated) ← applyPrim ownDone p unit {} (.buff .self)
+  return ownEvents == [.buffedBy unit p] && allyEvents == [.buffedBy unit mate] &&
+    enemyEvents == [.buffedBy unit foe] && ownDone.tired unit == some false &&
+    allyDone.tired unit == some true && enemyDone.tired unit == some true &&
+    (allyDone.obj? unit).any (·.buffed) && (enemyDone.obj? unit).any (·.buffed) &&
+    repeated.isEmpty && (twice.obj? unit).any (·.buffed)
 
 -- Janna, Savior (SFD-053), at a battlefield when played: heal my units here, and move an enemy
 -- unit from here to its base
@@ -347,9 +631,51 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, a) ← putAt s1 s.me "OGN-001" s.bf0
   let (s3, e) ← putAt s2 s.you "OGN-001" s.bf0
   let s4 := s3.modObj a (fun o => { o with damage := 3 })
-  let r ← fire s4 [.played s.me j]
+  let r ← fire s4 [.played s.me j] { pick := (· == [e]) }
   return r.dmg a == some 0 && (r.obj? e).any (·.loc.isNone) &&
     (r.obj? j).any (·.loc == some s.bf0)
+
+-- The target is chosen on the Chain. Moving it away does not let Janna select a replacement
+-- and does not stop her from healing every damaged Unit she still controls there.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, janna) ← putAt (s.control p field) p "SFD-053" field
+  let (s, first) ← putAt s p "OGN-001" field
+  let (s, second) ← putAt s p "OGN-001" field
+  let (s, atBase) ← put s p "OGN-001" .base
+  let (s, foe) ← putAt s q "OGN-001" field
+  let (s, another) ← putAt s q "OGN-001" field
+  let s := (setBaseMight 130 s first).1
+  let s := (s.markDamage first 105 (some q)).markDamage second 2 (some q)
+  let s := (s.markDamage atBase 2 (some q)).markDamage another 1 (some p)
+  let pending := insertTriggers (s.detect [.played p janna]) (below s.pending)
+  let (window, _) ← (advance 100 { s with pending } []).toOption
+  let withTarget : Action := ⟨.player p, .putTrigger 0 [foe] (.pay [])⟩
+  let withoutTarget : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let (chain, chose) ← (step 100 window withTarget).toOption
+  let (emptyChoice, _) ← (step 100 window withoutTarget).toOption
+  let noMove := settleChain {} 12 emptyChoice
+  let fromBase := settleChain {} 12 (moveHome chain janna).1
+  let noSource := settleChain {} 12 (sendObj .trash chain janna).1
+  let fled := (moveHome chain foe).1
+  let .chainPass firstSeat _ :: _ := fled.pending | none
+  let (passed, _) ← (step 100 fled ⟨.player firstSeat, .pass⟩).toOption
+  let .chainPass lastSeat _ :: _ := passed.pending | none
+  let (result, events) ← (step 100 passed ⟨.player lastSeat, .pass⟩).toOption
+  let heals := events.filter (fun | .healed .. => true | _ => false)
+  return (legalFrameActions window).contains withTarget &&
+    (legalFrameActions window).contains withoutTarget && chose.contains (.chosenByAbility p foe) &&
+    noMove.dmg first == some 0 && (noMove.obj? foe).any (·.loc == some field) &&
+    fromBase.dmg atBase == some 0 && fromBase.dmg first == some 105 &&
+    (fromBase.obj? foe).any (·.loc == some field) &&
+    noSource.dmg first == some 105 && (noSource.obj? foe).any (·.loc == some field) &&
+    heals.length == 2 && heals.contains (.healed first 105) && heals.contains (.healed second 2) &&
+    result.dmg first == some 0 && result.dmg second == some 0 &&
+    result.damageMarks[first.n]?.isNone && result.damageMarks[second.n]?.isNone &&
+    result.dmg atBase == some 2 && result.dmg another == some 1 &&
+    (result.obj? another).any (·.loc == some field)
 
 -- Bubble Bot (SFD-062): when played, ready another friendly Mech (not itself, not a non-Mech)
 #guard tsf fun s => do
@@ -408,6 +734,45 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← fire s4 [.scored s.me bf false]
   return s4.mightNow m == (s3.mightNow m).map (· + 1) && s4.mightNow e == s3.mightNow e &&
     r.countNamed s.me .base "Mech" == 1
+
+-- The Deathknell belongs to the Unit carrying Sacred Shears. Killing the Gear grants no draw.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, shears) ← put s p "SFD-172" .base
+  let (s, holder) ← put s p "OGN-051" .base
+  let attached ← activate s p shears 0 [holder] ⟨0, [.order]⟩
+  let (dead, events) := killObj attached holder
+  let (gearDead, gearEvents) := killObj attached shears
+  let (banished, banishEvents) := killObj (attached.addTurnFxOn q holder .banishInstead) holder
+  let (together, bothEvents) := resolveDeathGroupWith attached [shears, holder] killObj
+  let wounded := attached.modObj holder (fun object => { object with damage := 9 })
+  let (cleanup, cleanupEvents) := cleanupFrame wounded attached.pending
+  let draw ← fire dead events
+  let simultaneous ← fire together bothEvents
+  let afterCleanup ← fire cleanup cleanupEvents
+  let broke ← fire gearDead gearEvents
+  let banish ← fire banished banishEvents
+  return (attached.obj? shears).any (·.attached == some holder) &&
+    attached.hasKw holder .deathknell && attached.mightNow holder == (s.mightNow holder).map (· + 1) &&
+    draw.handN p == s.handN p + 1 && draw.handN q == s.handN q &&
+    broke.handN p == s.handN p && banish.handN p == s.handN p &&
+    simultaneous.handN p == s.handN p + 1 && afterCleanup.handN p == s.handN p + 1
+
+-- Rumble strengthens his own Mechs, including himself. Only his own Hold plays the token.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, mine) ← put s p "SFD-062" .base
+  let (s, theirs) ← put s mate "SFD-062" .base
+  let (s, rumble) ← putAt (s.control p field) p "SFD-089" field
+  let held ← fire s [.scored p field false]
+  let conquered ← fire s [.scored p field true]
+  return s.mightNow mine == some 4 && s.mightNow theirs == some 3 &&
+    s.mightNow rumble == (s.cardDef? rumble).bind (fun d => d.might.map (fun m => (m : Int) + 1)) &&
+    held.countNamed p .base "Mech" == 1 && held.countNamed mate .base "Mech" == 0 &&
+    conquered.countNamed p .base "Mech" == 0
 
 -- Buhru Captain (SFD-091): when played, the player may draw 1 or buff it
 #guard tsf fun s => do
@@ -475,6 +840,38 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return one.mightNow d == some 5 && none_.mightNow d == some 4 &&
     a.handN s.me == one.handN s.me - 1 + 1 && b.handN s.me == none_.handN s.me - 1
 
+-- Ownership and the shared team side do not determine who draws or satisfies "you control".
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, detonate) ← put s p "SFD-005" .hand
+  let (s, gear) ← put s enemy "SFD-030" .base
+  let (s, ownGear) ← put s p "SFD-030" .base
+  let s := s.modObj gear (fun o => { o with controller := mate })
+  let sent ← play s p detonate [gear]
+  let (s, dropboarder) ← put s p "SFD-072" .hand
+  let pitched ← play s p dropboarder
+  let (more, _) ← put s p "SFD-030" .base
+  let twoGear ← play more p dropboarder
+  let (s, direwing) ← put s p "SFD-094" .hand
+  let (s, _) ← put s mate "OGN-001" .base
+  let otherDragon ← play s p direwing
+  let (s, ownDragon) ← put s p "OGN-001" .base
+  let ready ← play s p direwing
+  let (s, strength) ← put s p "SFD-106" .hand
+  let drawn ← play s p strength
+  return sent.handN mate == s.handN mate + 2 && sent.handN enemy == s.handN enemy &&
+    sent.countIn enemy .trash "SFD-030" == 1 && (sent.obj? ownGear).isSome &&
+    (pitched.inBase p "SFD-072").bind pitched.tired == some true &&
+    (twoGear.inBase p "SFD-072").bind twoGear.tired == some false &&
+    (otherDragon.inBase p "SFD-094").bind otherDragon.tired == some true &&
+    (ready.inBase p "SFD-094").bind ready.tired == some false &&
+    drawn.handN p == s.handN p && (drawn.obj? ownDragon).isSome
+
 -- Jaull-Fish (SFD-103) counts a unit that is Mighty by a passive ability (Draven with a point)
 #guard tsf fun s => do
   let (s1, j) ← put s s.me "SFD-103" .hand
@@ -511,7 +908,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play s3 s.me c [f, e]
   return r.dmg f == some 2 && (r.obj? e).isNone && (play s3 s.me c [e, f]).isNone
 
--- Danger Zone (SFD-182): friendly Mechs have +1 Might this turn
+-- Danger Zone (SFD-182): the caster's Mechs have +1 Might this turn
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-182" .hand
   let (s2, m) ← put s1 s.me "SFD-062" .base
@@ -520,6 +917,25 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let r ← play s4 s.me c
   return r.mightNow m == (s4.mightNow m).map (· + 1) && r.mightNow o == s4.mightNow o &&
     r.mightNow e == s4.mightNow e
+
+-- Paying Repeat affects the caster's own Mechs twice, including in a team game.
+#guard tsf fun labState => do
+  let s := teamMain labState
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, card) ← put s p "SFD-182" .hand
+  let (s, own) ← put s p "SFD-062" .base
+  let (s, ally) ← put s mate "SFD-062" .base
+  let s := s.rich p
+  let input ← (legalFrameActions s).find? (fun action =>
+    match action.kind with
+    | .playCard id pay _ .. => id == card && pay.energy == 2 && pay.power.length == 2
+    | _ => false)
+  let (queued, _) ← (step 100 s input).toOption
+  let resolved := settleChain {} 16 queued
+  let expired := resolved.mapObjects endTurnObj
+  return resolved.mightNow own == (s.mightNow own).map (· + 2) &&
+    resolved.mightNow ally == s.mightNow ally && expired.mightNow own == s.mightNow own
 
 -- (review) Detonate: if the gear is gone when the spell resolves, nobody draws
 #guard tsf fun s => do
@@ -581,11 +997,16 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-003" .hand
   let (s2, v) ← put s1 s.me "OGN-136" .base
+  let (s2, rival) ← put s2 s.you "OGN-136" .base
   let pay := payOf s2 c
   let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
-  let a ← cast (s2.rich s.me) s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
-  let b ← cast (s2.rich s.me) s.me c pay [v]
-  return a.kwAmount v .assault == 4 && b.kwAmount v .assault == 2
+  let rich := s2.rich s.me
+  let both ← cast rich s.me c ⟨pay.energy + 1, pay.power⟩ [v, v] (pick := pick)
+  let split ← cast rich s.me c ⟨pay.energy + 1, pay.power⟩ [v, rival] (pick := pick)
+  let single ← cast rich s.me c pay [v]
+  return both.kwAmount v .assault == 4 && single.kwAmount v .assault == 2 &&
+    split.kwAmount v .assault == 2 && split.kwAmount rival .assault == 2 &&
+    (both.mapObjects endTurnObj).kwAmount v .assault == 0
 -- (review) Marching Orders: each unit takes damage equal to the Might of the other
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-114" .hand
@@ -598,7 +1019,7 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, u) ← put s s.me "SFD-047" .base
   let (s2, o) ← put s1 s.me "OGN-051" .base
   let s3 := s2.tire u
-  let r ← fire s3 [.buffed o]
+  let r ← fire s3 [.buffedBy o s.me]
   return r.tired u == some true
 -- (review) Piercing Light: with no other unit, the first unit is not hit twice
 #guard tsf fun s => do
@@ -637,6 +1058,39 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return a.countIn s.me .hand "OGN-051" == s2.countIn s.me .hand "OGN-051" + 1 &&
     (a.zone .battlefieldZone).any (fun o => (a.cardDef? o).any (·.name == "Sand Soldier")) &&
     (b.obj? u).isSome && c.countIn s.me .hand "OGN-051" == s2.countIn s.me .hand "OGN-051"
+
+-- Both parts of the cost are paid before the ability can be countered. The returned Unit need
+-- only be controlled by the payer, and goes to its owner's hand.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, field) ← putBf (s.fund p 1) p "SFD-207"
+  let (s, unit) ← putAt s q "OGN-051" field
+  let (s, other) ← put s p "OGN-001" .base
+  let s := s.modObj unit (fun o => { o with controller := p })
+  let offer (state : GameState) :=
+    let pending := insertTriggers (state.detect [.scored p field true]) state.pending
+    (advance 100 { state with pending } []).toOption
+  let (waiting, _) ← offer s
+  let (unfunded, _) ← offer (s.fund p 0)
+  let pay : Action := ⟨.player p, .putTrigger 0 [] (.pay [unit])⟩
+  let offsite : Action := ⟨.player p, .putTrigger 0 [] (.pay [other])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (chain, _) ← (step 100 waiting pay).toOption
+  let (skipped, _) ← (step 100 waiting skip).toOption
+  let item ← (chain.zone .chain).head?
+  let resolved := settleChain {} 12 chain
+  let countered := settleChain {} 12 (counterObj chain item).1
+  let soldier (state : GameState) :=
+    (state.unitsAtOf field p).find? (fun id => (state.cardDef? id).any (·.name == "Sand Soldier"))
+  return (legalFrameActions waiting).contains pay && !(step 100 waiting offsite).isOk &&
+    !(step 100 unfunded pay).isOk &&
+    (skipped.poolOf p).energy == 1 && (skipped.obj? unit).isSome &&
+    (chain.poolOf p).energy == 0 && (chain.obj? unit).isNone &&
+    chain.countIn q .hand "OGN-051" == s.countIn q .hand "OGN-051" + 1 &&
+    (soldier chain).isNone && (soldier resolved).bind resolved.tired == some true &&
+    (soldier countered).isNone && (countered.poolOf p).energy == 0 &&
+    countered.countIn q .hand "OGN-051" == chain.countIn q .hand "OGN-051"
 
 -- Minefield (SFD-212): when its player conquers here, the top 2 cards of their Main Deck go to
 -- the Trash
@@ -679,13 +1133,22 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
 -- Sunken Temple (SFD-218): conquer here with a Mighty unit, pay 1: draw 1
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-218"
-  let (s2, _) ← putAt s1 s.me "OGN-001" bf
+  let (s2, mighty) ← putAt s1 s.me "OGN-001" bf
   let (t2, _) ← putAt s1 s.me "OGN-051" bf
   let a ← fire (s2.rich s.me) [.scored s.me bf true]
   let b ← fire (t2.rich s.me) [.scored s.me bf true]
   let c ← fire (s2.fund s.me 0) [.scored s.me bf true]
+  let funded := s2.fund s.me 1
+  let es := [Event.scored s.me bf true]
+  let (waiting, _) ← (advance 100
+    { funded with pending := insertTriggers (funded.detect es) funded.pending } []).toOption
+  let (paid, _) ← (step 100 waiting ⟨.player s.me, .putTrigger 0 [] (.pay [])⟩).toOption
+  let weakened := (setBaseMight 1 paid mighty).1
+  let resolved := settleChain {} 12 weakened
   return a.handN s.me == s2.handN s.me + 1 && (a.poolOf s.me).energy + 1 == 12 &&
-    b.handN s.me == t2.handN s.me && c.handN s.me == s2.handN s.me
+    b.handN s.me == t2.handN s.me && c.handN s.me == s2.handN s.me &&
+    (paid.poolOf s.me).energy == 0 && paid.handN s.me == funded.handN s.me &&
+    (paid.zone .chain).length == 1 && resolved.handN s.me == funded.handN s.me + 1
 
 -- The Papertree (SFD-219): when its player holds here, each player channels 1 rune exhausted
 #guard tsf fun s => do
@@ -744,6 +1207,32 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     b.mightNow d == (s2.mightNow d).map (· + 2) && c.mightNow d == s2.mightNow d &&
     e.mightNow d == s2.mightNow d
 
+-- The Vendetta errata makes Fury a base cost of the attack or defend trigger. It is already
+-- spent while the ability can still be countered.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let bf := s.bf0
+  let (s, draven) ← putAt (s.fund p 0 1) p "SFD-020" bf
+  let (s, _) ← putAt s q "OGN-049" bf
+  let offer (state : GameState) (attacker : PlayerId) :=
+    let pending := insertTriggers (state.detect [.combatStarted bf attacker]) state.pending
+    (advance 100 { state with pending } []).toOption
+  let (attacking, _) ← offer s p
+  let (defending, _) ← offer s q
+  let (short, _) ← offer (s.fund p 1 0 1) p
+  let pay : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (chain, _) ← (step 100 attacking pay).toOption
+  let (skipped, _) ← (step 100 defending skip).toOption
+  let item ← (chain.zone .chain).head?
+  let resolved := settleChain {} 12 chain
+  let countered := settleChain {} 12 (counterObj chain item).1
+  return (legalFrameActions attacking).contains pay && (legalFrameActions defending).contains pay &&
+    !(step 100 short pay).isOk && (chain.poolOf p).fury == 0 && (skipped.poolOf p).fury == 1 &&
+    chain.mightNow draven == some 4 && resolved.mightNow draven == some 6 &&
+    (countered.poolOf p).fury == 0 && countered.mightNow draven == some 4
+
 -- Corrupt Enforcer (SFD-123): discard 1 when it moves to a battlefield; draw 1 when it wins
 #guard tsf fun s => do
   let (s1, u) ← putAt s s.me "SFD-123" s.bf0
@@ -801,6 +1290,22 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   return (fresh a s.me).length == 1 && (fresh a s.me).all (fun r => a.tired r == some true) &&
     (fresh a s.you).all (fun r => a.tired r == some true)
 
+-- Papertree channels for all four seats; shared scoring does not merge their Rune Decks.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let opening ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let start ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) opening).toOption
+  let p := start.me
+  let (s, bf) ← putBf start p "SFD-219"
+  let (scored, _, events) := scoreBf (s.control p bf) p bf false
+  let after ← fire scored events
+  return s.players.all (fun seat =>
+    let runes := Zone.player seat .runeDeck
+    let base := Zone.player seat .base
+    let newRunes := (after.zone base).filter (fun r => !(s.zone base).contains r)
+    (after.zone runes).length + 1 == (s.zone runes).length &&
+      newRunes.length == 1 && newRunes.all (fun r => after.tired r == some true))
+
 -- (review) Treasure Hoard and Draven's Gold token are exhausted; the cost is exactly 1
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-220"
@@ -854,6 +1359,23 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
     gold b == 0 && gold c == 0 && gold d == 0 && gold e == 0
 
+-- An ally's cast and an ally's turn are distinct from the Cask controller's cast on an enemy turn.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let start ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) start).toOption
+  let p := s.me
+  let ally ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, cask) ← put s p "SFD-063" .base
+  let (s, mine) ← put s p "OGN-004" .trash
+  let (s, theirs) ← put s ally "OGN-004" .trash
+  let allyTurn ← fire { s with active := some ally } [.spellResolved p mine]
+  let allySpell ← fire { s with active := some enemy } [.spellResolved ally theirs]
+  let payForMine ← fire { s with active := some enemy } [.spellResolved p mine]
+  return allyTurn.tired cask == some false && allySpell.tired cask == some false &&
+    payForMine.tired cask == some true && payForMine.countIn p .base "SFD-T03" == 1
+
 -- Pickpocket (SFD-074): kill a gear with Energy cost 1 or less, then a Gold token
 #guard tsf fun s => do
   let (s1, p) ← put s s.me "SFD-074" .hand
@@ -892,8 +1414,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s1, c) ← put s s.me "SFD-135" .hand
   let (s2, g) ← put s1 s.you "SFD-030" .base
   let (s3, u) ← put s2 s.you "OGN-051" .base
-  let r ← play s3 s.me c [g]
-  return r.countIn s.you .hand "SFD-030" == 1 && (play s3 s.me c [u]).isNone
+  let attached := (attachTo u s3 g).1
+  let r ← play attached s.me c [g]
+  return r.countIn s.you .hand "SFD-030" == 1 && r.countIn s.me .hand "SFD-030" == 0 &&
+    r.mightNow u == s3.mightNow u && (play s3 s.me c [u]).isNone
 
 -- Windsinger (SFD-138): Hidden; when played, may return another unit at a battlefield with 3 Might
 -- or less
@@ -954,8 +1478,10 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, small) ← put s1 s.you "OGN-051" .base
   let (s3, big) ← put s2 s.you "OGN-001" .base
   let (s4, mine) ← put s3 s.me "OGN-051" .base
-  let r ← play s4 s.me c
-  return (r.obj? small).isNone && (r.obj? big).isSome && (r.obj? mine).isSome
+  let threshold := s4.buff small
+  let r ← play threshold s.me c
+  return threshold.mightNow small == some 3 && (r.obj? small).isNone &&
+    (r.obj? big).isSome && (r.obj? mine).isSome
 -- (nothing to kill: the unit is simply played)
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-158" .hand
@@ -975,6 +1501,17 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
     t2.mightNow q == (t1.mightNow q).map (· + 1) && t1.mightNow q == s1.mightNow r &&
     t3.mightNow q == t2.mightNow q
 
+-- The Ramhound's company must be a Unit controlled by the Ramhound's controller.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let s := GameState.empty { mode := .teamDuel, ruleSet := .coreOnly } labState.cards
+  let (s, field) ← putBf s p "OGN-275"
+  let (s, hound) ← putAt s p "SFD-159" field
+  let (s, _) ← putAt s ally "OGN-051" field
+  let (withCompany, _) ← putAt s p "OGN-051" field
+  return s.mightNow hound == some 2 && withCompany.mightNow hound == some 3
+
 -- Blood Money (SFD-162): kill a unit at a battlefield with 2 Might or less; 1 Gold if it was an
 -- enemy's, 2 if it was a friendly one
 #guard tsf fun s => do
@@ -991,15 +1528,64 @@ meta def _root_.Riftbound.GameState.keepHand (s : GameState) (p : PlayerId) (c :
   let (s2, e) ← put s1 s.you "OGN-051" .base
   return (play s2 s.me c [e]).isNone
 
--- Deathgrip (SFD-163): kill a friendly unit to give another friendly unit +Might equal to its
--- Might this turn, and draw 1
+-- Deathgrip (SFD-163): the first target's Might is read before the Kill. An actual death
+-- grants Might, and a death replaced by Hourglass or Banish still draws one (Spiritforged FAQ).
 #guard tsf fun s => do
-  let (s1, c) ← put s s.me "SFD-163" .hand
-  let (s2, a) ← put s1 s.me "OGN-001" .base
-  let (s3, b) ← put s2 s.me "OGN-051" .base
-  let r ← play s3 s.me c [a, b]
-  return (r.obj? a).isNone && r.mightNow b == (s3.mightNow b).map (· + 5) &&
-    r.handN s.me == s3.handN s.me && (play s3 s.me c [a, a]).isNone
+  let p := s.me
+  let (s, c) ← put s p "SFD-163" .hand
+  let (s, victim) ← put s p "OGN-001" .base
+  let (s, recipient) ← put s p "OGN-051" .base
+  let s := s.buff victim
+  let withKill ← play s p c [victim, recipient]
+  let (withGear, firstGear) ← put s p "OGN-077" .base
+  let (withGear, secondGear) ← put withGear p "OGN-077" .base
+  let played : Action := ⟨.player p, .playCard c (payOf withGear c) [victim, recipient]⟩
+  let (chain, _) ← (step 100 (withGear.rich p) played).toOption
+  let (passed, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let .chainPass last _ :: continuation := passed.pending | none
+  let (choice, _) ← (step 100 passed ⟨.player last, .pass⟩).toOption
+  let select : Action := ⟨.player p, .decide true⟩
+  let alternative : Action := ⟨.player p, .decide false⟩
+  let (withFirst, _) ← (step 100 choice select).toOption
+  let (withSecond, _) ← (step 100 choice alternative).toOption
+  let withBanish ← play (s.addTurnFxOn s.you victim .banishInstead) p c [victim, recipient]
+  let original := s.mightNow recipient
+  let might ← s.mightNow victim
+  return chainPassWorkSupported passed last continuation &&
+    chainAnswerWorkSupported choice select && chainAnswerWorkSupported choice alternative &&
+    (withKill.obj? victim).isNone && withKill.mightNow recipient == original.map (· + might) &&
+    withKill.countIn p .trash "OGN-001" == 1 &&
+    [withFirst, withSecond].all (fun board => (board.obj? victim).any (·.exhausted) &&
+      board.countIn p .trash "OGN-077" == 1 && board.mightNow recipient == original) &&
+    (withFirst.obj? firstGear).isSome != (withSecond.obj? firstGear).isSome &&
+    (withFirst.obj? secondGear).isSome != (withSecond.obj? secondGear).isSome &&
+    withBanish.countIn p .banishment "OGN-001" == 1 && withBanish.mightNow recipient == original &&
+    [withKill, withFirst, withSecond, withBanish].all (fun board => board.handN p == s.handN p) &&
+    (play s p c [victim, victim]).isNone
+
+-- Retreat in response can make either target illegal independently. Deathgrip still draws.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, c) ← put s p "SFD-163" .hand
+  let (s, retreat) ← put s p "OGN-104" .hand
+  let (s, victim) ← put s p "OGN-001" .base
+  let (s, recipient) ← put s p "OGN-051" .base
+  let before := s.rich p
+  let (declared, _) ← (step 100 before
+    ⟨.player p, .playCard c (payOf before c) [victim, recipient]⟩).toOption
+  let respond (target : ObjId) : Option GameState :=
+    cast declared p retreat (payOf declared retreat) [target]
+  let noVictim ← respond victim
+  let noRecipient ← respond recipient
+  let stolen := settleChain {} 12 (setController s.you declared victim).1
+  return declared.inPlay.contains victim && declared.inPlay.contains recipient &&
+    stolen.inPlay.contains victim && stolen.mightNow recipient == before.mightNow recipient &&
+    stolen.countIn p .trash "SFD-163" == 1 && stolen.handN p == before.handN p &&
+    noVictim.countIn p .hand "OGN-001" == 1 && noVictim.countIn p .trash "OGN-001" == 0 &&
+    noVictim.mightNow recipient == before.mightNow recipient &&
+    noRecipient.countIn p .hand "OGN-051" == 1 && noRecipient.countIn p .trash "OGN-001" == 1 &&
+    [noVictim, noRecipient].all (fun board =>
+      board.countIn p .trash "SFD-163" == 1 && board.handN p == before.handN p)
 
 -- Janna, Savior (SFD-053) at a base: heals the friendly units there
 #guard tsf fun s => do
@@ -1106,6 +1692,22 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     (cast rich p c paid [u] (pick := order 0 1)).isNone &&
     (cast rich p c paid [u] (pick := .mode 0)).isNone
 
+-- CR 820.2.a: both Rocket Barrage executions can choose the same Gear before it is killed.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, spell) ← put s p "SFD-077" .hand
+  let (s, gear) ← put s q "SFD-030" .base
+  let (s, other) ← put s q "SFD-030" .base
+  let choices : SpellPick := .withCosts (.thenRepeat (.mode 1) 1 (.mode 1)) false 1
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨8, [.mind, .mind]⟩ [gear, gear] none none choices⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let (settled, events) ← (step 100 response ⟨.player q, .pass⟩).toOption
+  let dead ← settled.firstOf q .trash "SFD-030"
+  return events.filter (fun | .died .. => true | _ => false) == [.died dead q] &&
+    (settled.obj? other).isSome && settled.countIn q .trash "SFD-030" == 1
+
 -- Jayce (SFD-084): when played, may kill a friendly gear; if so, the player may play a gear (cost 7
 -- or less) from the hand this turn for no Energy: it is played later, and only the first one is free
 #guard tsf fun s => do
@@ -1131,15 +1733,37 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let (s4, _) ← put s3 s.you "SFD-030" .base
   return s3.mightNow o == (s1.mightNow o).map (· + 2) && s4.mightNow o == s3.mightNow o
 
--- Fae Porter (SFD-125): when it moves to a battlefield, pay 1 Chaos to move another unit there
+-- Ornn has Deflect 2 and may move the controller's already attached Gear with Weaponmaster.
 #guard tsf fun s => do
-  let (s1, p) ← putAt s s.me "SFD-125" s.bf0
-  let (s2, u) ← put s1 s.me "OGN-051" .base
-  let a ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)]
-  let b ← fire (s2.fund s.me 0) [.standardMoved p (some s.bf0)]
-  let c ← fire (s2.fund s.me 0 0 0 0 0 1) [.standardMoved p (some s.bf0)] { yes := false }
-  return (a.obj? u).any (·.loc == some s.bf0) && (a.poolOf s.me).chaos == 0 &&
-    (b.obj? u).any (·.loc.isNone) && (c.obj? u).any (·.loc.isNone) && p != u
+  let p := s.me
+  let (s, ornn) ← put s p "SFD-085" .hand
+  let (s, bearer) ← put s p "OGN-051" .base
+  let (s, gear) ← put s p "SFD-042" .base
+  let attached := (attachTo bearer s gear).1
+  let equipped ← play attached p ornn
+  let declined ← play attached p ornn [] { yes := false }
+  let entered ← equipped.firstOf p .base "SFD-085"
+  return equipped.deflectOf entered == 2 && (equipped.obj? gear).any (·.attached == some entered) &&
+    (declined.obj? gear).any (·.attached == some bearer)
+
+-- Fae Porter chooses and pays during finalization. Flash moves the source, while its ability
+-- still moves the chosen Unit to the original destination.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, porter) ← put ((s.control p field).fund p 2 0 0 0 0 1) p "SFD-125" .base
+  let (s, unit) ← put s p "OGN-051" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (offered, _) ← (step 100 s ⟨.player p, .standardMove porter (.battlefield field)⟩).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [unit] (.pay [])⟩
+  let (paid, events) ← (step 100 offered accept).toOption
+  let (declined, _) ← (step 100 offered ⟨.player p, .putTrigger 0 [] .skip⟩).toOption
+  let returned ← cast paid p flash ⟨2, []⟩ [porter]
+  return (legalActions offered).contains accept && events.contains (.chosenByAbility p unit) &&
+    (paid.poolOf p).chaos == 0 && paid.where? unit == some (.player p .base) &&
+    (declined.poolOf p).chaos == 1 && declined.where? unit == some (.player p .base) &&
+    !(step 100 (offered.fund p 2) accept).isOk && returned.countIn p .base "SFD-125" == 1 &&
+    (returned.unitsAtOf field p).contains unit
 
 -- Overzealous Fan (SFD-128): when it defends, may kill itself to move an attacker to its base
 #guard tsf fun s => do
@@ -1184,13 +1808,24 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
 -- Glasc Mixologist (SFD-165): when it dies, may play a unit (cost 3 or less, at most 1 Power) from
 -- the Trash for nothing
 #guard tsf fun s => do
-  let (s1, m) ← put s s.me "SFD-165" .trash
-  let (s2, _) ← put s1 s.me "OGN-051" .trash
-  let (s3, big) ← put s2 s.me "OGN-001" .trash
-  let a ← fire s3 [.died m s.me]
-  let b ← fire s3 [.died m s.me] { yes := false }
-  return a.countIn s.me .base "OGN-051" == 1 && a.countIn s.me .base "OGN-001" == 0 &&
-    b.countIn s.me .base "OGN-051" == 0 && (a.obj? big).isSome
+  let p := s.me
+  let (s, mixologist) ← put s p "SFD-165" .base
+  let (s, valid) ← put s p "OGN-218" .trash
+  let (s, energy) ← put s p "OGN-001" .trash
+  let (s, power) ← put s p "OGN-150" .trash
+  let (s, spell) ← put s p "UNL-007" .trash
+  let (s, enemy) ← put s s.you "OGN-218" .trash
+  let (dead, events) := killObj (s.fund p 0) mixologist
+  let picks ← firePicks dead events
+  let accepted ← fire dead events
+  let declined ← fire dead events { yes := false }
+  let entered ← accepted.firstOf p .base "OGN-218"
+  return picks == [valid] &&
+    (accepted.obj? entered).any (fun o => o.energyPaid == 0 && o.exhausted) &&
+    (accepted.poolOf p).total == 0 && !(accepted.zone (.player p .trash)).contains valid &&
+    [energy, power, spell].all (accepted.zone (.player p .trash)).contains &&
+    (accepted.zone (.player s.you .trash)).contains enemy &&
+    (declined.zone (.player p .trash)).contains valid && declined.countIn p .base "OGN-218" == 0
 
 -- Xin Zhao, Vigilant (SFD-176): enters ready if two or more other units of the player are at base
 #guard tsf fun s => do
@@ -1207,15 +1842,31 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   return ready a == some false && ready b == some true && ready c == some true &&
     ready d == some true
 
--- Corina Veraza (SFD-179): when it moves to a battlefield, three Recruit tokens there
+-- Corina may pay an extra Energy and Order Power to enter ready.
 #guard tsf fun s => do
-  let (s1, c) ← putAt s s.me "SFD-179" s.bf0
-  let (s2, d) ← put s1 s.me "SFD-179" .base
-  let a ← fire s2 [.standardMoved c (some s.bf0)]
-  let b ← fire s2 [.standardMoved d none]
-  let recruits (x : GameState) := ((x.zone .battlefieldZone).filter (fun o =>
-    (x.cardDef? o).any (·.name == "Recruit") && (x.obj? o).any (·.loc == some s.bf0))).length
-  return recruits a == 3 && recruits b == 0
+  let p := s.me
+  let (s, corina) ← put (s.rich p) p "SFD-179" .hand
+  let normal ← cast s p corina ⟨7, [.order]⟩
+  let accelerated ← cast s p corina ⟨8, [.order, .order]⟩
+  return (normal.firstOf p .base "SFD-179").bind normal.tired == some true &&
+    (accelerated.firstOf p .base "SFD-179").bind accelerated.tired == some false
+
+-- Corina checks “here” when her triggered ability resolves (CR 359.3.f.2).
+-- Flash can move her back before the Recruit tokens enter. This return does not trigger her.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, corina) ← put (s.control p field) p "SFD-179" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove corina (.battlefield field)⟩).toOption
+  let finished := settleChain {} 12 queued
+  let recruits := (finished.unitsAtOf field p).filter (fun id =>
+    (finished.cardDef? id).any (·.name == "Recruit"))
+  let returned ← play queued p flash [corina]
+  return (queued.zone .chain).length == 1 && recruits.length == 3 &&
+    recruits.all (fun id => finished.tired id == some true) &&
+    (returned.unitsAtOf field p).isEmpty && returned.countIn p .base "SFD-179" == 1 &&
+    returned.countNamed p .base "Recruit" == 3
 
 -- Defiant Dance (SFD-196): one unit +2 Might, another -2 Might this turn
 #guard tsf fun s => do
@@ -1416,6 +2067,31 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
     b.handN s.me + 1 == s4.handN s.me && n.handN s.me + 1 == s4.handN s.me &&
     t.handN s.me + 1 == s4.handN s.me && p.tired w == some false
 
+-- The caster's Spirit Wheel may pay for choosing its teammate's Unit. Its teammate's Wheel
+-- does not fire, and the payment happens while Cleave and the draw are still on the Chain.
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, wheel) ← put (s.fund p 2) p "SFD-144" .base
+  let (s, other) ← put s mate "SFD-144" .base
+  let (s, friend) ← put s mate "OGN-051" .base
+  let (s, foe) ← put s enemy "OGN-051" .base
+  let (s, cleave) ← put s p "OGN-004" .hand
+  let castAt (target : ObjId) : Action := ⟨.player p, .playCard cleave ⟨1, []⟩ [target]⟩
+  let (offered, _) ← (step 100 s (castAt friend)).toOption
+  let (enemyCast, _) ← (step 100 s (castAt foe)).toOption
+  let accept : Action := ⟨.player p, .putTrigger 0 [] (.pay [])⟩
+  let (paid, _) ← (step 100 offered accept).toOption
+  let done := settleChain {} 20 paid
+  return (legalActions offered).contains accept && !(legalActions enemyCast).contains accept &&
+    paid.tired wheel == some true && paid.tired other == some false && (paid.poolOf p).energy == 0 &&
+    paid.handN p + 1 == s.handN p && done.handN p == s.handN p &&
+    paid.kwAmount friend .assault == 0 && done.kwAmount friend .assault == 3
+
 -- Blade Dancer (SFD-195), a Legend: when its player chooses a friendly unit, exhaust it and pay 1
 -- Power to ready the unit; when they conquer, pay 1 Energy to ready it
 #guard tsf fun s => do
@@ -1439,7 +2115,7 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let tok := (s3.zone (.player s.me .base)).find? (fun o =>
     (s3.cardDef? o).any (·.name == "Sand Soldier"))
   let t ← tok
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := (· == [t]) }
   let n ← fire s3 [.combatStarted s.bf0 s.me] { yes := false }
   let d ← fire s3 [.combatStarted s.bf0 s.you]
   return (r.obj? t).any (·.loc == some s.bf0) && (r.obj? plain).any (·.loc.isNone) &&
@@ -1455,6 +2131,20 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
   let mech (x : GameState) :=
     (x.zone (.player s.me .base)).find? (fun o => (x.cardDef? o).any (·.name == "Mech"))
   return (mech a).bind a.tired == some false && (mech b).bind b.tired == some true
+
+-- A teammate's token does not use Renata's enter-ready effect.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let (s, _) ← put (teamMain labState) p "SFD-171" .base
+  let (s, ours) ← put s p "SFD-076" .hand
+  let (s, theirs) ← put s mate "SFD-076" .hand
+  let ready ← play s p ours
+  let exhausted ← play { s with active := some mate, pending := [.priority mate] } mate theirs
+  let mech (state : GameState) (seat : PlayerId) :=
+    (state.zone (.player seat .base)).find? (fun id => (state.cardDef? id).any (·.name == "Mech"))
+  return (mech ready p).bind ready.tired == some false &&
+    (mech exhausted mate).bind exhausted.tired == some true
 
 -- (review) Angle Shot: "detach from that unit": an Equipment attached to another unit stays
 #guard tsf fun s => do
@@ -1522,14 +2212,18 @@ meta def _root_.Riftbound.GameState.soldiers (s : GameState) (p : PlayerId) : Na
 
 -- (review) Azir: tokens at another battlefield come too; the opponent's tokens do not
 #guard tsf fun s => do
+  let other ← s.battlefields.find? (· != s.bf0)
   let (s1, a) ← putAt s s.me "SFD-177" s.bf0
   let (s2, _) ← applyCreate s1 s.me a {} "Sand Soldier" (.const 2) .atBase false
-  let (s3, _) ← applyCreate s2 s.you a {} "Sand Soldier" (.const 1) .atBase false
+  let offsite ← s2.firstOf s.me .base "TKN-Sand Soldier"
+  let spread := (moveByEffect s.me (some other) s2 offsite).1
+  let (s3, _) ← applyCreate spread s.you a {} "Sand Soldier" (.const 1) .atBase false
   let mine (x : GameState) := (x.zone .battlefieldZone).filter (fun o =>
     (x.cardDef? o).any (·.name == "Sand Soldier") &&
       (x.obj? o).any (fun ob => ob.loc == some s.bf0 && ob.controller == s.me))
-  let r ← fire s3 [.combatStarted s.bf0 s.me]
-  return (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
+  let r ← fire s3 [.combatStarted s.bf0 s.me] { pick := fun ids => ids.length == 2 }
+  return (spread.obj? offsite).any (·.loc == some other) &&
+    (mine r).length == 2 && (r.zone (.player s.you .base)).length ==
     (s3.zone (.player s.you .base)).length
 /-- Put the cards on top of the player's Main Deck, the first of the list on top; their ids. -/
 meta def _root_.Riftbound.GameState.stackTop (s : GameState) (p : PlayerId) (cards : List String) :
@@ -1576,6 +2270,31 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
     q.countIn s.me .hand "OGN-051" == u.countIn s.me .hand "OGN-051" &&
     q.deckN s.me == u.deckN s.me && q.bottomIs s.me 1 "OGN-051"
 
+-- Stellacorn Herder draws for either direction of movement, including a move by Flash.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, herder) ← put (s.control p field) p "SFD-048" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove herder (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 queued
+  let returned ← play arrived p flash [herder]
+  return arrived.deckN p + 1 == s.deckN p && returned.deckN p + 1 == arrived.deckN p &&
+    returned.countIn p .base "SFD-048" == 1 && returned.deckN s.you == s.deckN s.you
+
+-- Treasure Hunter plays a new exhausted Gold each time it moves, even on returning to Base.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, hunter) ← put (s.control p field) p "SFD-130" .base
+  let (s, flash) ← put s p "OGS-011" .hand
+  let (queued, _) ← (step 100 s ⟨.player p, .standardMove hunter (.battlefield field)⟩).toOption
+  let arrived := settleChain {} 12 queued
+  let returned ← play arrived p flash [hunter]
+  let gold := (returned.zone (.player p .base)).filter (returned.isCard "SFD-T03")
+  return arrived.countIn p .base "SFD-T03" == 1 && gold.length == 2 &&
+    gold.all (fun id => returned.tired id == some true) && returned.countIn p .base "SFD-130" == 1
+
 -- Ornn, Blacksmith (SFD-058): when played or when it holds, look at the top 4 cards: a gear among
 -- them may be drawn, the rest are recycled
 #guard tsf fun s => do
@@ -1603,6 +2322,32 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   return r.deckN s.me + 1 == d.deckN s.me && r.handN s.me == d.handN s.me &&
     (r.countIn s.me .hand "OGN-051" + r.countIn s.me .hand "SFD-042" ==
       d.countIn s.me .hand "OGN-051" + d.countIn s.me .hand "SFD-042" + 1)
+
+-- Called Shot's first choice is a draw. Repeat looks at a fresh pair and permits a new choice.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, spell) ← put s p "SFD-122" .hand
+  let (s, cards) ← s.stackTop p ["OGN-051", "SFD-042", "OGN-006", "OGN-017"]
+  let [first, second, third, fourth] := cards | none
+  let pass (state : GameState) : Option (GameState × List Event) := do
+    let .chainPass seat _ :: _ := state.pending | none
+    (step 100 state ⟨.player seat, .pass⟩).toOption
+  let (queued, _) ← (step 100 (s.rich p) ⟨.player p, .playCard spell ⟨0, [.chaos]⟩ []⟩).toOption
+  let (next, _) ← pass queued
+  let (offered, looked) ← pass next
+  let choose (card : ObjId) : Action := ⟨.player p, .choose card⟩
+  let (one, drew) ← (step 100 offered (choose second)).toOption
+  let double ← cast (s.rich p) p spell ⟨0, [.chaos, .chaos]⟩ []
+    { obj := fun obj => obj == second || obj == third }
+  return looked.contains (.lookedAt p first) && looked.contains (.lookedAt p second) &&
+    !looked.contains (.lookedAt p third) && (legalFrameActions offered).contains (choose first) &&
+    !(legalFrameActions offered).contains (choose third) &&
+    drew.contains (.drew p) &&
+    one.countIn p .hand "SFD-042" == s.countIn p .hand "SFD-042" + 1 &&
+    (one.zone (.player p .mainDeck)).getLast? == some first &&
+    double.countIn p .hand "SFD-042" == s.countIn p .hand "SFD-042" + 1 &&
+    double.countIn p .hand "OGN-006" == s.countIn p .hand "OGN-006" + 1 &&
+    (double.zone (.player p .mainDeck)).reverse.take 2 == [fourth, first]
 
 -- Ravenbloom Conservatory (SFD-215): when its player defends here, reveal the top card: a spell is
 -- put in the hand, anything else is recycled
@@ -1705,6 +2450,49 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
     a.countIn s.me .trash "SFD-147" == 1 && (a.poolOf s.me).energy == 12 - 3 - 0 - 0 &&
     (a.obj? big).isSome
 
+private meta def fizzResponse : Nat → GameState → Option (GameState × ObjId)
+  | 0, _ => none
+  | n + 1, s => do
+    if let some item := (s.zone .chain).find? (fun id =>
+        (s.obj? id).any (fun o => o.limitedSpellExit == .recycle && o.pendingSpellPlay.isNone)) then
+      return (s, item)
+    let action ← (legalFrameActions s).find? (fun a => match a.kind with
+      | .decide false | .putTrigger _ _ .skip => false
+      | _ => true)
+    let (next, _) ← (step 100 s action).toOption
+    fizzResponse n next
+
+-- A finalized Spell played by Fizz is recycled directly when it resolves or is countered.
+-- On the Hunt still requires both Power, and countering it does not ready any Units.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, fizz) ← put s p "SFD-140" .hand
+  let (s, _) ← put s p "SFD-204" .trash
+  let (s, unit) ← put s p "OGN-051" .base
+  let s := s.tire unit
+  let castFizz : Action := ⟨.player p, .playCard fizz ⟨3, [.chaos]⟩ []⟩
+  let (started, _) ← (step 100 (s.fund p 3 (chaos := 3)) castFizz).toOption
+  let (short, _) ← (step 100 (s.fund p 3 (chaos := 2)) castFizz).toOption
+  let skip : Action := ⟨.player p, .putTrigger 0 [] .skip⟩
+  let (response, item) ← fizzResponse 14 started
+  let normal := finishItem response item
+  let stopped := counterObj response item
+  let resolved := settleChain {} 12 response
+  let (selfBanish, ownEvents) ← applyPrim response p item {} (.banish .self)
+  let deck := Zone.player p .mainDeck
+  let normalCard ← (normal.1.zone deck).getLast?
+  let counteredCard ← (stopped.1.zone deck).getLast?
+  return (legalFrameActions started).contains skip && (started.zone .chain).isEmpty &&
+    (fizzResponse 14 short).isNone && (response.poolOf p).chaos == 0 &&
+    normal.2 == [.moved item normalCard deck, .recycled p, .spellResolved p normalCard] &&
+    stopped.2 == [.moved item counteredCard deck, .recycled p] &&
+    normal.1.isCard "SFD-204" normalCard && stopped.1.isCard "SFD-204" counteredCard &&
+    (normal.1.zone deck).dropLast == response.zone deck &&
+    (stopped.1.zone deck).dropLast == response.zone deck &&
+    stopped.1.tired unit == some true && resolved.tired unit == some false &&
+    selfBanish.countIn p .banishment "SFD-204" == 1 && (finishItem selfBanish item).2.isEmpty &&
+    !(ownEvents.contains (.recycled p))
+
 -- (review) playing for a reduced cost: the Energy goes down to the floor of 0 and the Power is paid
 -- in full; with no Power in the Pool, nothing is paid and the card is not played
 #guard tsf fun s => do
@@ -1747,7 +2535,7 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
       d.countIn s.me .hand "OGN-004" && (r.poolOf s.me).energy == 12 - 2 &&
     r.countIn s.me .hand "SFD-042" == d.countIn s.me .hand "SFD-042" + 1
 
--- (review) Void Rush: a spell among the cards cannot be played this way: both are drawn
+-- Void Rush draws both revealed Spells when neither has a legal target.
 #guard tsf fun s => do
   let (s1, c) ← put s s.me "SFD-188" .hand
   let (d, _) ← s1.stackTop s.me ["OGN-004", "OGN-004"]
@@ -1768,28 +2556,106 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   let r3 := (killObj r2 u).1
   let r4 := settleChain {} 12 r3
   return r4.countIn s.me .base "SFD-062" == 0 && r4.countIn s.me .trash "SFD-062" == 1
--- Assembly Rig (SFD-019): pay 1 Fury, exhaust, recycle a unit from the Trash: a 3 Might Mech token
+-- Assembly Rig recycles an eligible Unit during payment, then plays a Mech when it resolves.
 #guard tsf fun s => do
-  let (s1, rig) ← put s s.me "SFD-019" .base
-  let (s2, _) ← put s1 s.me "OGN-051" .trash
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let a ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
-  let n ← activate s3 s.me rig 0 [] ⟨1, [.fury]⟩
-  let tr (x : GameState) := (x.zone (.player s.me .trash)).length
-  return a.countNamed s.me .base "Mech" == 1 && a.countIn s.me .trash "OGN-051" == 0 &&
-    a.countIn s.me .trash "OGN-004" == 1 && a.tired rig == some true && tr a + 1 == tr s3 &&
-    a.deckN s.me == s3.deckN s.me + 1 && n.countNamed s.me .base "Mech" == 1 &&
-    (activate (s3.tire rig) s.me rig 0 [] ⟨1, [.fury]⟩).isNone &&
-    (activate (s1.fund s.me 5 5) s.me rig 0 [] ⟨1, [.fury]⟩).isNone && s2.deckN s.me > 0
+  let p := s.me
+  let (s, rig) ← put s p "SFD-019" .base
+  let (s, unit) ← put s p "OGN-051" .trash
+  let (s, spell) ← put s p "OGN-004" .trash
+  let (s, other) ← put s s.you "OGN-051" .trash
+  let act : Action := ⟨.player p, .activate rig 0 ⟨1, [.fury], none⟩ []⟩
+  let funded := s.fund p 1 1
+  let (paying, _) ← (step 100 funded act).toOption
+  let pick (id : ObjId) : Action := ⟨.player p, .choose id⟩
+  let (paid, events) ← (step 100 paying (pick unit)).toOption
+  let done := settleChain {} 12 paid
+  let mech ← (done.zone (.player p .base)).find?
+    (fun id => (done.cardDef? id).any (·.name == "Mech"))
+  return (legalFrameActions paying).contains (pick unit) &&
+    !(step 100 paying (pick spell)).isOk && !(step 100 paying (pick other)).isOk &&
+    paid.zone (.player p .trash) == [spell] && events.contains (.recycled p) &&
+    paid.countNamed p .base "Mech" == 0 && paid.tired rig == some true &&
+    paid.deckN p == s.deckN p + 1 && done.mightNow mech == some 3 && done.tired mech == some true &&
+    (done.poolOf p).energy == 0 && (done.poolOf p).fury == 0
 
 -- Poro Snax (SFD-046): draw 1 when played; pay 1 Calm, exhaust, kill it: draw 1
 #guard tsf fun s => do
-  let (s1, g) ← put s s.me "SFD-046" .base
-  let a ← fire s1 [.played s.me g]
-  let b ← activate s1 s.me g 1 [] ⟨1, [.calm]⟩
-  return a.handN s.me == s1.handN s.me + 1 && b.handN s.me == s1.handN s.me + 1 &&
-    (b.obj? g).isNone && b.countIn s.me .trash "SFD-046" == 1 &&
-    (activate s1 s.me g 1 [] ⟨1, []⟩).isNone
+  let p := s.me
+  let (s, card) ← put s p "SFD-046" .hand
+  let played ← play s p card
+  let gear ← played.firstOf p .base "SFD-046"
+  let funded := played.fund p 1 (calm := 1)
+  let useGear (pay : RunePool.Payment) : Action := ⟨.player p, .activate gear 1 pay []⟩
+  let answer := useGear ⟨1, [.calm]⟩
+  let (queued, events) ← (step 100 funded answer).toOption
+  let resolved := settleChain {} 12 queued
+  return played.handN p == s.handN p && played.deckN p + 1 == s.deckN p &&
+    queued.handN p == funded.handN p && queued.countIn p .trash "SFD-046" == 1 &&
+    (queued.obj? gear).isNone && queued.tired gear == none && !(queued.zone .chain).isEmpty &&
+    (queued.poolOf p).total == 0 && events.any (fun
+      | .died _ who => who == p
+      | _ => false) &&
+    resolved.countIn p .trash "SFD-046" == 1 && resolved.handN p == funded.handN p + 1 &&
+    !(step 100 funded (useGear ⟨1, []⟩)).isOk && !(step 100 (funded.tire gear) answer).isOk
+
+-- Premonition answers an opposing Spell on the Chain and draws only for its caster.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, opposing) ← put s p "SFD-087" .hand
+  let (s, answer) ← put s q "SFD-087" .hand
+  let declared ← castStop s p opposing
+  let (reaction, _) ← (step 100 declared ⟨.player p, .pass⟩).toOption
+  let pay := payOf reaction answer
+  let kind : ActionKind := .playCard answer pay []
+  let funded := reaction.rich q
+  let (both, _) ← (step 100 funded ⟨.player q, kind⟩).toOption
+  let once := settleChain {} 2 both
+  let done := settleChain {} 12 both
+  return (both.zone .chain).length == 2 &&
+    once.deckN q + 3 == both.deckN q && once.deckN p == both.deckN p &&
+    done.deckN q + 3 == both.deckN q && done.deckN p + 3 == both.deckN p
+
+-- Punch First can strengthen an enemy Unit and loses exactly its bonus at turn end.
+#guard tsf fun s => do
+  let (s, card) ← put s s.me "SFD-097" .hand
+  let (s, unit) ← put s s.you "OGN-051" .base
+  let (s, gear) ← put s s.me "SFD-064" .base
+  let resolved ← play s s.me card [unit]
+  return resolved.mightNow unit == (s.mightNow unit).map (· + 5) &&
+    (resolved.mapObjects endTurnObj).mightNow unit == s.mightNow unit &&
+    (play s s.me card [gear]).isNone
+
+-- Feral Strength and Frigid Touch support separate targets and stacking for paid Repeat.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, ally) ← put s p "SFD-158" .base
+  let (s, foe) ← put s s.you "SFD-158" .base
+  let (s, strength) ← put s p "SFD-034" .hand
+  let (s, frigid) ← put s p "SFD-066" .hand
+  let pick : SpellPick := .withCosts (.thenRepeat .plain 1 .plain) false 1
+  let rich := s.rich p
+  let boosted ← cast rich p strength ⟨4, []⟩ [foe, ally] (pick := pick)
+  let weakened ← cast rich p frigid ⟨4, []⟩ [foe, foe] (pick := pick)
+  let single ← cast rich p frigid ⟨2, []⟩ [ally]
+  return boosted.mightNow foe == some 8 && boosted.mightNow ally == some 8 &&
+    weakened.mightNow foe == some 2 && weakened.mightNow ally == some 6 &&
+    single.mightNow ally == some 4 && single.mightNow foe == some 6 &&
+    (weakened.mapObjects endTurnObj).mightNow foe == some 6 &&
+    (boosted.mapObjects endTurnObj).mightNow ally == some 6 &&
+    (cast rich p frigid ⟨3, []⟩ [foe, foe] (pick := pick)).isNone
+
+-- Honest Broker's Deathknell plays an exhausted Gold only after it dies.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, unit) ← put s p "SFD-155" .base
+  let goldBefore := s.countNamed p .base "Gold"
+  let (dying, events) := killObj s unit
+  let resolved ← fire dying events
+  let gold ← resolved.firstOf p .base "SFD-T03"
+  let (left, leave) ← moveObj s unit (.player p .hand)
+  return resolved.countNamed p .base "Gold" == goldBefore + 1 &&
+    resolved.tired gold == some true && (left.detect [.moved unit leave (.player p .hand)]).isEmpty
 
 -- Renata Glasc, Mastermind (SFD-088): at a battlefield only: pay 1 Mind to draw 1; pay 4 Mind and
 -- exhaust to score 1 point (an ability with a guard cannot be used while the guard is false)
@@ -1902,7 +2768,7 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
   return a.countIn s.me .base "SFD-T03" == 2 && a.countIn s.you .base "SFD-T03" == 1 &&
     n.countIn s.me .base "SFD-T03" == 0 && n.countIn s.you .base "SFD-T03" == 0
 
--- (review) Assembly Rig: with no unit in the Trash the ability cannot be used at all (a guard)
+-- Assembly Rig cannot be activated when its Trash lacks an eligible Unit.
 #guard tsf fun s => do
   let (s1, rig) ← put s s.me "SFD-019" .base
   let (s2, _) ← put s1 s.me "OGN-004" .trash
@@ -1932,7 +2798,7 @@ meta def _root_.Riftbound.GameState.isCard (s : GameState) (code : String) (o : 
 #guard tsf fun s => do
   let (s1, az) ← put s s.me "SFD-050" .base
   let (s2, u) ← putAt s1 s.me "OGN-051" s.bf0
-  let act : Action := ⟨.player s.me, .activate az 0 ⟨0, [.calm]⟩ [u]⟩
+  let act : Action := ⟨.player s.me, .activate az 0 ⟨0, [.calm], none⟩ [u]⟩
   let s3 ← match step 100 (s2.rich s.me) act with
     | .ok (x, _) => some x
     | .error _ => none
@@ -1991,6 +2857,32 @@ meta def effectOf (code : String) : Option EffectDef :=
     | none => false
   return on s4 sp mine && !on s4 sp other
 
+-- Not So Fast can protect a teammate's Unit or Gear, including from either enemy seat.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let partner : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let r : PlayerId := ⟨3⟩
+  let (s, unit) ← put (teamMain labState) partner "OGN-051" .base
+  let (s, gear) ← put s partner "SFD-009" .base
+  let (s, foe) ← put s q "OGN-051" .base
+  let (s, counter) ← put s p "SFD-045" .hand
+  let (s, first) ← onChain s q "OGN-004"
+  let (s, second) ← onChain s r "SFD-135"
+  let on (state : GameState) (item target : ObjId) :=
+    state.modObj item (fun object => { object with targets := [target] })
+  let s := { on (on (s.rich p) first unit) second gear with pending := [.chainPass p 0] }
+  let playOn (item : ObjId) : Action := ⟨.player p, .playCard counter ⟨2, [.calm]⟩ [item]⟩
+  let offered := legalFrameActions s
+  let (queued, _) ← (step 100 s (playOn second)).toOption
+  let (escaped, _) ← moveObj s gear (.player partner .trash)
+  let resolved := settleChain {} 16 queued
+  return offered.contains (playOn first) && offered.contains (playOn second) &&
+    !(legalFrameActions (on s first foe)).contains (playOn first) &&
+    !(legalFrameActions escaped).contains (playOn second) &&
+    resolved.countIn r .trash "SFD-135" == 1 && (resolved.obj? second).isNone &&
+    (resolved.zone (.player partner .base)).contains gear
+
 -- Riposte (SFD-206): counter a spell and give a friendly unit +Might equal to its Energy cost
 #guard tsf fun s => do
   let (s1, u) ← put s s.me "OGN-051" .base
@@ -2005,10 +2897,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let (s1, v) ← put s s.me "SFD-093" .hand
   let (s2, _) ← putAt s1 s.you "OGN-051" s.bf0
   let (s3, bf2) ← putBf s2 s.me "SFD-216"
+  let (gearOnly, _) ← putAt s3 s.you "SFD-009" bf2
   let r ← play s3 s.me v [s.bf0]
   return (r.zone .battlefieldZone).any (fun o => r.isCard "SFD-093" o &&
       (r.obj? o).any (·.loc == some s.bf0)) &&
-    (play s3 s.me v [bf2]).isNone
+    (play s3 s.me v [bf2]).isNone && (play gearOnly s.me v [bf2]).isNone
 
 -- Lucian, Gunslinger (SFD-028): when it attacks, damage equal to its Assault to an enemy unit here
 #guard tsf fun s => do
@@ -2026,7 +2919,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let (s2, u) ← putAt s1 s.you "OGN-001" s.bf0
   let (s3, v) ← put s2 s.you "OGN-001" .base
   let r ← play s3 s.me c [u]
-  return (r.obj? u).isNone && (play s3 s.me c [v]).isNone
+  let (queued, _) ← (step 100 (s3.rich s.me) ⟨.player s.me, .playCard c (payOf s3 c) [u]⟩).toOption
+  let (escaped, id) ← moveObj queued u (.player s.you .base)
+  let afterResponse := settleChain {} 12 escaped
+  return (r.obj? u).isNone && (play s3 s.me c [v]).isNone &&
+    (afterResponse.zone (.player s.you .base)).contains id
 
 -- (review) Hard Bargain: the opponent's spell only (not one's own); a Repeat does not ask again
 -- once the spell is gone; a spell that left the Chain is not asked about
@@ -2086,7 +2983,11 @@ meta def effectOf (code : String) : Option EffectDef :=
   let a ← fire t [.scored s.me bf true]
   let b ← fire (a.tire l) [.scored s.me bf true]
   let c ← fire t [.scored s.me bf false]
-  return a.tired l == some false && b.tired l == some true && c.tired l == some true
+  let next := { (beginTurnStep b []) with pending := b.pending }
+  let later ← fire next [.scored s.me bf true]
+  return a.tired l == some false && b.tired l == some true && c.tired l == some true &&
+    next.turn == b.turn + 1 && next.tired l == some true && later.tired l == some false &&
+    later.hasKw l .weaponmaster
 
 -- Draven, Audacious (SFD-148): the first time it wins a combat each turn, score 1 point; when it
 -- dies in a combat, the opponent scores 1 point
@@ -2113,6 +3014,21 @@ meta def effectOf (code : String) : Option EffectDef :=
   let b ← fire s1 [.hiddenPlayed s.you]
   return a.countIn s.me .base "SFD-T03" == 1 && b.countIn s.me .base "SFD-T03" == 0
 
+-- Hiding alone and casting the same spell out of hand create no Gold. Casting it
+-- from Hidden creates exactly one Exhausted Gold.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, _) ← put s p "SFD-121" .base
+  let (s, spell) ← put (s.control p field) p "OGN-094" .hand
+  let hand ← play s p spell
+  let hidden ← activate s p spell 0 [field] ⟨0, [.fury]⟩
+  let hiddenSpell ← hidden.firstOf p .hidden "OGN-094"
+  let finished ← activate { hidden with turn := hidden.turn + 1 } p hiddenSpell 1
+  let gold ← finished.firstOf p .base "SFD-T03"
+  return hand.countIn p .base "SFD-T03" == 0 && hidden.countIn p .base "SFD-T03" == 0 &&
+    finished.countIn p .base "SFD-T03" == 1 && finished.tired gold == some true
+
 -- Harpoon Squad (SFD-137): when it moves from a battlefield, +2 Might this turn
 #guard tsf fun s => do
   let (s1, u) ← put s s.me "SFD-137" .base
@@ -2132,6 +3048,20 @@ meta def effectOf (code : String) : Option EffectDef :=
   return a.mightNow u == (s3.mightNow u).map (· + 1) && b.mightNow u == s3.mightNow u &&
     c.mightNow u == s3.mightNow u
 
+-- A Gear that kills itself as a cost still activated a Gear ability on the Board.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, prize) ← put s p "SFD-075" .base
+  let (s, rival) ← put s q "SFD-075" .base
+  let (s, g) ← put s p "SFD-046" .base
+  let (s, h) ← put s p "SFD-042" .base
+  let equipped ← activate s p h 0 [prize] ⟨0, [.calm]⟩
+  let sacrificed ← activate equipped p g 1 [] ⟨1, [.calm]⟩
+  return (sacrificed.obj? g).isNone && sacrificed.countIn p .trash "SFD-046" == 1 &&
+    sacrificed.mightNow prize == (equipped.mightNow prize).map (· + 1) &&
+    sacrificed.mightNow rival == s.mightNow rival
+
 -- Legion Quartermaster (SFD-044): a friendly gear returns to its owner's hand when it is played
 #guard tsf fun s => do
   let (s1, q) ← put s s.me "SFD-044" .hand
@@ -2143,6 +3073,39 @@ meta def effectOf (code : String) : Option EffectDef :=
     -- cannot be played at all
     (play s3 s.me q []).isNone && (play s3 s.me q [h]).isNone && (play s1 s.me q []).isNone &&
     a.countIn s.me .base "SFD-044" == 1
+
+-- In 2v2 a teammate's Gear can pay a friendly return cost. It goes to its owner even
+-- if the teammate controlled and wore it, and the host stays on the Board.
+#guard tsf fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, quartermaster) ← put s p "SFD-044" .hand
+  let (s, forge) ← put s p "RAD-066" .hand
+  let (s, squadron) ← put s p "RAD-075" .hand
+  let (s, host) ← put s mate "OGN-001" .base
+  let (s, borrowed) ← put s enemy "SFD-042" .base
+  let (s, rival) ← put s enemy "SFD-056" .base
+  let s := (attachTo host (setController mate s borrowed).1 borrowed).1
+  let pay : RunePool.Payment := ⟨3, []⟩
+  let action (gear : ObjId) : Action :=
+    ⟨.player p, .playCard quartermaster pay [gear] none none .plain⟩
+  let funded := s.fund p 3
+  let (paid, events) ← (step 100 funded (action borrowed)).toOption
+  let forgePaid ← play s p forge [borrowed]
+  let squadronPaid ← cast funded p squadron pay [borrowed]
+  let forged ← forgePaid.firstOf p .base "RAD-066"
+  return (legalActions funded).contains (action borrowed) &&
+    !(legalActions funded).contains (action rival) && !(step 100 funded (action rival)).isOk &&
+    paid.countIn p .base "SFD-044" == 1 && paid.countIn enemy .hand "SFD-042" == 1 &&
+    paid.countIn mate .hand "SFD-042" == 0 && paid.inPlay.contains host &&
+    events.any (fun | .moved id _ (.player owner .hand) => id == borrowed && owner == enemy | _ => false) &&
+    !events.any (fun | .chosenBySpell .. | .chosenByAbility .. => true | _ => false) &&
+    forgePaid.mightNow forged == some 6 && forgePaid.tired forged == some false &&
+    squadronPaid.countIn p .base "RAD-075" == 1 && squadronPaid.countIn enemy .hand "SFD-042" == 1
 
 /-- The first Legend of the player (the lab has one for each player). -/
 meta def _root_.Riftbound.GameState.legendOf (s : GameState) (p : PlayerId) : Option ObjId :=
@@ -2274,7 +3237,10 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s4, v) ← put s3 s.me "OGN-051" .base
   let t := s4.hook g u
   let r ← play t s.me c
-  return r.mightNow u == (t.mightNow u).map (· + 1) && r.mightNow v == t.mightNow v
+  let (detached, _) ← moveObj t g (.player s.me .hand)
+  let after ← play detached s.me c
+  return r.mightNow u == (t.mightNow u).map (· + 1) && r.mightNow v == t.mightNow v &&
+    after.mightNow u == s4.mightNow u && after.mightNow v == s4.mightNow v
 
 -- Gearhead (SFD-068): each Equipment attached to it gives double its Might bonus
 #guard tsf fun s => do
@@ -2431,11 +3397,44 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let bottom ← die s4 u { pick with fromEnd := some 2 }
   let enemy ← die s4 foe
   let tired ← die (s4.tire altar) u
+  let (dead, events) := killObj s4 u
+  let (waiting, _) ← (advance 100
+    { dead with pending := insertTriggers (dead.detect events) dead.pending } []).toOption
+  let pay : Action := ⟨.player s.me, .putTrigger 0 [] (.pay [])⟩
+  let decline : Action := ⟨.player s.me, .putTrigger 0 [] .skip⟩
+  let (paid, paymentEvents) ← (step 100 waiting pay).toOption
+  let (declined, _) ← (step 100 waiting decline).toOption
   return top.tired altar == some true && top.handN s.me == s4.handN s.me &&
     top.deckN s.me == s4.deckN s.me && top.countIn s.me .hand "OGN-001" == 0 &&
     (top.topCard s.me).any (top.isCard "OGN-001") && bottom.bottomIs s.me 1 "OGN-001" &&
     bottom.deckN s.me == s4.deckN s.me && enemy.tired altar == some false &&
-    tired.handN s.me == s4.handN s.me
+    tired.handN s.me == s4.handN s.me &&
+    paid.tired altar == some true && paymentEvents.contains (.exhausted altar) &&
+    (paid.zone .chain).length == 1 && paid.handN s.me == waiting.handN s.me &&
+    declined.tired altar == some false && (declined.zone .chain).isEmpty &&
+    declined.handN s.me == waiting.handN s.me
+
+-- A teammate's death triggers Altar, while the draw and the hand choice belong to its controller.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let start ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let s ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) start).toOption
+  let p := s.me
+  let ally ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, altar) ← put s p "SFD-169" .base
+  let (s, watched) ← put s ally "OGN-051" .base
+  let (s, excluded) ← put s enemy "OGN-051" .base
+  let (s, own) ← put s p "OGN-001" .hand
+  let (s, allyCard) ← put s ally "OGN-051" .hand
+  let choices : Says := { obj := (· == own), fromEnd := some 1 }
+  let (allyDied, events) := killObj s watched
+  let (enemyDied, enemyEvents) := killObj s excluded
+  let after ← fire allyDied events choices
+  let afterEnemy ← fire enemyDied enemyEvents choices
+  return after.tired altar == some true && (after.topCard p).any (after.isCard "OGN-001") &&
+    (after.zone (.player ally .hand)).contains allyCard && after.handN ally == s.handN ally &&
+    afterEnemy.tired altar == some false
 
 -- Fae Dragon (SFD-101): buff up to four friendly units when played; when a buff is spent, a Gold
 #guard tsf fun s => do
@@ -2545,10 +3544,26 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
 #guard tsf fun s => do
   let (s1, g) ← put s s.me "SFD-150" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
-  let (s3, _) ← put s2 s.me "OGN-004" .trash
-  let (s4, _) ← put s3 s.me "OGN-004" .trash
-  let r ← activate s4 s.me g 0 [u] ⟨0, [.chaos]⟩
-  return (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&
+  let (s3, first) ← put s2 s.me "OGN-004" .trash
+  let (s4, second) ← put s3 s.me "OGN-010" .trash
+  let ready := s4.rich s.me
+  let activation : Action := ⟨.player s.me, .activate g 0 ⟨0, [.chaos], none⟩ [u]⟩
+  let chooseFirst : Action := ⟨.player s.me, .choose first⟩
+  let chooseSecond : Action := ⟨.player s.me, .choose second⟩
+  let order : Action := ⟨.chance, .arrange [second, first]⟩
+  let (initial, deferred) ← (step 100 ready activation).toOption
+  let (choosing, _) ← (step 100 initial chooseFirst).toOption
+  let (waiting, _) ← (step 100 choosing chooseSecond).toOption
+  let .chanceRecycleTrash _ _ cards :: _ := waiting.pending | none
+  let (paid, events) ← (step 100 waiting order).toOption
+  let r := settleChain {} 12 paid
+  return isPlayDeclaration ready activation && decisionRunAnswerWorkSupported initial chooseFirst &&
+    decisionRunAnswerWorkSupported choosing chooseSecond && decisionRunAnswerWorkSupported waiting order &&
+    !deferred.contains (.activated s.me g 0 (some 0)) && cards == [first, second] &&
+    paid.zone (.player s.me .trash) == [] &&
+    (paid.obj? g).any (·.attached == none) &&
+    events.contains (.recycled s.me) && events.contains (.activated s.me g 0 (some 0)) &&
+    (r.obj? g).any (·.attached == some u) && r.deckN s.me == s4.deckN s.me + 2 &&
     (activate s3 s.me g 0 [u] ⟨0, [.chaos]⟩).isNone
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "SFD-216"
@@ -2584,7 +3599,7 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let (s1, g) ← put s s.me "SFD-178" .base
   let (s2, u) ← put s1 s.me "OGN-051" .base
   let (s3, v) ← put s2 s.me "OGN-136" .base
-  match step 100 (s3.rich s.me) ⟨.player s.me, .activate g 0 ⟨0, [.order]⟩ [u, v]⟩ with
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate g 0 ⟨0, [.order], none⟩ [u, v]⟩ with
   | .ok (a, _) =>
     return (a.obj? v).isNone && (a.obj? g).any (·.attached == none) && !(a.zone .chain).isEmpty
   | .error _ => return false
@@ -2616,7 +3631,9 @@ meta def _root_.Riftbound.GameState.hook (s : GameState) (g u : ObjId) : GameSta
   let a ← fire s4 [.combatStarted bf s.you]
   let b ← fire s4 [.combatStarted bf s.you] { yes := false }
   let c ← fire s4 [.combatStarted bf s.me]
-  return a.hereOf pup == some bf && b.hereOf pup == none && c.hereOf pup == none
+  let (defending, sameField) ← putAt s3 s.me "SFD-126" bf
+  return a.hereOf pup == some bf && b.hereOf pup == none && c.hereOf pup == none &&
+    (defending.detect [.combatStarted bf s.you]).any (fun t => t.source == sameField)
 
 -- Aphelios, Exalted (SFD-049): when an Equipment is attached to it, choose a mode not yet chosen
 -- this turn: ready 2 runes, channel 1 rune exhausted, or buff a friendly unit
@@ -2707,7 +3724,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let (s2, j) ← put s1 s.me "SFD-053" .hand
   let (s3, foe) ← putAt s2 s.you "OGN-051" bf
   let mine := s3.control s.me bf
-  let a ← play mine s.me j [bf]
+  let a ← play mine s.me j [bf] { pick := (· == [foe]) }
   return unitAt a "SFD-053" bf && (a.obj? foe).any (·.loc.isNone) && reactSpell s3 j &&
     (play s3 s.me j [bf]).isNone
 
@@ -2744,6 +3761,24 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
   let cost (x : GameState) (c : ObjId) : Option Nat :=
     ((x.cardDef? c).bind (x.effCost s.me c)).map (·.energy)
   return cost s2 inHand == some 3 && cost s2 inTrash == some 1
+
+-- Last Rites plays the Void Drone from Trash for one Energy. The discount grants no permission.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, field) ← putBf s p "SFD-216"
+  let (s, host) ← putAt (s.control p field) p "OGN-051" field
+  let (s, gear) ← put s p "SFD-150" .base
+  let (s, fromHand) ← put s p "SFD-010" .hand
+  let (s, fromTrash) ← put s p "SFD-010" .trash
+  let funded := s.fund p 1
+  let equipped := funded.hook gear host
+  let replayed ← fire equipped [.scored p field false]
+  let unfunded ← fire (equipped.fund p 0) [.scored p field false]
+  return (cast funded p fromHand ⟨1, []⟩).isNone &&
+    (cast funded p fromTrash ⟨1, []⟩).isNone &&
+    replayed.countIn p .base "SFD-010" == 1 && replayed.countIn p .trash "SFD-010" == 0 &&
+    replayed.countIn p .hand "SFD-010" == 1 && (replayed.poolOf p).energy == 0 &&
+    unfunded.countIn p .trash "SFD-010" == 1
 
 -- (review) Vex only counts while she is in the combat; Grimwyrm cannot go to a Rockfall Path
 #guard tsf fun s => do
@@ -2787,6 +3822,20 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     atk.combatMight w true == 4 + 2 && atk.combatMight w false == 4 &&
     s3.mightNow w == some 4 && atk.mightNow w == some 6
 
+-- A teammate and an enemy at another location are outside Warmonger's Assault count.
+#guard tsf fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let mate : PlayerId := ⟨1⟩
+  let left : PlayerId := ⟨2⟩
+  let right : PlayerId := ⟨3⟩
+  let (s, field) ← putBf (teamMain labState) p "OGN-275"
+  let (s, w) ← putAt s p "SFD-131" field
+  let (s, _) ← putAt s mate "OGN-001" field
+  let (s, _) ← put s left "OGN-001" .base
+  let (s, _) ← putAt s left "OGN-001" field
+  let (s, _) ← putAt s right "OGN-001" field
+  return s.kwAmount w .assault == 2 && s.combatMight w true == 6 && s.combatMight w false == 4
+
 -- Forecaster (SFD-065): my Mechs have Vision: when I play one, look at the top card, may recycle it
 #guard tsf fun s => do
   let (s1, _) ← put s s.me "SFD-065" .base
@@ -2821,6 +3870,22 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
     (x.firstOf s.me .base code).bind (fun o => (x.obj? o).map (·.attached.isSome))
   return att a "SFD-042" == some true && att b "OGN-017" != some true &&
     att t "SFD-042" == some false && att qd "SFD-064" == some true && once
+
+-- Quick-Draw and paid Equip both grant Shield to the Unit that wears the Armor.
+-- The Equip ability becomes available again after detaching (CR 818.5.a).
+#guard tsf fun s => do
+  let p := s.me
+  let (s, armor) ← put s p "SFD-064" .hand
+  let (s, first) ← put s p "OGN-136" .base
+  let (s, second) ← put s p "OGN-136" .base
+  let ready ← play s p armor [] { pick := (· == [first]) }
+  let gear ← ready.firstOf p .base "SFD-064"
+  let loose := (detachObj ready gear).1
+  let moved ← activate loose p gear 0 [second] ⟨0, [.mind]⟩
+  return ready.kwAmount first .shield == 2 && ready.kwAmount second .shield == 0 &&
+    moved.kwAmount first .shield == 0 && moved.kwAmount second .shield == 2 &&
+    (activate ready p gear 0 [second] ⟨0, [.mind]⟩).isNone &&
+    (activate loose p gear 0 [second]).isNone
 
 -- Kato the Arm (SFD-112): when I move to a battlefield, a friendly unit gets my keywords and my
 -- Might this turn
@@ -2883,7 +3948,7 @@ meta def unitAt (s : GameState) (code : String) (bf : ObjId) : Bool :=
 the Chain resolve with room for many questions. -/
 meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (says : Says := {}) : Option GameState :=
-  match step 100 s ⟨.player p, .activate src idx ⟨0, []⟩ []⟩ with
+  match step 100 s ⟨.player p, .activate src idx ⟨0, [], none⟩ []⟩ with
   | .ok (s1, _) => some (settleChain says 60 s1)
   | .error _ => none
 
@@ -2961,20 +4026,29 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     pw s3 == some 3 && pw (held s3 a s.me) == some 2 &&
     pw (held (held s3 a s.me) b s.me) == some 1 && pw (held s3 a s.you) == some 3
 
--- Sivir, Ambitious (SFD-120): when I conquer, if I assigned 5 or more excess damage, I may deal
--- that much to an enemy unit
+-- Sivir chooses the enemy Unit before resolution and uses the amount from the Conquer.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, _) ← putAt s1 s.me "SFD-120" bf
   let (s3, foe) ← putAt s2 s.you "OGN-088" s.bf0
-  let five := s3.addTurnFx s.me (.excessDamage 7)
-  let four := s3.addTurnFx s.me (.excessDamage 4)
-  let a ← fire five [.scored s.me bf true]
+  let combat (attackerExcess : Nat) : GameState :=
+    { s3.addTurnFxOn s.me bf (.excessDamage attackerExcess) with
+      combat := some { battlefield := bf, attacker := s.me, defender := s.you, units := [] },
+      pending := [.combatFinish bf] }
+  let five := combat 7
+  let four := combat 4
+  let events := [Event.scored s.me bf true]
+  let (choosing, _) ← (advance 100 (five.withTriggers events) []).toOption
+  let accept : Action := ⟨.player s.me, .putTrigger 0 [foe]⟩
+  let (waiting, _) ← (step 100 choosing accept).toOption
+  let item ← (waiting.zone .chain).head?
+  let a := settleChain {} 12 (clearCombatExcess waiting bf)
   let b ← fire four [.scored s.me bf true]
   let c ← fire five [.scored s.me bf true] { yes := false }
   let d ← fire five [.scored s.me bf false]
-  return a.dmg foe == some 7 && b.dmg foe == some 0 && c.dmg foe == some 0 &&
-    d.dmg foe == some 0
+  return (waiting.obj? item).any (fun o => o.targets == [foe] && o.eventAmount == some 7) &&
+    waiting.dmg foe == some 0 && a.dmg foe == some 7 && b.dmg foe == some 0 &&
+    c.dmg foe == some 0 && d.dmg foe == some 0
 
 -- (the held mark comes from holding, not from conquering; and it is gone the next turn)
 #guard tsf fun s => do
@@ -2991,14 +4065,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, c) ← put s s.me "SFD-194" .hand
   let (s2, u) ← put s1 s.me "OGN-049" .base
   let (s3, v) ← put s2 s.me "OGN-049" .base
+  let (s3, rival) ← put s3 s.you "OGN-049" .base
   let a ← play s3 s.me c [u]
+  let enemy ← play s3 s.me c [rival]
   let first := (dealObj 3 a u).1
   let second := (dealObj 2 first u).1
   let other := (dealObj 3 a v).1
   let zero := (dealObj 0 a u).1
   let later := (dealObj 3 { a with turn := a.turn + 1 } u).1
   return a.handN s.me == s3.handN s.me && first.dmg u == some 0 && second.dmg u == some 2 &&
-    other.dmg v == some 3 && (dealObj 3 zero u).1.dmg u == some 0 && later.dmg u == some 3
+    other.dmg v == some 3 && (dealObj 3 zero u).1.dmg u == some 0 && later.dmg u == some 3 &&
+    (dealObj 3 enemy rival).1.dmg rival == some 0 && enemy.handN s.me == s3.handN s.me
 
 -- Ornn's Forge (SFD-213): while its player controls it, their first non-token gear each turn costs
 -- 1 less
@@ -3063,7 +4140,88 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return ((a.obj? bf).bind (·.contested)) == some s.me &&
     ((s4.obj? bf).bind (·.contested)).isNone
 -- Guardian Angel (SFD-051): if the unit it is attached to would die, the Angel dies instead; the
--- unit is healed, exhausted and recalled (the Angel adds 1 Might: 3 + 1)
+-- Unit survives and reports Heal, Exhaust, and Recall in that order.
+#guard tsf fun s => do
+  let p := s.me
+  let bf := s.bf0
+  let (s, unit) ← putAt (s.control p bf) p "OGN-006" bf
+  let (s, card) ← put s p "SFD-051" .hand
+  let played ← play s p card
+  let gear ← played.inBase p "SFD-051"
+  let suited ← activate played p gear 0 [unit] ⟨0, [.calm]⟩
+  let hit := suited.markDamage unit 4 (some s.you)
+  let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
+  let trashed ← saved.firstOf p .trash "SFD-051"
+  let replaced := events.filter (fun
+    | .died .. | .healed .. | .exhausted .. | .recalled .. | .standardMoved .. => true
+    | _ => false)
+  return (suited.obj? gear).any (·.attached == some unit) && suited.mightNow unit == some 4 &&
+    (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted && o.loc.isNone) &&
+    saved.where? unit == some (.player p .base) && saved.damageMarks[unit.n]?.isNone &&
+    replaced == [.died trashed p, .healed unit 4, .exhausted unit, .recalled unit]
+
+-- Soraka uses the same healing and exhaustion at Base, where the Unit already stands.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, _) ← put s p "SFD-173" .base
+  let (s, unit) ← put s p "OGN-006" .base
+  let hit := s.markDamage unit 3 (some s.you)
+  let (saved, events) ← (advance 100 { hit with pending := .cleanup :: hit.pending } []).toOption
+  return saved.where? unit == some (.player p .base) && saved.damageMarks[unit.n]?.isNone &&
+    (saved.obj? unit).any (fun o => o.damage == 0 && o.exhausted) &&
+    events == [.healed unit 3, .exhausted unit]
+
+-- Combat Damage is marked on both sides before Guardian Angel's Cleanup replacement (CR 468.1).
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, defender) ← putAt (s.control p field) p "OGN-006" field
+  let (s, gear) ← put s p "SFD-051" .base
+  let (s, attacker) ← putAt (attachTo defender s gear).1 q "OGN-001" field
+  let contested := s.modObj field (fun o => { o with contested := some q })
+  let assigning := { contested with
+    active := some q,
+    combat := some {
+      battlefield := field, attacker := q, defender := p, units := [attacker, defender] },
+    pending := [.assign field q p [attacker] [(defender, 5)], .priority q] }
+  let (saved, events) ← (step 100 assigning ⟨.player p, .assignDone⟩).toOption
+  let dead ← saved.firstOf p .trash "SFD-051"
+  return events.filter (fun
+      | .damaged .. | .died .. | .healed .. | .exhausted .. | .recalled .. => true | _ => false) ==
+        [.damaged defender 5, .damaged attacker 4, .died dead p, .healed defender 5,
+          .exhausted defender, .recalled defender] &&
+    saved.where? defender == some (.player p .base) &&
+    (saved.obj? attacker).any (fun o => o.loc == some field)
+
+-- Both direct Kill from a combat hit and a later lethal-damage Cleanup may need a response.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, defender) ← putAt (s.control p field) p "OGN-006" field
+  let (s, gear) ← put s p "SFD-051" .base
+  let (s, attacker) ← putAt (attachTo defender s gear).1 q "OGN-001" field
+  let contested := (s.addTurnFxOn p defender .saveOnce).modObj field (fun o => { o with contested := some q })
+  let assigning := { contested with
+    active := some q,
+    combat := some {
+      battlefield := field, attacker := q, defender := p, units := [attacker, defender] },
+    pending := .assign field q p [attacker] [(defender, 5)] :: combatSteps field ++ [.priority q] }
+  let finish (initial : GameState) (damagePending : Bool) := do
+    let (question, before) ← (step 100 initial ⟨.player p, .assignDone⟩).toOption
+    let answer : Action := ⟨.player p, .decide true⟩
+    let (completed, after) ← (step 100 question answer).toOption
+    return combatAnswerWorkSupported question answer &&
+      (completed.preparePriority.pending.head?.all (fun f => !f.isWork)) &&
+      (before.contains (.damaged defender 5) != damagePending) &&
+      (before ++ after).contains (.damaged defender 5) &&
+      (before ++ after).any (fun | .combatEnded bf _ => bf == field | _ => false)
+  let beforeDamage ← finish (assigning.addTurnFxOn q defender .killOnDamage) true
+  let duringCleanup ← finish assigning false
+  return beforeDamage && duringCleanup
+
+-- The Angel also saves the attached Unit from a direct Kill, but stays attached after a nonlethal hit.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"
   let (s2, u) ← putAt s1 s.me "OGN-006" bf
@@ -3126,6 +4284,34 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     !withRell b "SFD-042" && b.handN s.me == s5.handN s.me && !withRell c "SFD-042" &&
     (a.poolOf s.me).energy == (s5.poolOf s.me).energy
 
+-- A separate Deflect payment counts toward Sivir's same-turn Power threshold.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, sivir) ← put s p "SFD-143" .base
+  let (s, opposing) ← put s q "SFD-143" .base
+  let (s, foe) ← put s q "OGN-013" .base
+  let (s, noTax) ← put s q "OGN-052" .base
+  let (s, spell) ← put s p "VEN-127" .hand
+  let pool : RunePool := { energy := 2, order := 1, fury := 1, any := 1 }
+  let s := (s.noRunes p).setPool p pool
+  let castOn (unit : ObjId) (pick : SpellPick) :=
+    (step 100 s ⟨.player p, .playCard spell ⟨2, [.order]⟩ [unit] none none pick⟩).toOption
+  let (untaxed, _) ← castOn noTax .plain
+  let (regular, _) ← castOn foe .plain
+  let (explicit, _) ← castOn foe (.withDeflectPayment .plain [.flexible])
+  let settled := settleChain {} 24 explicit
+  let (afterMain, _) ← microStep0 { settled with phase := .draw, pending := [.phase .main] }
+  let (nextTurn, _) ← microStep0 { afterMain with phase := .ending, pending := [.expireTurn] }
+  return (untaxed.poolOf p).powerSpent == 1 && !untaxed.hasKw sivir .ganking &&
+    (regular.poolOf p).powerSpent == 2 && regular.hasKw sivir .ganking &&
+    (explicit.poolOf p).powerSpent == 2 && explicit.hasKw sivir .ganking &&
+    explicit.mightNow sivir == (s.mightNow sivir).map (· + 2) &&
+    explicit.mightNow opposing == s.mightNow opposing &&
+    (afterMain.poolOf p).total == 0 && (afterMain.poolOf p).powerSpent == 0 &&
+    afterMain.powerSpentBeforeMain p == 2 && afterMain.hasKw sivir .ganking &&
+    nextTurn.powerSpentBeforeMain p == 0 && !nextTurn.hasKw sivir .ganking
+
 -- Sivir, Mercenary (SFD-143): once I have spent 2 or more Power this turn, +2 Might and Ganking
 #guard tsf fun s => do
   let (s1, sivir) ← put s s.me "SFD-143" .base
@@ -3137,6 +4323,17 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     (pool 2).mightNow sivir == some 6 && (pool 2).hasKw sivir .ganking &&
     (pool 5).mightNow sivir == some 6 && paid.any (·.spent == 2) &&
     ((s2.setPool s.me { spent := 3 }).mightNow other == some 4)
+
+-- Sivir's own Accelerate payment is enough Power to turn on her passive as she enters.
+#guard tsf fun s => do
+  let p := s.me
+  let (s, card) ← put s p "SFD-143" .hand
+  let ordinary ← cast (s.fund p 4 (chaos := 1)) p card ⟨4, [.chaos]⟩
+  let fast ← cast (s.fund p 5 (chaos := 2)) p card ⟨5, [.chaos, .chaos]⟩
+  let exhausted ← ordinary.firstOf p .base "SFD-143"
+  let ready ← fast.firstOf p .base "SFD-143"
+  return ordinary.tired exhausted == some true && ordinary.mightNow exhausted == some 4 &&
+    fast.tired ready == some false && fast.mightNow ready == some 6 && fast.hasKw ready .ganking
 
 -- (the Power paid by playing a card is counted)
 #guard tsf fun s => do
@@ -3162,9 +4359,13 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let e ← fire (t1.tire l) [.died dead s.you]
   let (t2, mine) ← put s1 s.me "OGN-051" .trash
   let f ← fire (t2.tire l) [.died mine s.me]
+  let (t3, other) ← put t1 s.you "OGN-051" .trash
+  let both := [Event.died dead s.you, Event.died other s.you]
   return a.countIn s.me .base "SFD-T03" == 1 && a.tired l == some true &&
+    (a.firstOf s.me .base "SFD-T03").bind a.tired == some true &&
     b.countIn s.me .base "SFD-T03" == 0 && c.countIn s.me .base "SFD-T03" == 0 &&
-    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true
+    d.countIn s.me .base "SFD-T03" == 0 && e.tired l == some false && f.tired l == some true &&
+    ((t3.tire l).detect both).countP (fun triggered => triggered.source == l) == 1
 
 -- (review) Rell plays the Equipment for free: its Power is not paid either
 #guard tsf fun s => do
@@ -3224,11 +4425,39 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let r ← play s5 s.me c [a, b, d]
   let one ← play s5 s.me c [a]
   let two ← play s5 s.me c [a, d]
+  let empty ← play s5 s.me c []
   return r.dmg a == some 1 && r.dmg b == some 1 && r.dmg d == some 1 && r.dmg e == some 0 &&
     one.dmg a == some 1 && one.dmg b == some 0 && one.dmg d == some 0 &&
     two.dmg a == some 1 && two.dmg b == some 0 && two.dmg d == some 1 &&
+    [a, b, d, e].all (fun u => empty.dmg u == some 0) &&
     (play s5 s.me c [a, b, b]).isNone && (play s5 s.me c [a, e]).isNone &&
     (play s5 s.me c [a, a]).isNone
+
+-- The specific Base matters. Flash splits an original group and offers either resulting location.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, a) ← putAt (s.control q field) q "OGN-001" field
+  let (s, b) ← putAt s q "OGN-001" field
+  let (s, c) ← putAt s q "OGN-001" field
+  let (s, home) ← put s p "OGN-001" .base
+  let (s, spell) ← put s p "SFD-080" .hand
+  let (s, flash) ← put s q "OGS-011" .hand
+  let (chain, _) ← (step 100 (s.rich p)
+    ⟨.player p, .playCard spell ⟨1, [.mind]⟩ [a, b, c]⟩).toOption
+  let (response, _) ← (step 100 chain ⟨.player p, .pass⟩).toOption
+  let (withFlash, _) ← (step 100 (response.rich q)
+    ⟨.player q, .playCard flash ⟨2, []⟩ [c]⟩).toOption
+  let choosing := settleChain {} 4 withFlash
+  let atField : Action := ⟨.player p, .choose a⟩
+  let atBase : Action := ⟨.player p, .choose c⟩
+  let (fieldOnly, _) ← (step 100 choosing atField).toOption
+  let (baseOnly, _) ← (step 100 choosing atBase).toOption
+  let separated := (moveHome s c).1
+  return (play separated p spell [c, home]).isNone && fieldOnly.dmg a == some 1 &&
+    fieldOnly.dmg b == some 1 && fieldOnly.dmg c == some 0 && baseOnly.dmg a == some 0 &&
+    baseOnly.dmg b == some 0 && baseOnly.dmg c == some 1 && baseOnly.dmg home == some 0
 
 -- Relentless Pursuit (SFD-184): move a friendly unit; this turn it may go home when it conquers
 #guard tsf fun s => do
@@ -3282,6 +4511,40 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     pw (use near) == some ((s3.poolOf s.me).energy + 1, (s3.poolOf s.me).any + 1) &&
     pw (use far) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1) &&
     pw (use s3) == some ((s3.poolOf s.me).energy, (s3.poolOf s.me).any + 1)
+
+-- A teammate's Hold uses each Legend's own controller and pays each optional cost separately.
+#guard tsf fun base => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let opening ← GameState.initial base.cards config (List.replicate 4 goodDeck)
+  let start ← (runUntilTurn 100 1 2000 (Rng.ofSeed 1) opening).toOption
+  let p := start.me
+  let ally ← start.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← start.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, chem) ← put start p "SFD-201" .legendZone
+  let (s, gloom) ← put s ally "UNL-193" .legendZone
+  let (s, bf) ← putBf s ally "OGN-275"
+  let (s, _) ← putAt s ally "UNL-087" bf
+  let (s, allyGold) ← put s ally "SFD-T03" .base
+  let highScore := s.gainPoints ally (s.victoryScore - 3)
+  let (scored, _, events) := scoreBf (s.control ally bf) ally bf false
+  let triggers := scored.detect events
+  let (waiting, _) ← (advance 100
+    { scored with pending := insertTriggers triggers (below scored.pending) } []).toOption
+  let hold := settleChain {} 32 waiting
+  let skip := settleChain { yes := false } 32 waiting
+  let foe ← fire s [.scored enemy bf false]
+  let conquest ← fire s [.scored ally bf true]
+  let gold (after : GameState) := after.countIn p .base "SFD-T03"
+  let spawned ← hold.firstOf p .base "SFD-T03"
+  let highHold := hold.gainPoints ally (hold.victoryScore - 3)
+  return triggers.countP (fun t => t.source == chem && t.controller == p) == 1 &&
+    triggers.countP (fun t => t.source == gloom && t.controller == ally) == 2 &&
+    gold hold == 1 && hold.tired chem == some true && hold.tired spawned == some true &&
+    hold.tired gloom == some true && hold.handN ally == s.handN ally + 1 &&
+    hold.handN p == s.handN p && highHold.manaBonus p spawned == 1 &&
+    highScore.manaBonus ally allyGold == 0 &&
+    [skip, foe, conquest].all (fun after =>
+      gold after == 0 && after.handN ally == s.handN ally && after.tired gloom == some false)
 
 -- Marai Spire (SFD-211) and Ezreal, Prodigy (SFD-149): optional additional costs cost less
 #guard tsf fun s => do
@@ -3640,7 +4903,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let buffed := held.buff udyr
   let loose := s3.buff udyr
   let ok (x : GameState) (idx : Nat) : Bool :=
-    activatable (x.rich s.me) s.me udyr idx ⟨0, []⟩ [] true
+    activatable (x.rich s.me) s.me udyr idx ⟨0, [], none⟩ [] true
   return ok buffed 0 && ok buffed copyIdx && ok loose 0 && !ok loose copyIdx &&
     !ok (s3.buff udyr) copyIdx && copyIdx > 0
 
@@ -3705,16 +4968,13 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return (r2.obj? ir).any (·.mightMods.length == 1) && (r2.obj? ir).any (·.loc.isNone) &&
     (r.obj? ir).any (·.mightMods.isEmpty)
 
--- Pickpocket can kill a Gold token (it prints no cost: Energy cost 0); Fae Porter pays nothing when
--- there is no other unit to move
+-- Pickpocket can kill a Gold token with no printed cost (Energy cost 0).
 #guard tsf fun s => do
   let (s1, p) ← put s s.me "SFD-074" .hand
   let (s2, _) ← applyCreate s1 s.you p {} "Gold" (.const 1) .atBase false
   let g ← (s2.zone (.player s.you .base)).find? (fun o => (s2.cardDef? o).any (·.name == "Gold"))
   let a ← play s2 s.me p [] { pick := fun ts => ts == [g] }
-  let (t1, f) ← putAt s s.me "SFD-125" s.bf0
-  let alone ← fire (t1.fund s.me 0 0 0 0 0 1) [.standardMoved f (some s.bf0)]
-  return (a.obj? g).isNone && (alone.poolOf s.me).chaos == 1
+  return (a.obj? g).isNone
 
 -- Perched Grimwyrm needs a battlefield the player conquered, not one it only held
 #guard tsf fun s => do
@@ -3905,7 +5165,7 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, mine) ← put s s.you "OGN-051" .base
   let (s2, stalker) ← put s1 s.me "RAD-104" .base
   let (s3, nsf) ← put s2 s.you "SFD-045" .hand
-  match step 100 (s3.rich s.me) ⟨.player s.me, .activate stalker 0 ⟨0, []⟩ [mine]⟩ with
+  match step 100 (s3.rich s.me) ⟨.player s.me, .activate stalker 0 ⟨0, [], none⟩ [mine]⟩ with
   | .ok (a, _) =>
     let item := (a.zone .chain).head?
     match item with
@@ -3994,11 +5254,26 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   let (s1, u) ← addObject s sprite (.player s.me .base)
   let (s2, g) ← put s1 s.me "SFD-051" .base
   let held := (attachTo u s2 g).1
-  let r := beginStep held s.me
-  let bare := beginStep s1 s.me
-  return (r.1.zone (.player s.me .base)).contains u &&
-    (r.1.zone (.player s.me .trash)).any (fun o => (r.1.cardDef? o).any (·.id == cid "SFD-051")) &&
-    !(bare.1.zone (.player s.me .base)).contains u
+  let rescued ← settleBeginning held s.me
+  let bare ← settleBeginning s1 s.me
+  return (rescued.zone (.player s.me .base)).contains u &&
+    rescued.countIn s.me .trash "SFD-051" == 1 && !(bare.zone (.player s.me .base)).contains u
+
+-- Petricite Monument's Deflect covers teammates until its Temporary trigger resolves.
+#guard tsf fun s => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let enemy : PlayerId := ⟨2⟩
+  let team := GameState.empty { s.config with mode := .teamDuel } s.cards
+  let (s, monument) ← put team p "SFD-104" .base
+  let (s, friendly) ← put s ally "RAD-001" .base
+  let (s, opponent) ← put s enemy "RAD-001" .base
+  let s := { s with active := some p, pending := [.phase .beginning] }
+  let (waiting, _) ← (advance 100 s []).toOption
+  let dead := settleChain {} 16 waiting
+  return waiting.hasKw friendly .deflect && !waiting.hasKw opponent .deflect &&
+    waiting.inPlay.contains monument && dead.countIn p .trash "SFD-104" == 1 &&
+    !dead.hasKw friendly .deflect
 
 -- (audit) Emperor of the Sands: only an Equipment played counts, not any other Gear
 #guard tsf fun s => do
@@ -4144,5 +5419,98 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
   return (a.obj? weak).any (fun x => x.damage == 0 && x.exhausted) &&
     (a.zone (.player s.me .base)).contains weak && (cleanupStep a).isNone &&
     !(b.zone (.player s.me .base)).contains w2 && alone.dmg weak == some 9
+
+-- Doran's Shield gives Tank only while attached, changing the first legal damage assignment.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, host) ← putAt (s.control p field) p "OGN-136" field
+  let (s, other) ← putAt s p "OGN-136" field
+  let (s, card) ← put s p "SFD-033" .hand
+  let played ← play s p card
+  let gear ← played.firstOf p .base "SFD-033"
+  let equipped ← activate played p gear 0 [host] ⟨0, [.calm]⟩
+  let detached := (detachObj equipped gear).1
+  let pick (unit : ObjId) : Action := ⟨.player q, .assignPick unit⟩
+  return !played.hasKw host .tank && equipped.mightNow host == (played.mightNow host).map (· + 1) &&
+    equipped.hasKw host .tank && legalAssigns equipped field q [] == [pick host] &&
+    legalAssigns equipped field q [host] == [pick other] &&
+    (legalAssigns detached field q []).contains (pick other) &&
+    (activate played p gear 0 [host] ⟨0, [.body]⟩).isNone
+
+-- Hexdrinker taxes a Spell targeting its bearer, while the same friendly target needs no Power.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, rival) ← put s q "OGN-136" .base
+  let (s, gear) ← put s q "SFD-102" .base
+  let (s, threat) ← put s p "OGN-058" .hand
+  let (s, protection) ← put s q "OGN-058" .hand
+  let priority (board : GameState) (seat : PlayerId) :=
+    { board with active := some seat, pending := [.priority seat] }
+  let equipped ← activate (priority s q) q gear 0 [rival] ⟨0, [.body]⟩
+  let bare := (priority equipped p).fund p 2
+  let friendly := (priority equipped q).fund q 2
+  let opposed ← cast (bare.fund p 2 (fury := 1)) p threat ⟨2, []⟩ [rival]
+  let accepted ← cast friendly q protection ⟨2, []⟩ [rival]
+  return equipped.deflectOf rival == 1 &&
+    (cast bare p threat ⟨2, []⟩ [rival]).isNone && (opposed.poolOf p).fury == 0 &&
+    opposed.mightNow rival == (equipped.mightNow rival).map (· + 2) &&
+    accepted.mightNow rival == (equipped.mightNow rival).map (· + 2) &&
+    (detachObj equipped gear).1.deflectOf rival == 0
+
+-- Boots grant movement between Battlefields to their bearer and still apply normal exhaustion.
+#guard tsf fun s => do
+  let p := s.me
+  let origin := s.bf0
+  let (s, dest) ← putBf s s.you "OGN-276"
+  let (s, unit) ← putAt (s.control p origin) p "OGN-136" origin
+  let (s, gear) ← put s p "SFD-133" .base
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let moved := Action.mk (.player p) (.standardMove unit (.battlefield dest))
+  let (next, _) ← (step 100 equipped moved).toOption
+  return !(step 100 s moved).isOk && !(step 100 (detachObj equipped gear).1 moved).isOk &&
+    (next.obj? unit).any (fun o => o.loc == some dest && o.exhausted) &&
+    (next.obj? gear).any (·.attached == some unit)
+
+-- Plundering Poro and Cull each give one exhausted Gold for Conquer at their own Battlefield.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, other) ← putBf s s.you "OGN-276"
+  let (s, unit) ← putAt (s.control p field) p "SFD-069" field
+  let (s, _) ← put s p "SFD-069" .base
+  let (s, gear) ← put s p "SFD-134" .base
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let alone ← fire s [.scored p field true]
+  let ordered := insertTriggers (equipped.detect [.scored p field true]) []
+  let (together, _) ← (advance 100 { equipped with pending := ordered } []).toOption
+  let resolved := settleChain {} 12 together
+  let hold ← fire equipped [.scored p field false]
+  let away ← fire equipped [.scored p other true]
+  let gold := (resolved.zone (.player p .base)).filter (fun id => (resolved.cardDef? id).any (·.name == "Gold"))
+  return alone.countNamed p .base "Gold" == 1 && gold.length == 2 &&
+    gold.all (fun id => resolved.tired id == some true) &&
+    hold.countNamed p .base "Gold" == 0 && away.countNamed p .base "Gold" == 0
+
+-- Doran's Ring waits for an actual discard before drawing during its Conquer trigger.
+#guard tsf fun s => do
+  let p := s.me
+  let field := s.bf0
+  let (s, unit) ← putAt (s.control p field) p "OGN-136" field
+  let (s, gear) ← put s p "SFD-124" .base
+  let (s, discard) ← put s p "SFD-087" .hand
+  let equipped ← activate s p gear 0 [unit] ⟨0, [.chaos]⟩
+  let events := [Event.scored p field true]
+  let ordered := insertTriggers (equipped.detect events) []
+  let (queued, _) ← (advance 100 { equipped with pending := ordered } []).toOption
+  let waiting := settleChain {} 2 queued
+  let answer := Action.mk (.player p) (.discardPick discard)
+  let (resolved, _) ← (step 100 waiting answer).toOption
+  return waiting.deckN p == equipped.deckN p && (legalFrameActions waiting).contains answer &&
+    resolved.deckN p + 1 == waiting.deckN p && resolved.handN p == waiting.handN p &&
+    resolved.countIn p .trash "SFD-087" == 1 &&
+    ((detachObj equipped gear).1.detect events).isEmpty
 
 end RiftboundTest

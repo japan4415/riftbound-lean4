@@ -26,7 +26,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, rival) ← put s q "RAD-088" .hand
   let powered := (addMightMod ⟨3, .turn⟩ (s.fund p 0 (chaos := 1)) returned).1
   let act (g : GameState) (who : PlayerId) (kind : ActionKind) := (step 100 g ⟨.player who, kind⟩).toOption
-  let (queued, _) ← act powered p (.activate source 0 ⟨0, [.chaos]⟩ [returned])
+  let (queued, _) ← act powered p (.activate source 0 ⟨0, [.chaos], none⟩ [returned])
   let (passed, _) ← act queued p .pass
   let (offering, _) ← act passed q .pass
   let (choosing, _) ← act offering p (.decide true)

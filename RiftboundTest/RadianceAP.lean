@@ -47,7 +47,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     (fun o => { o with hiddenAt := some hideout, hiddenTurn := some (s.turn - 1) })
   let s ← fire s [.scored p hideout true]
   let ready := ({ s with pending := [.priority p] } : GameState).rich p
-  let (queued, _) ← (step 100 ready ⟨.player p, .activate companion 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 ready ⟨.player p, .activate companion 2 ⟨0, [], none⟩ []⟩).toOption
   let paid := settleChain { fromEnd := some 0 } 16 queued
   let skipped := settleChain { fromEnd := some 1 } 16 queued
   let entered (g : GameState) := (g.unitsAtOf hideout p).find? (fun id =>

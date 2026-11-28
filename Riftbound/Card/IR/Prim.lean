@@ -21,6 +21,8 @@ inductive Dest where
   | base
   /-- The place the selector gives: a Battlefield. -/
   | at_ (s : Selector)
+  /-- The shared destination declared when the Spell was finalized (CR 355.4). -/
+  | declared
 deriving DecidableEq, Repr, Hashable
 
 /-- Who replays a banished Unit and where the effect requires it to enter. -/
@@ -82,6 +84,8 @@ inductive Prim where
   | addEnergy (p : PlayerSel) (n : Amount) (only : Option Act)
   /-- Add Energy that pays only for Units and their activated abilities. -/
   | addUnitEnergy (p : PlayerSel) (n : Amount)
+  /-- Add Energy that can be used only to play Spells. -/
+  | addSpellEnergy (p : PlayerSel) (n : Amount)
   /-- Add Power to a Rune Pool, of a domain or of any; it can be spent on `only` if given. -/
   | addPower (p : PlayerSel) (n : Amount) (d : Option Domain) (only : Option Act)
   /-- Counter a spell. -/
@@ -140,6 +144,10 @@ inductive Prim where
   | playUnitToken (token : String)
   /-- Play a Unit token at the chosen Battlefield, or at its Base (CR 185.2.a). -/
   | playUnitTokenAt (token : String) (dest : Option ObjId)
+  /-- Play a ready Unit token at a location its player chooses (CR 184.1, 355.2). -/
+  | playReadyUnitToken (token : String)
+  /-- Play the ready Unit token at the chosen Battlefield or at Base. -/
+  | playReadyUnitTokenAt (token : String) (dest : Option ObjId)
   /-- Attach objects to an object. -/
   | attach (s : Selector) (to : Selector)
   /-- Attach Equipment to an object, paying the Equip cost of each, less `less` Power
@@ -180,8 +188,8 @@ inductive Prim where
   | becomeCopy (s src : Selector)
   /-- Add the Battlefield token to the board, if it is not there already (Baron Pit). -/
   | addBattlefield (token : String)
-  /-- Play `n` tokens at the place the object came from by its last move: the Battlefield it left,
-  else the Base (Lillia). -/
+  /-- Play `n` tokens at the place saved by a move-from trigger, or use the object's previous
+  location if no trigger saved one (Lillia). -/
   | createAtPrev (token : String) (n : Amount) (ready : Bool)
   /-- Play an additional copy of each token the selector names, where it is (Zilean). -/
   | cloneToken (s : Selector)
@@ -213,9 +221,11 @@ inductive Prim where
   | win (p : PlayerSel)
   /-- Make something true for the rest of the turn. -/
   | turnEffect (e : TurnEffect)
+  /-- Let the acting player inspect facedown cards these players control this turn. -/
+  | allowFacedownInspection (whose : PlayerSel)
   /-- The player returns their Chosen Champion from their Trash to their Champion Zone, if it is
   empty. -/
-  | returnChampion
+  | returnChampion (candidate : Selector)
   /-- Two Units swap places: each goes to where the other is (a Battlefield or a Base). -/
   | swapPlaces (a b : Selector)
   /-- Look at the top `n` cards of the Main Deck of the player. -/
@@ -229,10 +239,15 @@ inductive Prim where
   | markOn (s : Selector) (e : TurnEffect)
   /-- Create the source's delayed trigger for when a selected Unit dies this turn (CR 391-393). -/
   | delayUntilDeath (s : Selector) (idx : Nat)
+  /-- Register the indicated ability after a selected Unit's next damage, or whenever any Unit
+  takes damage if there is no selector (CR 391-393). -/
+  | delayUntilDamage (idx : Nat) (unit : Option Selector := none)
   /-- Pay Energy and Power from the Rune Pool, as an effect resolves (CR 357). -/
   | pay (c : Cost)
   /-- Put cards on the top of their owners' Main Decks. -/
   | topdeck (s : Selector)
+  /-- Clear all marked damage from the selected Units (CR 419). -/
+  | healAll (s : Selector)
 deriving DecidableEq, Repr, Hashable
 
 /-- How long an effect lasts. -/
@@ -275,10 +290,14 @@ inductive TriggerEvent where
   | play
   /-- The player completes their first play of a card this turn (CR 420.4.a). -/
   | firstCardResolved
+  /-- The controller's second card resolves during the turn (CR 420.4.a). -/
+  | secondCardResolved
   /-- The player plays their first Unit or Gear at this Battlefield this turn. -/
   | firstPermanentHere
   /-- A delayed effect that was registered for plays of a card type (CR 391-393). -/
   | delayedPlay
+  /-- A delayed ability registered for Unit damage, with the affected Unit in its subject slot. -/
+  | delayedDamage
   /-- A registered ability fires at the end of the current turn with its captured amount. -/
   | delayedEnd
   /-- The object enters play. -/
@@ -289,6 +308,8 @@ inductive TriggerEvent where
   | friendlyAttackGroupHere
   /-- The object defends. -/
   | defend
+  /-- A Showdown opens at the object's Battlefield (CR 341-348). -/
+  | showdownStart
   /-- The object conquers a Battlefield. -/
   | conquer
   /-- The object holds a Battlefield. -/
@@ -313,6 +334,8 @@ inductive TriggerEvent where
   | discard
   /-- The object is stunned. -/
   | stun
+  /-- The ability's controller stunned the subject (CR 412.4). -/
+  | stunByYou
   /-- The object becomes exhausted while on the Board (CR 415). -/
   | exhaust
   /-- This ability's controller exhausts at least this many friendly Units at once (CR 415). -/
@@ -321,6 +344,8 @@ inductive TriggerEvent where
   | ready
   /-- The object gets a buff. -/
   | buff
+  /-- This ability's controller buffs the object. -/
+  | buffByYou
   /-- The player plays a card from Hidden (CR 811). -/
   | playHidden
   /-- The player looks at this card on the top of their Main Deck (and does not draw it). -/
@@ -370,6 +395,8 @@ inductive TriggerEvent where
   | revealedFromDeck
   /-- A Unit token is played (the watcher is told the token). -/
   | playToken
+  /-- Another object is played as a card or as a token. -/
+  | playIncludingTokens
   /-- A Combat starts at the Battlefield (CR 466.2.b). -/
   | combatStart
   /-- A combat the object was in ends. -/
@@ -395,8 +422,18 @@ inductive TriggerEvent where
   | linkedBurnUnit
   /-- The linked Discard instruction discarded a card of the corresponding type. -/
   | linkedDiscardType
+  /-- A Unit was killed by the linked damage instruction (CR 389, 429.5). -/
+  | linkedDamageKill
   /-- A point of the turn comes. -/
   | at_ (t : Timing)
+  /-- A linked instruction played a group of Unit tokens (CR 388-389). -/
+  | linkedUnitTokens (inheritsTarget : Bool)
+  /-- Every Beginning Phase, using the Battlefield's ability controller (CR 190.6, 315.2.a). -/
+  | battlefieldBeginning
+  /-- A move whose origin is saved for the ability. An empty field list denotes the Base. -/
+  | moveFrom
+  /-- A move whose destination is a Battlefield, recorded for the ability. -/
+  | moveToBattlefield
 deriving DecidableEq, Repr, Hashable
 
 /-- Something that happens in the game that a replacement ability can change (CR 367-375). -/
@@ -453,6 +490,8 @@ inductive StaticMod where
   | allUnitsEnterReady
   /-- Neither player's Units ready during the Awaken Phase. -/
   | skipUnitAwaken
+  /-- This Unit enters ready when played to a Battlefield. -/
+  | entersReadyAtBattlefield
   /-- The controller's Units enter ready when played to a Battlefield they control. -/
   | unitsEnterReadyAtControlledBattlefields
   /-- Each player can use this Battlefield's activated ability during their own turn. -/
@@ -469,6 +508,9 @@ inductive StaticMod where
   /-- (Of an Equipment's grants) if the Unit it is attached to would die, the Equipment dies instead,
   and the Unit is healed, exhausted and recalled (Guardian Angel). -/
   | diesInsteadGear
+  /-- When a friendly Unit would die, this permanent dies instead and that Unit is healed,
+  exhausted and recalled (Zhonya's Hourglass). -/
+  | diesInsteadOfFriendly
   /-- Once per turn the controller may kill a friendly Unit to save this one (CR 371). -/
   | sacrificeToSaveSelf
   /-- If another Unit of the player at the same Battlefield with less Might would die, it is healed,
@@ -476,6 +518,8 @@ inductive StaticMod where
   | rescueWeakerHere
   /-- The player can replace each Unit token play with this Unit token at the same location. -/
   | replaceUnitTokenWith (token : String)
+  /-- Once per turn, the controller may play an additional copy of a Unit token they play. -/
+  | duplicateUnitTokenOnce
   /-- The objects the selector gives add this much more Energy when they Add (Chem-Baroness). -/
   | manaExtraEnergy (s : Selector) (n : Amount)
   /-- The optional additional costs the player pays cost this much less (Ezreal, Prodigy). -/
@@ -517,9 +561,13 @@ inductive StaticMod where
   | noMoveToBaseAny
   /-- An opponent who moves Units to this Battlefield pays this once for the move instruction. -/
   | moveFeeHere (cost : Cost)
+  /-- An opponent pays this much unrestricted Power for each Unit after the first in one arrival. -/
+  | moveExtraUnitPowerHere (power : Nat)
   /-- The card can be played from the hand to a Battlefield with the properties (Rengar: one it is
   attacking), as an ability. -/
   | playToBf (fs : List Filter)
+  /-- These destinations also qualify for this card's Ambush permissions (CR 822.1.d). -/
+  | ambushToBf (fs : List Filter)
   /-- The card is not played to the Base from the hand: only where `playToBf` says. -/
   | noPlayToBase
   /-- Spells and abilities cannot ready the Units and Gear of the opponents of the player. -/
@@ -640,8 +688,8 @@ inductive AbilityCost where
   | exhaustFriendly (filters : FilterList)
   /-- Pay Energy and Power. -/
   | pay (c : Cost)
-  /-- Recycle cards from the Trash. -/
-  | recycleFromTrash (n : Nat)
+  /-- Recycle exactly this many matching cards from the controller's Trash (CR 417.3, 417.6). -/
+  | recycleFromTrash (count : Nat) (filters : FilterList := .nil)
   /-- Discard cards. -/
   | discard (n : Nat)
   /-- Discard this many cards with the given properties from the player's hand (CR 423.3). -/
@@ -673,6 +721,8 @@ inductive AbilityCost where
   | recycleSelf
   /-- Kill the object the ability belongs to ("Kill this"). -/
   | killSelf
+  /-- The source must be at a Battlefield when the ability is activated (CR 381, 399). -/
+  | fromBattlefield
 deriving DecidableEq, Repr, Hashable
 
 /-- A cost paid before a triggered ability becomes a finalized Chain item (CR 383.3.b). -/
@@ -681,8 +731,12 @@ inductive TriggerCost where
   | free
   /-- Spend the specified amount of Energy. -/
   | energy (amount : Nat)
+  /-- Spend the controller's XP to finalize the ability (CR 383.3.b.1, 730.2). -/
+  | spendXP (amount : Nat)
   /-- Pay Energy or Power, and optionally exhaust the source, during finalization (CR 383.3.b). -/
   | pay (cost : Cost) (exhaustSelf : Bool := false)
+  /-- Pay resources and return one Unit the controller controls here to its owner's hand. -/
+  | payAndReturnUnitHere (cost : Cost)
   /-- Exhaust the source during finalization (CR 383.3.b, 415.4). -/
   | exhaustSelf
   /-- Burn exactly this many cards from the controller's Main Deck (CR 441.3.a). -/
@@ -691,6 +745,14 @@ inductive TriggerCost where
   | killFriendly (count : Nat) (filters : FilterList)
   /-- Discard exactly this many cards of the controller's choice (CR 423). -/
   | discard (count : Nat)
+  /-- Discard the specified cards and exhaust the source during finalization. -/
+  | discardAndExhaust (count : Nat)
+  /-- Spend one buff on a Unit the triggered ability's controller controls (CR 702.2.b.2). -/
+  | spendBuff
+  /-- Kill exactly this many permanents the player personally controls (CR 740.1). -/
+  | killControlled (count : Nat) (filters : FilterList)
+  /-- Recycle the dead source from its owner's Trash during finalization (CR 204.1.c, 417). -/
+  | recycleSelfFromTrash
 deriving DecidableEq, Repr, Hashable
 
 /-- When a triggered ability or a delayed effect fires. -/

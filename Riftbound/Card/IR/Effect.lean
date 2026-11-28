@@ -69,7 +69,22 @@ structure ReducedPermanentPlay where
   gearDiscounts : List ObjId := []
   /-- The card revealed or friendly object picked for Show Off (CR 832). -/
   showOff : Option ObjId := none
-deriving DecidableEq, Repr, Hashable
+  /-- Whether the player elects the card's additional XP cost. -/
+  spendXP : Bool := false
+deriving DecidableEq, Hashable
+
+/-- Preserve the fingerprints of old plans that did not elect XP without an object. -/
+instance : Repr ReducedPermanentPlay where
+  reprPrec p _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [field "cost" (repr p.cost), field "battlefield" (repr p.battlefield),
+      field "extraObject" (repr p.extraObject), field "discard" (repr p.discard),
+      field "additionalPaid" (repr p.additionalPaid), field "accelerated" (repr p.accelerated),
+      field "battlefieldFees" (repr p.battlefieldFees), field "gearDiscounts" (repr p.gearDiscounts),
+      field "showOff" (repr p.showOff)]
+    let fields := if p.spendXP then fields ++ [field "spendXP" (repr true)] else fields
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- One activation that provides resources for an effect's play (CR 357.1.a). -/
 inductive EffectAdd where
@@ -101,9 +116,8 @@ structure EffectDamageHit where
   replacements : List DamageReplacement
 deriving DecidableEq, Repr, Hashable
 
-/-- Damage from one instruction. Keep replacements and damage tentative until the whole
-instruction is ready, so simultaneous events are still observed together. -/
-structure EffectDamageBatch where
+/-- The parameters and tentative results of a simultaneous damage instruction. -/
+structure EffectDamageProgress where
   /-- Who controls damage from a Spell or Ability, or none for an exchange between Units. -/
   controller : Option PlayerId
   /-- Events waiting to have their replacements ordered. -/
@@ -112,6 +126,53 @@ structure EffectDamageBatch where
   resolved : List (ObjId × Nat) := []
   /-- The amount consumed from each numbered turn note. -/
   spent : List (Nat × Nat) := []
+deriving DecidableEq, Repr, Hashable
+
+/-- The reflexive ability created by a death caused by this instruction. -/
+structure DamageKillLink where
+  /-- Original Chain item. -/
+  source : ObjId
+  /-- Unit dealing the damage. -/
+  dealer : ObjId
+  /-- Controller of the reflexive ability. -/
+  player : PlayerId
+  /-- Card containing the reflexive ability. -/
+  card : CardId
+  /-- Reflexive ability index. -/
+  index : Nat
+deriving DecidableEq, Repr, Hashable
+
+/-- Damage from one instruction. Damage and replacements remain tentative until the
+whole simultaneous instruction is ready. -/
+structure EffectDamageBatch extends EffectDamageProgress where
+  /-- Responsible seat per target when the hits come from different sources (CR 418.6). -/
+  damageSources : List (ObjId × PlayerId) := []
+  /-- An optional reflexive ability tied to actual deaths from the damage. -/
+  onKill : Option DamageKillLink := none
+  /-- Combat marks all assigned damage before its Cleanup handles lethal Units (CR 468.1). -/
+  combatDamage : Bool := false
+deriving DecidableEq, Hashable
+
+/-- Keep the established checkpoint representation for damage without a linked ability. -/
+instance : Repr EffectDamageBatch where
+  reprPrec batch prec := match batch.onKill with
+    | none => reprPrec batch.toEffectDamageProgress prec
+    | some link => reprPrec (batch.toEffectDamageProgress, link) prec
+
+/-- The player responsible for a hit, regardless of whether the damage is spell or ability damage. -/
+def EffectDamageBatch.responsible (batch : EffectDamageBatch) (target : ObjId) : Option PlayerId :=
+  ((batch.damageSources.find? (·.1 == target)).map Prod.snd) <|> batch.controller
+
+/-- The reflexive ability attached to a Unit token instruction (CR 375, 388-389). -/
+structure UnitTokenFollowup where
+  /-- The object from which the linked instruction originated. -/
+  source : ObjId
+  /-- The definition containing the follow-up ability. -/
+  card : CardId
+  /-- The index of the ability in that definition. -/
+  index : Nat
+  /-- The object chosen earlier, if the linked ability refers to it. -/
+  target : Option ObjId
 deriving DecidableEq, Repr, Hashable
 
 /-- A simultaneous group of Unit token plays at the specified location. Each entry records
@@ -123,6 +184,30 @@ structure UnitTokenBatch where
   contest : Bool
   /-- The token definitions and their explicit entry-ready flags. -/
   entries : List (CardId × Bool)
+  /-- The ability to queue with the objects that actually enter. -/
+  followup : Option UnitTokenFollowup := none
+  /-- Sources whose optional duplication was elected for this play. -/
+  duplicatedBy : List (ObjId × Option Timestamp) := []
+deriving DecidableEq, Repr, Hashable
+
+/-- An available replacement sequence for simultaneous Unit token plays (CR 370-375). -/
+inductive UnitTokenReplacement where
+  /-- Offer substitutions from the available token definitions, one for each entry. -/
+  | substitute (cards : List CardId)
+  /-- Offer one extra copy of a token, from this unused ability instance. -/
+  | duplicate (source : ObjId) (copy : Option Timestamp)
+deriving DecidableEq, Repr, Hashable
+
+/-- The decisions still to complete before finalizing a group of Unit token plays. -/
+inductive UnitTokenPlan where
+  /-- Choose each token's substitution, then continue with the remaining replacements. -/
+  | substitute (cards : List CardId) (remaining chosen : List (CardId × Bool))
+      (after : List UnitTokenReplacement)
+  /-- Apply the next replacement in the elected order. -/
+  | apply (replacement : UnitTokenReplacement) (after : List UnitTokenReplacement)
+  /-- Duplicate the selected entry or decline this use. -/
+  | duplicate (source : ObjId) (copy : Option Timestamp) (entry : Option Nat)
+      (after : List UnitTokenReplacement)
 deriving DecidableEq, Repr, Hashable
 
 mutual
@@ -136,7 +221,7 @@ inductive Effect where
   /-- Add one available registered Legend. -/
   | addReservedLegendChosen (legend : ObjId)
   /-- Choose the replacements for the tokens before the group is placed. -/
-  | planUnitTokenEntries (batch : UnitTokenBatch) (remaining chosen : List (CardId × Bool))
+  | planUnitTokenEntries (batch : UnitTokenBatch) (plan : UnitTokenPlan)
   /-- Choose resources and add funding for the token's optional Accelerate. -/
   | fundTokenAccelerate (batch : UnitTokenBatch) (payment : Nat × List Domain) (adds : List EffectAdd)
   /-- Place the group with the selected additional cost, if any. -/
@@ -184,6 +269,20 @@ inductive Effect where
   | banishAndPlayLooked (less : Nat) (filters : FilterList)
   /-- Recycle the looked-at cards still in the Main Deck in a random order (CR 417.5). -/
   | recycleLooked
+  /-- Recycle the cards targeted in Trashes together (CR 417.5). -/
+  | recycleTrashTargets
+  /-- Choose cards in the specified Trashes as this resolves, then Recycle them together (CR 417.4-6). -/
+  | recycleFromTrash (side : Side) (count : Nat) (upTo : Bool) (picked : List ObjId := [])
+  /-- Offer the next object choice after agreeing to Recycle one more card. -/
+  | chooseTrashRecycle (side : Side) (count : Nat) (picked : List ObjId)
+  /-- Continue a group Recycle with the chosen card still in its Trash. -/
+  | recordTrashRecycle (side : Side) (count : Nat) (upTo : Bool) (picked : List ObjId)
+  /-- Report activation after paying its Recycle cost. Until then, the declared targets and
+  filters constrain which Trash cards may pay that cost (CR 357.3, 401.1). -/
+  | completeActivation (source : ObjId) (index : Nat) (baseEnergy : Option Nat)
+      (targets : List ObjId) (filters : FilterList)
+  /-- Recycle an exact group selected during resolution. -/
+  | finishTrashRecycle (picked : List ObjId)
   /-- Recycle the player's Runes together after their owners choose the order (CR 417.5.a). -/
   | recycleRunes
   /-- Continue collecting the order of each owner's Runes before any are Recycled. -/
@@ -198,7 +297,7 @@ inductive Effect where
   /-- Optionally play a card selected while resolving the effect (CR 355.16, 420.3). -/
   | mayPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Play one of the matching physical cards, if it has a legal finalization (CR 420.3). -/
-  | playCard (selector : Selector) (price : EffectPlayPrice)
+  | playCard (selector : Selector) (price : EffectPlayPrice) (baseOnly : Bool := false)
   /-- Banish the selected card and play that physical card from Banishment (CR 420.3). -/
   | banishAndPlayCard (selector : Selector) (price : EffectPlayPrice)
   /-- Banish the top Main Deck card and permit its play until the player's next Ending Phase. -/
@@ -216,6 +315,7 @@ inductive Effect where
       (first : ObjId) (others : List ObjId)
   /-- Continue to the selected card's finalization. -/
   | playOfferedCard (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
+      (baseOnly : Bool := false)
   /-- Count a successful finalization before offering another play. -/
   | afterOfferedPlay (card : ObjId) (cards : List ObjId) (remaining : Nat) (price : EffectPlayPrice)
   /-- Continue an effect's play, offering the Unit or Gear's legal finalizations. -/
@@ -255,6 +355,10 @@ inductive Effect where
   | resolveEffectDamage (batch : EffectDamageBatch) (hit : Option EffectDamageHit)
   /-- Divide damage among the remaining targets at resolution (CR 355.14). -/
   | splitDamage (targets : Selector) (total : Nat)
+  /-- A Unit deals its current Might in divided damage, with a reflexive ability per kill. -/
+  | splitUnitDamage (dealer targets : Selector) (onKill : Nat)
+  /-- Apply a selected division whose damage comes from a Unit (CR 418.6.b.3). -/
+  | applyUnitSplitDamage (hits : List (ObjId × Nat)) (link : DamageKillLink)
   /-- Deal the chosen damage simultaneously after replacements have been applied. -/
   | applySplitDamage (hits : List (ObjId × Nat))
   /-- Apply one selected replacement and continue with the rest. -/
@@ -264,18 +368,30 @@ inductive Effect where
   | orderCombatDamage (target : ObjId) (chosen remaining : List DamageReplacement)
   /-- Record which player's Banish replaces the pending death (CR 372). -/
   | chooseDeathBanisher (unit : ObjId) (banisher : PlayerId)
+  /-- Record which mandatory Gear replacement the affected Unit's controller selected. -/
+  | chooseDeathGear (unit gear : ObjId)
+  /-- Record the selected free rescue, with None for a Tactical Retreat on the Unit. -/
+  | chooseDeathFree (unit : ObjId) (source : Option ObjId)
   /-- Declare the friendly Unit paying for this death replacement, or decline it. -/
   | recordDeathSacrifice (unit : ObjId) (cost : Option ObjId)
   /-- Record a controller's next replacement among simultaneous deaths (CR 373). -/
   | recordDeathOrder (group : List ObjId) (unit : ObjId)
+  /-- Record a revised replacement after an earlier event consumed or moved its source. -/
+  | recordDeathReselection (group earlier : List ObjId) (unit : ObjId) (choice : DeathDecision)
+  /-- Record an answer for one distinct nested Kill event. -/
+  | recordNestedDeathDecision (root : ObjId) (used : List (ObjId × Bool))
+      (unit : ObjId) (choice : DeathDecision) (groupScope : Option (List ObjId × List ObjId))
   /-- Expire the assignment choices and record excess damage once Combat Damage is dealt. -/
-  | endCombatDamage (excess : Nat)
+  | endCombatDamage (excess : Nat × Nat)
   /-- Choose one object during resolution and bind it to `pickVar` for the following
   instructions (CR 355.18). -/
   | chooseObject (side : Side) (place : Place) (filters : FilterList) (body : Effect)
   /-- Each player chooses one of their own objects. Append the picks to the slots, then run the
   body for the original controller. The picks are not targets (CR 355.10.e). -/
   | pickOwn (place : Place) (filters : FilterList) (body : Effect)
+  /-- The controller must pick one of their own objects during resolution. Append it to the
+  slots without making it a target (CR 355.10.f). -/
+  | pickRequired (place : Place) (filters : FilterList) (body : Effect)
   /-- Move the Unit in the given slot to the location chosen during finalization (CR 355.4).
   If the move happens, run the follow-up with a chosen Battlefield available as the latest pick. -/
   | moveChoosing (slot : Nat) (allowBase : Bool) (battlefields : FilterList) (afterMove : Effect)
@@ -285,6 +401,8 @@ inductive Effect where
   | forceMoveToBattlefield (who : PlayerSel) (destination : Selector)
   /-- Carry out the Move after its fee was paid. Its follow-up runs only if a Unit moved. -/
   | moveAfterFee (move : Prim) (afterMove : Effect)
+  /-- Plan or commit Add activations for a fee on an instructed Move (CR 204.4.b.1). -/
+  | fundMoveFee (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
   /-- Grant a numbered keyword whose amount is determined as the effect resolves. -/
   | grantNumericKeyword (objects : Selector) (keyword : Keyword) (amount : Amount)
       (duration : Duration)
@@ -323,6 +441,16 @@ inductive Effect where
   | setSpellChoices (spell : ObjId) (pick : SpellPick) (targets : List ObjId)
   /-- An effect the IR cannot express: a handler of the table of custom handlers. -/
   | custom (id : CustomId) (args : ArgList)
+  /-- Play a group of Unit tokens, then queue the linked ability with the resulting objects.
+  The linked ability can inherit one previously chosen object without choosing it again. -/
+  | playUnitTokensThen (name : String) (count : Nat) (place : Place) (ready : Bool)
+      (index : Nat) (target : Option Selector := none)
+  /-- Kill the chosen permanent, then resolve the linked instruction for its controller
+  (CR 359.3.e.14). -/
+  | killThenForController (slot : Nat) (body : Effect)
+  /-- Kill the chosen permanent, then perform the linked instruction only if this action killed
+  that permanent (CR 359.3.e, 370.1.a.1). -/
+  | killThenIfKilled (slot : Nat) (body : Effect)
 deriving DecidableEq, Repr, Hashable
 
 /-- A list of effects. -/

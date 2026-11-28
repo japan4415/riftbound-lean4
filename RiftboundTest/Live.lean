@@ -16,6 +16,37 @@ open Riftbound RiftboundDriver
 
 meta def h0 : List PlayerId := [⟨0⟩]
 
+-- Legacy checkpoints decode without a damage witness. New ones record attribution separately
+-- from the pre-existing state fingerprint.
+#guard match liveStart 1 h0 with
+  | .ok (g, _) =>
+    let before := ReplayCheckpoint.capture g.s []
+    let changed := { g.s with damageMarks := g.s.damageMarks.insert 19 [(some ⟨0⟩, 1)] }
+    let after := ReplayCheckpoint.capture changed []
+    let legacy := Lean.Json.mkObj [("state", .str before.state), ("events", .arr #[])]
+    let restored := (Lean.fromJson? (α := ReplayCheckpoint) legacy).toOption
+    before.state == after.state && after.damageMarks? == some [(19, [(some 0, 1)])] &&
+      restored.any (fun item => item.state == before.state && item.damageMarks?.isNone)
+  | .error _ => false
+
+-- The spend witnesses extend the legacy state digest and survive lossless replay encoding.
+#guard match liveStart 1 h0 with
+  | .ok (g, _) =>
+    let seat : PlayerId := ⟨0⟩
+    let original := g.s.setPool seat .empty
+    let paid := (g.s.setPool seat { deflectSpent := 1 }).addTurnFx seat (.powerSpentBeforeMain 2)
+    let legacy := ReplayCheckpoint.capture original []
+    let recorded := ReplayCheckpoint.capture paid []
+    let restored := (Lean.fromJson? (α := ReplayCheckpoint) (Lean.toJson recorded)).toOption
+    let observation (amount : Nat) : List ReplayObservation :=
+      [{ checkpoint := 0, facts := [.spentPower seat amount] }]
+    legacy.state == recorded.state && legacy.deflectSpent?.isNone && legacy.spentBeforeMain?.isNone &&
+      restored.any (fun checkpoint => checkpoint.deflectSpent? == some [(0, 1)] &&
+        checkpoint.spentBeforeMain? == some [(0, 2)]) &&
+      (ReplayObservation.checkAt (observation 3) 0 paid).isOk &&
+      !(ReplayObservation.checkAt (observation 2) 0 paid).isOk
+  | .error _ => false
+
 -- a game for the person of seat 0: it waits for them (the mulligan), and offers only their answers
 #guard match liveStart 1 h0 with
   | .ok (g, j) =>
@@ -29,7 +60,7 @@ meta def h0 : List PlayerId := [⟨0⟩]
 
 -- The viewer receives the two roles as separate lists.
 #guard
-  let a : Action := ⟨.player ⟨0⟩, .activate ⟨1⟩ 0 ⟨1, []⟩ [⟨2⟩] [⟨3⟩]⟩
+  let a : Action := ⟨.player ⟨0⟩, .activate ⟨1⟩ 0 ⟨1, [], none⟩ [⟨2⟩] [⟨3⟩]⟩
   let json := actionJson a
   json.contains "\"targets\":[2]" && json.contains "\"discards\":[3]"
 

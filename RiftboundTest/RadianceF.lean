@@ -70,10 +70,10 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, charm) ← put s p "OGN-043" .hand
   let (s, runner) ← put s q "RAD-011" .base
   let s := (s.fund p 2 (calm := 2)).fund q 0
-  let (queued, _) ← (step 100 s ⟨.player p, .playCard charm ⟨1, [.calm]⟩ [runner]⟩).toOption
-  let location := settleChain {} 2 queued
-  let (pick, _) ← (step 100 location ⟨.player p, .decide false⟩).toOption
-  let (waiting, _) ← (step 100 pick ⟨.player p, .choose field⟩).toOption
+  let cast : Action := ⟨.player p,
+    .playCard charm ⟨1, [.calm]⟩ [runner] none none (.destination (some field))⟩
+  let (queued, _) ← (step 100 s cast).toOption
+  let waiting := settleChain {} 2 queued
   let (paid, _) ← (step 100 waiting ⟨.player p, .decide true⟩).toOption
   return (waiting.obj? runner).any (·.loc.isNone) &&
     (paid.obj? runner).any (·.loc == some field) && (paid.poolOf p).energy == 0 &&
@@ -88,7 +88,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, wyrm) ← putAt s p "RAD-113" field
   let (s, runner) ← put s q "RAD-011" .base
   let start (g : GameState) := do
-    let (queued, _) ← (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, []⟩ [] [] (some q)⟩).toOption
+    let (queued, _) ← (step 100 g ⟨.player p, .activate wyrm 0 ⟨0, [], none⟩ [] [] (some q)⟩).toOption
     return settleChain {} 2 queued
   let noPay := s.fund q 0
   let funded := (s.fund q 1 (chaos := 1)).fund p 3 (body := 3)

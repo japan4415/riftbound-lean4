@@ -147,9 +147,10 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let opposing := { s with active := some q, pending := [.priority p] }
   let reacted ← activate opposing p hidden 2
   let fromHidden ← (reacted.unitsAtOf field p).find? (fun id => (reacted.cardDef? id).any (·.id == cid "RAD-095"))
+  let opponentsBeginning ← settleBeginning reacted q
+  let ownBeginning ← settleBeginning reacted p
   return !ordinary.hasKw fromHand .temporary && reacted.hasKw fromHidden .temporary &&
-    (beginStep reacted q).1.inPlay.contains fromHidden &&
-    (beginStep reacted p).1.countIn p .trash "RAD-095" == 1
+    opponentsBeginning.inPlay.contains fromHidden && ownBeginning.countIn p .trash "RAD-095" == 1
 
 -- Lulu changes base Might on move, so the target's existing buff still applies.
 #guard radianceCase fun s => do
@@ -220,7 +221,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, gear) ← put s p "RAD-046" .base
   let (s, ally) ← put s p "RAD-011" .base
   let (s, enemy) ← put s s.you "RAD-011" .base
-  let (waiting, _) ← (step 100 s ⟨.player p, .activate gear 0 ⟨0, []⟩ []⟩).toOption
+  let (waiting, _) ← (step 100 s ⟨.player p, .activate gear 0 ⟨0, [], none⟩ []⟩).toOption
   let (stacked, _) ← (step 100 waiting ⟨.player p, .putTrigger 0 [ally]⟩).toOption
   let done := settleChain {} 12 stacked
   let fresh ← (done.zone (.player p .base)).find? (fun id => !(s.zone (.player p .base)).contains id)
@@ -249,16 +250,22 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
 -- The Standard Move's exhaustion triggers are put on the Chain before its movement triggers.
 #guard radianceCase fun s => do
   let p := s.me
-  let (s, oracle) ← put s p "RAD-053" .base
-  let (s, lulu) ← putAt s p "RAD-110" s.bf0
-  let exhausted := s.tire oracle
-  let events := [.standardMoved lulu (some s.bf0)] ++ s.exhaustionEvents exhausted (some p) true
-  let triggers := exhausted.detect events
-  let (stacked, frames) := triggersStep exhausted triggers []
+  let field := s.bf0
+  let (s, oracle) ← put (s.control p field) p "RAD-053" .base
+  let (s, lulu) ← put s p "RAD-110" .base
+  let send (t : GameState) (kind : ActionKind) := (step 100 t ⟨.player p, kind⟩).toOption
+  let (group, _) ← send s (.startGroupMove (.battlefield field) Cost.zero)
+  let (one, _) ← send group (.choose lulu)
+  let (both, _) ← send one (.choose oracle)
+  let (stacked, events) ← send both (.decide true)
   let first ← (stacked.zone .chain).head?
-  return (stacked.obj? first).any (fun o => match o.kind with
-    | .chainAbility _ _ source => source == oracle | _ => false) &&
-    (match frames with | [.triggers [next]] => next.source == lulu | _ => false)
+  let .triggerOrder who next [] [] _ :: .priority _ :: _ := stacked.pending | none
+  let source := (stacked.obj? first).bind (fun obj => match obj.kind with
+    | .chainAbility _ _ src => some src | _ => none)
+  return who == p && (source.bind stacked.cardDef?).any (·.id == cid "RAD-053") &&
+    (stacked.cardDef? next.source).any (·.id == cid "RAD-110") &&
+    (events.filterMap (fun | .standardMoved id _ => (stacked.cardDef? id).map (·.id) | _ => none)) ==
+      [cid "RAD-110", cid "RAD-053"]
 
 -- Inspiring Seraphine needs three friendly Units exhausted by her controller in one instruction.
 -- Declining at finalization saves the once-per-turn use.

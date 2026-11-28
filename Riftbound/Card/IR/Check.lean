@@ -28,6 +28,8 @@ structure Ctx where
   slots : Nat := 0
   /-- The number of declared player target slots. -/
   playerSlots : Nat := 0
+  /-- A destination was declared for a move. -/
+  hasMoveDestination : Bool := false
   /-- An X was chosen when the card was played. -/
   hasX : Bool := false
   /-- The number of modes the card asks to choose from, if it does. -/
@@ -38,11 +40,14 @@ structure Ctx where
   eventOk : Bool := false
   /-- An amount was captured by a reflexive trigger. -/
   eventAmountOk : Bool := false
+  /-- Objects were captured by a linked instruction. -/
+  eventObjectsOk : Bool := false
 deriving DecidableEq, Repr
 
 /-- The players an effect names can be found. -/
 def PlayerSel.ok (c : Ctx) : PlayerSel → Bool
   | .chosen i => decide (i < c.playerSlots)
+  | .playedBy i => decide (i < c.slots)
   | .eventPlayer => c.eventOk
   | _ => true
 
@@ -118,6 +123,7 @@ def Selector.ok (c : Ctx) : Selector → Bool
   | .attachments s => Selector.ok c s
   | .locationOf s => Selector.ok c s
   | .slotsFrom i => decide (i < c.slots)
+  | .eventObjects => c.eventObjectsOk
 
 /-- A condition refers only to what is there. -/
 def Condition.ok (c : Ctx) : Condition → Bool
@@ -138,6 +144,7 @@ end
 def Dest.ok (c : Ctx) : Dest → Bool
   | .base => true
   | .at_ s => Selector.ok c s
+  | .declared => c.hasMoveDestination
 
 /-- A game action refers only to what is there. -/
 def Prim.ok (c : Ctx) : Prim → Bool
@@ -148,6 +155,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .exchangeDamage a b => Selector.ok c a && Selector.ok c b
   | .setBaseMight s n => Selector.ok c s && Amount.ok c n
   | .heal s n => Selector.ok c s && Amount.ok c n
+  | .healAll s => Selector.ok c s
   | .kill s => Selector.ok c s
   | .banish s => Selector.ok c s
   | .recall s _ => Selector.ok c s
@@ -162,7 +170,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .recycleTop p => PlayerSel.ok c p
   | .swapTop p => PlayerSel.ok c p
   | .channel p n e => p.ok c && Amount.ok c n && Amount.ok c e
-  | .addEnergy p n _ | .addUnitEnergy p n => p.ok c && Amount.ok c n
+  | .addEnergy p n _ | .addUnitEnergy p n | .addSpellEnergy p n => p.ok c && Amount.ok c n
   | .addPower p n _ _ => p.ok c && Amount.ok c n
   | .counter s => Selector.ok c s
   | .counterToHand s => Selector.ok c s
@@ -186,7 +194,7 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .revealTopNow _ => true
   | .create _ n _ _ => Amount.ok c n
   | .createAt _ n bf _ => Amount.ok c n && Selector.ok c bf
-  | .playUnitToken _ | .playUnitTokenAt _ _ => true
+  | .playUnitToken _ | .playUnitTokenAt _ _ | .playReadyUnitToken _ | .playReadyUnitTokenAt _ _ => true
   | .attach s t => Selector.ok c s && Selector.ok c t
   | .attachPaying s t _ => Selector.ok c s && Selector.ok c t
   | .detach s => Selector.ok c s
@@ -217,14 +225,16 @@ def Prim.ok (c : Ctx) : Prim → Bool
   | .extraTurn p => p.ok c
   | .win p => p.ok c
   | .turnEffect _ => true
+  | .allowFacedownInspection whose => whose.ok c
   | .playFirst fs => FilterList.ok c fs
   | .markOn s _ => Selector.ok c s
   | .delayUntilDeath s _ => Selector.ok c s
+  | .delayUntilDamage _ unit => unit.all (Selector.ok c)
   | .activateConquer s => Selector.ok c s
   | .choose s => Selector.ok c s
   | .lookTop _ => true
   | .swapPlaces a b => Selector.ok c a && Selector.ok c b
-  | .returnChampion => true
+  | .returnChampion sel => Selector.ok c sel
   | .pay _ => true
   | .topdeck s => Selector.ok c s
 
@@ -269,7 +279,8 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
-  | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
+  | .allUnitsEnterReady | .skipUnitAwaken | .entersReadyAtBattlefield
+  | .unitsEnterReadyAtControlledBattlefields => true
   | .sharedBattlefieldActivation | .grantFriendlyLegendsActivations
   | .additionalExhaustedRunes _ => true
   | .assaultCount s => Selector.ok c s
@@ -285,11 +296,12 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
       .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => Selector.ok c s && Amount.ok c n
-  | .diesInsteadGear | .sacrificeToSaveSelf => true
-  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
+  | .diesInsteadGear | .diesInsteadOfFriendly | .sacrificeToSaveSelf => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
-  | .playToBf fs => FilterList.ok c (FilterList.ofList fs)
+  | .moveExtraUnitPowerHere _ => true
+  | .playToBf fs | .ambushToBf fs => FilterList.ok c (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.ok c (FilterList.ofList fs)
   | .playHereFor _ _ => true
   | .noPlayToBase => true
@@ -324,6 +336,7 @@ def StaticMod.ok (c : Ctx) : StaticMod → Bool
 def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
   | .killFriendly _ fs | .discardMatching _ fs | .exhaustFriendly fs
   | .killFriendlyPermanent fs | .banishFromTrash fs => FilterList.ok c fs
+  | .recycleFromTrash _ filters => FilterList.ok c filters
   | .energyDiscount cond amount => Condition.ok c cond && Amount.ok c amount
   | _ => true
 
@@ -331,16 +344,20 @@ def AbilityCost.ok (c : Ctx) : AbilityCost → Bool
 object, and for the player's units elsewhere when they defend (the Battlefield). -/
 def Trigger.watched (t : Trigger) : Nat :=
   match t.event with
+  | .delayedDamage => 1
   | .youDefend => 1
+  | .linkedUnitTokens true => 1
   | _ => if t.subject == .self then 0 else 1
 
 /-- A trigger refers only to what is there. -/
 def Trigger.ok (c : Ctx) (t : Trigger) : Bool :=
   -- the condition may use the object the ability watches (slot 0); the subject may not
+  let watchedPlay := t.event == .play && t.subject != .self
   Selector.ok c t.subject &&
-    Condition.ok { c with slots := t.watched } t.condition &&
+    Condition.ok { c with slots := t.watched, eventAmountOk := c.eventAmountOk || watchedPlay }
+      t.condition &&
     (match t.cost with
-     | .killFriendly _ fs => FilterList.ok c fs
+     | .killFriendly _ fs | .killControlled _ fs => FilterList.ok c fs
      | _ => true)
 
 /-- How many effects a list holds. -/
@@ -355,6 +372,8 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .addReservedLegend => true
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .planUnitTokenEntries .. | .fundTokenAccelerate .. | .finishUnitTokens .. => false
+  | .playUnitTokensThen _ n place _ _ target =>
+    decide (n > 0) && (place == .atBase || place == .here) && target.all (Selector.ok c)
   | .nop => true
   | .animateGear => decide (0 < c.slots)
   | .markTriggeredAdd _ => false
@@ -363,13 +382,15 @@ def Effect.ok (c : Ctx) : Effect → Bool
   | .eitherOf modes => EffectList.ok c modes
   | .equipWithCost gear recipient _ => gear.ok c && recipient.ok c
   | .payThen _ body _ => Effect.ok c body
-  | .paySelected .. | .moveAfterFee .. => false
+  | .paySelected .. | .moveAfterFee .. | .fundMoveFee .. => false
   | .ifThen d t e => Condition.ok c d && Effect.ok c t && Effect.ok c e
   | .forEach s body => Selector.ok c s && Effect.ok { c with itOk := true } body
   | .fillSlot _ s => Selector.ok c s
   | .fillFromPick _ => true
   | .retainTargetSet _ | .applySplitDamage _ => false
   | .splitDamage targets _ => Selector.ok c targets
+  | .splitUnitDamage dealer targets _ => Selector.ok c dealer && Selector.ok c targets
+  | .applyUnitSplitDamage .. => false
   | .remakeSpellChoices spell => Selector.ok c spell
   | .setSpellChoices .. => false
   | .eachPlayer w e => PlayerSel.ok c w && Effect.ok c e
@@ -378,13 +399,17 @@ def Effect.ok (c : Ctx) : Effect → Bool
     PlayerSel.ok c who && Effect.ok c unit && Effect.ok c gear && Effect.ok c spell
   | .nameCard _ | .rememberNamedCard _ => true
   | .killThenAtEnd targets _ => Selector.ok c targets
+  | .killThenForController slot body | .killThenIfKilled slot body =>
+    Selector.ok c (.slot slot) && Effect.ok c body
   | .lookAtTop _ body => Effect.ok c body
   | .banishAndPlayLooked _ fs => FilterList.ok c fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+  | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
-  | .playCard sel _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
+  | .recycleFromTrash _ _ _ picked => picked.isEmpty
+  | .playCard sel _ _ | .banishAndPlayCard sel _ | .mayPlayCard sel _ |
       .mayPlayPermanents sel _ _ => Selector.ok c sel
-  | .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
+  | .chooseTrashRecycle .. | .recordTrashRecycle .. | .finishTrashRecycle .. | .completeActivation .. |
+      .orderRuneRecycle .. | .recordRuneRecycle .. | .offerNextCardPlay .. |
       .chooseOfferedPlay .. | .playOfferedCard .. | .afterOfferedPlay .. => false
   | .chooseLookedToPlay .. | .banishLookedForPlay _ | .planPermanentPlay .. |
       .banishForReplay .. | .orderBanishReplays .. | .recordBanishReplay .. |
@@ -393,11 +418,14 @@ def Effect.ok (c : Ctx) : Effect → Bool
       .finishFundedPermanent .. | .finalizeLimitedSpell .. | .fundLimitedSpell .. |
       .finishLimitedSpell .. | .cancelLimitedSpell .. | .resolveSpellExecution .. |
       .resolveEffectDamage .. |
-      .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. |
-      .recordDeathSacrifice .. | .recordDeathOrder .. |
+      .chooseDamageReplacement .. | .orderCombatDamage .. | .chooseDeathBanisher .. | .chooseDeathGear .. |
+      .chooseDeathFree .. |
+      .recordDeathSacrifice .. | .recordDeathOrder .. | .recordDeathReselection .. |
+      .recordNestedDeathDecision .. |
       .endCombatDamage .. => false
   | .chooseObject _ _ fs e => FilterList.ok c fs && Effect.ok c e
-  | .pickOwn _ fs e => FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
+  | .pickOwn _ fs e | .pickRequired _ fs e =>
+    FilterList.ok c fs && Effect.ok { c with slots := c.slots + 1 } e
   | .moveChoosing i _ fs e _ => Selector.ok c (.slot i) && FilterList.ok c fs && Effect.ok c e
   | .forceMoveToBattlefield who destination => PlayerSel.ok c who && Selector.ok c destination
   | .grantNumericKeyword objects _ amount duration =>
@@ -430,6 +458,7 @@ def Choice.isTarget : Choice → Bool
 
 /-- A choice refers only to what is there. A target is chosen before anything else is known. -/
 def Choice.ok (earlier : Nat) : Choice → Bool
+  | .target (.splitByMight slot) _ _ fs => decide (slot < earlier) && FilterList.ok { slots := earlier } fs
   | .target _ _ _ fs => FilterList.ok { slots := earlier } fs
   | .mode _ => true
   | .xValue => true
@@ -452,6 +481,7 @@ def EffectDef.ctx (base : Ctx) (d : EffectDef) : Ctx :=
   { base with
     slots := (d.choices.filter Choice.isTarget).length + base.slots,
     playerSlots := if d.playerTarget.isSome then base.playerSlots + 1 else base.playerSlots,
+    hasMoveDestination := base.hasMoveDestination || d.moveChoice.isSome,
     hasX := d.choices.any (· == .xValue),
     modes := (d.choices.filterMap Choice.modeCount).head? }
 
@@ -463,7 +493,8 @@ def EffectDef.ok (base : Ctx) (d : EffectDef) : Bool :=
     (d.moveChoice.all (fun move => decide (move.slot < ctx.slots) && FilterList.ok ctx move.filters)) &&
     d.modes.all (fun mode =>
       let branch : EffectDef :=
-        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget }
+        { choices := mode.choices ++ d.showOffChoices, body := mode.body, playerTarget := d.playerTarget,
+          moveChoice := mode.moveChoice }
       let context := branch.ctx base
       Choice.allOk 0 branch.choices && Effect.ok context branch.body &&
         mode.moveChoice.all (fun move =>
@@ -475,12 +506,18 @@ def Ability.ok : Ability → Bool
   | .replacement event cond instead =>
     let ctx : Ctx := { eventOk := true, slots := if event == .attach then 1 else 0 }
     Condition.ok ctx cond && instead.ok ctx
-  | .activated costs _ body _ => costs.all (AbilityCost.ok {}) && body.ok {}
+  | .activated costs _ body _ =>
+    let pricing : Ctx := { slots := (body.choices.filter Choice.isTarget).length }
+    costs.all (fun cost => match cost with
+      | .energyDiscount .. => cost.ok pricing
+      | _ => cost.ok {}) && body.ok {}
   | .triggered t body _ =>
     -- an ability that watches another object gets it as the slot after its own choices
     let hasAmount := t.event == .linkedBurnUnit || t.event == .delayedEnd
-    Trigger.ok { itOk := true } t &&
-      body.ok { itOk := true, slots := t.watched, eventAmountOk := hasAmount }
+    let hasObjects := match t.event with | .linkedUnitTokens _ => true | _ => false
+    let ctx : Ctx := { itOk := true, slots := t.watched, eventAmountOk := hasAmount,
+                       eventObjectsOk := hasObjects }
+    Trigger.ok { itOk := true } t && body.ok ctx
 
 /-- A chosen object is found exactly when its slot was declared. -/
 theorem Selector.ok_slot (c : Ctx) (i : Nat) : Selector.ok c (.slot i) = true ↔ i < c.slots := by

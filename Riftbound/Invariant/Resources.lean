@@ -30,7 +30,7 @@ theorem microStep_main_pools {s s' : GameState} {es : List Event} {rest : List F
     (hp : s.pending = .phase .main :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
+  obtain ⟨q, result, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
   have h2 := microStep_main_pools0 hp h0 p
   rw [hq]
   exact h2
@@ -50,7 +50,7 @@ theorem microStep_expiration_pools {s s' : GameState} {es : List Event} {rest : 
     (hp : s.pending = .expireTurn :: rest) (h : microStep s = some (s', es)) (p : PlayerId) :
     s'.poolOf p = RunePool.empty := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
+  obtain ⟨q, result, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
   have h2 := microStep_expiration_pools0 hp h0 p
   rw [hq]
   exact h2
@@ -111,7 +111,8 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
     (hp : castable s p c pay targets flow pick = true)
     (h : applyCast s p c pay targets flow pick = some (s', es)) :
     ∃ d cost b c', s.cardDef? c = some d ∧ s.directCost p c d flow = some cost ∧
-      b ∈ s.cutOptionsOf p c cost targets ∧ c' ∈ s.targetCosts p c d b targets pick ∧
+      b ∈ s.cutOptionsOf p c cost targets pick.withoutDeflectPayment ∧
+      c' ∈ s.targetCosts p c d b targets pick.withoutDeflectPayment ∧
       (s'.poolOf p).total + c'.1.total = (s.poolOf p).total ∧
       ∀ q, q ≠ p → s'.poolOf q = s.poolOf q := by
   obtain ⟨o, d, cost, pool, -, -, hd, -, -, hc, hpaid, hpool⟩ := castable_spec hp
@@ -127,12 +128,12 @@ theorem applyCast_pays_cost {s s' : GameState} {p : PlayerId} {c : ObjId}
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
 hands the Chain to `resolveChain`. -/
 theorem chainPass_last_resolves0 {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
-    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.participatingCount ≤ n + 1)
     (h : applyFrame0 s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest ∧ es = [] := by
   unfold applyFrame0 at h
   rw [hp] at h
-  simp only [show ¬ n + 1 < s.playerCount by omega, ite_false, Option.some.injEq,
+  simp only [show ¬ n + 1 < s.participatingCount by omega, ite_false, Option.some.injEq,
     Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   exact ⟨rfl, rfl⟩
@@ -140,7 +141,7 @@ theorem chainPass_last_resolves0 {s s' : GameState} {p : PlayerId} {n : Nat} {re
 /-- **The Chain resolves when everyone has passed** (CR 311-313, 340): the last player to pass
 hands the Chain to `resolveChain`. -/
 theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {rest : List Frame}
-    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.playerCount ≤ n + 1)
+    {es : List Event} (hp : s.pending = .chainPass p n :: rest) (hn : s.participatingCount ≤ n + 1)
     (h : applyFrame s ⟨.player p, .pass⟩ = some (s', es)) :
     s'.pending = .resolveChain :: rest := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
@@ -151,7 +152,7 @@ theorem chainPass_last_resolves {s s' : GameState} {p : PlayerId} {n : Nat} {res
 theorem finishItem_destination {s : GameState} {item : ObjId} {o : Object}
     (ho : s.obj? item = some o) (hc : item ∈ s.zone .chain)
     (hk : ∀ card idx src, o.kind ≠ .chainAbility card idx src)
-    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) = some r) :
+    (hm : ∃ r, moveObj s item (s.chainDestination item o .trash) o.chainExitPosition = some r) :
     ∃ id', (finishItem s item).2 = s.chainExitEvents o item id' .trash ++
         spellCompletion s item (s.chainExitEvents o item id' .trash) ∧
       id' ∈ (finishItem s item).1.zone (s.chainDestination item o .trash) := by
@@ -211,14 +212,14 @@ theorem resolveFrames_slots {s : GameState} {rest : List Frame} {item : ObjId} {
     resolveFrames s rest =
       .run o.controller item {
         slots := finalizedSlots s o.controller item o.targets
-          (d.spellEffect.bind (·.forPick o.spellPick)) o.spellPick
+          (d.spellForPick o.spellPick) o.spellPick
         targetObjs := o.targets
         hiddenPlayLocation := o.hiddenAt
         shownOff := o.shownOff
-        playerTargets := if (d.spellEffect.bind (·.forPick o.spellPick)).any
+        playerTargets := if (d.spellForPick o.spellPick).any
             (fun e => s.spellPlayerTargetOk o.controller e o.spellPick)
           then o.targetPlayer.toList else [] }
-        (match d.spellEffect.bind (·.forPick o.spellPick) with
+        (match d.spellForPick o.spellPick with
           | some e =>
             -- once, and once more for each Repeat that was paid (CR 820)
             e.recheckTargetGroup s o.controller item o.targets

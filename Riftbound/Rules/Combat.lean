@@ -15,14 +15,10 @@ the Attacker's Units are Recalled if a Defender's Unit is left, and the Battlefi
 player whose Units are alone there, who Scores it by Conquer (CR 468.5).
 
 **Assigning damage.** The assignment is a decision made one Unit at a time: the player says in
-which order the Units of the other side are to be given lethal damage, Tank Units first (CR 815).
-The damage then goes down that order (`greedy`): each Unit gets what it needs to die, and the last
-one gets all that is left. `greedy_spec` shows that every such assignment satisfies the rules of
-the rules (CR 467.2.c), written independently of the way the engine asks (`AssignOk`).
-
-**Not yet:** Stun (CR 424), Backline (CR 826) in milestone M8b, Recall of Gear and of Permanents
-on another player's Base (CR 323.6), the Staged Combat (CR 323.8-323.9), and more than two
-players.
+which order the opposing Units are to be given lethal damage. Tank and Backline constrain the
+order among Units with the same controller (CR 815, 826). The damage then goes down that order
+(`greedy`): each Unit gets what it needs to die, and the last one gets all that is left.
+`greedy_spec` checks the allocation independently of the way the engine asks (`AssignOk`).
 -/
 
 @[expose] public section
@@ -46,7 +42,7 @@ def noCombatDamage (s : GameState) (u : ObjId) : Bool :=
         | Ability.passive .always mods =>
           mods.any (fun m => match m with
             | .noCombatDamageFor (.pick .all side place fs) =>
-              side.admits og.controller o && ((s.placeObjs g place).getD []).contains u &&
+              side.admits og.controller o s.config.mode && ((s.placeObjs g place).getD []).contains u &&
                 FilterList.holds s g {} u fs == some true
             | _ => false)
         | _ => false))
@@ -66,15 +62,14 @@ def combatTotal (s : GameState) (bf : ObjId) (att side : PlayerId) : Nat :=
 
 /-- The Units of the other side at the Battlefield: those the damage of `side` goes to. -/
 def foes (s : GameState) (bf : ObjId) (side : PlayerId) : List ObjId :=
-  (s.unitsAt bf).filter (fun u => !s.isControlledBy side u)
+  (s.unitsAt bf).filter (fun u => (s.obj? u).any (fun o => !s.config.mode.sameSide side o.controller))
 
 /-- The damage a Unit needs to be killed: what is missing to its Might, and at least 1 if it has no
 damage, because lethal damage is not 0 (CR 142.4.b). -/
-def need (s : GameState) (u : ObjId) : Nat :=
+def need (s : GameState) (u : ObjId) (responsible : Option PlayerId := none) : Nat :=
   let d := ((s.obj? u).map (·.damage)).getD 0
-  -- any amount of the damage of a side kills, while a passive ability of it says so
-  if ((s.obj? u).map (fun o => s.anyDamageKills o.controller)).getD false then
-    (if d = 0 then 1 else 0)
+  if s.damageWillBeLethal u 0 none then 0
+  else if (s.obj? u).any (fun target => responsible.any (fun p => s.makesDamageLethal p target)) then 1
   else max (s.mightEff u - d) (if d = 0 then 1 else 0)
 
 /-- The order chosen for this Unit in the current combat, once all its replacements are ordered. -/
@@ -109,8 +104,8 @@ def combatDamagePreview (s : GameState) (u : ObjId) (raw : Nat) (batch : EffectD
 
 /-- The least raw damage yielding lethal damage in the selected order. Work backwards through
 the replacements. Full prevention has no finite lethal assignment (CR 438.5, 467.2.c.5). -/
-def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
-  let base := s.need u
+def combatNeed (s : GameState) (u : ObjId) (responsible : Option PlayerId := none) : Option Nat :=
+  let base := s.need u responsible
   if base == 0 then some 0
   else if (s.activeMods u).contains .noDamage then none
   else (s.combatReplacements u).foldr (fun replacement lethal => lethal.bind (fun needed =>
@@ -121,8 +116,7 @@ def combatNeed (s : GameState) (u : ObjId) : Option Nat :=
 
 /-- Whether Combat began at the Battlefield, or two sides are present in a constructed state. -/
 def isCombat (s : GameState) (bf : ObjId) : Bool :=
-  (s.combat.any (·.battlefield == bf)) ||
-    decide (2 ≤ (s.players.filter (fun p => !(s.unitsOf p bf).isEmpty)).length)
+  (s.combat.any (·.battlefield == bf)) || (s.combatantsAt bf).isSome
 
 /-- The Attacker of a Combat at the Battlefield: the player who made it Contested (CR 466). -/
 def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
@@ -131,7 +125,9 @@ def attackerAt (s : GameState) (bf : ObjId) : PlayerId :=
 
 /-- The Defender designated at the start of this Combat (CR 466.2.c.2). -/
 def defenderAt (s : GameState) (bf : ObjId) (att : PlayerId) : PlayerId :=
-  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (s.nextPlayer att)
+  let present := (s.combatantsAt bf).bind (fun (a, b) =>
+    if att == a then some b else if att == b then some a else none)
+  ((s.combat.filter (·.battlefield == bf)).map (·.defender)).getD (present.getD (s.nextParticipant att))
 
 end GameState
 
@@ -261,28 +257,58 @@ def ignoresTank (s : GameState) (bf : ObjId) (side : PlayerId) : Bool :=
 def isTank (s : GameState) (bf : ObjId) (side : PlayerId) (u : ObjId) : Bool :=
   !s.ignoresTank bf side && s.hasKw u .tank
 
-/-- Whether a Unit must be assigned damage last. Tank takes precedence when it applies. -/
-def isLast (s : GameState) (bf : ObjId) (side : PlayerId) (u : ObjId) : Bool :=
-  !s.isTank bf side u && (s.activeMods u).contains .assignedLast
+/-- Whether this Unit has Backline or equivalent rules text (CR 826). -/
+def hasBackline (s : GameState) (u : ObjId) : Bool :=
+  (s.activeMods u).contains .assignedLast
 
-/-- A Unit that can be named next in the order of the assignment: a Unit of the other side not
-named yet, an applicable Tank Unit first, and a Unit that must be assigned damage last after the
-others (CR 815, 467.2.c). -/
+/-- Units immune to combat damage are exempt from mandatory assignment (CR 467.2.c.10).
+Damage prevention is a replacement effect, so a protected Unit is still eligible. -/
+def assignmentTargets (s : GameState) (bf : ObjId) (side : PlayerId) : List ObjId :=
+  (s.foes bf side).filter (fun u => (s.obj? u).any (fun o => !damageImmune s u o none))
+
+/-- The assigning player can elect Tank or Backline for this Unit in the current combat. -/
+def assignmentPriorityChoice (s : GameState) (side : PlayerId) (u : ObjId) :
+    Option CombatAssignmentPriority :=
+  s.turnFx.reverse.findSome? fun note =>
+    if note.turn == s.turn && note.who == side && note.target == some u then
+      match note.kind with
+      | .combatAssignmentPriority priority => some priority
+      | _ => none
+    else none
+
+/-- Tank goes first and Backline last. Both requirements can hold together when the Unit
+can be placed between pure Tank and pure Backline Units (CR 467.2.c.6-9). -/
+def assignmentRank (s : GameState) (bf : ObjId) (side : PlayerId) (u : ObjId) : Nat :=
+  match s.isTank bf side u, s.hasBackline u with
+  | true, true =>
+    match s.assignmentPriorityChoice side u with
+    | some .tank => 0
+    | some .backline => 2
+    | none => 1
+  | true, false => 0
+  | false, true => 2
+  | false, false => 1
+
+/-- A previously unnamed target can go next once its controller's higher-priority targets
+have been named (CR 815, 826). -/
 def pickOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) (u : ObjId) : Bool :=
-  decide (u ∈ s.foes bf side) && decide (u ∉ acc) &&
-    ((s.isTank bf side u || (s.foes bf side).all (fun v => !s.isTank bf side v || decide (v ∈ acc))) &&
-      (!s.isLast bf side u || (s.foes bf side).all (fun v => s.isLast bf side v || decide (v ∈ acc))))
+  let targets := s.assignmentTargets bf side
+  let controller := s.controllerOf u
+  let rank := s.assignmentRank bf side u
+  decide (u ∈ targets) && decide (u ∉ acc) &&
+    targets.all (fun v => s.controllerOf v != controller || decide (v ∈ acc) ||
+      decide (rank ≤ s.assignmentRank bf side v))
 
-/-- Every Unit of the other side has been named. -/
+/-- Every target eligible for combat damage has been named. -/
 def doneOk (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) : Bool :=
-  (s.foes bf side).all (fun v => decide (v ∈ acc))
+  (s.assignmentTargets bf side).all (fun v => decide (v ∈ acc))
 
 end GameState
 
 /-- The answers to the `assign` frame of `side`. -/
 def legalAssigns (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List ObjId) :
     List Action :=
-  ((s.foes bf side).filter (fun u => s.pickOk bf side acc u)).map
+  ((s.assignmentTargets bf side).filter (fun u => s.pickOk bf side acc u)).map
       (fun u => ⟨.player side, .assignPick u⟩) ++
     (if s.doneOk bf side acc then [⟨.player side, .assignDone⟩] else [])
 
@@ -303,8 +329,8 @@ theorem mem_legalAssigns {s : GameState} {bf : ObjId} {side : PlayerId} {acc : L
         exact Or.inr ⟨h, hd⟩
       · simp at h
   · rintro (⟨u, rfl, hu⟩ | ⟨rfl, hd⟩)
-    · have hm : u ∈ s.foes bf side := by
-        unfold GameState.pickOk at hu
+    · have hm : u ∈ s.assignmentTargets bf side := by
+        dsimp only [GameState.pickOk] at hu
         simp only [Bool.and_eq_true, decide_eq_true_eq] at hu
         exact hu.1.1
       exact Or.inl ⟨u, ⟨hm, hu⟩, rfl⟩
@@ -317,57 +343,41 @@ theorem assign_exists (s : GameState) (bf : ObjId) (side : PlayerId) (acc : List
   by_cases hd : s.doneOk bf side acc = true
   · exact ⟨⟨.player side, .assignDone⟩, mem_legalAssigns.mpr (Or.inr ⟨rfl, hd⟩),
       by simp⟩
-  · -- some Unit is not named yet
-    have hex : ∃ v ∈ s.foes bf side, v ∉ acc := by
-      refine Classical.byContradiction (fun hn => hd ?_)
+  · let remaining := (s.assignmentTargets bf side).filter (fun u => decide (u ∉ acc))
+    have nonempty : remaining ≠ [] := by
+      intro empty
+      apply hd
       unfold GameState.doneOk
-      simp only [List.all_eq_true, decide_eq_true_eq]
-      intro v hv
-      exact Classical.byContradiction (fun hv2 => hn ⟨v, hv, hv2⟩)
-    by_cases ht : ∃ t ∈ s.foes bf side, t ∉ acc ∧ s.isTank bf side t = true
-    · obtain ⟨t, htm, hta, htt⟩ := ht
-      refine ⟨⟨.player side, .assignPick t⟩,
-        mem_legalAssigns.mpr (Or.inl ⟨t, rfl, ?_⟩), by simp⟩
-      have hl : s.isLast bf side t = false := by simp [GameState.isLast, htt]
-      unfold GameState.pickOk
-      simp [htm, hta, htt, hl]
-    · -- no Tank is left: a Unit that is not last if there is one, any Unit otherwise
-      have htank (w : ObjId) (hw : w ∈ s.foes bf side) :
-          (!s.isTank bf side w || decide (w ∈ acc)) = true := by
-        by_cases hwt : s.isTank bf side w = true
-        · have hwa : w ∈ acc := Classical.byContradiction (fun hwa => ht ⟨w, hw, hwa, hwt⟩)
-          simp [hwa]
-        · have : s.isTank bf side w = false := by simpa using hwt
-          simp [this]
-      by_cases hn : ∃ v ∈ s.foes bf side, v ∉ acc ∧ s.isLast bf side v = false
-      · obtain ⟨v, hvm, hva, hvl⟩ := hn
-        refine ⟨⟨.player side, .assignPick v⟩,
-          mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
-        unfold GameState.pickOk
-        simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, List.all_eq_true,
-          Bool.not_eq_true', hvl]
-        exact ⟨⟨hvm, hva⟩, Or.inr (fun w hw => by simpa using htank w hw), Or.inl trivial⟩
-      · obtain ⟨v, hvm, hva⟩ := hex
-        refine ⟨⟨.player side, .assignPick v⟩,
-          mem_legalAssigns.mpr (Or.inl ⟨v, rfl, ?_⟩), by simp⟩
-        unfold GameState.pickOk
-        simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true, List.all_eq_true,
-          Bool.not_eq_true']
-        refine ⟨⟨hvm, hva⟩, Or.inr (fun w hw => by simpa using htank w hw),
-          Or.inr (fun w hw => ?_)⟩
-        by_cases hwa : w ∈ acc
-        · right; exact hwa
-        · left
-          by_cases hwl : s.isLast bf side w = false
-          · exact absurd ⟨w, hw, hwa, hwl⟩ hn
-          · simpa using hwl
+      refine List.all_eq_true.mpr (fun u hu => ?_)
+      by_cases picked : u ∈ acc
+      · simp [picked]
+      · have pending : u ∈ remaining := List.mem_filter.mpr ⟨hu, by simp [picked]⟩
+        simp [empty] at pending
+    let rank := s.assignmentRank bf side
+    let unit := remaining.minOn rank nonempty
+    have pending : unit ∈ remaining := List.minOn_mem
+    have ⟨member, hnew⟩ := List.mem_filter.mp pending
+    have notPicked : unit ∉ acc := of_decide_eq_true hnew
+    refine ⟨⟨.player side, .assignPick unit⟩,
+      mem_legalAssigns.mpr (Or.inl ⟨unit, rfl, ?_⟩), by simp⟩
+    simp only [GameState.pickOk, member, notPicked, decide_true, Bool.true_and]
+    refine List.all_eq_true.mpr (fun v hv => ?_)
+    by_cases picked : v ∈ acc
+    · simp [picked]
+    · have hp : v ∈ remaining := List.mem_filter.mpr ⟨hv, by simp [picked]⟩
+      have least : rank unit ≤ rank v := List.apply_minOn_le_of_mem hp
+      simp [picked, show s.assignmentRank bf side unit ≤ s.assignmentRank bf side v from least]
 
 /-! ### Dealing the damage and ending the Combat -/
 
 /-- The damage from both sides after applying the chosen assignment replacements
 (CR 467.2.c.1, 467.2.c.5). -/
-def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat)) : EffectDamageBatch :=
-  let batch : EffectDamageBatch := { controller := none, incoming := [] }
+def combatDamageBatch (s : GameState) (hits : List (ObjId × Nat))
+    (combatants : Option (PlayerId × PlayerId) := none) : EffectDamageBatch :=
+  let damageSources := combatants.toList.flatMap fun (attacker, defender) =>
+    hits.filterMap fun (unit, _) => (s.obj? unit).map fun target =>
+      (unit, if s.config.mode.sameSide attacker target.controller then defender else attacker)
+  let batch : EffectDamageBatch := { controller := none, incoming := [], damageSources, combatDamage := true }
   hits.foldl (fun now (u, raw) =>
     match s.obj? u with
     | none => now
@@ -482,7 +492,7 @@ theorem combatControl_frames (s : GameState) (bf : ObjId) :
 with no damage to assign or no Unit to assign it to is skipped (CR 467.1-2). -/
 def GameState.assignFrame (s : GameState) (bf : ObjId) (att side : PlayerId)
     (done : List (ObjId × Nat)) : Option Frame :=
-  if 0 < s.combatTotal bf att side && !(s.foes bf side).isEmpty then
+  if 0 < s.combatTotal bf att side && !(s.assignmentTargets bf side).isEmpty then
     some (.assign bf att side [] done)
   else none
 
@@ -490,13 +500,11 @@ def GameState.assignFrame (s : GameState) (bf : ObjId) (att side : PlayerId)
 (CR 372, 467.2.c.5). Choices for different Units do not change one another. -/
 def damageOrderFrames (s : GameState) (bf : ObjId) (att side : PlayerId) : List Frame :=
   if s.combatTotal bf att side == 0 then []
-  else (s.foes bf side).filterMap (fun u =>
-    (s.obj? u).bind (fun unit =>
-      let replacements := damageReplacements s { controller := none, incoming := [] } u
-      if 1 < (replacements.eraseDupsBy DamageReplacement.sameChoice).length &&
-          !damageImmune s u unit none then
-        some (.run unit.controller u {} (.cons (.orderCombatDamage u [] replacements) .nil))
-      else none))
+  else (s.assignmentTargets bf side).filterMap (fun u =>
+    let replacements := damageReplacements s { controller := none, incoming := [] } u
+    if 1 < (replacements.eraseDupsBy DamageReplacement.sameChoice).length then
+      some (.run (s.controllerOf u) u {} (.cons (.orderCombatDamage u [] replacements) .nil))
+    else none)
 
 /-- The frames that ask for ordering damage replacements are play frames. -/
 theorem damageOrderFrames_play (s : GameState) (bf : ObjId) (att side : PlayerId)
@@ -505,22 +513,46 @@ theorem damageOrderFrames_play (s : GameState) (bf : ObjId) (att side : PlayerId
   split at hf
   · simp at hf
   · obtain ⟨u, -, h⟩ := List.mem_filterMap.mp hf
-    cases ho : s.obj? u with
-    | none => simp [ho] at h
-    | some unit =>
-      simp only [ho, Option.bind_some] at h
-      split at h
-      · cases h
-        rfl
-      · simp at h
+    dsimp only at h
+    split at h
+    · cases h
+      rfl
+    · simp at h
+
+/-- Ask the assigning player once per Unit whose Tank and Backline conflict. With only
+Tank and Backline peers the requirements can both be satisfied (CR 467.2.c.8-9). -/
+def combatAssignmentChoices (s : GameState) (bf : ObjId) (side : PlayerId) : List Frame :=
+  let targets := s.assignmentTargets bf side
+  let ordinary := targets.filter (fun u => !s.isTank bf side u && !s.hasBackline u)
+  let record (priority : CombatAssignmentPriority) :=
+    Effect.prim (.markOn .self (.combatAssignmentPriority priority))
+  targets.filterMap fun u =>
+    if s.isTank bf side u && s.hasBackline u &&
+        ordinary.any (fun peer => s.controllerOf peer == s.controllerOf u) then
+      some (.eitherDo side u {} (record .tank) (record .backline) .nil)
+    else none
+
+/-- Combat priority choices are play frames. -/
+theorem combatAssignmentChoices_play {s : GameState} {bf : ObjId} {side : PlayerId} {f : Frame}
+    (hf : f ∈ combatAssignmentChoices s bf side) : f.isPlay = true := by
+  unfold combatAssignmentChoices at hf
+  dsimp only at hf
+  obtain ⟨u, -, h⟩ := List.mem_filterMap.mp hf
+  split at h
+  · cases h
+    rfl
+  · simp at h
 
 /-- The frames of Combat Damage, starting with any decisions about damage replacement. -/
 def GameState.startCombat (s : GameState) (bf : ObjId) (att : PlayerId) : List Frame :=
   let defn := s.defenderAt bf att
   damageOrderFrames s bf att att ++ damageOrderFrames s bf att defn ++
-    match s.assignFrame bf att att [] <|> s.assignFrame bf att defn [] with
-    | some f => [f]
-    | none => [.cleanup, .combatResolve bf att]
+    match s.assignFrame bf att att [] with
+    | some f => combatAssignmentChoices s bf att ++ [f]
+    | none =>
+      match s.assignFrame bf att defn [] with
+      | some f => combatAssignmentChoices s bf defn ++ [f]
+      | none => [.cleanup, .combatResolve bf att]
 
 /-- Damage assignment is a play frame. -/
 theorem assignFrame_play {s : GameState} {bf : ObjId} {att side : PlayerId}
@@ -543,53 +575,56 @@ theorem startCombat_play (s : GameState) (bf : ObjId) (att : PlayerId) {f : Fram
   · exact damageOrderFrames_play s bf att (s.defenderAt bf att) hd
   · cases ha : s.assignFrame bf att att [] with
     | some a =>
-      simp [ha] at hf
-      subst f
-      exact assignFrame_play ha
+      simp only [ha, List.mem_append, List.mem_singleton] at hf
+      rcases hf with h | rfl
+      · exact combatAssignmentChoices_play h
+      · exact assignFrame_play ha
     | none =>
       cases hd : s.assignFrame bf att (s.defenderAt bf att) [] with
       | some a =>
-        simp [ha, hd] at hf
-        subst f
-        exact assignFrame_play hd
+        simp only [ha, hd, List.mem_append, List.mem_singleton] at hf
+        rcases hf with h | rfl
+        · exact combatAssignmentChoices_play h
+        · exact assignFrame_play hd
       | none =>
         simp [ha, hd] at hf
         rcases hf with rfl | rfl <;> rfl
 
-/-- The damage assigned to Units of other players than `att` beyond what is lethal to them (the
+/-- The damage assigned to enemy Units beyond what is lethal to them (the
 last Unit of an order gets what is left). -/
-def excessOf (s : GameState) (att : PlayerId) (done : List (ObjId × Nat)) : Nat :=
-  (done.filter (fun e => (s.obj? e.1).any (fun o => o.controller != att))).foldl
+def excessOf (s : GameState) (p : PlayerId) (done : List (ObjId × Nat)) : Nat :=
+  (done.filter (fun e => (s.obj? e.1).any (fun o => !s.config.mode.sameSide o.controller p))).foldl
     (fun acc (unit, raw) =>
       if (s.activeMods unit).contains .noDamage then acc
       else
         let damage := (s.combatDamagePreview unit raw { controller := none, incoming := [] }).2
-        acc + (damage - s.need unit)) 0
+        acc + (damage - s.need unit (some p))) 0
 
 /-- The answer `assignDone`: the damage of this side is assigned down the order, and the next side
 asks, or all the damage is dealt (CR 467.2.c.1) and the Combat Cleanup begins. -/
 def assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) : GameState × List Event :=
   let total := s.combatTotal bf att side
-  let done' := done ++ greedy (fun u => (s.combatNeed u).getD (total + 1)) total acc
-  match (if side = att then s.assignFrame bf att (s.defenderAt bf att) done' else none) with
-  | some f => ({ s with pending := f :: rest }, [])
+  let done' := done ++ greedy (fun u => (s.combatNeed u (some side)).getD (total + 1)) total acc
+  let defender := s.defenderAt bf att
+  match (if side = att then s.assignFrame bf att defender done' else none) with
+  | some f => ({ s with pending := combatAssignmentChoices s bf defender ++ f :: rest }, [])
   | none =>
-    let batch := combatDamageBatch s done'
-    let excess := excessOf s att done'
+    let batch := combatDamageBatch s done' (some (att, defender))
+    let excess := (excessOf s att done', excessOf s defender done')
     let next := Frame.cleanup :: .combatResolve bf att :: rest
-    if batch.resolved.any (fun hit => (damageDeathChoice s hit).isSome) then
+    if batch.resolved.any (fun hit => (damageDeathChoice s batch hit).isSome) then
       let damage := EffectList.ofList [.resolveEffectDamage batch none, .endCombatDamage excess]
       ({ s with pending := .run att bf {} damage :: next }, [])
     else
       let r := commitEffectDamage s batch
-      ({ recordCombatDamage r.1 att excess with pending := next }, r.2)
+      ({ recordCombatDamage r.1 bf excess with pending := next }, r.2)
 
 /-- What `assignDoneStep` does, in the cases the invariants look at. -/
 theorem assignDoneStep_cases (s : GameState) (bf : ObjId) (att side : PlayerId) (acc : List ObjId)
     (done : List (ObjId × Nat)) (rest : List Frame) :
     (∃ b a q d, (assignDoneStep s bf att side acc done rest).1 =
-      { s with pending := Frame.assign b a q [] d :: rest }) ∨
+      { s with pending := combatAssignmentChoices s b q ++ Frame.assign b a q [] d :: rest }) ∨
     (∃ damage, (assignDoneStep s bf att side acc done rest).1 =
       { s with pending := .run att bf {} damage :: .cleanup :: .combatResolve bf att :: rest }) ∨
     (∃ r, Safe s r ∧ (assignDoneStep s bf att side acc done rest).1 =
@@ -628,6 +663,17 @@ theorem showdownEnd_cases (s : GameState) (bf : ObjId) (rest : List Frame) :
   split
   · exact Or.inl ⟨_, rfl⟩
   · exact Or.inr rfl
+
+/-- Closing the Showdown keeps the board's well-formedness, ownership and physical inventory. -/
+theorem showdownEnd_preservesBoard (s : GameState) (bf : ObjId) (rest : List Frame) (hwf : s.WF) :
+    (showdownEnd s bf rest).1.WF ∧
+      (s.OwnerOk → (showdownEnd s bf rest).1.OwnerOk) ∧
+      (showdownEnd s bf rest).1.physIds.Perm s.physIds := by
+  rcases showdownEnd_cases s bf rest with ⟨attacker, next⟩ | next <;> rw [next]
+  · exact ⟨hwf.congr rfl rfl rfl rfl, fun owner => owner.congr rfl rfl, List.Perm.refl _⟩
+  · have safe := endShowdown_safeP s bf
+    exact ⟨(safe.wf hwf).congr rfl rfl rfl rfl,
+      fun owner => (safe.own hwf owner).congr rfl rfl, safe.phys hwf⟩
 
 end Riftbound
 

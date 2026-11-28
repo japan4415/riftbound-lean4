@@ -14,9 +14,30 @@ moved, and neither owner nor physical card changes.
 
 namespace Riftbound
 
+/-- Remove healed damage from the corresponding marks (CR 419). -/
+def healDamageMarks (amount : Nat) : List (Option PlayerId × Nat) → List (Option PlayerId × Nat)
+  | [] => []
+  | (who, damage) :: rest =>
+    if amount < damage then (who, damage - amount) :: rest
+    else healDamageMarks (amount - damage) rest
+
+/-- Keep the damage marks in step with an object whose damage was reduced. -/
+def reduceObjectDamageMarks (marks : Std.ExtTreeMap Nat (List (Option PlayerId × Nat)))
+    (id before after : Nat) : Std.ExtTreeMap Nat (List (Option PlayerId × Nat)) :=
+  if after < before then
+    if after == 0 then marks.erase id
+    else match healDamageMarks (before - after) (marks[id]?.getD []) with
+      | [] => marks.erase id
+      | kept => marks.insert id kept
+  else marks
+
 /-- Change every object by `f`, with access to its identifier. -/
 def GameState.mapObjectsAt (s : GameState) (f : ObjId → Object → Object) : GameState :=
-  { s with objects := s.objects.map (fun k o => f ⟨k⟩ o) }
+  let objects := s.objects.map (fun k o => f ⟨k⟩ o)
+  let marks := s.damageMarks.toList.foldl (fun marks (id, _) =>
+    reduceObjectDamageMarks marks id ((s.objects[id]?).map (·.damage) |>.getD 0)
+      ((objects[id]?).map (·.damage) |>.getD 0)) s.damageMarks
+  { s with objects, damageMarks := marks }
 
 /-- Change every object by `f`. -/
 def GameState.mapObjects (s : GameState) (f : Object → Object) : GameState :=
@@ -159,10 +180,29 @@ theorem readyOf_idem (p : PlayerId) (o : Object) : readyOf p (readyOf p o) = rea
 /-- Healing twice is healing once. -/
 theorem healObj_idem (o : Object) : healObj (healObj o) = healObj o := rfl
 
+private theorem damageMarks_mapObjects (s : GameState) (f : Object → Object)
+    (preserves : ∀ o, (f o).damage = o.damage) : (s.mapObjects f).damageMarks = s.damageMarks := by
+  have amounts (id : Nat) : ((s.objects.map (fun _ o => f o))[id]?.map (·.damage)).getD 0 =
+      (s.objects[id]?.map (·.damage)).getD 0 := by
+    rw [Std.ExtTreeMap.getElem?_map]
+    cases s.objects[id]? <;> simp [preserves]
+  unfold GameState.mapObjects GameState.mapObjectsAt
+  dsimp only
+  simp only [amounts, reduceObjectDamageMarks, Nat.lt_irrefl, ite_false]
+  generalize s.damageMarks.toList = entries
+  induction entries with
+  | nil => rfl
+  | cons _ _ ih => exact ih
+
 /-- Readying the objects of a player twice is readying them once. -/
 theorem mapObjects_ready_idem (s : GameState) (p : PlayerId) :
     (s.mapObjects (readyOf p)).mapObjects (readyOf p) = s.mapObjects (readyOf p) := by
-  simp only [GameState.mapObjects, GameState.mapObjectsAt, Std.ExtTreeMap.map_map, readyOf_idem]
+  have preserved (o : Object) : (readyOf p o).damage = o.damage := by
+    unfold readyOf
+    split <;> rfl
+  have marks := damageMarks_mapObjects (s.mapObjects (readyOf p)) (readyOf p) preserved
+  simp only [GameState.mapObjects, GameState.mapObjectsAt, Std.ExtTreeMap.map_map, readyOf_idem] at marks ⊢
+  rw [marks]
 
 /-- Readying makes an object of the player ready. -/
 theorem readyOf_ready {p : PlayerId} {o : Object} (h : o.controller = p) (hc : o.cantReady = false) :
@@ -244,7 +284,11 @@ end GameState
 
 /-- Change one object by `f`. -/
 def GameState.modObj (s : GameState) (id : ObjId) (f : Object → Object) : GameState :=
-  { s with objects := s.objects.modify id.n f }
+  let objects := s.objects.modify id.n f
+  let marks := if s.damageMarks.isEmpty then s.damageMarks else
+    reduceObjectDamageMarks s.damageMarks id.n ((s.obj? id).map (·.damage) |>.getD 0)
+      ((objects[id.n]?).map (·.damage) |>.getD 0)
+  { s with objects, damageMarks := marks }
 
 namespace GameState
 

@@ -57,7 +57,7 @@ inductive SpellPick where
   /-- The choices before resolution, with the printed optional cost and the number of Repeats
   chosen for this play (CR 355.1, 356.4.f.1). -/
   | withCosts (pick : SpellPick) (printed : Bool) (repeats : Nat)
-  /-- A permanent used to pay an additional Spell cost. It is not a target of the Spell. -/
+  /-- A permanent used to pay an additional play cost, separate from targets and destination. -/
   | withExtraObject (pick : SpellPick) (object : ObjId)
   /-- The amount of a variable additional Power cost declared for this play. -/
   | withVariablePower (pick : SpellPick) (amount : Nat)
@@ -65,40 +65,89 @@ inductive SpellPick where
   | withSpellExhausts (pick : SpellPick) (groups : List (ObjId × List ObjId))
   /-- This execution uses the first `targetCount` targets. Its Repeat has separate choices (CR 820.2). -/
   | thenRepeat (pick : SpellPick) (targetCount : Nat) (next : SpellPick)
+  /-- Elect the card's printed additional XP cost. This choice names no object. -/
+  | withXP (pick : SpellPick)
+  /-- The object used to pay a Kill cost and its base costs at payment (CR 359.3.e.13).
+  Recorded by the engine after paying the cost. -/
+  | withPaidKill (pick : SpellPick) (object : ObjId) (energy power : Nat)
+  /-- Pay the direct spell's Deflect surcharge from the named sources. -/
+  | withDeflectPayment (pick : SpellPick) (sources : List PowerBucket)
 deriving DecidableEq, Repr, Hashable
+
+/-- Remove the separate Deflect payment before applying the rest of the finalization. -/
+def SpellPick.withoutDeflectPayment : SpellPick → SpellPick
+  | .withDeflectPayment pick _ => pick
+  | pick => pick
+
+/-- The declared sources for the spell's separate Deflect payment. -/
+def SpellPick.deflectPayment : SpellPick → Option (List PowerBucket)
+  | .withDeflectPayment _ sources => some sources
+  | _ => none
+
+/-- The source and base costs recorded when the Spell paid its Kill cost. -/
+def SpellPick.paidKill : SpellPick → Option (ObjId × Nat × Nat)
+  | .withPaidKill _ object energy power => some (object, energy, power)
+  | .withCosts pick _ _ => pick.paidKill
+  | _ => none
+
+/-- Keep the previously paid Kill cost when assigning new effect choices. -/
+def SpellPick.addPaidKill (pick : SpellPick) (payment : Option (ObjId × Nat × Nat)) : SpellPick :=
+  payment.elim pick (fun (object, energy, power) => .withPaidKill pick object energy power)
+
+/-- Whether the play elects the printed XP cost. -/
+def SpellPick.paysXP : SpellPick → Bool
+  | .withXP _ => true
+  | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
+      .withSpellExhausts pick _ | .withPaidKill pick .. => pick.paysXP
+  | _ => false
+
+/-- Remove the XP payment before inspecting the remaining finalization choices. -/
+def SpellPick.withoutXP : SpellPick → SpellPick
+  | .withXP pick => pick
+  | pick => pick
 
 /-- The choices of costs, when declared explicitly. -/
 def SpellPick.optionalCosts : SpellPick → Option (Bool × Nat)
   | .withCosts _ printed repeats => some (printed, repeats)
   | .withPlayer pick _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.optionalCosts
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick |
+      .withPaidKill pick .. => pick.optionalCosts
   | _ => none
 
 /-- The explicitly elected optional costs of a Unit or Gear. -/
 def SpellPick.permanentCosts : SpellPick → Option (List Nat)
   | .payForBattlefield _ costs | .withPermanentCosts costs => some costs
-  | .withShowOff pick _ | .withGearDiscounts pick _ => pick.permanentCosts
+  | .withShowOff pick _ | .withGearDiscounts pick _ | .withExtraObject pick _ |
+      .withXP pick => pick.permanentCosts
   | _ => none
 
 /-- The player targeted during finalization. -/
 def SpellPick.playerTarget : SpellPick → Option PlayerId
   | .withPlayer _ player => some player
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withShowOff pick _ |
-      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ => pick.playerTarget
+      .withExtraObject pick _ | .withVariablePower pick _ | .withSpellExhausts pick _ |
+      .withXP pick | .withPaidKill pick .. => pick.playerTarget
   | _ => none
 
 /-- The mode or destination selected for the effect, independently of its optional costs. -/
 def SpellPick.effectChoice : SpellPick → SpellPick
   | .withPlayer pick _ | .withShowOff pick _ | .withVariablePower pick _ => pick.effectChoice
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ => pick.effectChoice
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. => pick.effectChoice
   | pick => pick
+
+/-- The location selected at finalization, with an inner `none` for Base. -/
+def SpellPick.moveDestination? (pick : SpellPick) : Option (Option ObjId) :=
+  match pick.effectChoice with
+  | .destination location | .modeDestination _ location => some location
+  | _ => none
 
 /-- Whether this play has distinct recorded choices for each execution. -/
 def SpellPick.hasExecutionChoices : SpellPick → Bool
   | .thenRepeat .. => true
   | .withCosts pick _ _ | .withShowOff pick _ | .withExtraObject pick _ |
-      .withVariablePower pick _ | .withSpellExhausts pick _ => pick.hasExecutionChoices
+      .withVariablePower pick _ | .withSpellExhausts pick _ | .withXP pick |
+      .withPaidKill pick .. => pick.hasExecutionChoices
   | _ => false
 
 /-- Read the ordered finalization choices with the targets belonging to each execution. -/
@@ -107,6 +156,9 @@ def SpellPick.executions (targets : List ObjId) : SpellPick → List (SpellPick 
   | .withExtraObject pick _ | .withSpellExhausts pick _ => pick.executions targets
   | .withVariablePower pick n => (pick.executions targets).map (fun (k, ts) => (.withVariablePower k n, ts))
   | .thenRepeat pick count next => (pick, targets.take count) :: next.executions (targets.drop count)
+  | .withXP pick => (pick.executions targets).map (fun (k, ts) => (.withXP k, ts))
+  | .withPaidKill pick object energy power =>
+    (pick.executions targets).map (fun (k, ts) => (.withPaidKill k object energy power, ts))
   | pick => [(pick, targets)]
 
 /-- The object shown off for this play. -/
@@ -114,14 +166,16 @@ def SpellPick.showOffObject : SpellPick → Option ObjId
   | .withShowOff _ object => some object
   | .withCosts pick _ _ | .withPlayer pick _ | .thenRepeat pick _ _ |
       .withExtraObject pick _ | .withVariablePower pick _ | .withGearDiscounts pick _ |
-      .withSpellExhausts pick _ => pick.showOffObject
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. |
+      .withDeflectPayment pick _ => pick.showOffObject
   | _ => none
 
 /-- The declared amount of a variable Power cost for this play. -/
 def SpellPick.variablePower : SpellPick → Option Nat
   | .withVariablePower _ n => some n
   | .withCosts pick _ _ | .withPlayer pick _ | .withShowOff pick _ |
-      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ => pick.variablePower
+      .withExtraObject pick _ | .withSpellExhausts pick _ | .thenRepeat pick _ _ |
+      .withXP pick | .withPaidKill pick .. => pick.variablePower
   | _ => none
 
 /-- Decorate a finalization when its additional Power amount is declared. -/
@@ -131,6 +185,7 @@ def SpellPick.addVariablePower (pick : SpellPick) (amount : Option Nat) : SpellP
 /-- Passive sources whose optional Gear discount was elected. -/
 def SpellPick.gearDiscounts : SpellPick → List ObjId
   | .withGearDiscounts _ sources => sources
+  | .withExtraObject pick _ | .withXP pick => pick.gearDiscounts
   | _ => []
 
 /-- Remove the Gear discount declaration before inspecting other costs. -/
@@ -138,15 +193,17 @@ def SpellPick.withoutGearDiscounts : SpellPick → SpellPick
   | .withGearDiscounts pick _ => pick
   | pick => pick
 
-/-- The permanent selected to pay the cost for this Spell play. -/
+/-- The permanent selected separately to pay this play's cost. -/
 def SpellPick.extraObject : SpellPick → Option ObjId
   | .withExtraObject _ object => some object
-  | .withSpellExhausts pick _ => pick.extraObject
+  | .withPaidKill _ object .. => some object
+  | .withSpellExhausts pick _ | .withXP pick => pick.extraObject
   | _ => none
 
 /-- Every source and group of Units elected to exhaust together during the Spell's play. -/
 def SpellPick.spellExhausts : SpellPick → List (ObjId × List ObjId)
   | .withSpellExhausts _ groups => groups
+  | .withXP pick => pick.spellExhausts
   | _ => []
 
 /-- Strip the extra Exhaust cost while preserving any separate object cost. -/
@@ -178,12 +235,14 @@ deriving DecidableEq, Repr, Hashable
 
 /-- Whose side an object is on, seen from the player the effect belongs to (CR 740.1). -/
 inductive Side where
-  /-- Friendly: controlled by the player. -/
+  /-- Friendly: controlled by the player or their teammate. -/
   | friendly
   /-- Enemy: controlled by an opponent. -/
   | enemy
   /-- Either side. -/
   | any
+  /-- Controlled by the player making the choice (CR 491.8). -/
+  | you
 deriving DecidableEq, Repr, Hashable
 
 /-- Where an object is. -/
@@ -222,6 +281,14 @@ inductive Place where
   | onChainAll
 deriving DecidableEq, Repr, Hashable
 
+/-- A specific physical location on the Board (CR 197). -/
+inductive BoardLocation where
+  /-- A specific seat's Base. -/
+  | base (seat : PlayerId)
+  /-- A specific Battlefield on the Board. -/
+  | battlefield (id : ObjId)
+deriving DecidableEq, Repr, Hashable
+
 /-- How many objects an effect takes (CR 355): "a", "up to N", "N", "each" or "all". -/
 inductive Quantity where
   /-- Exactly one. -/
@@ -232,12 +299,20 @@ inductive Quantity where
   | anyNumber
   /-- Any subset whose total Might is at most the limit (CR 355.11). -/
   | combinedMightAtMost (limit : Nat)
+  /-- Any subset controlled by one seat whose total Might is at most the limit (CR 355.11). -/
+  | combinedMightFromOneController (limit : Nat)
   /-- From one to `limit` targets together at a Battlefield (CR 355.11, 355.14). -/
   | atOneBattlefield (limit : Nat)
+  /-- Up to one target in each specific Base or Battlefield. -/
+  | onePerLocation
+  /-- From one target up to the current Might of the Unit at an earlier slot (CR 355.14). -/
+  | splitByMight (slot : Nat)
   /-- Exactly `n`. -/
   | exactly (n : Nat)
   /-- Every one that matches. -/
   | all
+  /-- Up to `limit` targets together at one specific Base or Battlefield (CR 355.11). -/
+  | atOneLocation (limit : Nat)
 deriving DecidableEq, Repr, Hashable
 
 /-- A comparison. -/
@@ -272,6 +347,14 @@ inductive PlayerSel where
   | eventPlayer
   /-- The controller of the object chosen at a slot of the effect ("its controller"). -/
   | controllerOf (slot : Nat)
+  /-- Every player in turn order, starting after the current turn player. -/
+  | eachPlayerFromNext
+  /-- The owner of the object held in an effect's slot. -/
+  | ownerOf (slot : Nat)
+  /-- The player who played the unit held in an effect's slot this turn. -/
+  | playedBy (slot : Nat)
+  /-- Every player except the player the effect belongs to, including any teammate. -/
+  | eachOtherPlayer
 deriving DecidableEq, Repr, Hashable
 
 /-- A replacement still available for one damage event. Turn notes use their positions in
@@ -285,12 +368,46 @@ inductive DamageReplacement where
   | shield (note : Nat)
 deriving DecidableEq, Repr, Hashable
 
+/-- Which requirement applies to a Unit with conflicting combat priorities (CR 467.2.c.8). -/
+inductive CombatAssignmentPriority where
+  /-- Assign damage before the controller's Units without Tank. -/
+  | tank
+  /-- Assign damage after the controller's Units without Backline. -/
+  | backline
+deriving DecidableEq, Repr, Hashable
+
+/-- One answer to a death replacement decision (CR 372). -/
+inductive DeathDecision where
+  /-- Banish the dying permanent with this player's replacement. -/
+  | banish (player : PlayerId)
+  /-- Kill this Gear in place of the dying Unit. -/
+  | gear (source : ObjId)
+  /-- Apply a rescuer on the Board, or Tactical Retreat when the source is absent. -/
+  | free (source : Option ObjId)
+  /-- Sacrifice a Unit, or decline the optional replacement. -/
+  | sacrifice (cost : Option ObjId)
+deriving DecidableEq, Repr, Hashable
+
+/-- A Board source that can replace more than one death in a simultaneous group (CR 373.2). -/
+inductive DeathSequenceSource where
+  /-- The Gear whose own Kill replaces the original death. -/
+  | gear (source : ObjId)
+  /-- The Unit that directly heals, exhausts, and recalls the dying Unit. -/
+  | rescuer (source : ObjId)
+deriving DecidableEq, Repr, Hashable
+
 /-- What a spell or an ability makes true for the rest of the turn (CR 389-393). -/
 inductive TurnEffect where
+  /-- Original locations specified for a finalized Chain item's targets (CR 359.3.e). -/
+  | declaredTargetLocations (locations : List (ObjId × BoardLocation))
+  /-- The Base seats declared for the grouped moves of a finalized Spell (CR 355.4). -/
+  | declaredMoveBases (bases : List (ObjId × PlayerId))
   /-- The unit can't be chosen by enemy spells and abilities this turn. -/
   | unchoosableEnemy
   /-- No standard or instructed Move can move this Unit this turn (CR 447). -/
   | cannotMove
+  /-- The player recorded by this note cannot move the Unit this turn (CR 447). -/
+  | cannotMoveByPlayer
   /-- The next spell the player plays this turn costs `n` Energy less. -/
   | nextSpellCostMinus (n : Nat)
   /-- The next card the player plays this turn costs less Energy and Power (CR 420.5). -/
@@ -316,6 +433,10 @@ inductive TurnEffect where
   | unitsCostMore (n : Nat)
   /-- The Battlefield was open (nobody controlled it) when the player conquered it this turn. -/
   | openConquest
+  /-- The Turn Player's teammate controlled this Battlefield at the scoring step (CR 491.8.b.1). -/
+  | teamHeldAtScoring
+  /-- This player occupied the Battlefield at their side's scoring step (CR 491.8.g.1). -/
+  | teamOccupiedAtScoring
   /-- This turn the object (a Unit) has the triggered ability of the card at the place (Relentless
   Pursuit: "When I conquer, you may move me to my base"). -/
   | grantsAbility (card : String) (idx : Nat)
@@ -324,6 +445,12 @@ inductive TurnEffect where
   /-- A spell or ability created a delayed trigger for when the marked Unit dies this turn
   (CR 391-393). -/
   | triggerOnDeath (source : ObjId) (card : CardId) (idx : Nat)
+  /-- A spell or ability created a delayed trigger for Unit damage this turn (CR 391-393).
+  A note on a specific Unit waits for its next hit. A note without a target waits for every hit. -/
+  | triggerOnDamage (source : ObjId) (card : CardId) (idx : Nat)
+  /-- Positive damage from the referenced instruction can fire a reflexive ability
+  if the Unit dies during that Chain item's Cleanup (CR 389, 429.5.c). -/
+  | linkedDamageDeath (source : ObjId) (card : CardId) (idx : Nat)
   /-- A delayed ability fires for the next plays of the type by this player this turn
   (CR 391-393). Its source is the object named by the note. -/
   | triggerOnPlays (card : CardId) (idx : Nat) (kind : CardType) (remaining : Nat)
@@ -342,6 +469,8 @@ inductive TurnEffect where
   | preventDamage (remaining : Nat)
   /-- The replacement order chosen for the Unit's current combat damage (CR 467.2.c.5). -/
   | combatDamageOrder (order : List DamageReplacement)
+  /-- The assigning player's choice between a Unit's conflicting requirements this combat. -/
+  | combatAssignmentPriority (priority : CombatAssignmentPriority)
   /-- Spells and abilities deal no damage this turn. -/
   | preventEffectDamage
   /-- Buffs give the player's units an additional +1 Might this turn. -/
@@ -363,8 +492,7 @@ inductive TurnEffect where
   | hideFree
   /-- The object has been paid one unit for ("pay any amount"): one note for each unit paid. -/
   | unitPaid
-  /-- The player assigned `n` excess damage (damage beyond what is lethal) to enemy Units in the
-  Combat Damage of this turn's last Combat. -/
+  /-- The player assigned `n` excess damage to enemy Units in the Combat at the noted Battlefield. -/
   | excessDamage (n : Nat)
   /-- The object has chosen mode `n` of an ability this turn ("choose one you have not chosen"). -/
   | modeUsed (n : Nat)
@@ -377,6 +505,12 @@ inductive TurnEffect where
   /-- A unit died with no other unit of its player where it was: the note is about the dead
   card (Lonely Poro). -/
   | diedAlone
+  /-- The actual company at death when it differs from the historical replay note. -/
+  | deathCompany (alone : Bool)
+  /-- An Equipment ability granted to the object immediately before it died. -/
+  | deathEquipmentGrant (card : CardId) (index : Nat)
+  /-- Power already spent this turn when the Main Phase clears the available resources. -/
+  | powerSpentBeforeMain (amount : Nat)
   /-- A stunned unit died: the note is about the dead card. -/
   | stunnedUnitDied
   /-- A Mighty unit died (its Might was 5 or more as it died): the note is about the dead card. -/
@@ -391,16 +525,27 @@ inductive TurnEffect where
   | banishInstead
   /-- The affected Unit's controller selected the Banish replacement whose player this note names. -/
   | chosenDeathBanisher
+  /-- The affected Unit's controller selected the permanent that will die in its place. -/
+  | chosenDeathGear (gear : ObjId)
+  /-- The affected Unit's controller selected a free rescue. None selects Tactical Retreat. -/
+  | chosenDeathFree (source : Option ObjId)
   /-- The choice for the death currently being processed. None declines just this event. -/
   | deathSacrificeChoice (unit : Option ObjId)
   /-- The controller put this Unit's replacement next in one simultaneous group (CR 373). -/
   | deathOrder (group : List ObjId)
+  /-- Transient context for a root death: these effects already completed their sequences. -/
+  | closedDeathSequences (sources : List DeathSequenceSource)
+  /-- Apply the revised choice only after the earlier events in this group have been resolved. -/
+  | deathReselection (group earlier : List ObjId) (choice : DeathDecision)
+  /-- A choice for a Kill created by an earlier replacement in the same chain (CR 370.2). -/
+  | nestedDeathDecision (root : ObjId) (used : List (ObjId × Bool)) (choice : DeathDecision)
+      (groupScope : Option (List ObjId × List ObjId))
   /-- This permanent has used its optional death replacement this turn (CR 371). -/
   | deathSacrificeUsed
   /-- The next time the unit would die this turn, it is healed, exhausted and recalled instead
   (Tactical Retreat): a note on the unit. -/
   | saveOnce
-  /-- The unit was saved from dying (a note of the turn, not an effect): `saveOnce` is used up. -/
+  /-- A rescue was recorded. It spends a preceding Tactical Retreat if one is available. -/
   | saveUsed
   /-- All damage that would be dealt to the unit this turn is doubled (Lotus Trap). -/
   | doubleDamage
@@ -430,6 +575,12 @@ inductive TurnEffect where
   /-- A note of the turn on an object: an ability of the card waits for it ("at the start of your
   next Main Phase, ..."); `n` tells the notes apart. -/
   | armed (n : Nat)
+  /-- A source used its Unit token duplication this turn (CR 371). -/
+  | duplicatedUnitToken (copy : Option Timestamp)
+  /-- Friendly Units enter ready for the rest of the turn. -/
+  | friendlyUnitsReady
+  /-- The player may inspect facedown cards this seat controls for the rest of the turn. -/
+  | inspectFacedown (controller : PlayerId)
 deriving DecidableEq, Repr, Hashable
 
 /-- Choices limited by an ability's rules text belong to that instance. -/
@@ -504,6 +655,8 @@ inductive Occurrence where
   | every
   /-- Once when one or more subjects die together. -/
   | deathGroup
+  /-- Once when the controller Stuns one or more subjects in one instruction (CR 370, 412.4). -/
+  | stunGroup
   /-- On the `n`-th time only. -/
   | nth (n : Nat)
   /-- On the next `n` times, then no more. -/

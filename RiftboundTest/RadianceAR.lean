@@ -42,7 +42,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let s := ((s.control p home).control q away).modObj unit
     (fun o => { o with hiddenAt := some home, hiddenTurn := some (s.turn - 1) })
   let allowed ← play s p caress
-  let (queued, _) ← (step 100 allowed ⟨.player p, .activate unit 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 allowed ⟨.player p, .activate unit 2 ⟨0, [], none⟩ []⟩).toOption
   let redirected := settleChain { fromEnd := some 0 } 18 queued
   let arrived ← (redirected.unitsAtOf away p).head?
   return (redirected.obj? arrived).any (fun o => o.buffed && o.fromHidden) &&

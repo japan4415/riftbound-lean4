@@ -1,0 +1,254 @@
+module
+
+import RiftboundDriver.ReplayObservation
+meta import RiftboundDriver.ReplayObservation
+import RiftboundTest.CardLab
+meta import RiftboundTest.CardLab
+
+/-! # Printed and granted Rules Text on Equipment -/
+
+namespace RiftboundTest
+
+open Riftbound
+
+private meta def testBoard (test : GameState → Option Bool) : Bool :=
+  (lab.bind test).getD false
+
+-- The replay can distinguish two copies of a Unit carrying different attachment groups.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, host) ← put s p "OGN-051" .base
+  let (s, _) ← put s p "OGN-051" .base
+  let (s, dirk) ← put s p "SFD-009" .base
+  let (s, gear) ← put s p "SFD-042" .base
+  let board := (attachTo host (attachTo host s dirk).1 gear).1
+  let unit := cid "OGN-051"
+  let first := cid "SFD-009"
+  let second := cid "SFD-042"
+  let observed (groups : List RiftboundDriver.ReplayObservedUnitAttachments) :=
+    RiftboundDriver.ReplayObservation.checkAt
+      [{ checkpoint := 1, facts := [.unitAttachments p .base groups] }] 1 board
+  return (observed [⟨unit, []⟩, ⟨unit, [second, first]⟩]).isOk &&
+    !(observed [⟨unit, [first]⟩, ⟨unit, [second]⟩]).isOk
+
+private meta def startBeginning (s : GameState) (p : PlayerId) : Option (GameState × List Event) := do
+  let (waiting, events) ←
+    (advance 100 { s with active := some p, pending := [.phase .beginning, .priority p] } []).toOption
+  let .chainPass first _ :: _ := waiting.pending | some (waiting, events)
+  let (response, firstEvents) ← (step 100 waiting ⟨.player first, .pass⟩).toOption
+  let .chainPass second _ :: _ := response.pending | none
+  let (settled, secondEvents) ← (step 100 response ⟨.player second, .pass⟩).toOption
+  return (settled, events ++ firstEvents ++ secondEvents)
+
+-- The Unleashed FAQ covers Spinning Axe with printed Temporary and with Temporary from Turn to
+-- Dust. Exercise both through the Beginning Phase dispatcher, including the actual death event.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s1, unit) ← put s p "OGN-049" .base
+  let (s2, axe) ← put s1 p "SFD-186" .hand
+  let (s3, dust) ← put s2 p "UNL-070" .hand
+  let played ← play s3 p axe
+  let gear ← played.firstOf p .base "SFD-186"
+  let (s4, other) ← put played p "OGN-088" .base
+  let held ← startBeginning s4 p
+  let detached := (detachObj s4 gear).1
+  let loose ← startBeginning detached p
+  let granted ← play s4 p dust [gear]
+  let opposingTurn ← startBeginning granted s.you
+  let marked ← startBeginning granted p
+  let deathCount (events : List Event) := events.countP (fun | .died .. => true | _ => false)
+  let pay : RunePool.Payment := ⟨0, [.fury]⟩
+  return (s4.obj? gear).any (·.attached == some unit) &&
+    s4.hasKw gear .temporary && held.1.countIn p .base "SFD-186" == 1 &&
+    deathCount held.2 == 0 && !activatable (s4.rich p) p gear 0 pay [other] true &&
+    activatable (detached.rich p) p gear 0 pay [other] true &&
+    loose.1.countIn p .trash "SFD-186" == 1 && deathCount loose.2 == 1 &&
+    opposingTurn.1.countIn p .base "SFD-186" == 1 && deathCount opposingTurn.2 == 0 &&
+    marked.1.countIn p .trash "SFD-186" == 1 && deathCount marked.2 == 1
+
+-- A reference to the printed keyword still sees it. Only the granted Deflect raises the surcharge
+-- while the Gear is attached. Detaching makes its printed Deflect apply again.
+#guard testBoard fun s => do
+  let card : CardDef :=
+    { id := ⟨"TEST-ATTACH-DEFLECT"⟩, name := "Test Equipment", types := [.gear],
+      keywords := [⟨.deflect, .amount 2⟩] }
+  let s := { s with cards := ⟨s.cards.cards ++ [card]⟩ }
+  let (s1, host) ← put s s.me "OGN-049" .base
+  let (s2, gear) ← put s1 s.me card.id.code .base
+  let held := (attachTo host s2 gear).1
+  let granted := (addTempKw ⟨.deflect, .amount 1⟩ .never held gear).1
+  let detached := (detachObj granted gear).1
+  return s2.deflectCost s.you [gear] == 2 && held.hasKw gear .deflect &&
+    held.deflectCost s.you [gear] == 0 && granted.deflectCost s.you [gear] == 1 &&
+    granted.deflectCost s.me [gear] == 0 && detached.deflectCost s.you [gear] == 3
+
+private meta def checkGear (code : String) (domain : Domain) (bonus : Int) : Bool :=
+  testBoard fun s => do
+    let p := s.me
+    let (s1, gear) ← put s p code .hand
+    let played ← play s1 p gear
+    let item ← played.firstOf p .base code
+    let (s2, target) ← put played p "OGN-049" .base
+    let (s3, other) ← put s2 p "OGN-088" .base
+    let pay : RunePool.Payment := ⟨0, [domain]⟩
+    let equipped ← activate s3 p item 0 [target] pay
+    return (equipped.obj? item).any (·.attached == some target) &&
+      equipped.mightNow target == some (5 + bonus) &&
+      (activate s3 p item 0 [target] ⟨0, []⟩).isNone &&
+      (activate equipped p item 0 [other] pay).isNone
+
+-- Long Sword, Sterak's Gage, Doran's Blade and B.F. Sword share ordinary Equip.
+#guard checkGear "SFD-022" .fury 2
+#guard checkGear "SFD-056" .calm 3
+#guard checkGear "SFD-095" .body 2
+#guard checkGear "SFD-161" .order 3
+
+-- Shepherd's Heirloom earns one XP on play and uses one XP to Equip through either path.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, hand) ← put (s.setXP p 0) p "UNL-158" .hand
+  let (s, host) ← put s p "OGN-049" .base
+  let (s, enemy) ← put s q "OGN-049" .base
+  let (playing, _) ← (step 100 (s.fund p 2) ⟨.player p, .playCard hand ⟨2, []⟩ []⟩).toOption
+  let played := settleChain {} 12 playing
+  let gear ← played.firstOf p .base "UNL-158"
+  let equip (target : ObjId) : Action := ⟨.player p, .activate gear 1 ⟨0, [], none⟩ [target]⟩
+  let (waiting, _) ← (step 100 played (equip host)).toOption
+  let attached := settleChain {} 12 waiting
+  let (board, chef) ← put (played.fund p 5) p "SFD-092" .hand
+  let weaponmaster : Action := ⟨.player p, .playCard chef ⟨5, []⟩ []⟩
+  let (withXP, _) ← (step 100 board weaponmaster).toOption
+  let (withoutXP, _) ← (step 100 (board.setXP p 0) weaponmaster).toOption
+  let equipped := settleChain {} 12 withXP
+  let declined := settleChain {} 12 withoutXP
+  let made ← equipped.firstOf p .base "SFD-092"
+  return played.xpOf p == 1 && (played.poolOf p).energy == 0 &&
+    !(step 100 (played.setXP p 0) (equip host)).isOk && !(step 100 played (equip enemy)).isOk &&
+    waiting.xpOf p == 0 && (waiting.obj? gear).any (·.attached.isNone) &&
+    (attached.obj? gear).any (·.attached == some host) && attached.mightNow host == some 7 &&
+    equipped.xpOf p == 0 && equipped.poolOf p == {} &&
+    (equipped.obj? gear).any (·.attached == some made) &&
+    !(equipped.fxOf p).contains .usedGearAbility &&
+    (declined.obj? gear).any (·.attached.isNone) && declined.xpOf p == 0
+
+-- Brutalizer gives its printed bonus as long as it is attached, plus two on that turn.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, brutalizer) ← put s p "SFD-042" .hand
+  let played ← play s p brutalizer
+  let gear ← played.firstOf p .base "SFD-042"
+  let (board, host) ← put played p "OGN-049" .base
+  let equipped ← activate board p gear 0 [host] ⟨0, [.calm]⟩
+  let later := { equipped with turn := equipped.turn + 1 }
+  return board.mightNow host == some (5 : Int) && equipped.mightNow host == some (8 : Int) &&
+    later.mightNow host == some (6 : Int) && (later.obj? gear).any (·.attached == some host)
+
+private meta def checkQuickDraw (code : String) (bonus : Int) : Bool :=
+  testBoard fun s => do
+    let p := s.me
+    let q := s.you
+    let opponentTurn := { s with active := some q, pending := [.priority q] }
+    let (s1, reached) ← put opponentTurn p "OGN-049" .base
+    let (s2, gear) ← put s1 p code .hand
+    let (board, spell) ← put s2 q "OGN-095" .hand
+    let (queued, _) ← (step 100 (board.rich q) ⟨.player q, .playCard spell ⟨1, []⟩ [reached]⟩).toOption
+    let (priority, _) ← (step 100 queued ⟨.player q, .pass⟩).toOption
+    let finished ← cast (priority.rich p) p gear (payOf priority gear)
+    let equipped ← finished.firstOf p .base code
+    return (finished.obj? equipped).any (·.attached == some reached) &&
+      finished.mightNow reached == some (5 + bonus - 1)
+
+#guard checkQuickDraw "SFD-022" 2
+#guard checkQuickDraw "SFD-056" 3
+#guard checkQuickDraw "SFD-186" 3
+
+-- The three Equipment keywords use control, even when a friendly permanent is owned and
+-- controlled by a teammate. Quick-Draw and Weaponmaster still finalize their own targets.
+#guard testBoard fun duel => do
+  let p := duel.me
+  let mate := duel.you
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } duel.cards
+  let s := { s with
+    phase := .main, active := some p, turn := 2,
+    turnOrder := Mode.teamTurnOrder true, pending := [.priority p] }
+  let (s1, mine) ← put s p "OGN-049" .base
+  let (s2, theirs) ← put s1 mate "OGN-049" .base
+  let (s3, gear) ← put s2 p "SFD-022" .base
+  let (s4, otherGear) ← put s3 mate "SFD-022" .base
+  let (s5, chef) ← put s4 p "SFD-092" .base
+  let funded := s5.rich p
+  let fromPlay (source : ObjId) : List ObjId := (triggersOf funded source p .play).flatMap (fun t =>
+    (trigOptions funded t).flatMap Prod.fst)
+  let pay : RunePool.Payment := ⟨0, [.fury]⟩
+  return funded.config.mode.sameSide p mate && activatable funded p gear 0 pay [mine] true &&
+    !activatable funded p gear 0 pay [theirs] true &&
+    (fromPlay gear).contains mine && !(fromPlay gear).contains theirs &&
+    (fromPlay chef).contains gear && !(fromPlay chef).contains otherGear
+
+-- Hextech Gauntlets offers one Equip ability, priced against its declared recipient.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, zero) ← put s p "OGN-013" .base
+  let (s, two) ← put s p "RAD-005" .base
+  let (s, large) ← put s p "SFD-092" .base
+  let (s, foe) ← put s q "OGN-013" .base
+  let (s, response) ← put s q "OGN-095" .hand
+  let s := ((s.fund p 3 1).fund q 1).modObj zero (fun o => { o with baseMightThisTurn := some 0 })
+  let equip (energy : Nat) (target : ObjId) : Action :=
+    ⟨.player p, .activate gear 0 ⟨energy, [.fury], none⟩ [target]⟩
+  let options := (legalFrameActions s).filter (fun a => match a.kind with
+    | .activate source .. => source == gear
+    | _ => false)
+  let (waiting, _) ← (step 100 s (equip 1 two)).toOption
+  let (offered, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let resolved ← cast offered q response ⟨1, []⟩ [two]
+  let turned := settleChain {} 12 (setController q waiting two).1
+  let (s, field) ← putBf s p "VEN-161"
+  let discounted := s.control p field
+  return s.mightNow zero == some 0 && options.length == 3 &&
+    options.contains (equip 3 zero) && options.contains (equip 1 two) && options.contains (equip 0 large) &&
+    !(step 100 s (equip 0 two)).isOk && !(step 100 s (equip 2 two)).isOk &&
+    !(step 100 s (equip 1 foe)).isOk &&
+    (legalFrameActions discounted).contains (equip 0 two) &&
+    !(legalFrameActions discounted).contains (equip 1 two) &&
+    waiting.poolOf p == { energy := 2, spent := 1 } && resolved.poolOf p == waiting.poolOf p &&
+    (waiting.obj? gear).all (·.attached.isNone) && (resolved.obj? gear).any (·.attached == some two) &&
+    resolved.mightNow two == some 4 && turned.poolOf p == waiting.poolOf p &&
+    (turned.obj? gear).any (·.attached.isNone)
+
+-- Weaponmaster uses the recipient discount and its own Power reduction without an activation.
+#guard testBoard fun s => do
+  let p := s.me
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, chef) ← put (s.fund p 5) p "SFD-092" .hand
+  let (playing, _) ← (step 100 s ⟨.player p, .playCard chef ⟨5, []⟩ []⟩).toOption
+  let ready := settleChain {} 12 playing
+  let host ← ready.firstOf p .base "SFD-092"
+  return (ready.obj? gear).any (·.attached == some host) && ready.mightNow host == some 8 &&
+    ready.poolOf p == {} && !(ready.fxOf p).contains .usedGearAbility
+
+-- The granted Conquer ability belongs to the wearer and sees the excess from that Combat.
+#guard testBoard fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, gear) ← put s p "UNL-188" .base
+  let (s, unit) ← putAt s p "OGN-013" field
+  let equipped ← activate (s.control p field) p gear 0 [unit] ⟨1, [.fury]⟩
+  let (equipped, defender) ← putAt equipped q "OGN-013" field
+  let fight (g : GameState) := do
+    let (g, _) ← (advance 100 (g.control q field |>.inCombatAt field p) []).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignPick defender⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player p, .assignDone⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player q, .assignPick unit⟩).toOption
+    let (g, _) ← (step 100 g ⟨.player q, .assignDone⟩).toOption
+    return settleChain {} 12 g
+  let enough ← fight equipped
+  let missed ← fight (equipped.modObj unit (fun o => { o with baseMightThisTurn := some 1 }))
+  return enough.pointsOf p == equipped.pointsOf p + 1 && missed.pointsOf p == enough.pointsOf p &&
+    enough.handN p == equipped.handN p + 1 && missed.handN p == equipped.handN p
+
+end RiftboundTest

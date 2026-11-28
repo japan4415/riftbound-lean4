@@ -39,12 +39,26 @@ def nextPlayer (s : GameState) (p : PlayerId) : PlayerId :=
   | some i => s.turnOrder.getD ((i + 1) % s.turnOrder.length) p
   | none => p
 
+/-- Pass priority or focus to the next continuing seat (CR 652.5.b, 652.5.c). -/
+def nextParticipant (s : GameState) (p : PlayerId) : PlayerId :=
+  if s.departures.seats.isEmpty then s.nextPlayer p else
+    ((seatOrderAfter s.turnOrder p).find? s.participates <|> s.participatingOrder.head?).getD p
+
+/-- The given seat if it is still in the game, otherwise the next continuing seat (CR 652.5). -/
+def continuingFrom (s : GameState) (p : PlayerId) : PlayerId :=
+  if s.participates p then p else s.nextParticipant p
+
+/-- The controller of the next Chain item gets priority (CR 337.4, 340.4). -/
+def chainPrioritySeat (s : GameState) : PlayerId :=
+  let controller := ((s.zone .chain).head?.bind s.obj?).map (·.controller)
+  s.continuingFrom (controller.getD (s.active.getD ⟨0⟩))
+
 end GameState
 
 /-- Put each object of the list through `g`, one after the other: the last state, and all the
 events. -/
-def applyEach (g : GameState → ObjId → GameState × List Event) :
-    GameState → List ObjId → GameState × List Event
+def applyEach {α : Type} (g : GameState → α → GameState × List Event) :
+    GameState → List α → GameState × List Event
   | s, [] => (s, [])
   | s, id :: ids =>
     let r := g s id
@@ -52,37 +66,31 @@ def applyEach (g : GameState → ObjId → GameState × List Event) :
     (r2.1, r.2 ++ r2.2)
 
 /-- Putting each object through changes that are safe is a safe change. -/
-theorem applyEach_safe {g : GameState → ObjId → GameState × List Event}
-    (hg : ∀ s id, Safe s (g s id).1) : ∀ (ids : List ObjId) (s : GameState),
+theorem applyEach_safe {α : Type} {g : GameState → α → GameState × List Event}
+    (hg : ∀ s id, Safe s (g s id).1) : ∀ (ids : List α) (s : GameState),
       Safe s (applyEach g s ids).1
   | [], s => Safe.refl s
   | id :: ids, s => (hg s id).trans (applyEach_safe hg ids (g s id).1)
 
-/-- The Chosen Champion of the player: a Unit of the Champion the Legend of the player is about
-(they share a tag). The card data does not tell Champions from other Units, nor the Chosen
-Champion from its copies. -/
+/-- Whether this object is the physical card registered as the player's Chosen Champion. -/
 def GameState.chosenOf (s : GameState) (p : PlayerId) (id : ObjId) : Bool :=
-  let tags := (s.zone (.player p .legendZone)).flatMap (fun l =>
-    ((s.cardDef? l).map (·.tags)).getD [])
-  (s.cardDef? id).any (fun d =>
-    d.hasType .unit && d.tags.any (fun t => tags.contains t))
+  match s.chosenChampions[p.n]? with
+  | some chosen => (s.obj? id).any (fun obj => obj.kind.phys? == some chosen)
+  | none => false
 
-/-- The player returns their Chosen Champion from their Trash to their Champion Zone, if the
-Champion Zone is empty. -/
-def returnChampion (p : PlayerId) (s : GameState) : GameState × List Event :=
-  if (s.zone (.player p .championZone)).isEmpty then
-    match (s.zone (.player p .trash)).find? (fun u => s.chosenOf p u) with
-    | some id => sendObj .championZone s id
-    | none => (s, [])
+/-- Return the chosen Champion from the player's Trash only if the Champion Zone is empty
+(CR 108.3.c.1). -/
+def returnChampion (p : PlayerId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if (s.zone (.player p .championZone)).isEmpty && (s.zone (.player p .trash)).contains id &&
+      s.matchesChosenChampion id then sendObj .championZone s id
   else (s, [])
 
 /-- Returning the Chosen Champion is a safe change. -/
-theorem returnChampion_safe (p : PlayerId) (s : GameState) : Safe s (returnChampion p s).1 := by
+theorem returnChampion_safe (p : PlayerId) (s : GameState) (id : ObjId) :
+    Safe s (returnChampion p s id).1 := by
   unfold returnChampion
   split
-  · split
-    · exact sendObj_safe _ _ _
-    · exact Safe.refl s
+  · exact sendObj_safe _ _ _
   · exact Safe.refl s
 
 /-- Heal `n` damage from an object (CR 419). -/
@@ -144,16 +152,13 @@ theorem safe_addObject {s s' : GameState} {o : Object} {z : Zone} {pos : Pos} {i
 /-- The identifier of the card of a token the model defines itself (CR 179). -/
 def tokenId (name : String) : CardId := ⟨"TKN-" ++ name⟩
 
-/-- The card is a token the rules print: its number has a T, as SFD-T03 (Gold) has. -/
-def CardDef.isTokenCard (c : CardDef) : Bool := (c.id.code.splitOn "-T").length > 1
-
 /-- Cards that can be named for this type, whether or not a copy exists in the game (CR 759-762). -/
 def GameState.nameableCards (s : GameState) (kind : CardType) : List CardId :=
   (s.cards.cards.filter (fun d =>
-    d.hasType kind && !d.isTokenCard && !d.id.code.startsWith "TKN-" &&
-      (match s.config.ruleSet, s.config.formatLegality with
-        | .tournament .constructed, some env => decide (CardLegal env d)
-        | .tournament _, some env => decide (NotBanned env d)
+    d.hasType kind && !d.isTokenCard &&
+      (match s.config.ruleSet.tournamentFormat, s.config.formatLegality with
+        | some .constructed, some env => decide (CardLegal env d)
+        | some _, some env => decide (NotBanned env d)
         | _, _ => true))).map (·.id)
 
 /-- The card of the token with the name: one the model defines, or one of the printed tokens. -/
@@ -238,15 +243,17 @@ theorem replaceChosenHarm_safe (env : Env) {apply : GameState → ObjId → Game
   · exact h s id
 
 /-- An already stunned object produces no new stun event or replacement (CR 424, 370). -/
-def stunObj (s : GameState) (id : ObjId) (env : Env := {}) : GameState × List Event :=
+def stunObj (s : GameState) (id : ObjId) (env : Env := {})
+    (actor : Option PlayerId := none) : GameState × List Event :=
   if (s.obj? id).any (! ·.stunned) then
     replaceChosenHarm env (fun t target =>
-      (t.modObj target (fun o => { o with stunned := true }), [Event.stunned target])) s id
+      let event := actor.elim (Event.stunned target) (Event.stunnedBy target)
+      (t.modObj target (fun o => { o with stunned := true }), [event])) s id
   else (s, [])
 
 /-- Stunning is a safe change. -/
-theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {}) :
-    Safe s (stunObj s id env).1 := by
+theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {})
+    (actor : Option PlayerId := none) : Safe s (stunObj s id env actor).1 := by
   unfold stunObj
   split
   · exact replaceChosenHarm_safe env (fun t target =>
@@ -255,19 +262,21 @@ theorem stunObj_safe (s : GameState) (id : ObjId) (env : Env := {}) :
   · exact Safe.refl s
 
 /-- Buff an object: it gets a +1 Might buff if it has none (CR 701). -/
-def buffObj (s : GameState) (id : ObjId) : GameState × List Event :=
+def buffObj (s : GameState) (id : ObjId) (giver : Option PlayerId := none) : GameState × List Event :=
+  let event := giver.elim (Event.buffed id) (Event.buffedBy id)
   match s.obj? id with
   | some o =>
     -- a Unit that can have any number of buffs gets one more
     if o.buffed && (s.activeMods id).contains .anyBuffs then
-      (s.modObj id (fun o => { o with extraBuffs := o.extraBuffs + 1 }), [Event.buffed id])
+      (s.modObj id (fun o => { o with extraBuffs := o.extraBuffs + 1 }), [event])
     else
       (s.modObj id (fun o => { o with buffed := true }),
-        if o.buffed then [] else [Event.buffed id])
+        if o.buffed then [] else [event])
   | none => (s, [])
 
 /-- Buffing is a safe change. -/
-theorem buffObj_safe (s : GameState) (id : ObjId) : Safe s (buffObj s id).1 := by
+theorem buffObj_safe (s : GameState) (id : ObjId) (giver : Option PlayerId := none) :
+    Safe s (buffObj s id giver).1 := by
   unfold buffObj
   split
   · split <;> exact Safe.modObj s id (fun _ => rfl) (fun _ => rfl)
@@ -286,25 +295,15 @@ def unbuffObj (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem unbuffObj_safe (s : GameState) (id : ObjId) : Safe s (unbuffObj s id).1 :=
   Safe.modObj s id (fun _ => by split <;> rfl) (fun _ => by split <;> rfl)
 
-/-- The player gains XP (CR 728): it goes to their Legend, and the turn notes that they gained XP. -/
+/-- The player gains XP and the turn records that gain (CR 730.1). -/
 def gainXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ =>
-    let s1 := s.modObj l (fun o => { o with xp := o.xp + n })
-    if 0 < n then s1.addTurnFx p .gainedXP else s1
-  | [] => s
+  if 0 < n then (s.setXP p (s.xpOf p + n)).addTurnFx p .gainedXP else s
 
 /-- Gaining XP is a safe change. -/
 theorem gainXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (gainXPOf n s p) := by
   unfold gainXPOf
   split
-  · rename_i l tl hl
-    have h1 : Safe s (s.modObj l (fun o => { o with xp := o.xp + n })) :=
-      Safe.modObj s l (fun _ => rfl) (fun _ => rfl)
-    dsimp only
-    split
-    · exact h1.trans (addTurnFx_safe _ p _)
-    · exact h1
+  · exact (Safe.setXP s p _).trans (addTurnFx_safe _ p _)
   · exact Safe.refl s
 
 /-- The players gain XP, one after the other. -/
@@ -318,29 +317,16 @@ theorem gainXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
   | [], s => Safe.refl s
   | p :: ps, s => (gainXPOf_safe n s p).trans (gainXPAll_safe n ps _)
 
-/-- The player spends XP: it goes down, to 0 at the least. -/
-def spendXPOf (n : Nat) (s : GameState) (p : PlayerId) : GameState :=
-  match s.zone (.player p .legendZone) with
-  | l :: _ => s.modObj l (fun o => { o with xp := o.xp - n })
-  | [] => s
-
-/-- Spending XP is a safe change. -/
-theorem spendXPOf_safe (n : Nat) (s : GameState) (p : PlayerId) : Safe s (spendXPOf n s p) := by
-  unfold spendXPOf
-  split
-  · exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
-  · exact Safe.refl s
-
 /-- The players spend XP, one after the other. -/
 def spendXPAll (n : Nat) : GameState → List PlayerId → GameState
   | s, [] => s
-  | s, p :: ps => spendXPAll n (spendXPOf n s p) ps
+  | s, p :: ps => spendXPAll n (s.spendXP p n) ps
 
 /-- Spending XP is a safe change, for any players. -/
 theorem spendXPAll_safe (n : Nat) : ∀ (ps : List PlayerId) (s : GameState),
     Safe s (spendXPAll n s ps)
   | [], s => Safe.refl s
-  | p :: ps, s => (spendXPOf_safe n s p).trans (spendXPAll_safe n ps _)
+  | p :: ps, s => (Safe.spendXP s p n).trans (spendXPAll_safe n ps _)
 
 /-- The player recycles the top card of their Main Deck: it goes to the bottom (CR 417). -/
 def recycleTopOf (q : PlayerId) (s : GameState) : GameState :=
@@ -583,21 +569,32 @@ theorem playFirstOf_safe (fs : FilterList) (p : PlayerId) (src : ObjId) (env : E
 def Object.banishesOnChainExit (o : Object) : Bool :=
   o.flowed || (o.limitedSpellExit == .banish && o.pendingSpellPlay.isNone)
 
+/-- A limited play can replace an external exit from the Chain with Recycle (CR 391.3.a). -/
+def Object.recyclesOnChainExit (o : Object) : Bool :=
+  !o.banishesOnChainExit && o.limitedSpellExit == .recycle && o.pendingSpellPlay.isNone
+
+/-- Recycle puts the Spell on the bottom of its owner's deck (CR 417). -/
+def Object.chainExitPosition (o : Object) : Pos :=
+  if o.recyclesOnChainExit then .bottom else .top
+
 /-- The destination of a card removed from the Chain after replacement effects (CR 367-370). -/
 def GameState.chainDestinationKind (s : GameState) (id : ObjId) (o : Object)
     (otherwise : ZoneKind) : ZoneKind :=
-  if o.banishesOnChainExit then .banishment else s.ownerDestination id o otherwise
+  if o.banishesOnChainExit then .banishment
+  else if o.recyclesOnChainExit then .mainDeck
+  else s.ownerDestination id o otherwise
 
 /-- A card leaving the Chain always goes to an owner's zone. -/
 def GameState.chainDestination (s : GameState) (id : ObjId) (o : Object)
     (otherwise : ZoneKind) : Zone :=
   .player o.owner (s.chainDestinationKind id o otherwise)
 
-/-- Attribute a banishing replacement to its controller, the card's owner (CR 391.3.a). -/
+/-- Record a Chain exit replacement for the owner (CR 391.3.a, 417). -/
 def GameState.chainExitEvents (s : GameState) (o : Object) (id new : ObjId)
     (otherwise : ZoneKind) : List Event :=
   let dest := s.chainDestinationKind id o otherwise
-  o.ownerMoveEvents id new dest (o.banishesOnChainExit || otherwise != dest)
+  if o.recyclesOnChainExit then [.moved id new (.player o.owner dest), .recycled o.owner]
+  else o.ownerMoveEvents id new dest (o.banishesOnChainExit || otherwise != dest)
 
 /-- Counter a spell: it leaves the Chain for the Trash of its owner without resolving (CR 359.3.d).
 Nothing happens to what is not a spell on the Chain. -/
@@ -613,7 +610,7 @@ def counterObjTo (k : ZoneKind) (s : GameState) (id : ObjId) : GameState × List
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s id (s.chainDestination id o k) with
+        match moveObj s id (s.chainDestination id o k) o.chainExitPosition with
         | some r => (r.1, s.chainExitEvents o id r.2 k)
         | none => (s, [])
     else (s, [])
@@ -655,28 +652,6 @@ def counterObjHand (s : GameState) (id : ObjId) : GameState × List Event :=
 theorem counterObjHand_safe (s : GameState) (id : ObjId) : Safe s (counterObjHand s id).1 :=
   counterObjTo_safe .hand s id
 
-/-- Discard a card: it goes to the Trash of its owner, and the discard is noted (CR 423). -/
-def discardObj (s : GameState) (id : ObjId) : GameState × List Event :=
-  let r := sendObj .trash s id
-  match s.obj? id with
-  | some o =>
-    let discards := r.2.filterMap (fun e =>
-      match e with
-      | .moved _ n (.player _ .trash) => some (Event.discarded o.owner n true)
-      | _ => none)
-    ((if discards.isEmpty then r.1 else r.1.addTurnFx o.owner .cardDiscarded), r.2 ++ discards)
-  | none => r
-
-/-- Discarding a card is a safe change. -/
-theorem discardObj_safe (s : GameState) (id : ObjId) : Safe s (discardObj s id).1 := by
-  unfold discardObj
-  split
-  · dsimp only
-    split
-    · exact sendObj_safe .trash s id
-    · exact (sendObj_safe .trash s id).trans (addTurnFx_safe _ _ _)
-  · exact sendObj_safe .trash s id
-
 /-- Record a linked trigger for each matching type after an actual discard. -/
 def discardWithTypeEvents (p : PlayerId) (src : ObjId) (sourceCard : Option CardId)
     (links : List (CardType × Nat)) (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -694,54 +669,6 @@ theorem discardWithTypeEvents_safe (p : PlayerId) (src : ObjId) (sourceCard : Op
     (links : List (CardType × Nat)) (s : GameState) (id : ObjId) :
     Safe s (discardWithTypeEvents p src sourceCard links s id).1 :=
   discardObj_safe s id
-
-/-- Discard the selected hand cards to pay the cost before the ability enters the Chain (CR 423.3).
-The last discard event closes the group for effects that watch one or more discards. -/
-def payDiscards (p : PlayerId) : GameState → List ObjId → GameState × List Event
-  | s, [] => (s, [])
-  | s, id :: ids =>
-    if (s.zone (.player p .hand)).contains id then
-      let r := discardObj s id
-      let next := payDiscards p r.1 ids
-      let events := if ids.isEmpty then r.2 else r.2.map (fun e => match e with
-        | .discarded q card _ => .discarded q card false
-        | other => other)
-      (next.1, events ++ next.2)
-    else payDiscards p s ids
-
-/-- Paying with hand cards preserves well-formedness, card identities and ownership. -/
-theorem payDiscards_safe (p : PlayerId) :
-    ∀ (ds : List ObjId) (s : GameState), Safe s (payDiscards p s ds).1
-  | [], s => Safe.refl s
-  | id :: ids, s => by
-    simp only [payDiscards]
-    split
-    · exact (discardObj_safe s id).trans (payDiscards_safe p ids _)
-    · exact payDiscards_safe p ids s
-
-/-- Pay the optional discard after the mana payment, recording it on the card before the
-play and discard triggers are processed (CR 357.1-357.2, 423.3). -/
-def payPlayDiscard (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : GameState × List Event :=
-  match discard with
-  | none => r
-  | some id =>
-    let paid := payDiscards p r.1 [id]
-    let played := r.2.findSome? (fun
-      | .moved old new _ => if old == c then some new else none
-      | _ => none)
-    (if paid.2.isEmpty then paid.1 else markPaid paid.1 played true, r.2 ++ paid.2)
-
-/-- Paying the optional discard of a play preserves the structural invariants. -/
-theorem payPlayDiscard_safe (p : PlayerId) (c : ObjId) (discard : Option ObjId)
-    (r : GameState × List Event) : Safe r.1 (payPlayDiscard p c discard r).1 := by
-  unfold payPlayDiscard
-  split
-  · exact Safe.refl _
-  · dsimp only
-    split
-    · exact payDiscards_safe _ _ _
-    · exact (payDiscards_safe _ _ _).trans (markPaid_safe _ _ true)
 
 /-- Replacing a Rune Pool is a safe change. -/
 theorem setPool_safe (s : GameState) (p : PlayerId) (pool : RunePool) : Safe s (s.setPool p pool) :=
@@ -816,34 +743,35 @@ theorem setPoolFor_safe (s : GameState) (p : PlayerId) (src : ObjId) (pool : Run
 
 /-- Pay the cost `c` from eligible Pool resources, with Basic Runes if the Pool falls short. -/
 def payByRunes (s : GameState) (p : PlayerId) (src : ObjId) (c : Cost)
-    (unit : Bool := false) (permanent : Bool := false) : Option (GameState × List Event) :=
-  match s.payNow p src c unit permanent with
+    (unit : Bool := false) (permanent : Bool := false) (spell : Bool := false) :
+    Option (GameState × List Event) :=
+  match s.payNow p src c unit permanent spell with
   | some pool => some (s.setPoolFor p src pool permanent, [])
   | none =>
-    match s.runePlan p src c unit permanent with
+    match s.runePlan p src c unit permanent spell with
     | some plan =>
       (applyRunes s p plan).bind (fun r =>
-        (r.1.payNow p src c unit permanent).map (fun pool => (r.1.setPoolFor p src pool permanent, r.2)))
+        (r.1.payNow p src c unit permanent spell).map (fun pool => (r.1.setPoolFor p src pool permanent, r.2)))
     | none => none
 
 /-- Paying is a safe change. -/
 theorem payByRunes_safe {s : GameState} {p : PlayerId} {src : ObjId} {c : Cost}
-    {unit permanent : Bool} {r : GameState × List Event}
-    (h : payByRunes s p src c unit permanent = some r) : Safe s r.1 := by
+    {unit permanent spell : Bool} {r : GameState × List Event}
+    (h : payByRunes s p src c unit permanent spell = some r) : Safe s r.1 := by
   unfold payByRunes at h
-  cases hp : s.payNow p src c unit permanent with
+  cases hp : s.payNow p src c unit permanent spell with
   | some pool =>
     simp only [hp, Option.some.injEq] at h
     rw [← h]
     exact setPoolFor_safe s p src pool permanent
   | none =>
     simp only [hp] at h
-    cases hq : s.runePlan p src c unit permanent with
+    cases hq : s.runePlan p src c unit permanent spell with
     | none => simp [hq] at h
     | some plan =>
       simp only [hq, Option.bind_eq_some_iff] at h
       obtain ⟨x, hx, hr⟩ := h
-      cases hy : x.1.payNow p src c unit permanent with
+      cases hy : x.1.payNow p src c unit permanent spell with
       | none => simp [hy] at hr
       | some pool =>
         simp only [hy, Option.map_some, Option.some.injEq] at hr
@@ -1039,10 +967,26 @@ theorem sendToLoc_safe (loc : Option ObjId) (s : GameState) (u : ObjId) :
   | none => exact moveHomeUnchecked_safe s u
   | some bf => exact sendToBf_safe bf s u
 
+/-- A required move into an invalid Battlefield becomes a Recall. Read the destination from the
+board before the move, so both sides of a swap use the same board (CR 449.2.c). -/
+def moveOrRecall (before : GameState) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    GameState × List Event :=
+  if before.config.mode.isTeamDuel && loc.any (fun bf => (before.obj? u).any (fun o =>
+      o.loc != some bf && ((before.cardDef? u).any (·.hasType .unit) || !o.unitGearEffects.isEmpty) &&
+      !before.effectMoveBattlefieldOk o bf)) then recallFx false s u
+  else sendToLoc loc s u
+
+theorem moveOrRecall_safe (before : GameState) (loc : Option ObjId) (s : GameState) (u : ObjId) :
+    Safe s (moveOrRecall before loc s u).1 := by
+  unfold moveOrRecall
+  split
+  · exact recallFx_safe false s u
+  · exact sendToLoc_safe loc s u
+
 /-- A Unit's move protection applies to enemy effects while its ability is active, including
 when it is granted by attached Equipment (CR 137, 451). -/
 def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
-  (s.obj? u).any (·.controller != p) &&
+  (s.obj? u).any (fun o => !s.config.mode.sameSide p o.controller) &&
     ((s.activeMods u).contains .noEnemyEffectMove ||
       s.inPlay.any (fun gear =>
         (s.obj? gear).any (·.attached == some u) &&
@@ -1050,68 +994,128 @@ def GameState.blocksEnemyMove (s : GameState) (p : PlayerId) (u : ObjId) : Bool 
             | .passive .always mods => mods.contains .noEnemyEffectMove
             | _ => false))))
 
-/-- Move the Unit only if the spell or ability that would move it is allowed to do so. -/
-def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
-    GameState × List Event :=
-  if s.moveBlocked u || s.blocksEnemyMove controller u then (s, [])
+/-- Apply a move instructed by a spell or ability. The instructed actor can differ from the
+effect's controller. In team play, a Unit going to an invalid Battlefield is recalled
+instead (CR 449.2.c). -/
+def moveByEffect (controller : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
+    (actor : PlayerId := controller) : GameState × List Event :=
+  if s.moveBlockedFor actor u || s.blocksEnemyMove controller u then (s, [])
   else match loc with
     | none => moveHome s u
-    | some bf => sendToBf bf s u
+    | some bf => moveOrRecall s (some bf) s u
 
 /-- Applying or preventing an effect move preserves the structural invariants. -/
-theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId) :
-    Safe s (moveByEffect p loc s u).1 := by
+theorem moveByEffect_safe (p : PlayerId) (loc : Option ObjId) (s : GameState) (u : ObjId)
+    (actor : PlayerId := p) : Safe s (moveByEffect p loc s u actor).1 := by
   unfold moveByEffect
   split
   · exact Safe.refl s
-  · cases loc
-    · exact moveHome_safe s u
-    · exact sendToBf_safe _ s u
+  · cases loc with
+    | none => exact moveHome_safe s u
+    | some bf => exact moveOrRecall_safe s (some bf) s u
+
+/-- The Base originally declared for this target of a grouped Move on the Chain. -/
+def GameState.declaredMoveBase (s : GameState) (src unit : ObjId) : Option PlayerId := do
+  let bases ← s.turnFx.findSome? fun note =>
+    if note.turn == s.turn && note.target == some src then
+      match note.kind with
+      | .declaredMoveBases bases => some bases
+      | _ => none
+    else none
+  bases.findSome? (fun (id, seat) => if id == unit then some seat else none)
+
+/-- Move a target if its declared destination is still reachable. All targets of a grouped
+Move check the same starting board. A newly invalid location causes a Recall (CR 449.2.c). -/
+def moveDeclaredTarget (before : GameState) (p : PlayerId) (source : ObjId) (env : Env)
+    (place : Option ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
+  if before.moveBlockedFor p id || before.blocksEnemyMove (env.effectController.getD p) id then
+    (s, [])
+  else match before.obj? id with
+    | none => (s, [])
+    | some unit =>
+      if unit.loc = place then (s, [])
+      else match place with
+        | some bf =>
+          if before.effectObjectMoveBattlefieldOk id unit bf then sendToBf bf s id
+          else recallFx false s id
+        | none =>
+          if (before.declaredMoveBase source id).any (· != unit.controller) then recallFx false s id
+          else if unit.loc.any (before.homeForbiddenFor id) then (s, [])
+          else moveHomeUnchecked s id
+
+/-- Moving to the declared destination preserves the structural invariants. -/
+theorem moveDeclaredTarget_safe (before : GameState) (p : PlayerId) (source : ObjId) (env : Env)
+    (place : Option ObjId) (s : GameState) (id : ObjId) :
+    Safe s (moveDeclaredTarget before p source env place s id).1 := by
+  by_cases blocked : (before.moveBlockedFor p id ||
+      before.blocksEnemyMove (env.effectController.getD p) id) = true
+  · simpa [moveDeclaredTarget, blocked] using Safe.refl s
+  · cases found : before.obj? id with
+    | none => simpa [moveDeclaredTarget, blocked, found] using Safe.refl s
+    | some unit =>
+      by_cases same : unit.loc = place
+      · simpa [moveDeclaredTarget, blocked, found, same] using Safe.refl s
+      · cases place with
+        | some bf =>
+          by_cases valid : before.effectObjectMoveBattlefieldOk id unit bf = true
+          · simpa [moveDeclaredTarget, blocked, found, same, valid] using sendToBf_safe bf s id
+          · simpa [moveDeclaredTarget, blocked, found, same, valid] using recallFx_safe false s id
+        | none =>
+          by_cases otherSeat : (before.declaredMoveBase source id).any (· != unit.controller) = true
+          · simpa [moveDeclaredTarget, blocked, found, same, otherSeat] using recallFx_safe false s id
+          · by_cases forbidden : unit.loc.any (before.homeForbiddenFor id) = true
+            · simpa [moveDeclaredTarget, blocked, found, same, otherSeat, forbidden] using Safe.refl s
+            · simpa [moveDeclaredTarget, blocked, found, same, otherSeat, forbidden] using
+                moveHomeUnchecked_safe s id
 
 /-- Two Units swap places by an effect: each goes to where the other is. Nothing happens if they are
 at the same place or either move is forbidden. -/
-def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
-    GameState × List Event :=
+def swapPlaces (s : GameState) (x y : ObjId) (controller : Option PlayerId := none)
+    (actor : Option PlayerId := controller) : GameState × List Event :=
   let lx := (s.obj? x).bind (·.loc)
   let ly := (s.obj? y).bind (·.loc)
-  if s.moveBlocked x || s.moveBlocked y ||
+  let blocked := fun u => (actor.map (fun p => s.moveBlockedFor p u)).getD (s.moveBlocked u)
+  if blocked x || blocked y ||
       controller.any (fun p => s.blocksEnemyMove p x || s.blocksEnemyMove p y) ||
       lx == ly || (lx.isNone && ly.any (s.homeForbiddenFor y)) ||
       (ly.isNone && lx.any (s.homeForbiddenFor x)) then (s, [])
   else
-    let r1 := sendToLoc ly s x
-    let r2 := sendToLoc lx r1.1 y
+    let r1 := moveOrRecall s ly s x
+    let r2 := moveOrRecall s lx r1.1 y
     (r2.1, r1.2 ++ r2.2)
 
 /-- Swapping places is a safe change. -/
-theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option PlayerId := none) :
-    Safe s (swapPlaces s x y controller).1 := by
+theorem swapPlaces_safe (s : GameState) (x y : ObjId) (controller : Option PlayerId := none)
+    (actor : Option PlayerId := controller) : Safe s (swapPlaces s x y controller actor).1 := by
   unfold swapPlaces
   dsimp only
   split
   · exact Safe.refl s
-  · exact (sendToLoc_safe _ s x).trans (sendToLoc_safe _ _ y)
+  · exact (moveOrRecall_safe s _ s x).trans (moveOrRecall_safe s _ _ y)
 
-/-- Play a card without paying, to a Battlefield: it is played, and moved there (CR 447). -/
+/-- Play a card without paying, to a Battlefield. If it would put an outside Unit into a Combat,
+play the Unit at its controller's Base (CR 464.2.a). -/
 def playFreeAt (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) : GameState × List Event :=
   let r := playFree p s id
-  match movedNew r.2 with
-  | n :: _ =>
-    -- the card is played there: it does not move, so nothing that waits for a move fires, and
-    -- no move is counted
-    (((sendToBf bf r.1 n).1.modObj n (fun x => { x with moves := 0, movesTurn := none })), r.2)
-  | [] => r
+  if (s.cardDef? id).any (·.hasType .unit) && !s.combatAllowsUnitPlay p bf then r
+  else
+    match movedNew r.2 with
+    | n :: _ =>
+      -- The card enters there directly, without any move events, state or triggers.
+      (enterAtBattlefield s r.1 bf n, r.2)
+    | [] => r
 
 /-- Playing a card to a Battlefield is a safe change. -/
 theorem playFreeAt_safe (p : PlayerId) (bf : ObjId) (s : GameState) (id : ObjId) :
     Safe s (playFreeAt p bf s id).1 := by
   unfold playFreeAt
-  cases hm : movedNew (playFree p s id).2 with
-  | nil => simpa [hm] using playFree_safe p s id
-  | cons n _ =>
-    simp only [hm]
-    exact ((playFree_safe p s id).trans (sendToBf_safe bf _ _)).trans
-      (Safe.modObj _ n (fun _ => rfl) (fun _ => rfl))
+  dsimp only
+  split
+  · exact playFree_safe p s id
+  · cases movedNew (playFree p s id).2 with
+    | nil => exact playFree_safe p s id
+    | cons n _ =>
+      exact (playFree_safe p s id).trans (enterAtBattlefield_safe s _ bf n)
 
 
 /-- A Unit cannot be replayed by its owner to another player's Base (CR 419.4). -/
@@ -1238,16 +1242,19 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
   let some base := terms.price.baseCost s p id d | return []
   let extraObjects := none :: ((d.playExtra.toList.flatMap (fun (k, _) =>
     s.extraCandidates p k)).map some)
+  let extras := extraObjects.map (·, SpellPick.plain) ++
+    (if (s.zone (.player p .legendZone)).isEmpty && (s.playXPCost p d).isSome
+      then [(none, .withXP .plain)] else [])
   let discardOptions := s.playDiscards p id
   let showOffOptions := none :: (s.showOffOptions p id d).map some
   let mut plans := []
   for battlefieldFees in [] :: s.battlefieldFeeChoices p id d do
     let requirements := terms.requirements ++ battlefieldFees.map (fun b => [some b])
     for battlefield in effectPlayLocations s p id d requirements do
-      for extraObject in extraObjects do
+      for (extraObject, extraPick) in extras do
         let extra := extraObject.toList
-        if !s.extraOk p id extra then continue
-        for cost in s.cutOptionsOf p id base extra do
+        if !s.extraOk p id extra extraPick then continue
+        for cost in s.cutOptionsOf p id base extra extraPick do
           for (total, picked) in s.playCostPlans p id d cost do
             let additionalPaid := d.additionalCost.isSome && picked.contains 0
             let accelerated := s.accelerateForPlay p d &&
@@ -1270,7 +1277,8 @@ def permanentPlayOptions (s : GameState) (p : PlayerId) (id : ObjId) (terms : Ef
                           accelerated
                           battlefieldFees
                           gearDiscounts
-                          showOff }
+                          showOff
+                          spendXP := extraPick.paysXP }
                         plans := plan :: plans
   return plans.reverse.eraseDups
 
@@ -1286,30 +1294,78 @@ def reducedPermanentPlays (s : GameState) (p : PlayerId) (id : ObjId) (less : Na
     List ReducedPermanentPlay :=
   permanentPlayPlans s p id { price := .reduceEnergy less }
 
+/-- Carry the costs paid before entry into the limited play's observations and play mark. -/
+def finishReducedPermanentCost (new : ObjId) (placed : GameState × List Event)
+    (payment : Option PermanentPayment) (discards : List Event) : GameState × List Event :=
+  match payment, discards with
+  | none, [] => placed
+  | _, _ =>
+    (markPaid placed.1 (some new) (!discards.isEmpty) (payment.bind (·.returnedEnergy)),
+      payment.elim [] (·.events) ++ discards ++ placed.2)
+
+/-- Recording the paid costs preserves the entry state's invariants. -/
+theorem finishReducedPermanentCost_safe (new : ObjId) (placed : GameState × List Event)
+    (payment : Option PermanentPayment) (discards : List Event) :
+    Safe placed.1 (finishReducedPermanentCost new placed payment discards).1 := by
+  unfold finishReducedPermanentCost
+  split
+  · exact Safe.refl _
+  · exact markPaid_safe placed.1 (some new) (!discards.isEmpty) (payment.bind (·.returnedEnergy))
+
+/-- Save the original declaration and the timestamp after payment. -/
+def reducedPlayMark (s entryState : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
+    (plan : ReducedPermanentPlay) : PlayMark :=
+  let ownCosts := (if plan.additionalPaid then [0] else []) ++
+    (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
+  let pick := if plan.battlefieldFees.isEmpty then SpellPick.plain
+    else .payForBattlefield plan.battlefieldFees ownCosts
+  let pick := if plan.gearDiscounts.isEmpty then pick else .withGearDiscounts pick plan.gearDiscounts
+  let pick := if plan.spendXP then .withXP pick else pick
+  { s.playMark p id ⟨plan.cost.energy, []⟩ with
+    paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
+    extraPaid := ownCosts.length
+    shownOff := s.captureShowOff p plan.showOff
+    spellPick := pick
+    stamp := entryState.nextTimestamp }
+
+/-- Set the new permanent's entry status and destination from the state after costs. -/
+def placeReducedPermanent (s entryState onBoard : GameState) (p : PlayerId) (id new : ObjId)
+    (d : CardDef) (plan : ReducedPermanentPlay) : GameState × List Event :=
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  let mark := reducedPlayMark s entryState p id d plan
+  let ready := entryState.readyNow p id d mark.shownOff || plan.accelerated
+  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
+  let moved := (enterBase p d mark ready spent new, [Event.moved id new zone])
+  placeAtBf entryState plan.battlefield.toList moved
+
+/-- Entry preserves structural and ownership invariants after the board change. -/
+theorem placeReducedPermanent_safe (s entryState onBoard : GameState) (p : PlayerId) (id new : ObjId)
+    (d : CardDef) (plan : ReducedPermanentPlay) :
+    Safe onBoard (placeReducedPermanent s entryState onBoard p id new d plan).1 := by
+  unfold placeReducedPermanent
+  let mark := reducedPlayMark s entryState p id d plan
+  let ready := entryState.readyNow p id d mark.shownOff || plan.accelerated
+  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  exact (spendGearDiscounts_safe onBoard p plan.gearDiscounts).trans
+    ((enterBase_safe p d mark ready spent new).trans
+      (placeAtBf_safe entryState plan.battlefield.toList
+        (enterBase p d mark ready spent new, [.moved id new zone])))
+
 /-- Play a Unit or Gear with a chosen reduced-cost finalization. Emit the play after its costs
 have been paid and return the identifier it acquired when it entered play. -/
 def applyReducedPermanent (s : GameState) (p : PlayerId) (id : ObjId)
     (plan : ReducedPermanentPlay) : Option (GameState × ObjId × List Event) := do
   let d ← s.cardDef? id
   let paid ← payByRunes s p id plan.cost (d.hasType .unit) (permanent := true)
-  let zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
-  let (onBoard, new) ← moveObj paid.1 id zone
-  let ownCosts := (if plan.additionalPaid then [0] else []) ++
-    (if plan.accelerated then [if d.additionalCost.isSome then 1 else 0] else [])
-  let pick := if plan.battlefieldFees.isEmpty then SpellPick.plain
-    else .payForBattlefield plan.battlefieldFees ownCosts
-  let pick := if plan.gearDiscounts.isEmpty then pick else .withGearDiscounts pick plan.gearDiscounts
-  let mark := { s.playMark p id ⟨plan.cost.energy, []⟩ with
-    paid := if d.additionalCost.isSome then plan.additionalPaid else plan.accelerated
-    extraPaid := ownCosts.length
-    shownOff := s.captureShowOff p plan.showOff
-    spellPick := pick }
-  let ready := s.readyNow p id d mark.shownOff || plan.accelerated
-  let spent := spendGearDiscounts onBoard p plan.gearDiscounts
-  let moved := (enterBase p d mark ready spent new, [Event.moved id new zone])
-  let placed := placeAtBf s plan.battlefield.toList moved
-  let extra ← payExtra0 s id plan.extraObject.toList placed
-  let result := payPlayDiscard p id plan.discard extra
+  let zone : Zone := plan.battlefield.elim (.player p .base) (fun _ => .battlefieldZone)
+  let payment := payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none)
+  let entryState := payment.elim paid.1 (·.state)
+  let discarded := payDiscards p entryState (plan.discard.filter (· != id)).toList
+  let (onBoard, new) ← moveObj discarded.1 id zone
+  let boardBeforeEntry := if payment.isSome || !discarded.2.isEmpty then discarded.1 else s
+  let placed := placeReducedPermanent s boardBeforeEntry onBoard p id new d plan
+  let result := finishReducedPermanentCost new placed payment discarded.2
   some (result.1, new, s.showOffEvents p plan.showOff ++ paid.2 ++ result.2 ++ [Event.played p new])
 
 /-- Reduced-cost finalization preserves the structural and ownership invariants. -/
@@ -1318,11 +1374,21 @@ theorem applyReducedPermanent_safe {s : GameState} {p : PlayerId} {id : ObjId}
     (h : applyReducedPermanent s p id plan = some r) : Safe s r.1 := by
   unfold applyReducedPermanent at h
   simp only [bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-  obtain ⟨d, hd, paid, hp, ⟨onBoard, new⟩, hm, extra, he, rfl⟩ := h
-  exact (payByRunes_safe hp).trans ((Safe.moveObj hm).trans
-    ((spendGearDiscounts_safe onBoard p plan.gearDiscounts).trans
-      ((enterBase_safe _ _ _ _ _ _).trans ((placeAtBf_safe _ _ _).trans
-        ((payExtra0_safe he).trans (payPlayDiscard_safe _ _ _ _))))))
+  obtain ⟨d, hd, paid, hp, ⟨onBoard, new⟩, hm, rfl⟩ := h
+  let payment := payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none)
+  have beforeEntry : Safe paid.1 (payment.elim paid.1 (·.state)) := by
+    unfold payment
+    cases h : payPermanentExtra s paid.1 id plan.extraObject.toList (if plan.spendXP then some p else none) with
+    | none => exact Safe.refl _
+    | some paid => exact (payPermanentExtra_preserves h).1
+  let ds := (plan.discard.filter (· != id)).toList
+  let discarded := payDiscards p (payment.elim paid.1 (·.state)) ds
+  let boardBeforeEntry := if payment.isSome || !discarded.2.isEmpty then discarded.1 else s
+  let placed := placeReducedPermanent s boardBeforeEntry onBoard p id new d plan
+  exact (payByRunes_safe hp).trans (beforeEntry.trans
+    ((payDiscards_safe p ds _).trans ((Safe.moveObj hm).trans
+      ((placeReducedPermanent_safe s boardBeforeEntry onBoard p id new d plan).trans
+        (finishReducedPermanentCost_safe new placed payment discarded.2)))))
 
 /-- The new identity created by banishing the chosen card. -/
 def banishedPlayId (es : List Event) : Option ObjId :=
@@ -1510,7 +1576,7 @@ def effectSpellOptions (s : GameState) (p : PlayerId) (id : ObjId) (d : CardDef)
               choice)))))
   (priced.flatMap (fun (ts, cost, pick) =>
     (s.spellPaymentPicks p d pick).filterMap (fun choice =>
-      if d.spellObjectPreservesTargets ts choice then
+      if s.spellObjectPickOk p d ts choice then
         some (ts, cost.lessEnergy (s.spellExhaustDiscount p choice), choice)
       else none))).eraseDups
 
@@ -1526,7 +1592,7 @@ def afterItem (s : GameState) : List Frame :=
     if (s.pendingSpell card).isSome then
       let p := ((s.obj? card).map (·.controller)).getD (s.active.getD ⟨0⟩)
       [.run p card {} (.cons (.finalizeLimitedSpell card) .nil)]
-    else [.chainPass (s.active.getD ⟨0⟩) 0]
+    else [.chainPass s.chainPrioritySeat 0]
 
 /-- The frames under Cleanup after a resolution are play frames. -/
 theorem afterItem_mem {s : GameState} {f : Frame} (h : f ∈ afterItem s) : f.isPlay = true := by
@@ -1553,7 +1619,7 @@ def limitedSpellOptions (s : GameState) (p : PlayerId) (card : ObjId)
 def effectSpellAddChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
     (plan : EffectSpellPlay) (funding : EffectAddPolicy) : List EffectAdd :=
   if plan.cost.total == 0 then [] else
-  funding.choices s p (fun t => (payByRunes t p card plan.cost).isSome &&
+  funding.choices s p (fun t => (payByRunes t p card plan.cost (spell := true)).isSome &&
     (limitedSpellOptions t p card price (if (t.cardDef? card).any (·.variablePower) then
       some (funding.powerBudget t p) else none)).contains plan)
 
@@ -1563,12 +1629,12 @@ def limitedSpellChoices (s : GameState) (p : PlayerId) (card : ObjId) (price : E
   let powerBudget := if (s.cardDef? card).any (·.variablePower) then some (funding.powerBudget s p) else none
   (limitedSpellOptions s p card price powerBudget).filterMap (fun plan =>
     let hasAdds := !(effectSpellAddChoices s p card price plan funding).isEmpty
-    if hasAdds || (s.payNow p card plan.cost).isSome then some (plan, hasAdds) else none)
+    if hasAdds || (s.payNow p card plan.cost (spell := true)).isSome then some (plan, hasAdds) else none)
 
 /-- Check the choices before paying the exact price from the Pool. -/
 def effectSpellPoolPayment (s : GameState) (p : PlayerId) (card : ObjId) (price : EffectPlayPrice)
     (plan : EffectSpellPlay) : Option RunePool :=
-  if (limitedSpellOptions s p card price).contains plan then s.payNow p card plan.cost else none
+  if (limitedSpellOptions s p card price).contains plan then s.payNow p card plan.cost (spell := true) else none
 
 /-- Start a limited play by moving the card onto the Chain; its payment and targets wait
 for the parent resolution (CR 354.2, 354.3). -/
@@ -1618,7 +1684,7 @@ theorem giveBack_safe (s : GameState) (id : ObjId) : Safe s (giveBack s id).1 :=
 stays what it is. -/
 def copyKind (card : CardId) (x : Object) : Object :=
   match x.kind with
-  | .token _ => { x with kind := .token card }
+  | .token before => { x with kind := .token card, originalToken := x.originalToken <|> some before }
   | _ => x
 
 /-- Becoming a copy keeps the physical card and the owner. -/
@@ -1703,120 +1769,415 @@ theorem takeUntil_safe (p : PlayerId) (card : Option ObjId) (s : GameState) (id 
     Safe s (takeUntil p card s id).1 :=
   (setController_safe p s id).trans (Safe.modObj _ id (fun _ => rfl) (fun _ => rfl))
 
-/-- Banish replacements for this Unit's death, grouped by the player credited with Banish. -/
+/-- Players whose effects can replace this Unit's death with Banish. -/
+def GameState.deathBanishers (s : GameState) (id : ObjId) : List PlayerId :=
+  let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
+  let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
+  (marked ++ trash).eraseDups
+
+/-- Offer the optional sacrifice while it is still available to the Unit (CR 371). -/
+def GameState.deathSacrificeOptions (s : GameState) (p : PlayerId) (id : ObjId)
+    (used : List (ObjId × Bool)) : List Effect :=
+  if used.contains (id, true) || (s.deathSacrificeDecision id).isSome ||
+      s.turnFx.any (·.appliesTo s.turn id .deathSacrificeUsed) ||
+      !(s.activeMods id).contains .sacrificeToSaveSelf then []
+  else (s.deathSacrificeUnits p id).map fun cost => .recordDeathSacrifice id (some cost)
+
+/-- A declaration carries Banish attribution when Banish effects compete on their own.
+The affected controller chooses separately whenever the Unit could also be rescued. -/
 def GameState.deathBanisherOptions (s : GameState) (id : ObjId) : List (Option PlayerId) :=
   if (s.chosenDeathBanisher id).isSome || (s.automaticDeathSaver id).isSome ||
+      (s.deathSacrificeDecision id).isSome ||
+      (s.obj? id).any (fun o => !(s.deathSacrificeOptions o.controller id []).isEmpty) ||
       !(s.cardDef? id).any (·.hasType .unit) then [none] else
-    let marked := (s.turnFx.filter (·.appliesTo s.turn id .banishInstead)).map (·.who)
-    let trash := ((s.obj? id).filter (s.replacesTrash id)).toList.map (·.owner)
-    match (marked ++ trash).eraseDups with
+    match s.deathBanishers id with
     | first :: second :: rest => (first :: second :: rest).map some
     | _ => [none]
 
-/-- Competing Banish effects with different attribution require the Unit's controller to
-choose. After the chosen replacement applies, there is no kill or Trash move left to replace
-(CR 370.1.a.1, 372). -/
-def GameState.deathBanishChoice (s : GameState) (id : ObjId) :
-    Option (ObjId × PlayerId × Effect × Effect) := do
+/-- The affected Unit's controller chooses the first applicable replacement (CR 372).
+For an action cost, a Banish-only choice can already be part of the declaration. -/
+def GameState.deathChoice (s : GameState) (id : ObjId) (used : List (ObjId × Bool))
+    (offerBanish : Bool) : Option (ObjId × PlayerId × Effect × Effect) := do
   let unit ← s.obj? id
-  let choices := (s.deathBanisherOptions id).filterMap (Option.map (Effect.chooseDeathBanisher id))
-  match choices with
-  | first :: second :: rest =>
-    let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
-    some (id, unit.controller, first, other)
-  | _ => none
-
-/-- Offer the optional sacrifice to the affected Unit's controller. Declining does not use the
-once-per-turn allowance (CR 371, 372). -/
-def GameState.deathSacrificeChoice (s : GameState) (id : ObjId) :
-    Option (ObjId × PlayerId × Effect × Effect) := do
-  let unit ← s.obj? id
-  if (s.deathSacrificeDecision id).isSome ||
-      s.turnFx.any (·.appliesTo s.turn id .deathSacrificeUsed) ||
-      !(s.activeMods id).contains .sacrificeToSaveSelf then none
+  if !(s.cardDef? id).any (·.hasType .unit) || (s.chosenDeathBanisher id).isSome ||
+      (!used.contains (id, true) && (s.selectedDeathSacrifice id).isSome) then none
   else
-    match s.deathSacrificeUnits unit.controller id with
-    | [] => none
-    | first :: rest =>
-      let decline := Effect.recordDeathSacrifice id none
-      let choose (target : ObjId) := Effect.recordDeathSacrifice id (some target)
-      let other := if rest.isEmpty then decline
-        else .eitherOf (EffectList.ofList (rest.map choose ++ [decline]))
-      some (id, unit.controller, choose first, other)
+    let gears := s.deathGearOptions id used
+    if (s.chosenDeathGear id).any gears.contains || (s.selectedDeathFree id used).isSome then none
+    else
+      let free := s.deathFreeOptions id used
+      let optional := s.deathSacrificeOptions unit.controller id used
+      let banish := if offerBanish || !(gears.isEmpty && free.isEmpty && optional.isEmpty)
+        then s.deathBanishers id else []
+      let mandatory := gears.map (Effect.chooseDeathGear id) ++ free.map (Effect.chooseDeathFree id) ++
+        banish.map (Effect.chooseDeathBanisher id)
+      let choices := if mandatory.isEmpty && !optional.isEmpty
+        then optional ++ [.recordDeathSacrifice id none] else mandatory ++ optional
+      match choices with
+      | first :: second :: rest =>
+        let other := if rest.isEmpty then second else .eitherOf (EffectList.ofList (second :: rest))
+        some (id, unit.controller, first, other)
+      | _ => none
+
+/-- Rewrite an answer or the answers behind a more-choices option. -/
+def Effect.mapDeathOptions (map : Effect → Effect) (e : Effect) : Effect :=
+  let rec mapList : EffectList → EffectList
+    | .nil => .nil
+    | .cons first rest => .cons (map first) (mapList rest)
+  match e with
+  | .eitherOf options => .eitherOf (mapList options)
+  | other => map other
+
+/-- Give one ordinary replacement answer its event scope. -/
+def Effect.scopeDeathDecision (scope : ObjId → DeathDecision → Effect) : Effect → Effect
+  | .chooseDeathBanisher unit player => scope unit (.banish player)
+  | .chooseDeathGear unit source => scope unit (.gear source)
+  | .chooseDeathFree unit source => scope unit (.free source)
+  | .recordDeathSacrifice unit cost => scope unit (.sacrifice cost)
+  | other => other
 
 /-- Read the next outstanding choice in the same sequence used to resolve the Kill (CR 370.2). -/
-def GameState.deathReplacementChoiceFrom (s : GameState) :
+def GameState.deathReplacementChoiceFrom (s : GameState) (root : ObjId) :
     Nat → ObjId → List (ObjId × Bool) → Bool → Option (ObjId × PlayerId × Effect × Effect)
   | 0, _, _, _ => none
   | fuel + 1, id, used, offerBanish =>
-    let own := if used.contains (id, true) then none else s.deathSacrificeChoice id
-    own <|> match s.deathSaveFor id used with
+    let ready := prepareNestedDeath s root id used
+    let ask := (ready.deathChoice id used offerBanish).map fun (unit, player, first, other) =>
+      let scope := Effect.mapDeathOptions (Effect.scopeDeathDecision fun target choice =>
+        .recordNestedDeathDecision root used target choice none)
+      if used.isEmpty then (unit, player, first, other) else (unit, player, scope first, scope other)
+    ask <|> match ready.deathSaveFor id used with
     | some save => save.cost.bind (fun cost =>
-        s.deathReplacementChoiceFrom fuel cost ((id, save.isSacrifice) :: used) true)
-    | none => if offerBanish then s.deathBanishChoice id else none
+        s.deathReplacementChoiceFrom root fuel cost (save.useKey id :: used) true)
+    | none => none
 
 /-- Ask the controllers of the original and replacement Kills in order. -/
 def GameState.deathReplacementChoice (s : GameState) (id : ObjId) (offerBanish : Bool := true) :
     Option (ObjId × PlayerId × Effect × Effect) :=
-  s.deathReplacementChoiceFrom (2 * s.inPlay.length + 1) id [] offerBanish
+  s.deathReplacementChoiceFrom id (2 * s.inPlay.length + 1) id [] offerBanish
 
 /-- Which deaths will be changed by an elected replacement or an automatic one. -/
 def GameState.modifiedDeath (s : GameState) (id : ObjId) : Bool :=
   (s.deathSaveFor id []).isSome || s.banishedOnDeath id || (s.obj? id).any (s.replacesTrash id)
 
-/-- Ordered death choices are local to the current simultaneous group. -/
-def GameState.recordedDeathOrder (s : GameState) (group : List ObjId) : List ObjId :=
-  s.turnFx.filterMap (fun note =>
-    if note.turn == s.turn && note.kind == .deathOrder group then note.target else none)
+/-- A team-wide replacement is controlled by its source. The other replacements use the
+affected Unit's seat unless a Banish source was recorded (CR 373.1). -/
+def GameState.deathOrderController (s : GameState) (id : ObjId) : Option PlayerId :=
+  let source := match s.deathSaveFor id [] with
+    | some save =>
+      if save.isSacrifice then none else
+        match save.cost with
+        | some gear =>
+          if (s.activeMods gear).contains .diesInsteadOfFriendly then (s.obj? gear).map (·.controller)
+          else none
+        | none =>
+          match s.freeDeathSaver id with
+          | some (some rescuer) => (s.obj? rescuer).map (·.controller)
+          | some none => (s.tacticalRetreatFor id).map (·.who)
+          | none => none
+    | none => s.chosenDeathBanisher id
+  source <|> (s.obj? id).map (·.controller)
 
-/-- Replacements act in turn order and before simultaneous unmodified deaths (CR 373.1.a). -/
-def GameState.deathGroupOrder (s : GameState) (group : List ObjId) : List ObjId :=
-  let (modified, ordinary) := group.partition s.modifiedDeath
-  let recorded := s.recordedDeathOrder group
-  let seat id := ((s.obj? id).bind (fun o => s.pickOrder.idxOf? o.controller)).getD s.playerCount
-  let index id := (recorded.idxOf? id).getD recorded.length
-  modified.mergeSort (fun a b => decide
-    (seat a < seat b ∨ (seat a = seat b ∧ index a ≤ index b))) ++ ordinary
+/-- Preserve the already determined prefix when a later Unit selects a different replacement. -/
+def GameState.deathGroupPrefix (s : GameState) (group : List ObjId) : List ObjId :=
+  ((s.turnFx.reverse.findSome? fun note =>
+    if note.turn != s.turn then none else
+      match note.kind with
+      | .deathReselection g earlier _ | .nestedDeathDecision _ _ _ (some (g, earlier)) =>
+        if g == group then some earlier else none
+      | _ => none).getD []).filter group.contains
 
-/-- Ask for all replacement choices, then let each controller order their replacements (CR 372-373). -/
-def GameState.deathGroupChoice (s : GameState) (group : List ObjId) (offerBanish : Bool := true) :
-    Option (ObjId × PlayerId × Effect × Effect) :=
-  let ask (id : ObjId) := s.deathReplacementChoice id offerBanish
-  (s.deathGroupOrder group).findSome? ask <|>
-    let recorded := s.recordedDeathOrder group
-    s.pickOrder.findSome? (fun controller =>
-      let remains := group.eraseDups.filter (fun id =>
-        s.modifiedDeath id && !recorded.contains id && (s.obj? id).any (·.controller == controller))
-      match remains with
-      | first :: second :: rest =>
-        let choose := Effect.recordDeathOrder group
-        let other := if rest.isEmpty then choose second
-          else .eitherOf (EffectList.ofList ((second :: rest).map choose))
-        some (first, controller, choose first, other)
-      | _ => none)
+/-- The latest revision available at this point in the group's execution. -/
+def GameState.deathReselectionAt (s : GameState) (group : List ObjId) (index : Nat)
+    (id : ObjId) : Option (PlayerId × DeathDecision) :=
+  s.turnFx.reverse.findSome? fun note =>
+    if note.turn != s.turn || note.target != some id then none else
+      match note.kind with
+      | .deathReselection g earlier choice =>
+        if g == group && earlier.length ≤ index then some (note.who, choice) else none
+      | _ => none
 
-@[simp] theorem GameState.deathGroupChoice_nil (s : GameState) (offerBanish : Bool) :
-    s.deathGroupChoice [] offerBanish = none := by
-  simp [GameState.deathGroupChoice, GameState.deathGroupOrder, List.partition, List.partition.loop]
+/-- Make replacements chosen against the projected Board available to this root Kill. -/
+def prepareDeathReselection (s : GameState) (group : List ObjId) (index : Nat)
+    (id : ObjId) : GameState :=
+  let rootNotes := match s.deathReselectionAt group index id with
+    | none => s.turnFx
+    | some choice => (s.applyDeathDecision id (some choice)).turnFx
+  let nested := rootNotes.filterMap fun note =>
+    if note.turn != s.turn then none else
+      match note.kind with
+      | .nestedDeathDecision root used choice (some (g, earlier)) =>
+        if root == id && g == group && earlier.length ≤ index then
+          some { note with kind := .nestedDeathDecision root used choice none }
+        else none
+      | _ => none
+  { s with turnFx := rootNotes ++ nested }
 
-/-- Decisions about one simultaneous group do not carry over to the next group. -/
-def clearDeathOrder (s : GameState) (group : List ObjId) : GameState :=
-  { s with turnFx := s.turnFx.filter (fun note => note.kind != .deathOrder group) }
-
-theorem clearDeathOrder_safe (s : GameState) (group : List ObjId) : Safe s (clearDeathOrder s group) :=
+theorem prepareDeathReselection_safe (s : GameState) (group : List ObjId) (index : Nat)
+    (id : ObjId) : Safe s (prepareDeathReselection s group index id) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Apply all of the chosen replacements and deaths in one group. -/
-def resolveDeathGroupWith (s : GameState) (group : List ObjId)
-    (g : GameState → ObjId → GameState × List Event) : GameState × List Event :=
-  let r := applyEach g s (s.deathGroupOrder group)
-  (clearDeathOrder r.1 group, r.2)
+/-- The source of the selected survival effect, if it can replace another simultaneous death. -/
+def GameState.deathSequenceSource (s : GameState) (id : ObjId) : Option DeathSequenceSource := do
+  let save ← s.deathSaveFor id []
+  if save.isSacrifice then none else
+    match save.cost with
+    | some gear => some (.gear gear)
+    | none => (s.freeDeathSaver id).join.map .rescuer
 
-theorem resolveDeathGroupWith_safe (s : GameState) (group : List ObjId)
+/-- One root death, as seen after all preceding applications in the same group. -/
+structure DeathGroupEntry where
+  /-- The affected Unit. -/
+  unit : ObjId
+  /-- The number of earlier root events in this group. -/
+  index : Nat
+  /-- Sequences unavailable to this root death. -/
+  closed : List DeathSequenceSource
+
+/-- Use the choice valid at this position and exclude already completed sequences. -/
+def DeathGroupEntry.prepare (entry : DeathGroupEntry) (group : List ObjId)
+    (s : GameState) : GameState :=
+  let ready := prepareDeathReselection s group entry.index entry.unit
+  if entry.closed.isEmpty then ready
+  else ready.addTurnFxOn (ready.active.getD ⟨0⟩) entry.unit (.closedDeathSequences entry.closed)
+
+private theorem DeathGroupEntry.prepare_safe (entry : DeathGroupEntry) (group : List ObjId)
+    (s : GameState) : Safe s (entry.prepare group s) := by
+  unfold DeathGroupEntry.prepare
+  split
+  · exact prepareDeathReselection_safe s group entry.index entry.unit
+  · exact (prepareDeathReselection_safe s group entry.index entry.unit).trans
+      (addTurnFxOn_safe _ _ _ _)
+
+/-- One root event. Its nested Kills can still use effects closed to simultaneous root events. -/
+def applyGroupDeath (group : List ObjId) (g : GameState → ObjId → GameState × List Event)
+    (s : GameState) (entry : DeathGroupEntry) : GameState × List Event :=
+  let r := g (entry.prepare group s) entry.unit
+  (if entry.closed.isEmpty then r.1 else clearClosedDeathSequences r.1, r.2)
+
+/-- Applying a planned root preserves the board invariants when its death resolver does. -/
+theorem applyGroupDeath_safe (group : List ObjId)
     {g : GameState → ObjId → GameState × List Event}
-    (h : ∀ t id, Safe t (g t id).1) : Safe s (resolveDeathGroupWith s group g).1 :=
-  (applyEach_safe h _ s).trans (clearDeathOrder_safe _ group)
+    (h : ∀ t id, Safe t (g t id).1) (s : GameState) (entry : DeathGroupEntry) :
+    Safe s (applyGroupDeath group g s entry).1 := by
+  unfold applyGroupDeath
+  dsimp only
+  split
+  · exact (entry.prepare_safe group s).trans (h _ _)
+  · exact ((entry.prepare_safe group s).trans (h _ _)).trans (clearClosedDeathSequences_safe _)
+
+/-- One proposed root death and its next replacement on the projected Board. -/
+structure DeathGroupCandidate where
+  /-- The affected Unit. -/
+  unit : ObjId
+  /-- A replacement is available, including effects used only for this event. -/
+  modified : Bool
+  /-- A Board source whose sequence can continue on more than one event. -/
+  sequence : Option DeathSequenceSource
+  /-- The replacement's controller, when known. -/
+  controller : Option PlayerId
+  /-- The position of this controller's earlier ordering decision, if any. -/
+  recorded : Option Nat
+
+/-- Find the next applicable replacement of each remaining root. -/
+def deathGroupCandidates (s : GameState) (group remaining : List ObjId)
+    (index : Nat) (closed : List DeathSequenceSource) : List DeathGroupCandidate :=
+  let recorded := s.turnFx.filter fun note => note.turn == s.turn && note.kind == .deathOrder group
+  remaining.map fun unit =>
+    let ready := (DeathGroupEntry.mk unit index closed).prepare group s
+    let modified := ready.inPlay.contains unit && ready.modifiedDeath unit
+    let controller := if modified then ready.deathOrderController unit else none
+    ⟨unit, modified, if modified then ready.deathSequenceSource unit else none, controller,
+      recorded.findIdx? (fun note => note.target == some unit && controller == some note.who)⟩
+
+/-- Replacements act in turn order before simultaneous unmodified deaths (CR 373.1.a). -/
+def sortDeathGroupCandidates (s : GameState) (candidates : List DeathGroupCandidate) :
+    List DeathGroupCandidate :=
+  let players := s.pickOrder
+  let seat (c : DeathGroupCandidate) := (c.controller.bind players.idxOf?).getD s.playerCount
+  candidates.mergeSort fun a b =>
+    if a.modified != b.modified then a.modified
+    else if !a.modified then true
+    else if seat a != seat b then seat a < seat b
+    else match a.recorded, b.recorded with
+      | some x, some y => x ≤ y
+      | none, some _ => false
+      | _, none => true
+
+/-- The Unit being acted on, the decision maker, and the first and remaining options. -/
+abbrev DeathGroupChoice := ObjId × PlayerId × Effect × Effect
+
+/-- The controller orders competing applications that can run next in this sequence. -/
+def chooseDeathGroupOrder (group : List ObjId) (first : DeathGroupCandidate)
+    (remaining : List DeathGroupCandidate) : Option DeathGroupChoice := do
+  let controller ← first.controller
+  if first.recorded.isSome then none else
+    let others := ((remaining.filter fun c =>
+      c.modified && c.recorded.isNone && c.controller == some controller).map (·.unit)).eraseDups
+    match others.filter (· != first.unit) with
+    | [] => none
+    | second :: rest =>
+      let choose := Effect.recordDeathOrder group
+      let other := if rest.isEmpty then choose second
+        else .eitherOf (EffectList.ofList ((second :: rest).map choose))
+      some (first.unit, controller, choose first.unit, other)
+
+/-- Record a revised choice against the prefix that made it necessary. -/
+def scopeDeathGroupChoice (group prior : List ObjId)
+    (choice : DeathGroupChoice) : DeathGroupChoice :=
+  let scope := Effect.mapDeathOptions fun
+    | .recordNestedDeathDecision root used target decision _ =>
+      .recordNestedDeathDecision root used target decision (some (group, prior))
+    | effect => effect.scopeDeathDecision (Effect.recordDeathReselection group prior)
+  let (victim, player, first, other) := choice
+  (victim, player, scope first, scope other)
+
+/-- A stale decision may be revised to continue the open sequence before it closes. -/
+def chooseOpenDeathSequence (group prior : List ObjId) (offerBanish : Bool)
+    (active : DeathSequenceSource) (s : GameState) (remaining : List ObjId)
+    (closed : List DeathSequenceSource) : Option DeathGroupChoice :=
+  remaining.findSome? fun unit =>
+    if !s.inPlay.contains unit then none else
+      let ready := (DeathGroupEntry.mk unit prior.length closed).prepare group s
+      let eligible := match active with
+        | .gear source => (ready.deathGearOptions unit []).contains source
+        | .rescuer source => (ready.deathFreeOptions unit []).contains (some source)
+      if eligible then
+        (ready.deathChoice unit [] offerBanish).map (scopeDeathGroupChoice group prior.reverse)
+      else none
+
+/-- A sequence continues while its selected effect applies to another root. Once it ends,
+later roots can use other replacements but cannot restart that sequence (CR 373.2). -/
+def planDeathGroup (group : List ObjId) (offerChoices : Option Bool)
+    (g : GameState → ObjId → GameState × List Event) :
+    Nat → GameState → List ObjId → List ObjId → List ObjId →
+    Option DeathSequenceSource → List DeathSequenceSource →
+    List DeathGroupEntry × Option DeathGroupChoice
+  | 0, _, _, _, _, _, _ => ([], none)
+  | fuel + 1, s, remaining, prior, fixed, active, closed =>
+    let openChoice := if fixed.isEmpty then offerChoices.bind fun offerBanish =>
+        active.bind fun source => chooseOpenDeathSequence group prior offerBanish source s remaining closed
+      else none
+    if openChoice.isSome then ([], openChoice) else
+    let candidates := deathGroupCandidates s group remaining prior.length closed
+    let continuing := candidates.filter fun c => active.isSome && c.sequence == active
+    let (closed, candidates) := if active.isSome && continuing.isEmpty then
+        let closed := active.toList ++ closed
+        (closed, deathGroupCandidates s group remaining prior.length closed)
+      else (closed, if continuing.isEmpty then candidates else continuing)
+    let ordered := sortDeathGroupCandidates s candidates
+    let forced := fixed.head?.bind fun unit => candidates.find? (·.unit == unit) <|>
+      (deathGroupCandidates s group [unit] prior.length closed).head?
+    match forced <|> ordered.head? with
+    | none => ([], none)
+    | some chosen =>
+      let entry : DeathGroupEntry := ⟨chosen.unit, prior.length, closed⟩
+      let ask := offerChoices.bind fun offerBanish =>
+        if forced.isSome then none else
+          let ready := entry.prepare group s
+          let revised := if !prior.isEmpty && ready.inPlay.contains entry.unit then
+            (ready.deathReplacementChoice entry.unit offerBanish).map
+              (scopeDeathGroupChoice group prior.reverse)
+          else none
+          revised <|> chooseDeathGroupOrder group chosen ordered
+      match ask with
+      | some choice => ([], some choice)
+      | none => if fuel == 0 then ([entry], none) else
+        let next := (applyGroupDeath group g s entry).1
+        let (entries, choice) := planDeathGroup group offerChoices g fuel next
+          (remaining.erase entry.unit) (entry.unit :: prior) fixed.tail chosen.sequence closed
+        (entry :: entries, choice)
+
+private theorem deathGroupCandidates_unit {s : GameState} {group remaining : List ObjId}
+    {index : Nat} {closed : List DeathSequenceSource} {candidate : DeathGroupCandidate}
+    (member : candidate ∈ deathGroupCandidates s group remaining index closed) :
+    candidate.unit ∈ remaining := by
+  unfold deathGroupCandidates at member
+  simp only [List.mem_map] at member
+  obtain ⟨unit, inRemaining, rfl⟩ := member
+  exact inRemaining
+
+private theorem selectedOption {α : Type} {first second : Option α} {x : α}
+    (found : (first <|> second) = some x) : first = some x ∨ second = some x := by
+  cases first with
+  | none => exact Or.inr found
+  | some _ => exact Or.inl found
+
+/-- The automatic planner only selects roots supplied by the original death group. -/
+theorem planDeathGroup_entries_mem {group : List ObjId} (g : GameState → ObjId → GameState × List Event)
+    (fuel : Nat) (s : GameState) (remaining prior fixed : List ObjId) (active : Option DeathSequenceSource)
+    (closed : List DeathSequenceSource) (left : remaining ⊆ group) (pinned : fixed ⊆ group)
+    {entry : DeathGroupEntry}
+    (member : entry ∈ (planDeathGroup group none g fuel s remaining prior fixed active closed).1) :
+    entry.unit ∈ group := by
+  induction fuel generalizing s remaining prior fixed active closed entry with
+  | zero => simp [planDeathGroup] at member
+  | succ fuel ih =>
+    rw [planDeathGroup] at member
+    simp only [Option.bind_none, ite_self, Option.isSome_none, Bool.false_eq_true, ite_false] at member
+    let candidates := deathGroupCandidates s group remaining prior.length closed
+    let continuing := candidates.filter fun c => active.isSome && c.sequence == active
+    let next := if active.isSome && continuing.isEmpty then
+        let excluded := active.toList ++ closed
+        (excluded, deathGroupCandidates s group remaining prior.length excluded)
+      else (closed, if continuing.isEmpty then candidates else continuing)
+    let ordered := sortDeathGroupCandidates s next.2
+    let forced := fixed.head?.bind fun unit => next.2.find? (·.unit == unit) <|>
+      (deathGroupCandidates s group [unit] prior.length next.1).head?
+    have fromRemaining {c : DeathGroupCandidate} (found : c ∈ next.2) : c.unit ∈ remaining := by
+      unfold next at found
+      split at found
+      · exact deathGroupCandidates_unit found
+      · dsimp only at found
+        split at found
+        · exact deathGroupCandidates_unit found
+        · exact deathGroupCandidates_unit (List.mem_filter.mp found).1
+    have chosenRoot {c : DeathGroupCandidate} (found : (forced <|> ordered.head?) = some c) :
+        c.unit ∈ group := by
+      rcases selectedOption found with first | sorted
+      · cases head : fixed.head? with
+        | none => simp [forced, head] at first
+        | some unit =>
+          have choice : (next.2.find? (·.unit == unit) <|>
+              (deathGroupCandidates s group [unit] prior.length next.1).head?) = some c := by
+            simpa [forced, head] using first
+          rcases selectedOption choice with searched | singleton
+          · exact left (fromRemaining (List.mem_of_find?_eq_some searched))
+          · have eq : c.unit = unit := by
+              simpa using deathGroupCandidates_unit (List.mem_of_head? singleton)
+            rw [eq]
+            exact pinned (List.mem_of_head? head)
+      · have cand := List.mem_of_head? sorted
+        exact left (fromRemaining (by simpa [ordered, sortDeathGroupCandidates] using cand))
+    generalize selected : (forced <|> ordered.head?) = chosen at member
+    cases chosen with
+    | none => simp at member
+    | some c =>
+      have rootMem := chosenRoot selected
+      by_cases last : (fuel == 0) = true
+      · simp [last] at member
+        exact (congrArg DeathGroupEntry.unit member) ▸ rootMem
+      · simp [last] at member
+        rcases member with equals | later
+        · exact (congrArg DeathGroupEntry.unit equals) ▸ rootMem
+        · exact ih _ _ _ _ _ _ (fun _ h => left (List.mem_of_mem_erase h))
+            (fun _ h => pinned (List.mem_of_mem_tail h)) later
+
+-- Keep the planner opaque to unrelated proofs after generating its equations for membership.
+attribute [irreducible] planDeathGroup
+
+/-- Ask for choices, including any that depend on which earlier replacements can actually apply. -/
+def GameState.deathGroupChoiceWith (s : GameState) (group : List ObjId) (offerBanish : Bool)
+    (g : GameState → ObjId → GameState × List Event) : Option (ObjId × PlayerId × Effect × Effect) :=
+  let earlier := s.deathGroupPrefix group
+  let initial := if earlier.isEmpty then
+      (sortDeathGroupCandidates s (deathGroupCandidates s group group 0 [])).findSome?
+        (fun candidate => s.deathReplacementChoice candidate.unit offerBanish)
+    else none
+  initial <|> if 1 < group.length then
+      (planDeathGroup group (some offerBanish) g group.length s group [] earlier none []).2
+    else none
 
 /-- A Trash replacement can still apply to a simultaneous kill after its own source was removed
 by the same instruction (CR 370.1.a.2, 370.4). -/
@@ -1837,6 +2198,78 @@ theorem killOrSaveInGroup_safe (before s : GameState) (id : ObjId) :
     · exact banishObj_safe _ _ _
     · exact killOrSave_safe _ _
   · exact killOrSave_safe _ _
+
+/-- Ask for replacement choices for a Kill instruction or declaration. -/
+def GameState.deathGroupChoice (s : GameState) (group : List ObjId) (offerBanish : Bool := true) :
+    Option (ObjId × PlayerId × Effect × Effect) :=
+  s.deathGroupChoiceWith group offerBanish (killOrSaveInGroup s)
+
+@[simp] theorem GameState.deathGroupChoiceWith_nil (s : GameState) (offerBanish : Bool)
+    (g : GameState → ObjId → GameState × List Event) :
+    s.deathGroupChoiceWith [] offerBanish g = none := by
+  simp [GameState.deathGroupChoiceWith, GameState.deathGroupPrefix,
+    deathGroupCandidates, sortDeathGroupCandidates]
+
+@[simp] theorem GameState.deathGroupChoice_nil (s : GameState) (offerBanish : Bool) :
+    s.deathGroupChoice [] offerBanish = none := s.deathGroupChoiceWith_nil offerBanish _
+
+/-- Decisions about one simultaneous group do not carry over to the next group. -/
+def clearDeathOrder (s : GameState) (group : List ObjId) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun note =>
+      match note.kind with
+      | .deathOrder g | .deathReselection g _ _ | .nestedDeathDecision _ _ _ (some (g, _)) =>
+        g != group
+      | _ => true) }
+
+theorem clearDeathOrder_safe (s : GameState) (group : List ObjId) : Safe s (clearDeathOrder s group) :=
+  ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+    fun _ hown => hown.congr rfl rfl, rfl⟩
+
+/-- Record the shared observation point for each primary victim in a simultaneous group.
+Kills paid inside a selected replacement retain their own observation point. -/
+def deathGroupContextNotes (before after : GameState) (group : List ObjId) (events : List Event) :
+    List TurnFx :=
+  if group.length < 2 then after.turnFx else
+  events.foldl (fun notes event => match event with
+    | .moved old dead _ =>
+      if !group.contains old || !(before.cardDef? old).any (·.hasType .unit) then notes else
+      let controller := events.findSome? (fun
+        | .died id player => if id == dead then some player else none
+        | _ => none)
+      match controller with
+      | none => notes
+      | some who =>
+        let retained := notes.filter (fun note => match note.kind with
+          | .deathCompany _ => note.target != some dead || note.turn != after.turn
+          | _ => true)
+        let recorded := retained.any (·.appliesTo after.turn dead .diedAlone)
+        let company := recordDeathCompany retained who dead after.turn after.nextTimestamp recorded
+          (before.unitIsAloneAt old)
+        recordDeathEquipmentGrants company who dead after.turn after.nextTimestamp
+          (before.deathEquipmentGrants old)
+    | _ => notes) after.turnFx
+
+/-- Apply all of the chosen replacements and deaths in one group. -/
+def resolveDeathGroupWith (s : GameState) (group : List ObjId)
+    (g : GameState → ObjId → GameState × List Event) : GameState × List Event :=
+  let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
+    none []).1
+  let r := applyEach (applyGroupDeath group g) s entries
+  let corrected := { r.1 with turnFx := deathGroupContextNotes s r.1 group r.2 }
+  (clearDeathOrder corrected group, r.2)
+
+theorem resolveDeathGroupWith_safe (s : GameState) (group : List ObjId)
+    {g : GameState → ObjId → GameState × List Event}
+    (h : ∀ t id, Safe t (g t id).1) : Safe s (resolveDeathGroupWith s group g).1 := by
+  let entries := (planDeathGroup group none g group.length s group [] (s.deathGroupPrefix group)
+    none []).1
+  let result := applyEach (applyGroupDeath group g) s entries
+  let corrected := { result.1 with turnFx := deathGroupContextNotes s result.1 group result.2 }
+  have notesSafe : Safe result.1 corrected :=
+    ⟨fun wf => wf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ owners => owners.congr rfl rfl, rfl⟩
+  exact (applyEach_safe (applyGroupDeath_safe group h) entries s).trans
+    (notesSafe.trans (clearDeathOrder_safe corrected group))
 
 /-- An effect of this turn prevents the next damage to the object. -/
 def GameState.shielded (s : GameState) (id : ObjId) : Bool :=
@@ -1887,18 +2320,52 @@ theorem spendPrevent_safe (s : GameState) (id : ObjId) (n : Nat) :
 def Object.takeDamage (o : Object) (turn n : Nat) : Object :=
   { o with damage := o.damage + n, damagedTurn := if n = 0 then o.damagedTurn else some turn }
 
+/-- The responsible seat controls a permanent that makes its damage lethal to this enemy
+(CR 142.3.b, 142.4.c). -/
+def GameState.makesDamageLethal (s : GameState) (responsible : PlayerId) (target : Object) : Bool :=
+  !s.config.mode.sameSide responsible target.controller && s.inPlay.any (fun src =>
+    (s.obj? src).any (·.controller == responsible) && (s.activeMods src).contains .anyDamageKills)
+
+/-- Already marked damage and an incoming hit together satisfy the current lethal threshold. -/
+def GameState.damageWillBeLethal (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : Bool :=
+  (s.obj? id).any fun target =>
+    let total := target.damage + amount
+    decide (0 < total) && ((s.mightNow id).any (fun might => decide (Might.eff might ≤ total)) ||
+      (decide (0 < amount) && responsible.any (fun p => s.makesDamageLethal p target)) ||
+      (s.damageMarks[id.n]?.getD []).any (fun (p, _) => p.any (fun seat => s.makesDamageLethal seat target)))
+
+/-- Mark only damage that was actually dealt after applying immunity and prevention. -/
+def GameState.markDamage (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : GameState :=
+  let damaged := s.modObj id (fun o => o.takeDamage s.turn amount)
+  if amount == 0 || (s.obj? id).isNone then damaged else
+    let marks := (responsible, amount) :: (damaged.damageMarks[id.n]?.getD [])
+    { damaged with damageMarks := damaged.damageMarks.insert id.n marks }
+
+theorem GameState.markDamage_safe (s : GameState) (id : ObjId) (amount : Nat)
+    (responsible : Option PlayerId) : Safe s (s.markDamage id amount responsible) := by
+  have damaged := Safe.modObj s id (f := fun o => o.takeDamage s.turn amount) (fun _ => rfl) (fun _ => rfl)
+  unfold markDamage
+  dsimp only
+  split
+  · exact damaged
+  · exact damaged.trans ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ hown => hown.congr rfl rfl, rfl⟩
+
 /-- Damage is excluded by the Unit's immunity, with enemy-effect immunity scoped to its source. -/
 def damageImmune (s : GameState) (id : ObjId) (o : Object) (controller : Option PlayerId) : Bool :=
   let mods := s.activeMods id
   mods.contains .noDamage ||
-    (controller.any (· != o.controller) && mods.contains .noEnemyEffectDamage)
+    (controller.any (fun p => !s.config.mode.sameSide p o.controller) && mods.contains .noEnemyEffectDamage)
 
 /-- Record applied damage, then process effects that react directly to it (CR 418). -/
-def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealRemaining (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) (deferLethal : Bool := false) : GameState × List Event :=
   let damagingUnit := decide (0 < n) && (s.cardDef? id).any (·.hasType .unit)
-  let lethal := (s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + n
-  let saver := if damagingUnit && decide lethal then s.deathSaver id else none
-  let damaged := s.modObj id (fun o => o.takeDamage s.turn n)
+  let saver := if !deferLethal && damagingUnit && s.damageWillBeLethal id n responsible then
+    s.deathSaver id else none
+  let damaged := s.markDamage id n responsible
   let event := Event.damaged id n
   match saver with
   | some _ =>
@@ -1911,9 +2378,10 @@ def dealRemaining (n : Nat) (s : GameState) (id : ObjId) : GameState × List Eve
     else (damaged, [event])
 
 /-- Recording damage and applying direct reactions preserve the structural invariants. -/
-theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId) :
-    Safe s (dealRemaining n s id).1 := by
-  have damaged := Safe.modObj s id (f := fun o => o.takeDamage s.turn n) (fun _ => rfl) (fun _ => rfl)
+theorem dealRemaining_safe (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) (deferLethal : Bool := false) :
+    Safe s (dealRemaining n s id responsible deferLethal).1 := by
+  have damaged := s.markDamage_safe id n responsible
   unfold dealRemaining
   dsimp only
   split
@@ -1929,42 +2397,44 @@ def GameState.previewPrevent (s : GameState) (id : ObjId) (n : Nat) : Nat × Nat
   (prevented, incoming - prevented)
 
 /-- Spend finite prevention, then apply any damage left (CR 438.2-438.4). -/
-def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId) : GameState × List Event :=
+def dealThroughPrevent (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : GameState × List Event :=
   let (prevented, damage) := s.previewPrevent id n
   let after := { s with turnFx := spendPrevent s.turn id prevented s.turnFx }
   if 0 < n ∧ damage = 0 then (after, [])
-  else dealRemaining damage after id
+  else dealRemaining damage after id responsible
 
 /-- Applying finite prevention preserves the structural invariants. -/
-theorem dealThroughPrevent_safe (n : Nat) (s : GameState) (id : ObjId) :
-    Safe s (dealThroughPrevent n s id).1 := by
+theorem dealThroughPrevent_safe (n : Nat) (s : GameState) (id : ObjId)
+    (responsible : Option PlayerId := none) : Safe s (dealThroughPrevent n s id responsible).1 := by
   unfold dealThroughPrevent
   split
   split
   · exact spendPrevent_safe s id _
-  · exact (spendPrevent_safe s id _).trans (dealRemaining_safe _ _ _)
+  · exact (spendPrevent_safe s id _).trans (dealRemaining_safe _ _ _ _)
 
 /-- Apply damage after accounting for immunity, doubling and prevention (CR 418, 438). An object
 whose damage reaches its Might is killed by the next Cleanup (CR 323.4), not here. -/
-def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none) :
-    GameState × List Event :=
+def dealObj (n : Nat) (s : GameState) (id : ObjId) (effectController : Option PlayerId := none)
+    (responsible : Option PlayerId := effectController) : GameState × List Event :=
   match s.obj? id with
   | some o =>
     if damageImmune s id o effectController then (s, [])
     else if decide (0 < n) && s.shielded id then (s.useShield id, [])
-    else dealThroughPrevent n s id
+    else dealThroughPrevent n s id responsible
   | none => (s, [])
 
 /-- Dealing damage is a safe change. -/
 theorem dealObj_safe (n : Nat) (s : GameState) (id : ObjId)
-    (effectController : Option PlayerId := none) : Safe s (dealObj n s id effectController).1 := by
+    (effectController : Option PlayerId := none) (responsible : Option PlayerId := effectController) :
+    Safe s (dealObj n s id effectController responsible).1 := by
   unfold dealObj
   split
   · split
     · exact Safe.refl s
     · split
       · exact useShield_safe s id
-      · exact dealThroughPrevent_safe n s id
+      · exact dealThroughPrevent_safe n s id responsible
   · exact Safe.refl s
 
 /-- Read both Mights before marking damage. The Units themselves are the sources, so
@@ -1972,8 +2442,8 @@ modifiers for damage from a Spell do not apply (CR 418.6.b.3). -/
 def exchangeDamage (s : GameState) (a b : ObjId) : GameState × List Event :=
   match s.mightNow a, s.mightNow b with
   | some am, some bm =>
-    let hit := dealObj am.toNat s b
-    let reply := dealObj bm.toNat hit.1 a
+    let hit := dealObj am.toNat s b none ((s.obj? a).map (·.controller))
+    let reply := dealObj bm.toNat hit.1 a none ((s.obj? b).map (·.controller))
     (reply.1, hit.2 ++ reply.2)
   | _, _ => (s, [])
 
@@ -1982,7 +2452,7 @@ theorem exchangeDamage_safe (s : GameState) (a b : ObjId) :
     Safe s (exchangeDamage s a b).1 := by
   unfold exchangeDamage
   split
-  · exact (dealObj_safe _ s b).trans (dealObj_safe _ _ a)
+  · exact (dealObj_safe _ s b _ _).trans (dealObj_safe _ _ a _ _)
   · exact Safe.refl s
 
 /-- How much has already been consumed from this turn note in the current damage instruction. -/
@@ -2058,24 +2528,79 @@ theorem orderCombatDamageStep_mem {s : GameState} {p : PlayerId} {src target : O
   dsimp only at hf
   split at hf <;> obtain rfl := List.mem_singleton.mp hf <;> rfl
 
-/-- Record the damage dealt by one instruction and collect all its damage events together. -/
-def applyEffectDamageAmounts (s : GameState) : List (ObjId × Nat) → GameState × List Event
+/-- A death caused by the current hit, identified across its change of zone. -/
+def damageDeathObject (id : ObjId) (events : List Event) : Option ObjId :=
+  events.findSome? fun
+    | .moved old next _ =>
+      if old == id && events.any (fun | .died dead _ => dead == next | _ => false)
+      then some next else none
+    | _ => none
+
+/-- Append credit for this particular lethal death, excluding collateral deaths of replacements. -/
+def creditLinkedCleanupDeath (s : GameState) (id : ObjId) (events : List Event) : List Event :=
+  events ++ ((damageDeathObject id events).toList.flatMap fun dead =>
+    s.turnFx.filterMap (fun note => match note.kind with
+      | .linkedDamageDeath source card index =>
+        if note.turn == s.turn && note.target == some id then
+          some (.killedByLinkedDamage note.who source card index dead)
+        else none
+      | _ => none))
+
+/-- Credit a direct death, or remember a hit that may cause a death during the next Cleanup. -/
+def linkDamageHit (r : GameState × List Event) (id : ObjId) (amount : Nat)
+    (link : Option DamageKillLink) : GameState × List Event :=
+  match link with
+  | some followup =>
+    if amount == 0 then r else
+    match damageDeathObject id r.2 with
+    | some dead => (r.1, r.2 ++
+      [.killedByLinkedDamage followup.player followup.source followup.card followup.index dead])
+    | none =>
+      let kind := TurnEffect.linkedDamageDeath followup.source followup.card followup.index
+      if r.1.inPlay.contains id &&
+          !(r.1.turnFx.any (fun f => f.appliesTo r.1.turn id kind && f.who == followup.player)) then
+        (r.1.addTurnFxOn followup.player id kind, r.2)
+      else r
+  | none => r
+
+/-- Adding a damage link retains the structural invariants. -/
+theorem linkDamageHit_safe (r : GameState × List Event) (id : ObjId) (amount : Nat)
+    (link : Option DamageKillLink) : Safe r.1 (linkDamageHit r id amount link).1 := by
+  unfold linkDamageHit
+  split
+  · split
+    · exact Safe.refl _
+    · split
+      · exact Safe.refl _
+      · dsimp only
+        split
+        · exact addTurnFxOn_safe _ _ _ _
+        · exact Safe.refl _
+  · exact Safe.refl _
+
+/-- Record damage and any per-hit attribution, keeping the whole instruction's events together. -/
+def applyEffectDamageAmounts (batch : EffectDamageBatch) (s : GameState) :
+    List (ObjId × Nat) → GameState × List Event
   | [] => (s, [])
   | (id, amount) :: rest =>
-    let r := if (s.obj? id).isSome then dealRemaining amount s id else (s, [])
-    let later := applyEffectDamageAmounts r.1 rest
+    let r := if (s.obj? id).isSome then
+        linkDamageHit (dealRemaining amount s id (batch.responsible id) batch.combatDamage)
+          id amount batch.onKill
+      else (s, [])
+    let later := applyEffectDamageAmounts batch r.1 rest
     (later.1, r.2 ++ later.2)
 
 /-- Recording a batch of damage preserves the game invariants. -/
-theorem applyEffectDamageAmounts_safe (s : GameState) (hits : List (ObjId × Nat)) :
-    Safe s (applyEffectDamageAmounts s hits).1 := by
+theorem applyEffectDamageAmounts_safe (batch : EffectDamageBatch) (s : GameState)
+    (hits : List (ObjId × Nat)) : Safe s (applyEffectDamageAmounts batch s hits).1 := by
   induction hits generalizing s with
   | nil => exact Safe.refl s
   | cons hit rest ih =>
     obtain ⟨id, amount⟩ := hit
     simp only [applyEffectDamageAmounts]
     split
-    · exact (dealRemaining_safe amount s id).trans (ih _)
+    · exact (dealRemaining_safe amount s id _ batch.combatDamage).trans
+        ((linkDamageHit_safe _ _ _ _).trans (ih _))
     · exact ih s
 
 /-- Commit the spent effects and the damage in one step, after all replacement decisions. -/
@@ -2088,31 +2613,32 @@ def commitEffectDamage (s : GameState) (batch : EffectDamageBatch) : GameState �
       if spent < n then some { note with kind := .preventDamage (n - spent) } else none
     | .damagePrevented => none
     | _ => some note)
-  applyEffectDamageAmounts { s with turnFx := notes } batch.resolved.reverse
+  applyEffectDamageAmounts batch { s with turnFx := notes } batch.resolved.reverse
 
 /-- Committing the ordered damage and its replacements preserves the game invariants. -/
 theorem commitEffectDamage_safe (s : GameState) (batch : EffectDamageBatch) :
     Safe s (commitEffectDamage s batch).1 := by
   unfold commitEffectDamage
   dsimp only
-  apply Safe.trans _ (applyEffectDamageAmounts_safe _ _)
+  apply Safe.trans _ (applyEffectDamageAmounts_safe _ _ _)
   exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
 /-- A positive hit that immediately Kills a Unit or applies a lethal-damage replacement
 can require a choice after prevention determines how much damage will be dealt. -/
-def damageDeathChoice (s : GameState) (hit : ObjId × Nat) :
+def damageDeathChoice (s : GameState) (batch : EffectDamageBatch) (hit : ObjId × Nat) :
     Option (ObjId × PlayerId × Effect × Effect) :=
   let (id, amount) := hit
-  let lethal := (s.mightNow id).getD 0 ≤ ((s.obj? id).map (·.damage)).getD 0 + amount
-  if amount != 0 && (s.killOnHit id || (decide lethal && (s.deathSaver id).isSome)) then
+  if amount != 0 && (s.killOnHit id ||
+      (!batch.combatDamage && s.damageWillBeLethal id amount (batch.responsible id) &&
+        (s.deathSaver id).isSome)) then
     s.deathReplacementChoice id
   else none
 
-/-- The choices on how to order damage replacements end once Combat Damage has been dealt. -/
+/-- Combat assignment and damage replacement choices end once Combat Damage has been dealt. -/
 def clearDamageOrder (s : GameState) : GameState :=
   { s with turnFx := s.turnFx.filter (fun note => match note.kind with
-    | .combatDamageOrder _ => false
+    | .combatDamageOrder _ | .combatAssignmentPriority _ => false
     | _ => true) }
 
 /-- Forgetting the order of damage replacements changes no structural properties. -/
@@ -2120,25 +2646,35 @@ theorem clearDamageOrder_safe (s : GameState) : Safe s (clearDamageOrder s) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Note the excess damage of the player, in place of the note of an earlier Combat of the turn. -/
-def noteExcess (s : GameState) (att : PlayerId) (k : Nat) : GameState :=
-  { s with turnFx := s.turnFx.filter (fun f =>
-      !(f.who == att && (match f.kind with | .excessDamage _ => true | _ => false))) ++
-    [{ who := att, turn := s.turn, stamp := s.nextTimestamp, kind := .excessDamage k }] }
+/-- Excess assignments are needed only while the Combat at `bf` is being resolved. -/
+def clearCombatExcess (s : GameState) (bf : ObjId) : GameState :=
+  { s with turnFx := s.turnFx.filter (fun fx => match fx.kind with
+      | .excessDamage _ => fx.target != some bf
+      | _ => true) }
 
-/-- Noting the excess damage is a safe change. -/
-theorem noteExcess_safe (s : GameState) (att : PlayerId) (k : Nat) : Safe s (noteExcess s att k) :=
+/-- Forgetting the excess assignments changes no structural properties. -/
+theorem clearCombatExcess_safe (s : GameState) (bf : ObjId) : Safe s (clearCombatExcess s bf) :=
   ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
     fun _ hown => hown.congr rfl rfl, rfl⟩
 
-/-- Finish recording a Combat's damage once it has been applied. -/
-def recordCombatDamage (s : GameState) (att : PlayerId) (excess : Nat) : GameState :=
-  noteExcess (clearDamageOrder s) att excess
+/-- Finish recording each side's excess damage once the Combat damage has been applied. -/
+def recordCombatDamage (s : GameState) (bf : ObjId) (excess : Nat × Nat) : GameState :=
+  let next := clearCombatExcess (clearDamageOrder s) bf
+  match s.combat.filter (·.battlefield == bf) with
+  | some c => (next.addTurnFxOn c.attacker bf (.excessDamage excess.1)).addTurnFxOn
+      c.defender bf (.excessDamage excess.2)
+  | none => next
 
 /-- Finishing the damage bookkeeping preserves the game invariants. -/
-theorem recordCombatDamage_safe (s : GameState) (p : PlayerId) (excess : Nat) :
-    Safe s (recordCombatDamage s p excess) :=
-  (clearDamageOrder_safe s).trans (noteExcess_safe _ p excess)
+theorem recordCombatDamage_safe (s : GameState) (bf : ObjId) (excess : Nat × Nat) :
+    Safe s (recordCombatDamage s bf excess) := by
+  let next := clearCombatExcess (clearDamageOrder s) bf
+  refine ((clearDamageOrder_safe s).trans (clearCombatExcess_safe _ bf)).trans ?_
+  unfold recordCombatDamage
+  split
+  · rename_i c _
+    exact (addTurnFxOn_safe next c.attacker bf _).trans (addTurnFxOn_safe _ c.defender bf _)
+  · exact Safe.refl next
 
 /-- Continue the damage instruction without applying its events until replacement ordering is
 complete. A nonpositive result after prevention does not emit a damage event (CR 438.4). -/
@@ -2160,7 +2696,7 @@ def resolveEffectDamageStep (s : GameState) (p : PlayerId) (src : ObjId) (env : 
   | none =>
     match batch.incoming with
     | [] =>
-      match batch.resolved.reverse.findSome? (damageDeathChoice s) with
+      match batch.resolved.reverse.findSome? (damageDeathChoice s batch) with
       | some (u, controller, first, other) =>
         (s, [.eitherDo controller u {} first other .nil,
           .run p src env (.cons (.resolveEffectDamage batch none) es)], [])
@@ -2242,12 +2778,23 @@ def effectDamageBatch? (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) 
       let y ← (← b.eval s p src env).head?
       let xm ← s.mightNow x
       let ym ← s.mightNow y
-      some { controller := none, incoming := [(y, xm.toNat), (x, ym.toNat)] }
+      let sources := [(y, x), (x, y)].filterMap fun (target, src) =>
+        (s.obj? src).map (fun o => (target, o.controller))
+      some { controller := none, incoming := [(y, xm.toNat), (x, ym.toNat)], damageSources := sources }
     | _ => none
   if batch.incoming.any (fun (id, amount) => amount != 0 &&
       (s.obj? id).any (fun target => !damageImmune s id target batch.controller) &&
       (1 < (damageReplacements s batch id).length ||
-        (damageDeathChoice s (id, amount)).isSome)) then some batch else none
+        (damageDeathChoice s batch (id, amount)).isSome)) then some batch else none
+
+/-- A distributed hit is attributed to its specified Unit's controller (CR 418.6.b.4). -/
+def unitSplitDamageBatch (s : GameState) (hits : List (ObjId × Nat)) (link : DamageKillLink) :
+    EffectDamageBatch :=
+  let responsible := ((s.obj? link.dealer).map (·.controller)).getD link.player
+  { controller := none
+    incoming := hits
+    onKill := some link
+    damageSources := hits.map (fun (target, _) => (target, responsible)) }
 
 /-- Apply the copyable text at the start of this attachment (CR 479.1.d, 719.1). -/
 def copyAttachmentText (s : GameState) (g u : ObjId) (d : CardDef) : GameState :=
@@ -2568,7 +3115,63 @@ theorem applyAttach_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env
           exact applyEach_safe (fun s id => attachTo_safe u s id) gs s
         | cons _ _ => simp at h
 
-/-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` Power
+/-- Remove up to `less` generic Power symbols from the Equip cost (CR 821.1.c.3). -/
+def Cost.weaponmasterDiscount (c : Cost) (less : Nat) : Cost :=
+  { c with power := Nat.repeat (fun symbols => symbols.erase .any) less c.power }
+
+/-- Energy discounts on an ability read the chosen objects when its cost is determined (CR 356.4.g). -/
+def GameState.abilityEnergyDiscount (s : GameState) (p : PlayerId) (src : ObjId)
+    (targets : List ObjId) (costs : List AbilityCost) : Nat :=
+  costs.foldl (fun total c => match c with
+    | .energyDiscount condition amount =>
+      let env : Env := { slots := targets.map Value.obj, passMight := s.mightTable }
+      if condition.eval s p src env == some true then total + (amount.evalS s p src env).getD 0
+      else total
+    | _ => total) 0
+
+/-- A Weaponmaster payment can attach this gear to the recipient (CR 821.1.c.5). -/
+def GameState.weaponmasterAttachable (s : GameState) (p : PlayerId) (gear recipient : ObjId) : Bool :=
+  s.inPlay.contains gear && s.inPlay.contains recipient &&
+    s.controllerOf gear == p && s.controllerOf recipient == p &&
+    (s.obj? gear).any (·.attached != some recipient) &&
+    !(s.cardDef? gear).any (·.hasType .unit) && (s.cardDef? recipient).any (·.hasType .unit)
+
+/-- Pay the printed Equip cost, including modifiers for the recipient and Weaponmaster's Power
+discount (CR 821.1.c.2). -/
+def payWeaponmaster (s : GameState) (p : PlayerId) (gear recipient : ObjId) (less : Nat) :
+    Option (GameState × List Event) :=
+  if s.weaponmasterAttachable p gear recipient then
+    (s.cardDef? gear).bind fun definition =>
+      match definition.equipXP with
+      | some xp => if xp ≤ s.xpOf p then some (s.spendXP p xp, []) else none
+      | none => definition.equipCost.bind fun printed =>
+        let discount := s.abilityEnergyDiscount p gear [recipient] (definition.equipResourceCosts printed)
+        payByRunes s p gear ((printed.lessEnergy discount).weaponmasterDiscount less)
+  else none
+
+theorem payWeaponmaster_safe {s : GameState} {p : PlayerId} {gear recipient : ObjId} {less : Nat}
+    {paid : GameState × List Event} (h : payWeaponmaster s p gear recipient less = some paid) :
+    Safe s paid.1 := by
+  unfold payWeaponmaster at h
+  split at h
+  · cases definition : s.cardDef? gear with
+    | none => simp [definition] at h
+    | some d =>
+      simp only [definition, Option.bind_some] at h
+      split at h
+      · rename_i xp _
+        split at h
+        · cases h
+          exact Safe.spendXP s p xp
+        · simp at h
+      · cases printed : d.equipCost with
+        | none => simp [printed] at h
+        | some c =>
+          simp only [printed, Option.bind_some] at h
+          exact payByRunes_safe h
+  · simp at h
+
+/-- Attach the Equipment to the unit, paying the Equip cost of each, less `less` generic Power
 (Weaponmaster): an Equipment whose cost cannot be paid stays where it is, and one with no Equip
 cost is not attached. `none` if the unit is not exactly one object, or either cannot be
 answered. -/
@@ -2580,11 +3183,8 @@ def applyAttachPaying (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
       | [u] =>
         if u ∈ s.inPlay then
         some (gs.foldl (fun (r : GameState × List Event) g =>
-          match (r.1.cardDef? g).bind CardDef.equipCost with
-          | some c =>
-            match payByRunes r.1 p g (c.dropPower less) with
-            | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
-            | none => r
+          match payWeaponmaster r.1 p g u less with
+          | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
           | none => r) (s, []))
         else some (s, [])
       | _ => none))
@@ -2611,11 +3211,8 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
             rw [← h]
             have key : ∀ (l : List ObjId) (r0 : GameState × List Event), Safe s r0.1 →
                 Safe s (l.foldl (fun (r : GameState × List Event) g =>
-                  match (r.1.cardDef? g).bind CardDef.equipCost with
-                  | some c =>
-                    match payByRunes r.1 p g (c.dropPower less) with
-                    | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
-                    | none => r
+                  match payWeaponmaster r.1 p g u less with
+                  | some q => ((attachTo u q.1 g).1, r.2 ++ q.2 ++ (attachTo u q.1 g).2)
                   | none => r) r0).1 := by
               intro l
               induction l with
@@ -2624,33 +3221,30 @@ theorem applyAttachPaying_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
                 intro r0 h0
                 simp only [List.foldl_cons]
                 apply ih
-                cases hc : (r0.1.cardDef? g).bind CardDef.equipCost with
-                | none => simpa [hc] using h0
-                | some c =>
-                  cases hp : payByRunes r0.1 p g (c.dropPower less) with
-                  | none => simpa [hc, hp] using h0
-                  | some q =>
-                    simp only [hp]
-                    exact h0.trans ((payByRunes_safe hp).trans (attachTo_safe u _ g))
+                cases hp : payWeaponmaster r0.1 p g u less with
+                | none => exact h0
+                | some q =>
+                  exact h0.trans ((payWeaponmaster_safe hp).trans (attachTo_safe u _ g))
             exact key gs (s, []) (Safe.refl s)
           · simp only [hu, ite_false, Option.some.injEq] at h
             rw [← h]
             exact Safe.refl s
         | cons _ _ => simp at h
 
-/-- A Unit token the player plays enters ready: an effect of the turn says the units the player
-plays enter ready ("Friendly units enter ready this turn"), or a passive ability of an object they
-control says their tokens do. -/
+/-- A Unit token enters ready when a turn effect, its destination, or a passive ability
+applies. The preview supplies its type, controller, and destination to the selector. -/
 def GameState.tokenReady (s : GameState) (p : PlayerId) (c : CardDef)
     (dest : Option ObjId := none) : Bool :=
   c.hasType .unit && ((s.fxOf p).any (fun k => k == .unitsReady) ||
-    s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
-    -- a passive ability of an object the player controls: "your tokens enter ready"
-    s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
-      (s.activeMods g).any (fun m =>
-        match m with
-        | .entersReady (.pick .all .friendly .anywhere fs) => fs == FilterList.ofList [.token]
-        | _ => false)))
+    s.friendlyUnitsReady p || s.anyActive .allUnitsEnterReady || s.readyAtDestination p dest ||
+    s.passiveSources.any (fun source =>
+      (s.obj? source).any (fun object =>
+        (s.activeMods source).any (fun
+          | .entersReady (.pick .all side place filters) =>
+            let preview := createOne c.id p dest false s
+            (preview.candidates object.controller source {} side place filters).any
+              (·.contains ⟨s.nextId⟩)
+          | _ => false))))
 
 /-- The tokens played between two states are the new token objects (CR 184.2). -/
 def tokenPlays (s s' : GameState) (p : PlayerId) : List Event :=
@@ -2714,31 +3308,32 @@ def GameState.unitTokenDestinations (s : GameState) (p : PlayerId) (c : CardDef)
   let extra := preview.playBfOptions p ⟨s.nextId⟩
   let fields := (s.zone .battlefieldZone).filter (fun bf =>
     (s.cardDef? bf).any (·.hasType .battlefield) &&
-    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play bf &&
+    !s.oppHas p .oppsPlayToBaseOnly && !s.cantActHere p .play bf && s.combatAllowsUnitPlay p bf &&
     FilterList.holds s bf {} bf (.cons .unitsPlayable .nil) == some true &&
     ((s.obj? bf).any (·.control == some p) || extra.contains bf))
   none :: fields.map some
 
 /-- Play a Unit token at a valid destination. -/
-def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
+def playUnitTokenAt (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId)
+    (ready : Bool := false) :
     GameState × List Event :=
   match s.tokenCard name with
   | some c =>
     if c.hasType .unit && (s.unitTokenDestinations p c).contains dest then
-      let r := createOne c.id p dest (s.tokenReady p c dest) s
+      let r := createOne c.id p dest (ready || s.tokenReady p c dest) s
       let next := dest.elim r (fun bf => contestFor p bf r)
       (buffNewTokens s next p, tokenPlays s next p)
     else (s, [])
   | none => (s, [])
 
 /-- Playing a Unit token at its destination is a safe change. -/
-theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId) :
-    Safe s (playUnitTokenAt s p name dest).1 := by
+theorem playUnitTokenAt_safe (s : GameState) (p : PlayerId) (name : String) (dest : Option ObjId)
+    (ready : Bool := false) : Safe s (playUnitTokenAt s p name dest ready).1 := by
   unfold playUnitTokenAt
   split
   · rename_i c _
     split
-    · have place := createOne_safe c.id p dest (s.tokenReady p c dest) s
+    · have place := createOne_safe c.id p dest (ready || s.tokenReady p c dest) s
       cases dest with
       | none => exact place.trans (buffNewTokens_safe _ _ _)
       | some bf => exact place.trans ((contestFor_safe p bf _).trans (buffNewTokens_safe _ _ _))
@@ -2760,7 +3355,8 @@ def applyCreate (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name :
       | .here =>
         match s.hereOf src with
         | some bf =>
-          let r := createN c.id p (some bf) (ready || s.tokenReady p c (some bf)) k s
+          let location := if c.hasType .unit && !s.combatAllowsUnitPlay p bf then none else some bf
+          let r := createN c.id p location (ready || s.tokenReady p c location) k s
           some (buffNewTokens s r p, tokenPlays s r p)
         | none =>
           -- at a Base, "here" is that Base
@@ -2821,18 +3417,42 @@ def GameState.tokenFieldAllowed (s : GameState) (p : PlayerId) (src : ObjId)
     (card : CardDef) (field : ObjId) : Bool :=
   card.canPlayAtBattlefield && s.playBfLocationAllowed p src card field
 
-/-- Play tokens together at the Battlefield specified by the instruction. A Unit token contests
-its destination, while a Deploy Gear token does not (CR 184.2, 190.3, 830). -/
+/-- The legal location for an instructed token. Combat can redirect it to Base (CR 464.2.a). -/
+def GameState.instructedTokenLocation (s : GameState) (p : PlayerId) (src : ObjId)
+    (card : CardDef) (field : ObjId) : Option (Option ObjId) :=
+  if card.hasType .unit && !s.combatAllowsUnitPlay p field then some none
+  else if s.tokenFieldAllowed p src card field then some (some field) else none
+
+/-- Play an instructed group of tokens. Units entering a Battlefield can contest it (CR 190.3). -/
+def playInstructedTokens (s : GameState) (p : PlayerId) (card : CardDef)
+    (location : Option ObjId) (count : Nat) (ready : Bool) : GameState × List Event :=
+  let placed := createN card.id p location (ready || s.tokenReady p card location) count s
+  let next := if card.hasType .unit && count > 0 then
+    location.elim placed (fun field => contestFor p field placed)
+  else placed
+  (buffNewTokens s next p, tokenPlays s next p)
+
+/-- Playing the group and contesting its destination preserves structural invariants. -/
+theorem playInstructedTokens_safe (s : GameState) (p : PlayerId) (card : CardDef)
+    (location : Option ObjId) (count : Nat) (ready : Bool) :
+    Safe s (playInstructedTokens s p card location count ready).1 := by
+  unfold playInstructedTokens
+  dsimp only
+  have placed := createN_safe card.id p location (ready || s.tokenReady p card location) count s
+  split
+  · cases location with
+    | none => exact placed.trans (buffNewTokens_safe _ _ _)
+    | some field => exact placed.trans ((contestFor_safe p field _).trans (buffNewTokens_safe _ _ _))
+  · exact placed.trans (buffNewTokens_safe _ _ _)
+
+/-- Play tokens at the specified Battlefield, subject to placement rules (CR 184.2, 830). -/
 def applyCreateAt (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (name : String) (n : Amount) (dest : Selector) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind fun count =>
     (s.tokenCard name).bind fun card =>
       ((dest.eval s p src env).bind List.head?).map fun field =>
-        if s.tokenFieldAllowed p src card field then
-          let placed := createN card.id p (some field) (ready || s.tokenReady p card (some field)) count s
-          let next := if card.hasType .unit && count > 0 then contestFor p field placed else placed
-          (buffNewTokens s next p, tokenPlays s next p)
-        else (s, [])
+        (s.instructedTokenLocation p src card field).elim (s, [])
+          (fun location => playInstructedTokens s p card location count ready)
 
 /-- Playing the selected group of tokens preserves structural and physical-card invariants. -/
 theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
@@ -2851,26 +3471,33 @@ theorem applyCreateAt_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : E
         cases fields with
         | nil => simp [hn, hc, hd] at h
         | cons field fields =>
-          simp [hn, hc, hd] at h
-          split at h
-          · cases h
-            have placed := createN_safe card.id p (some field)
-              (ready || s.tokenReady p card (some field)) count s
-            change Safe s (buffNewTokens s _ p)
-            split
-            · exact placed.trans ((contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _))
-            · exact placed.trans (buffNewTokens_safe _ _ _)
-          · cases h
+          simp only [hn, hc, hd, Option.bind_some, List.head?_cons, Option.map_some] at h
+          cases whereTo : s.instructedTokenLocation p src card field with
+          | none =>
+            simp only [whereTo, Option.elim_none, Option.some.injEq] at h
+            cases h
             exact Safe.refl _
+          | some location =>
+            simp only [whereTo, Option.elim_some, Option.some.injEq] at h
+            cases h
+            exact playInstructedTokens_safe s p card location count ready
 
-/-- Play tokens at the Battlefield the object left by its last move, or at the Base (Lillia). -/
+/-- A move-from ability names the origin of that move, even if its source has moved again. -/
+def GameState.tokenMoveOrigin (s : GameState) (src : ObjId) (env : Env) : Option ObjId :=
+  env.eventBattlefields.elim ((s.obj? src).bind (·.prevLoc)) List.head?
+
+/-- Apply normal token placement restrictions when the saved origin is a Battlefield. -/
+def GameState.moveOriginTokenLocation (s : GameState) (p : PlayerId) (src : ObjId)
+    (env : Env) (card : CardDef) : Option (Option ObjId) :=
+  (s.tokenMoveOrigin src env).elim (some none) (s.instructedTokenLocation p src card)
+
+/-- Play tokens at the Battlefield of the move's origin, or at the Base (Lillia). -/
 def applyCreateAtPrev (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (name : String)
     (n : Amount) (ready : Bool) : Option (GameState × List Event) :=
   (n.evalS s p src env).bind (fun k =>
     (s.tokenCard name).map (fun c =>
-      let dest := (s.obj? src).bind (·.prevLoc)
-      let r := createN c.id p dest (ready || s.tokenReady p c dest) k s
-      (buffNewTokens s r p, tokenPlays s r p)))
+      (s.moveOriginTokenLocation p src env c).elim (s, [])
+        (fun location => playInstructedTokens s p c location k ready)))
 
 /-- Playing tokens at the place an object came from is a safe change. -/
 theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
@@ -2885,8 +3512,15 @@ theorem applyCreateAtPrev_safe {s : GameState} {p : PlayerId} {src : ObjId} {env
     | none => simp [ht] at h
     | some c =>
       simp only [ht, Option.map_some, Option.some.injEq] at h
-      rw [← h]
-      exact (createN_safe _ _ _ _ _ _).trans (buffNewTokens_safe _ _ _)
+      cases whereTo : s.moveOriginTokenLocation p src env c with
+      | none =>
+        simp only [whereTo, Option.elim_none] at h
+        cases h
+        exact Safe.refl _
+      | some location =>
+        simp only [whereTo, Option.elim_some] at h
+        cases h
+        exact playInstructedTokens_safe s p c location k ready
 
 /-- Play one more token like the one the object is, where it is. -/
 def cloneTok (s : GameState) (id : ObjId) : GameState × List Event :=
@@ -2949,7 +3583,7 @@ def applyMoveAll (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (side 
     Option (GameState × List Event) :=
   match place.zoneKind?, dest.zoneKind? with
   | some z, some k =>
-    let ids := (s.players.filter (fun q => side.admitsPlayer p q)).flatMap (fun q =>
+    let ids := (s.players.filter (fun q => side.admitsPlayer p q s.config.mode)).flatMap (fun q =>
       (s.zone (.player q z)).filter (fun u => FilterList.holds s src env u fs == some true))
     some (applyEach (sendMarked p src mark k) s ids)
   | _, _ => none
@@ -3178,6 +3812,41 @@ theorem drawLookedCard_safe (p : PlayerId) (looked : List ObjId) (s : GameState)
     · exact Safe.refl s
   · exact Safe.refl s
 
+/-- The controller of an object killed by the instruction, linked across its change of zone. -/
+def killedController (target : ObjId) (events : List Event) : Option PlayerId :=
+  events.findSome? fun
+    | .moved old next _ => if old == target then
+        events.findSome? fun
+          | .died id controller => if id == next then some controller else none
+          | _ => none
+      else none
+    | _ => none
+
+/-- The Kill itself must cause the death. A replacement may kill a permanent as its own action
+(CR 370.1.a.1, 429). -/
+def directKilledController (s : GameState) (target : ObjId) (events : List Event) : Option PlayerId :=
+  if (s.deathSaveFor target []).isSome then none else killedController target events
+
+/-- Resolve one of a Spell's Kill actions, noting only a Unit killed by that Spell. -/
+def killSpellTarget (p : PlayerId) (before current : GameState) (target : ObjId) :
+    GameState × List Event :=
+  let (next, events) := killOrSaveInGroup before current target
+  let credited := (current.cardDef? target).any (·.hasType .unit) &&
+    (directKilledController current target events).isSome
+  (next, if credited then Event.killedBySpell p :: events else events)
+
+/-- Attribution changes the event log while retaining the result of the Kill or its replacement. -/
+theorem killSpellTarget_safe (p : PlayerId) (before current : GameState) (target : ObjId) :
+    Safe current (killSpellTarget p before current target).1 :=
+  killOrSaveInGroup_safe before current target
+
+/-- Record a reveal from either of the player's decks (CR 425). -/
+def deckRevealEvent (s : GameState) (id : ObjId) : Option Event :=
+  match s.locate id with
+  | some (.player owner .mainDeck) | some (.player owner .runeDeck) =>
+    some (.revealed owner id)
+  | _ => none
+
 /-- Do a game action that changes objects: the new state and the events. `none` if the action is
 not understood yet, or what it names cannot be found. -/
 def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
@@ -3194,15 +3863,15 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .setBaseMight sel n =>
     (n.evalS s p src env).bind (fun k => onSelected s p src env sel (setBaseMight k))
   | .heal sel n => (n.evalS s p src env).bind (fun k => onSelected s p src env sel (healOne k))
+  | .healAll sel => onSelected s p src env sel healAllOn
   | .kill sel =>
     -- a unit killed by a spell is noted, for what waits for that (Immortal Phoenix)
     (sel.eval s p src env).map (fun ids =>
-      let r := resolveDeathGroupWith s ids (killOrSaveInGroup s)
-      (r.1, r.2 ++ (if (s.cardDef? src).any (·.hasType .spell) &&
-          r.2.any (fun e => match e with
-            | .died n _ => (r.1.cardDef? n).any (·.hasType .unit)
-            | _ => false)
-        then [Event.killedBySpell p] else [])))
+      if ((s.cardDef? src) <|> env.sourceCard.bind s.cards.find?).any (·.hasType .spell) then
+        let (next, events) := resolveDeathGroupWith s ids (killSpellTarget p s)
+        let credit := Event.killedBySpell p
+        (next, events.filter (· != credit) ++ (if events.contains credit then [credit] else []))
+      else resolveDeathGroupWith s ids (killOrSaveInGroup s))
   | .ready sel => onSelected s p src env sel readyEffect
   | .exhaust sel => onSelected s p src env sel (setExhausted true)
   | .banish sel => onSelected s p src env sel (banishObj p)
@@ -3210,6 +3879,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .create name n place ready => applyCreate s p src env name n place ready
   | .createAt name n dest ready => applyCreateAt s p src env name n dest ready
   | .playUnitTokenAt name dest => some (playUnitTokenAt s p name dest)
+  | .playReadyUnitTokenAt name dest => some (playUnitTokenAt s p name dest true)
   | .attach gears to => applyAttach s p src env gears to
   | .copyAttachedFrom model => onSelected s p src env model (copyAttachedUnit src)
   | .detach sel => onSelected s p src env sel detachObj
@@ -3218,7 +3888,15 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .topdeck sel => onSelected s p src env sel (sendObj .mainDeck)
   | .attachPaying gears to less => applyAttachPaying s p src env gears to less
   | .move sel .base =>
-    (onSelected s p src env sel (moveByEffect (env.effectController.getD p) none)).map (movedEvents p)
+    (onSelected s p src env sel (fun t u => moveByEffect (env.effectController.getD p) none t u p)).map
+      (movedEvents p)
+  | .move sel .declared =>
+    let pick := env.executionPick <|> (s.obj? src).map (·.spellPick)
+    match pick.bind SpellPick.moveDestination? with
+    | none => none
+    | some place =>
+      if place.any (fun bf => !s.battlefields.contains bf) then none
+      else (onSelected s p src env sel (moveDeclaredTarget s p src env place)).map (movedEvents p)
   | .move sel (.at_ dsel) =>
     -- the place of the first object the destination names: a Battlefield, or where a Unit is
     match dsel.eval s p src env with
@@ -3227,17 +3905,17 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       match (if (s.cardDef? d).any (·.hasType .battlefield) then some d
           else (s.obj? d).bind (·.loc)) with
       | some bf =>
-        (onSelected s p src env sel (moveByEffect (env.effectController.getD p) (some bf))).map
-          (movedEvents p)
+        (onSelected s p src env sel (fun t u =>
+          moveByEffect (env.effectController.getD p) (some bf) t u p)).map (movedEvents p)
       | none => none
     | _ => none
   | .swapPlaces a b =>
     match a.eval s p src env, b.eval s p src env with
     | some (x :: _), some (y :: _) =>
-      some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p))))
+      some (movedEvents p (swapPlaces s x y (some (env.effectController.getD p)) (some p)))
     | _, _ => none
-  | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env)
-  | .buff sel => onSelected s p src env sel buffObj
+  | .stun sel => onSelected s p src env sel (fun t id => stunObj t id env (some p))
+  | .buff sel => onSelected s p src env sel (fun t id => buffObj t id (some p))
   | .empower sel => onSelected s p src env sel (empowerObj p)
   | .disempower sel => onSelected s p src env sel disempowerObj
   | .gainXP ps n =>
@@ -3257,12 +3935,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
         (if sel == .self then spellCompletion s src r.2 true else [])))
   -- revealing shows information: nothing changes, but the object is chosen
   | .reveal sel =>
-    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
-    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
-      match s.obj? id with
-      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
-          some (Event.revealed o.owner id) else none
-      | none => none))
+    some (s, ((sel.eval s p src env).getD []).filterMap (deckRevealEvent s))
   | .revealTop n =>
     -- the top cards of the Main Deck are revealed: what waits for them fires
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
@@ -3270,12 +3943,7 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     some (s, ((s.zone (.player p .mainDeck)).take n).map (fun id => Event.revealed p id))
   | .drawLooked sel => onSelected s p src env sel (drawLookedCard p env.lookedCards)
   | .revealNow sel =>
-    -- a card revealed from its owner's deck is noted: what waits for it fires (Undertitan)
-    some (s, ((sel.eval s p src env).getD []).filterMap (fun id =>
-      match s.obj? id with
-      | some o => if (s.zone (.player o.owner .mainDeck)).contains id then
-          some (Event.revealed o.owner id) else none
-      | none => none))
+    some (s, ((sel.eval s p src env).getD []).filterMap (deckRevealEvent s))
   | .spendBuff sel => onSelected s p src env sel unbuffObj
   | .play sel | .playAtBase sel => onSelected s p src env sel (playFree p)
   | .banishReplay sel keep =>
@@ -3337,9 +4005,10 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     onSelected s p src env sel (takeUntil p (some src))
   | .recall sel ex => onSelected s p src env sel (recallFx ex)
   | .win ps =>
-    -- winning is reaching the Victory Score: the Cleanup that follows declares the winner
-    (ps.resolve s p env).map (fun l =>
-      (gainPointsAll s.victoryScore s l, []))
+    -- The step ends as soon as the result is observed, before any remaining instruction (CR 002).
+    (ps.resolve s p env).map (fun candidates =>
+      let winner := candidates.find? s.participatingSeats.contains
+      (s, winner.toList.flatMap (fun q => (s.config.mode.sideSeats q).map Event.won)))
   | .score ps n =>
     -- a player who cannot score gets no point from the effect either (Tianna)
     (ps.resolve s p env).bind (fun l0 => (n.evalS s p src env).map (fun k =>
@@ -3351,6 +4020,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
       Event.hiddenPlayed p :: (if (s.cardDef? src).any (·.hasType .spell) then
         [Event.played p src] else [])
       else [])
+  | .allowFacedownInspection whose =>
+    (whose.resolve s p env).map fun players =>
+      (players.foldl (fun board q => board.addTurnFx p (.inspectFacedown q)) s, [])
   | .playFirst fs => some (playFirstOf fs p src env s)
   | .markOn sel e => onSelected s p src env sel
       (fun t id => (t.addTurnFxOn p id (e.forCopy env.abilityCopyStamp), []))
@@ -3358,7 +4030,13 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
     (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
       onSelected s p src env sel (fun t id =>
         (t.addTurnFxOn p id (.triggerOnDeath src card idx), [])))
-  | .returnChampion => some (returnChampion p s)
+  | .delayUntilDamage idx unit =>
+    (env.sourceCard <|> (s.cardDef? src).map (·.id)).bind (fun card =>
+      let effect := TurnEffect.triggerOnDamage src card idx
+      match unit with
+      | none => some (s.addTurnFx p effect, [])
+      | some sel => onSelected s p src env sel (fun t id => (t.addTurnFxOn p id effect, [])))
+  | .returnChampion sel => onSelected s p src env sel (returnChampion p)
   | .extraTurn ps =>
     (ps.resolve s p env).map (fun l => ({ s with extraTurns := s.extraTurns ++ l }, []))
   | .lookTop n => some (s, ((s.zone (.player p .mainDeck)).take n).map (Event.lookedAt p))
@@ -3376,6 +4054,9 @@ def applyPrim (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) :
   | .addUnitEnergy ps n =>
     (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addUnitEnergy k) s l, [])))
+  | .addSpellEnergy ps n =>
+    (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
+      (poolsMap (fun pool => pool.addSpellEnergy k) s l, [])))
   | .addPower ps n (some d) none =>
     (ps.resolve s p env).bind (fun l => (n.evalS s p src env).map (fun k =>
       (poolsMap (fun pool => pool.addPower d k) s l, [])))
@@ -3420,6 +4101,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some k =>
       simp only [hn, Option.bind_some] at h
       exact onSelected_safe (healOne_safe k) h
+  | healAll _ => exact onSelected_safe healAllOn_safe h
   | kill sel =>
     simp only [applyPrim] at h
     cases hs : sel.eval s p src env with
@@ -3427,7 +4109,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some ids =>
       simp only [hs, Option.map_some, Option.some.injEq] at h
       rw [← h]
-      exact resolveDeathGroupWith_safe s ids (killOrSaveInGroup_safe s)
+      split
+      · exact resolveDeathGroupWith_safe s ids (killSpellTarget_safe p s)
+      · exact resolveDeathGroupWith_safe s ids (killOrSaveInGroup_safe s)
   | ready sel => exact onSelected_safe readyEffect_safe h
   | exhaust sel => exact onSelected_safe (setExhausted_safe true) h
   | banish sel => exact onSelected_safe (banishObj_safe p) h
@@ -3437,6 +4121,9 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
   | playUnitTokenAt name dest =>
     cases h
     exact playUnitTokenAt_safe s p name dest
+  | playReadyUnitTokenAt name dest =>
+    cases h
+    exact playUnitTokenAt_safe s p name dest true
   | attach gears to => exact applyAttach_safe h
   | copyAttachedFrom model => exact onSelected_safe (copyAttachedUnit_safe src) h
   | attachPaying gears to less => exact applyAttachPaying_safe h
@@ -3446,7 +4133,16 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [applyPrim] at h
       obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
       show Safe s r0.1
-      exact onSelected_safe (moveByEffect_safe _ none) hr0
+      exact onSelected_safe (fun t u => moveByEffect_safe _ none t u p) hr0
+    | declared =>
+      simp only [applyPrim] at h
+      split at h
+      · simp at h
+      · split at h
+        · simp at h
+        · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
+          show Safe s r0.1
+          exact onSelected_safe (moveDeclaredTarget_safe s p src env _) hr0
     | at_ t =>
       simp only [applyPrim] at h
       cases hd : t.eval s p src env with
@@ -3459,14 +4155,14 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           split at h
           · obtain ⟨r0, hr0, rfl⟩ := Option.map_eq_some_iff.mp h
             show Safe s r0.1
-            exact onSelected_safe (moveByEffect_safe _ _) hr0
+            exact onSelected_safe (fun t u => moveByEffect_safe _ _ t u p) hr0
           · simp at h
-  | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env) h
+  | stun sel => exact onSelected_safe (fun t id => stunObj_safe t id env (some p)) h
   | detach sel => exact onSelected_safe detachObj_safe h
   | double sel => exact onSelected_safe doubleObj_safe h
   | grantActivation sel grant => exact onSelected_safe (grantActivationObj_safe grant) h
   | topdeck sel => exact onSelected_safe (sendObj_safe .mainDeck) h
-  | buff sel => exact onSelected_safe buffObj_safe h
+  | buff sel => exact onSelected_safe (fun t id => buffObj_safe t id (some p)) h
   | empower sel => exact onSelected_safe (empowerObj_safe p) h
   | disempower sel => exact onSelected_safe disempowerObj_safe h
   | gainXP ps n =>
@@ -3648,7 +4344,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     | some l =>
       simp only [hl, Option.map_some, Option.some.injEq] at h
       rw [← h]
-      exact gainPointsAll_safe _ l s
+      exact Safe.refl s
   | score ps n =>
     simp only [applyPrim] at h
     cases hl : ps.resolve s p env with
@@ -3699,10 +4395,8 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
       simp only [hs, Option.map_some, Option.some.injEq] at h
       rw [← h]
       exact Safe.refl s
-  | returnChampion =>
-    simp only [applyPrim, Option.some.injEq] at h
-    rw [← h]
-    exact returnChampion_safe p s
+  | returnChampion sel =>
+    exact onSelected_safe (returnChampion_safe p) h
   | swapPlaces a b =>
     simp only [applyPrim] at h
     cases ha : a.eval s p src env with
@@ -3719,7 +4413,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           | cons y _ =>
             simp only [ha, lb, Option.some.injEq] at h
             rw [← h]
-            exact swapPlaces_safe s x y _
+            exact swapPlaces_safe s x y _ _
   | activateConquer sel =>
     simp only [applyPrim] at h
     exact onSelected_safe (fun t id => Safe.refl t) h
@@ -3730,10 +4424,26 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
     simp only [applyPrim, Option.bind_eq_some_iff] at h
     obtain ⟨card, -, h⟩ := h
     exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (.triggerOnDeath src card idx)) h
+  | delayUntilDamage idx unit =>
+    simp only [applyPrim, Option.bind_eq_some_iff] at h
+    obtain ⟨card, -, h⟩ := h
+    cases unit with
+    | none => cases h; exact addTurnFx_safe s p (.triggerOnDamage src card idx)
+    | some sel =>
+      exact onSelected_safe (fun t id => addTurnFxOn_safe t p id (.triggerOnDamage src card idx)) h
   | turnEffect e =>
     simp only [applyPrim, Option.some.injEq] at h
     rw [← h]
     exact addTurnFx_safe s p e
+  | allowFacedownInspection whose =>
+    simp only [applyPrim, Option.map_eq_some_iff] at h
+    obtain ⟨players, _, rfl⟩ := h
+    have safe (state : GameState) (seats : List PlayerId) :
+        Safe state (seats.foldl (fun board q => board.addTurnFx p (.inspectFacedown q)) state) := by
+      induction seats generalizing state with
+      | nil => exact Safe.refl state
+      | cons seat rest ih => exact (addTurnFx_safe state p _).trans (ih _)
+    exact safe s players
   | addEnergy ps n only =>
     cases only with
     | some a => simp [applyPrim] at h
@@ -3748,7 +4458,7 @@ theorem applyPrim_safe {s : GameState} {p : PlayerId} {src : ObjId} {env : Env} 
           simp only [hl, hn, Option.bind_some, Option.map_some, Option.some.injEq] at h
           rw [← h]
           exact poolsMap_safe _ l s
-  | addUnitEnergy ps n =>
+  | addUnitEnergy ps n | addSpellEnergy ps n =>
     simp only [applyPrim, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨l, -, k, -, rfl⟩ := h
     exact poolsMap_safe _ l s
@@ -3927,7 +4637,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .topdeck s => some s
   | .deal s _ => some s
   | .setBaseMight s _ => some s
-  | .heal s _ => some s
+  | .heal s _ | .healAll s => some s
   | .kill s => some s
   | .ready s => some s
   | .exhaust s => some s
@@ -3939,6 +4649,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .disempower s => some s
   | .recycle s => some s
   | .spendBuff s => some s
+  | .returnChampion s => some s
   | .bin s => some s
   | .discardCard s | .discardWithTypeTriggers s _ => some s
   | .play s | .playAtBase s => some s
@@ -3948,6 +4659,7 @@ def Prim.pickSel? : Prim → Option Selector
   | .castInline s => some s
   | .markOn s _ => some s
   | .delayUntilDeath s _ => some s
+  | .delayUntilDamage _ unit => unit
   | .playTo s _ => some s
   | .banishWith s => some s
   | .counterToHand s => some s
@@ -3969,6 +4681,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .deal _ n => .deal sel n
   | .setBaseMight _ n => .setBaseMight sel n
   | .heal _ n => .heal sel n
+  | .healAll _ => .healAll sel
   | .detach _ => .detach sel
   | .double _ => .double sel
   | .topdeck _ => .topdeck sel
@@ -3983,6 +4696,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .disempower _ => .disempower sel
   | .recycle _ => .recycle sel
   | .spendBuff _ => .spendBuff sel
+  | .returnChampion _ => .returnChampion sel
   | .bin _ => .bin sel
   | .discardCard _ => .discardCard sel
   | .discardWithTypeTriggers _ links => .discardWithTypeTriggers sel links
@@ -3994,6 +4708,7 @@ def Prim.withSel (p : Prim) (sel : Selector) : Prim :=
   | .castInline _ => .castInline sel
   | .markOn _ e => .markOn sel e
   | .delayUntilDeath _ idx => .delayUntilDeath sel idx
+  | .delayUntilDamage idx _ => .delayUntilDamage idx (some sel)
   | .playTo _ bf => .playTo sel bf
   | .banishWith _ => .banishWith sel
   | .counterToHand _ => .counterToHand sel
@@ -4046,7 +4761,8 @@ def Effect.pickTargets (e : Effect) : Bool :=
   match e with
   | .retainTargetSet _ | .collectOwnPicks .. | .doThen (.prim (.move ..)) _ |
       .prim (.castInline _) | .prim (.createAt ..) | .recordRuneRecycle .. |
-      .addReservedLegendPicked | .playOfferedCard .. | .recordBanishReplay .. => false
+      .addReservedLegendPicked | .playOfferedCard .. | .recordBanishReplay .. |
+      .recordTrashRecycle .. => false
   | _ => !e.isLinkedCost
 
 /-- A resolution pick in a private or secret zone is not a target (CR 355.10.a). -/
@@ -4478,21 +5194,95 @@ theorem linkedAction_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : En
   · rename_i r h
     exact applyPrim_safe h
 
+/-- Charge only the Unit arrivals actually produced by the Move. -/
+def effectMoveFee (s next : GameState) (p : PlayerId) (events : List Event) : Cost :=
+  let fields := events.filterMap (fun
+    | .standardMoved id field =>
+      if (next.printedCardDef? id).any (·.hasType .unit) ||
+          (next.obj? id).any (fun o => !o.unitGearEffects.isEmpty) then field else none
+    | _ => none)
+  s.movementFee p fields
+
+/-- Basic Runes can exhaust and then recycle during the same fee payment (CR 204.4.b.1, 164.2). -/
+def moveFeeReachable (s : GameState) (p : PlayerId) (cost : Cost) : Bool :=
+  let runes := (s.runesOf p).filterMap s.obj?
+  let pool := s.poolOf p
+  if cost.power.all (· == .any) then
+    cost.energy ≤ pool.energy + runes.countP (! ·.exhausted) &&
+      cost.power.length ≤ pool.totalPower - s.restrictedFor p false false + runes.length
+  else
+    let available := runes.foldl (fun balance rune =>
+      let balance := if rune.exhausted then balance else balance.addEnergy 1
+      rune.runeDomain.elim balance (fun d => balance.addPower d 1)) pool
+    !((s.setPool p available).symbolPayments p cost [] false).isEmpty
+
+/-- The payable fee and individual Adds that can supply it. -/
+def moveFeeOptions (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (fee : Cost) (funding : EffectAddPolicy)
+    (adds : List EffectAdd) : List Effect :=
+  let ready := !(s.symbolPayments p fee [] false).isEmpty
+  let payment := if adds.isEmpty then Effect.payThen fee (.moveAfterFee move afterMove) false
+    else .fundMoveFee move afterMove adds true
+  let next := if fee.total == 0 then [] else
+    funding.choices s p (fun t => (applyPrim t p src env move).any (fun (preview, es) =>
+      let changed := effectMoveFee t preview p es
+      es.any (fun | .standardMoved .. => true | _ => false) && moveFeeReachable t p changed))
+  (if ready then [payment] else []) ++
+    next.map (fun add => .fundMoveFee move afterMove (adds ++ [add]) false)
+
+/-- Project Add activations until a payment is selected, then commit the chosen Adds and pay. -/
+def fundMoveFeeStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  let skip := (s, [.run p src env es], [])
+  match funding.applyAll s p adds with
+  | none => skip
+  | some (funded, events) =>
+    match applyPrim funded p src env move with
+    | none => skip
+    | some (preview, arrivals) =>
+      let fee := effectMoveFee funded preview p arrivals
+      if commit then
+        if (funded.symbolPayments p fee [] false).isEmpty then skip else
+          let payment := Effect.payThen fee (.moveAfterFee move afterMove) false
+          (funded, [.run p src env (.cons payment es)], events)
+      else
+        let options := moveFeeOptions funded p src env move afterMove fee funding adds
+        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList (options ++ [.nop]))) es)], [])
+
+/-- Planning or committing the selected Adds preserves the structural invariants. -/
+theorem fundMoveFeeStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (move : Prim) (afterMove : Effect) (adds : List EffectAdd) (commit : Bool)
+    (es : EffectList) (funding : EffectAddPolicy) :
+    Safe s (fundMoveFeeStep s p src env move afterMove adds commit es funding).1 := by
+  unfold fundMoveFeeStep
+  split
+  · exact Safe.refl s
+  · rename_i funded events h
+    split
+    · exact Safe.refl s
+    · split
+      · dsimp only
+        split
+        · exact Safe.refl s
+        · exact funding.safe h
+      · exact Safe.refl s
+
 /-- Prepare an effect Move and inspect its actual arrivals before committing.
-Each Battlefield charges once, and the mover can decline the fee (CR 204.4, 412, 447).
+The mover can decline the destination fees (CR 204.4, 412, 447).
 Prevented moves and corrective Recalls create no charge. -/
 def moveEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a : Prim)
-    (afterMove : Effect) (es : EffectList) (feePaid : Bool := false) :
+    (afterMove : Effect) (es : EffectList) (funding : EffectAddPolicy) (feePaid : Bool := false) :
     GameState × List Frame × List Event :=
   match applyPrim s p src env a with
   | none => (s, [Frame.run p src env es], if afterMove == .nop then [.skipped src] else [])
   | some (next, events) =>
-    let fields := events.filterMap (fun
-      | .standardMoved id field => if (next.cardDef? id).any (·.hasType .unit) then field else none
-      | _ => none)
-    let fee := s.movementFee p fields
+    let fee := effectMoveFee s next p events
     if !feePaid && fee.total != 0 then
-      let accept := Effect.payThen fee (.moveAfterFee a afterMove) false
+      let accept := match moveFeeOptions s p src env a afterMove fee funding [] with
+        | [] => Effect.payThen fee (.moveAfterFee a afterMove) false
+        | [only] => only
+        | options => Effect.eitherOf (EffectList.ofList options)
       (s, [.eitherDo p src env accept .nop es], [])
     else
       let follow := if afterMove != .nop && events.any (fun | .standardMoved .. => true | _ => false)
@@ -4501,8 +5291,8 @@ def moveEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (a :
 
 /-- The Move or the payment question preserves the game invariants. -/
 theorem moveEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (a : Prim) (afterMove : Effect) (es : EffectList) (paid : Bool) :
-    Safe s (moveEffectStep s p src env a afterMove es paid).1 := by
+    (a : Prim) (afterMove : Effect) (es : EffectList) (funding : EffectAddPolicy) (paid : Bool) :
+    Safe s (moveEffectStep s p src env a afterMove es funding paid).1 := by
   unfold moveEffectStep
   split
   · exact Safe.refl s
@@ -4540,7 +5330,7 @@ def collectOwnPicksFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
   match remaining with
   | [] => .run p src env (.cons body es)
   | q :: qs =>
-    let candidates := (s.pickCandidates q src env .friendly place fs false).getD []
+    let candidates := (s.pickCandidates q src env .you place fs false).getD []
     let next := .cons (.collectOwnPicks p qs place fs body false) es
     match candidates with
     | [] => .run p src env next
@@ -4558,7 +5348,7 @@ def forceMoveToBattlefieldFrame (s : GameState) (p : PlayerId) (src : ObjId) (en
     if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) then
       resume else
     let candidates := s.inPlay.filter (fun id => (s.cardDef? id).any (·.hasType .unit) &&
-      !s.moveBlocked id &&
+      !s.moveBlockedFor actor id &&
       !s.blocksEnemyMove (env.effectController.getD p) id &&
       (s.obj? id).any (fun o => o.controller == actor && s.effectMoveBattlefieldOk o bf))
     let slot := env.slots.length
@@ -4582,18 +5372,18 @@ def chosenMove (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   let thenMove (move : Effect) : Effect :=
     if afterNegatedMove then .seqOf [move, afterMove] else .doThen move afterMove
   let effectPick := env.executionPick <|> (s.obj? src).map (·.spellPick)
-  match effectPick.map SpellPick.effectChoice, env.slots[slot]? with
-  | some (.destination dest), some (.obj id)
-  | some (.modeDestination _ dest), some (.obj id) =>
+  match effectPick.bind SpellPick.moveDestination?, env.slots[slot]? with
+  | some dest, some (.obj id) =>
     match s.obj? id, dest with
     | some o, none =>
       if !allowBase then resume
-      else if o.loc.isNone || s.moveBlocked id || s.blocksEnemyMove (env.effectController.getD p) id then negated
+      else if o.loc.isNone || s.moveBlockedFor p id ||
+          s.blocksEnemyMove (env.effectController.getD p) id then negated
       else (env, thenMove (.prim (.move unit .base)))
     | some o, some bf =>
       if !(s.zone .battlefieldZone).contains bf || !(s.cardDef? bf).any (·.hasType .battlefield) ||
           !(FilterList.holds s src env bf fs).getD false then resume
-      else if o.loc == some bf || s.moveBlocked id ||
+      else if o.loc == some bf || s.moveBlockedFor p id ||
           s.blocksEnemyMove (env.effectController.getD p) id then negated
       else if !s.effectObjectMoveBattlefieldOk id o bf then
         let recallEffect : Effect := .prim (.recall unit false)
@@ -4637,15 +5427,95 @@ theorem recycleLookedStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
     subst f
     rfl
 
+/-- A selected card still occupies one of the public Trashes. -/
+def GameState.inTrash (s : GameState) (id : ObjId) : Bool :=
+  match s.locate id with
+  | some (.player _ .trash) => true
+  | _ => false
+
+/-- Apply Main Deck recycling in the supplied order. Each moved card goes to its own deck,
+and only owners whose Main Deck received a card are credited with recycling (CR 417.1.c). -/
+def recycleTrashCards (s : GameState) (cards : List ObjId) : GameState × List Event :=
+  let result := recycleList (cards.filter s.inTrash) s
+  let owners := result.2.filterMap (fun
+    | .moved _ _ (.player owner .mainDeck) => some owner
+    | _ => none)
+  (result.1, result.2 ++ owners.eraseDups.map Event.recycled)
+
+/-- A group Recycle preserves the structural invariants. -/
+theorem recycleTrashCards_safe (s : GameState) (cards : List ObjId) :
+    Safe s (recycleTrashCards s cards).1 :=
+  recycleList_safe _ s
+
+/-- Only decks receiving multiple Main Deck cards need a random ordering. Runes use their
+owners' ordering decision (CR 417.5.a). -/
+def recycleTrashStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (es : EffectList) (chosen : List ObjId) : GameState × List Frame × List Event :=
+  let (runes, cards) := (chosen.filter s.inTrash).eraseDups.partition
+    (fun id => recycleKind s id == .runeDeck)
+  let owned (owner : PlayerId) (ids : List ObjId) :=
+    ids.filter (fun id => (s.obj? id).any (·.owner == owner))
+  let resume := Frame.run p src env es
+  let remainingFrames := if runes.isEmpty then [resume] else
+    let groups := s.pickOrder.map (fun q => (q, owned q runes))
+    [.run p src env (.cons (.orderRuneRecycle groups []) .nil), resume]
+  if s.players.any (fun q => decide (2 ≤ (owned q cards).length)) then
+    (s, .chanceRecycleTrash p src cards :: remainingFrames, [])
+  else
+    let done := recycleTrashCards s cards
+    (done.1, remainingFrames, done.2)
+
+theorem recycleTrashStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (es : EffectList) (chosen : List ObjId) : Safe s (recycleTrashStep s p src env es chosen).1 := by
+  unfold recycleTrashStep
+  dsimp only
+  split
+  · exact Safe.refl s
+  · exact recycleTrashCards_safe _ _
+
+theorem recycleTrashStep_mem {s : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {es : EffectList} {chosen : List ObjId} {f : Frame}
+    (h : f ∈ (recycleTrashStep s p src env es chosen).2.1) :
+    f.isPlay = true := by
+  unfold recycleTrashStep at h
+  dsimp only at h
+  split at h
+  · rcases List.mem_cons.mp h with rfl | h
+    · rfl
+    · split at h
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+        rcases h with rfl | rfl <;> rfl
+  · split at h
+    · obtain rfl := List.mem_singleton.mp h
+      rfl
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+      rcases h with rfl | rfl <;> rfl
+
+/-- Cards still eligible for a group Recycle without targeting (CR 417.6). -/
+def GameState.trashRecycleCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (side : Side) (excluded : List ObjId) (filters : FilterList) : List ObjId :=
+  let candidates :=
+    (s.pickCandidates p src env side .inTrash (.cons .physicalCard filters) false).getD []
+  candidates.filter (fun id => !excluded.contains id)
+
+/-- A pending activation keeps its target exclusions and filters through each Recycle choice.
+An ordinary resolution has no payment restrictions. -/
+def EffectList.trashPaymentRestrictions : EffectList → List ObjId × FilterList
+  | .cons (.completeActivation _ _ _ targets filters) _ => (targets, filters)
+  | _ => ([], .nil)
+
 /-- Mandatory locations imposed by resolving a Hidden spell or the play effect of a Unit
 that was played from hiding (CR 811.1.d.5). -/
 def Env.hiddenPlayRequirements (env : Env) : List (List (Option ObjId)) :=
   env.hiddenPlayLocation.toList.map (fun b => [some b])
 
 /-- Build an effect play's requirements from its own location instruction and the Hidden effect. -/
-def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Option (List ObjId)) :
-    EffectPlayTerms :=
-  { price, requirements := env.hiddenPlayRequirements ++ places.toList.map (·.map some) }
+def Env.permanentPlayTerms (env : Env) (price : EffectPlayPrice) (places : Option (List ObjId))
+    (baseOnly : Bool := false) : EffectPlayTerms :=
+  let requiredBase := if baseOnly then [[none]] else []
+  { price, requirements := requiredBase ++ env.hiddenPlayRequirements ++ places.toList.map (·.map some) }
 
 /-- The otherwise matching candidates for an effect's optional play. These are play choices,
 rather than targets. -/
@@ -4657,11 +5527,11 @@ def effectPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : Env
 
 /-- The card has at least one legal, fundable finalization through the effect. -/
 def effectCardPlayable (s : GameState) (p : PlayerId) (card : ObjId) (env : Env)
-    (price : EffectPlayPrice) (funding : EffectAddPolicy) : Bool :=
+    (price : EffectPlayPrice) (funding : EffectAddPolicy) (baseOnly : Bool := false) : Bool :=
   (s.locate card).isSome &&
     if (s.cardDef? card).any (·.hasType .spell) then
-      !(limitedSpellChoices s p card price funding).isEmpty
-    else !(fundablePermanentChoices s p card (env.permanentPlayTerms price none) funding).isEmpty
+      !baseOnly && !(limitedSpellChoices s p card price funding).isEmpty
+    else !(fundablePermanentChoices s p card (env.permanentPlayTerms price none baseOnly) funding).isEmpty
 
 /-- Offer each fundable finalization for a permanent. A mandatory Battlefield fee may be
     declined (CR 355.17). -/
@@ -4676,15 +5546,16 @@ def fundedPermanentOptions (s : GameState) (p : PlayerId) (card : ObjId) (terms 
 
 /-- Offer each fundable finalization for this effect's Unit or Gear. -/
 def effectPermanentFinalizations (s : GameState) (p : PlayerId) (card : ObjId) (env : Env)
-    (price : EffectPlayPrice) (funding : EffectAddPolicy) : Effect :=
-  fundedPermanentOptions s p card (env.permanentPlayTerms price none) funding
+    (price : EffectPlayPrice) (funding : EffectAddPolicy) (baseOnly : Bool := false) : Effect :=
+  fundedPermanentOptions s p card (env.permanentPlayTerms price none baseOnly) funding
 
 /-- Continue a required limited Play, choosing only if more than one card is eligible. -/
 def requiredCardPlayFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) : Frame :=
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList)
+    (baseOnly : Bool) : Frame :=
   let cards := (effectPlayCandidates s p src env sel).filter (fun id =>
-    (s.obj? id).any (·.kind.phys?.isSome) && effectCardPlayable s p id env price funding)
-  let play := Effect.playOfferedCard cards 1 price
+    (s.obj? id).any (·.kind.phys?.isSome) && effectCardPlayable s p id env price funding baseOnly)
+  let play := Effect.playOfferedCard cards 1 price baseOnly
   match cards with
   | [] => .run p src env es
   | [card] => .run p src (env.bindPick card false) (.cons play es)
@@ -4692,8 +5563,8 @@ def requiredCardPlayFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : En
 
 /-- Continuing a limited Play keeps the engine in play. -/
 theorem requiredCardPlayFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList) :
-    (requiredCardPlayFrame s p src env sel price funding es).isPlay = true := by
+    (sel : Selector) (price : EffectPlayPrice) (funding : EffectAddPolicy) (es : EffectList)
+    (baseOnly : Bool) : (requiredCardPlayFrame s p src env sel price funding es baseOnly).isPlay = true := by
   unfold requiredCardPlayFrame
   dsimp only
   split <;> rfl
@@ -4730,6 +5601,11 @@ def requiredPlayCandidates (s : GameState) (p : PlayerId) (src : ObjId) (env : E
       (some ((dest.eval s p src env).getD []))
     return (candidates.getD []).filter (fun card => !(permanentPlayPlans s p card terms).isEmpty)
   | _ => none
+
+/-- An optional instruction with a required legal destination is offered only when usable. -/
+def mayAvailable (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (effect : Effect) (funding : EffectAddPolicy) : Bool :=
+  !(requiredPlayCandidates s p src env effect funding).any List.isEmpty
 
 /-- A Legend registered for this player and left outside the game can enter while its
 source is on the Board. The move preserves the physical card (CR 103.1). -/
@@ -5005,7 +5881,7 @@ def remakeSpellChoicesFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : 
         d.spellEffect.toList.flatMap (fun effect =>
           if !effect.hasFinalizationChoice then [] else
             let choices := spellChoicesWithShowOff s p id d effect [item.spellPick.showOffObject]
-              item.spellPick.variablePower
+              item.spellPick.variablePower (some item.spellPick.paysXP) item.spellPick.paidKill
             let executions := if d.usesRepeatChoices then repeatSpellChoices choices item.extraPaid
               else choices
             executions.map (fun (pick, targets) => .setSpellChoices id pick targets))
@@ -5061,6 +5937,18 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
   match e.choices.getLast? with
   | some c =>
     match c with
+    | .target (.splitByMight _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let slots := recheckedSlots s p src targets (some e)
+      if !(slots.take fixed.length).all (fun | .obj _ => true | _ => false) then body
+      else
+        let pm := s.mightTable
+        let legal := c.candidatesAfter s p src pm fixed
+        let original := (targets.drop fixed.length).filter legal.contains
+        let total := c.targetGroupLimit s p src pm fixed original
+        let retained := if original.length ≤ total then [original] else
+          (subseqsUpTo total original).filter (fun subset => subset.length == total)
+        .cons (.retainTargetSet (retained.map (fixed ++ ·))) body
     | .target (.atOneBattlefield n) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
       let legal := c.candidatesAfter s p src s.mightTable fixed
@@ -5074,8 +5962,15 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
             (subseqsUpTo total group).filter (fun subset => subset.length == total))
       let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
       .cons (.retainTargetSet remaining) body
+    | .target (.atOneLocation _) _ _ _ =>
+      let fixed := targets.take (e.choices.length - 1)
+      let legal := c.candidatesAfter s p src s.mightTable fixed
+      let original := (targets.drop fixed.length).filter legal.contains
+      let groups := s.targetsByLocation original
+      let remaining := if groups.isEmpty then [fixed] else groups.map (fixed ++ ·)
+      .cons (.retainTargetSet remaining) body
     | .target .anyNumber _ _ _ | .target (.combinedMightAtMost _) _ _ _ |
-        .target (.exactly _) _ _ _ =>
+        .target (.combinedMightFromOneController _) _ _ _ | .target (.exactly _) _ _ _ =>
       let fixed := targets.take (e.choices.length - 1)
       let pm := s.mightTable
       let legal := c.candidatesAfter s p src pm fixed
@@ -5083,9 +5978,16 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
       let weight := c.groupWeight s pm
       let limit := c.groupLimit
       let total (ids : List ObjId) := (ids.map weight).sum
-      let groups := if total original ≤ limit then [original] else
-        (subseqsWithin weight limit original).filter (fun group =>
-          original.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      let keep (candidates : List ObjId) :=
+        if total candidates ≤ limit then [candidates] else
+          (subseqsWithin weight limit candidates).filter (fun group =>
+            candidates.all (fun id => group.contains id || decide (limit < total group + weight id)))
+      let groups := match c with
+        | .target (.combinedMightFromOneController _) _ _ _ =>
+          let nonempty := ((s.targetsByController original).flatMap keep).filter (fun group =>
+            !List.isEmpty group)
+          if nonempty.isEmpty then [[]] else nonempty.eraseDups
+        | _ => keep original
       .cons (.retainTargetSet (groups.map (fixed ++ ·))) body
     | _ => body
   | none => body
@@ -5094,7 +5996,7 @@ def EffectDef.recheckTargetGroup (e : EffectDef) (s : GameState) (p : PlayerId)
 A previous execution may already have changed those targets. -/
 def spellExecutionFrames (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pick : SpellPick) (targets : List ObjId) : List Frame := Id.run do
-  let definition := (s.cardDef? src).bind (·.spellEffect) |>.bind (·.forPick pick)
+  let definition := (s.cardDef? src).bind (·.spellForPick pick)
   let some body := definition | return []
   let ctx := { env with
     slots := recheckedSlots s p src targets definition
@@ -5152,9 +6054,7 @@ def equipWithCostFrame (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
   match gear.eval s p src env, recipient.eval s p src env with
   | some [g], some [u] =>
     if (s.cardDef? g).any CardDef.equipCanExhaust then
-      if !s.inPlay.contains g || !s.inPlay.contains u ||
-          !(s.cardDef? u).any (·.hasType .unit) || (s.cardDef? g).any (·.hasType .unit) ||
-          s.controllerOf g != p || s.controllerOf u != p || (s.obj? g).any (·.attached == some u) then
+      if !s.weaponmasterAttachable p g u then
         .run p src env es
       else
         let filters := FilterList.ofList [.ofType .unit, .ready]
@@ -5183,11 +6083,7 @@ theorem equipWithCostFrame_play (s : GameState) (p : PlayerId) (src : ObjId) (en
 /-- Count only the chosen objects killed by this instruction, including a token that ceased to
 exist. A replacement that saved a target and killed something else does not count. -/
 def killedTargets (targets : List ObjId) (events : List Event) : Nat :=
-  targets.countP (fun target => events.any (fun
-    | .moved old next _ => old == target && events.any (fun
-        | .died id _ => id == next
-        | _ => false)
-    | _ => false))
+  targets.countP (fun target => (killedController target events).isSome)
 
 /-- Remember a delayed ability independently of what happens to its source afterward (CR 391). -/
 def recordKillCount (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
@@ -5210,25 +6106,81 @@ theorem recordKillCount_safe (s : GameState) (p : PlayerId) (src : ObjId) (env :
     · exact addTurnFxOn_safe s _ _ _
     · exact Safe.refl s
 
-/-- Kill the chosen objects, optionally remembering the number for a delayed end-of-turn ability. -/
+/-- How the linked Kill instruction determines whether and for whom its continuation runs. -/
+inductive KillFollowupKind where
+  /-- Instruct the affected permanent's controller, even if a replacement saved it. -/
+  | forController
+  /-- Keep the resolving player and require a death caused by this Kill. -/
+  | ifKilled
+
+/-- The continuation and target preserved while a Kill waits for replacement choices. -/
+structure KillFollowup where
+  /-- The affected permanent's target slot. -/
+  slot : Nat
+  /-- The linked instruction. -/
+  body : Effect
+  /-- Which result of the Kill permits the continuation. -/
+  kind : KillFollowupKind
+
+/-- Reissue the same instruction after the player chooses its replacement. -/
+def KillFollowup.retry (link : KillFollowup) : Effect :=
+  match link.kind with
+  | .forController => .killThenForController link.slot link.body
+  | .ifKilled => .killThenIfKilled link.slot link.body
+
+/-- A conditional continuation requires the target's death. A controller continuation can also
+refer to the target if a replacement left it on the Board. -/
+def linkedKillFrames (before s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (events : List Event) (linked : Option KillFollowup) : List Frame := Id.run do
+  let some link := linked | return []
+  let some (.obj id) := env.slots[link.slot]? | return []
+  let player := match link.kind with
+    | .forController =>
+      if s.inPlay.contains id then (s.obj? id).map (·.controller)
+      else directKilledController before id events
+    | .ifKilled => (directKilledController before id events).map (fun _ => p)
+  let some who := player | return []
+  return [.run who src { env with effectController := env.effectController <|> some p }
+    (.cons link.body .nil)]
+
+/-- A linked instruction continues the current resolution. -/
+theorem linkedKillFrames_play {before s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {events : List Event} {linked : Option KillFollowup} {f : Frame}
+    (h : f ∈ linkedKillFrames before s p src env events linked) : f.isPlay = true := by
+  unfold linkedKillFrames at h
+  dsimp only at h
+  split at h
+  · split at h
+    · split at h
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
+      · simp at h
+    · simp at h
+  · simp at h
+
+/-- Kill the chosen objects, with any delayed ability or linked instruction (CR 359.3.e.14). -/
 def killEffectStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (targets : Selector)
-    (delay : Option Nat) (es : EffectList) : GameState × List Frame × List Event :=
+    (delay : Option Nat) (es : EffectList) (linked : Option KillFollowup := none) :
+    GameState × List Frame × List Event :=
   let ids := (targets.eval s p src env).getD []
   match s.deathGroupChoice ids with
   | some (unit, controller, first, other) =>
-    let retry := delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
+    let retry := match linked with
+      | some link => link.retry
+      | none => delay.elim (.prim (.kill targets)) (.killThenAtEnd targets)
     (s, [.eitherDo controller unit {} first other .nil, .run p src env (.cons retry es)], [])
   | none =>
     match applyPrim s p src env (.kill targets) with
     | some (killed, events) =>
       let next := delay.elim killed (fun i => recordKillCount killed p src env i ids events)
-      (next, attachmentReplacementFrames killed events ++ [.run p src env es], events)
+      (next, attachmentReplacementFrames killed events ++ linkedKillFrames s next p src env events linked ++
+        [.run p src env es], events)
     | none => (s, [.run p src env es], [.skipped src])
 
 /-- Resolving a kill instruction and recording delayed abilities preserves invariants. -/
 theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
-    (targets : Selector) (delay : Option Nat) (es : EffectList) :
-    Safe s (killEffectStep s p src env targets delay es).1 := by
+    (targets : Selector) (delay : Option Nat) (es : EffectList) {linked : Option KillFollowup} :
+    Safe s (killEffectStep s p src env targets delay es linked).1 := by
   unfold killEffectStep
   dsimp only
   split
@@ -5243,17 +6195,19 @@ theorem killEffectStep_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : 
 
 /-- The frames of a kill instruction stay on the Chain's resolution stack. -/
 theorem killEffectStep_mem {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
-    {targets : Selector} {delay : Option Nat} {es : EffectList} {f : Frame}
-    (h : f ∈ (killEffectStep s p src env targets delay es).2.1) : f.isPlay = true := by
+    {targets : Selector} {delay : Option Nat} {es : EffectList} {linked : Option KillFollowup} {f : Frame}
+    (h : f ∈ (killEffectStep s p src env targets delay es linked).2.1) : f.isPlay = true := by
   unfold killEffectStep at h
   dsimp only at h
   split at h
   · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
     rcases h with rfl | rfl <;> rfl
   · split at h
-    · rcases List.mem_append.mp h with hs | h
-      · exact attachmentReplacementFrames_play hs
-      · obtain rfl := List.mem_singleton.mp h
+    · rcases List.mem_append.mp h with used | hr
+      · rcases List.mem_append.mp used with hs | hl
+        · exact attachmentReplacementFrames_play hs
+        · exact linkedKillFrames_play hl
+      · obtain rfl := List.mem_singleton.mp hr
         rfl
     · obtain rfl := List.mem_singleton.mp h
       rfl
@@ -5279,10 +6233,12 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
     | .createAtPrev name n ready => do
       let card ← s.tokenCard name
       let count ← n.evalS s p src env
-      some (card, count, ready, (s.obj? src).bind (·.prevLoc), false)
-    | .playUnitTokenAt name dest => do
+      let location ← s.moveOriginTokenLocation p src env card
+      some (card, count, ready, location, location.isSome)
+    | .playUnitTokenAt name dest | .playReadyUnitTokenAt name dest => do
       let card ← s.tokenCard name
-      if (s.unitTokenDestinations p card).contains dest then some (card, 1, false, dest, true)
+      let ready := match pr with | .playReadyUnitTokenAt .. => true | _ => false
+      if (s.unitTokenDestinations p card).contains dest then some (card, 1, ready, dest, true)
       else none
     | .cloneToken sel => do
       let [id] ← sel.eval s p src env | none
@@ -5292,16 +6248,58 @@ def unitTokenBatchOf (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (p
       if o.controller == p then some (d, 1, !o.exhausted, o.loc, false) else none
     | _ => none
   if card.hasType .unit && count > 0 then
-    some ⟨destination, contest, List.replicate count (card.id, ready)⟩
+    some { destination, contest, entries := List.replicate count (card.id, ready) }
   else none
 
-/-- The Unit token replacements currently offered by this player's effects. -/
-def GameState.unitTokenReplacements (s : GameState) (p : PlayerId) : List CardId :=
-  (s.passiveSources.flatMap (fun id =>
-    if !(s.obj? id).any (·.controller == p) then [] else
-      (s.activeMods id).filterMap (fun
-        | .replaceUnitTokenWith name => ((s.tokenCard name).filter (·.hasType .unit)).map (·.id)
-        | _ => none))).eraseDups
+/-- Prepare entry with the card and original target that the reflexive ability will use. -/
+def linkedUnitTokenBatch (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
+    (name : String) (count : Nat) (place : Place) (ready : Bool) (index : Nat)
+    (target : Option Selector) : Option UnitTokenBatch := do
+  let card ← env.sourceCard <|> (s.cardDef? src).map (·.id)
+  let batch ← if place == .here && (s.cards.find? card).any (·.hasType .legend) then do
+    let [field] ← env.eventBattlefields.getD [] | none
+    let token ← (s.tokenCard name).filter (fun d => CardDef.hasType d .unit)
+    if !s.battlefields.contains field || count == 0 then none
+    else some {
+      destination := some field
+      contest := false
+      entries := List.replicate count (token.id, ready) }
+  else unitTokenBatchOf s p src env (.create name (.const count) place ready)
+  let targetId ← match target with
+    | none => some none
+    | some sel => do
+      let [id] ← sel.eval s p src env | none
+      some (some id)
+  some { batch with followup := some ⟨src, card, index, targetId⟩ }
+
+/-- The Unit token replacements currently offered by this player's effects (CR 370-371). -/
+def GameState.unitTokenReplacements (s : GameState) (p : PlayerId) : List UnitTokenReplacement :=
+  let sources := s.passiveSources.flatMap fun id =>
+    if (s.obj? id).any (·.controller == p) then (s.activeMods id).map (id, ·) else []
+  let substitutes := (sources.filterMap fun (_, mod) =>
+    match mod with
+    | .replaceUnitTokenWith name => ((s.tokenCard name).filter (·.hasType .unit)).map (·.id)
+    | _ => none).eraseDups
+  let duplicates := (sources.filterMap fun (src, mod) =>
+    match mod with
+    | .duplicateUnitTokenOnce =>
+      let copy := s.copyStamp? src
+      if s.turnFx.any (·.appliesTo s.turn src (.duplicatedUnitToken copy)) then none
+      else some (UnitTokenReplacement.duplicate src copy)
+    | _ => none).eraseDups
+  (if substitutes.isEmpty then [] else [.substitute substitutes]) ++ duplicates
+
+/-- Charge each elected replacement to the source that supplied it (CR 371). -/
+def noteUnitTokenDuplicates (p : PlayerId) (s : GameState)
+    (sources : List (ObjId × Option Timestamp)) : GameState :=
+  sources.foldl (fun t (id, copy) => t.addTurnFxOn p id (.duplicatedUnitToken copy)) s
+
+/-- Recording uses leaves the structural invariants intact. -/
+theorem noteUnitTokenDuplicates_safe (p : PlayerId) (s : GameState)
+    (sources : List (ObjId × Option Timestamp)) : Safe s (noteUnitTokenDuplicates p s sources) := by
+  induction sources generalizing s with
+  | nil => exact Safe.refl s
+  | cons x rest ih => exact (addTurnFxOn_safe s p x.1 (.duplicatedUnitToken x.2)).trans (ih _)
 
 /-- Add a chosen entry without publishing token plays until the whole group is on the Board. -/
 def enterUnitToken (s : GameState) (p : PlayerId) (dest : Option ObjId) (after : GameState)
@@ -5320,22 +6318,29 @@ theorem enterUnitToken_safe (s : GameState) (p : PlayerId) (dest : Option ObjId)
 /-- Put the chosen group on the Board at once (CR 184.2, 375-376). -/
 def enterUnitTokenBatch (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) :
     GameState × List Event :=
-  let t := batch.entries.foldl (enterUnitToken s p batch.destination) s
+  let marked := noteUnitTokenDuplicates p s batch.duplicatedBy
+  let t := batch.entries.foldl (enterUnitToken s p batch.destination) marked
   let next := if batch.contest then batch.destination.elim t (fun field => contestFor p field t)
     else t
-  (buffNewTokens s next p, tokenPlays s next p)
+  let played := tokenPlays s next p
+  let linked := batch.followup.toList.flatMap fun link =>
+    let tokens := played.filterMap (fun | .tokenPlayed _ id => some id | _ => none)
+    if tokens.isEmpty then []
+    else [.unitTokensFor p link.source link.card link.index link.target tokens batch.destination]
+  (buffNewTokens s next p, played ++ linked)
 
 /-- Placing the whole group preserves the structural invariants. -/
 theorem enterUnitTokenBatch_safe (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) :
     Safe s (enterUnitTokenBatch s p batch).1 := by
   unfold enterUnitTokenBatch
   dsimp only
-  refine (enterUnitToken_safe s p batch.destination batch.entries s).trans ?_
-  split
-  · cases batch.destination
-    · exact buffNewTokens_safe _ _ _
-    · exact (contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _)
-  · exact buffNewTokens_safe _ _ _
+  exact (noteUnitTokenDuplicates_safe p s batch.duplicatedBy).trans
+    ((enterUnitToken_safe s p batch.destination batch.entries _).trans (by
+      split
+      · cases batch.destination
+        · exact buffNewTokens_safe _ _ _
+        · exact (contestFor_safe _ _ _).trans (buffNewTokens_safe _ _ _)
+      · exact buffNewTokens_safe _ _ _))
 
 /-- Accelerate on a neutral Unit token, after flexible additional-cost reductions and any
 discount on the next Unit play (CR 185.3, 356.4, 805). -/
@@ -5421,35 +6426,76 @@ theorem finishUnitTokenPlay_safe {s : GameState} {p : PlayerId} {batch : UnitTok
   · obtain rfl := Option.some.inj h
     exact enterUnitTokenBatch_safe s p batch
 
-/-- Snapshot the location and let the player make each optional replacement. Original
-instructions such as entering ready are inherited by the replacement (CR 376). -/
+/-- Ask which of the remaining replacement sequences to perform next (CR 372-373). -/
+def beginUnitTokenEntries (batch : UnitTokenBatch) (replacements : List UnitTokenReplacement) : Effect :=
+  match replacements with
+  | [] => .planUnitTokenEntries batch (.substitute [] [] batch.entries.reverse [])
+  | [next] => .planUnitTokenEntries batch (.apply next [])
+  | _ => .eitherOf (EffectList.ofList (replacements.map (fun next =>
+      Effect.planUnitTokenEntries batch (.apply next (replacements.erase next)))))
+
+/-- Run all pending substitution choices as one uninterrupted sequence. The new definition
+inherits the original entry instructions (CR 373.2, 375). -/
 def unitTokenEntryPlan (s : GameState) (p : PlayerId) (batch : UnitTokenBatch)
-    (remaining chosen : List (CardId × Bool)) (funding : EffectAddPolicy) : Effect :=
+    (substitutes : List CardId) (remaining chosen : List (CardId × Bool))
+    (after : List UnitTokenReplacement) (funding : EffectAddPolicy) : Effect :=
   match remaining with
   | [] =>
     let original := batch.entries.head?.map Prod.fst
-    let (replaced, ordinary) := chosen.reverse.partition (fun entry => some entry.1 != original)
-    s.priceUnitToken p { batch with entries := replaced ++ ordinary } funding
+    let entries := if substitutes.isEmpty then chosen.reverse else
+      let (replaced, ordinary) := chosen.reverse.partition (fun entry => some entry.1 != original)
+      replaced ++ ordinary
+    let planned := { batch with entries }
+    if after.isEmpty then s.priceUnitToken p planned funding else beginUnitTokenEntries planned after
   | entry :: tail =>
-    let replacements := (s.unitTokenReplacements p).filter (· != entry.1)
+    let replacements := substitutes.filter (· != entry.1)
     if replacements.isEmpty then
-      .planUnitTokenEntries batch tail (entry :: chosen)
+      .planUnitTokenEntries batch (.substitute substitutes tail (entry :: chosen) after)
     else
       let opts := (entry.1 :: replacements).map (fun card =>
-        Effect.planUnitTokenEntries batch tail ((card, entry.2) :: chosen))
+        Effect.planUnitTokenEntries batch (.substitute substitutes tail ((card, entry.2) :: chosen) after))
       .eitherOf (EffectList.ofList opts)
+
+/-- The replacement currently being applied can select an eligible entry or be declined. -/
+def applyUnitTokenReplacement (batch : UnitTokenBatch) (replacement : UnitTokenReplacement)
+    (after : List UnitTokenReplacement) : Effect :=
+  match replacement with
+  | .substitute cards => .planUnitTokenEntries batch (.substitute cards batch.entries [] after)
+  | .duplicate src copy =>
+    let options := (List.range batch.entries.length).map (fun i =>
+      Effect.planUnitTokenEntries batch (.duplicate src copy (some i) after))
+    let decline := Effect.planUnitTokenEntries batch (.duplicate src copy none after)
+    .eitherOf (EffectList.ofList (options ++ [decline]))
+
+/-- Add an extra play of the selected token, inheriting its destination, ready instruction and
+linked follow-up. Both plays belonging to the replacement precede unaffected entries (CR 373.1, 375). -/
+def duplicateUnitTokenEntry (batch : UnitTokenBatch) (src : ObjId) (copy : Option Timestamp)
+    (entry : Option Nat) : UnitTokenBatch :=
+  match entry.bind (fun i => (batch.entries[i]?).map (i, ·)) with
+  | some (i, token) =>
+    { batch with
+      entries := token :: token :: batch.entries.eraseIdx i
+      duplicatedBy := (src, copy) :: batch.duplicatedBy }
+  | none => batch
+
+/-- Resolve a decision in the token replacement plan before committing entry. -/
+def nextUnitTokenPlan (s : GameState) (p : PlayerId) (batch : UnitTokenBatch) (funding : EffectAddPolicy) :
+    UnitTokenPlan → Effect
+  | .substitute cards remaining chosen after => unitTokenEntryPlan s p batch cards remaining chosen after funding
+  | .apply replacement after => applyUnitTokenReplacement batch replacement after
+  | .duplicate source copy entry after =>
+    let planned := duplicateUnitTokenEntry batch source copy entry
+    if after.isEmpty then s.priceUnitToken p planned funding else beginUnitTokenEntries planned after
 
 /-- The legacy paths handle Gear and effects without a token replacement or new optional cost. -/
 def unitTokenPrimStep (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     (pr : Prim) (es : EffectList) : GameState × List Frame × List Event :=
-  let planned := if !(s.unitTokenReplacements p).isEmpty || (s.fxOf p).contains .nextUnitAccelerate then
+  let replacements := s.unitTokenReplacements p
+  let planned := if !replacements.isEmpty || (s.fxOf p).contains .nextUnitAccelerate then
     unitTokenBatchOf s p src env pr else none
   match planned with
   | some batch =>
-    let offered := if (s.unitTokenReplacements p).isEmpty then
-      Effect.planUnitTokenEntries batch [] batch.entries.reverse
-      else .planUnitTokenEntries batch batch.entries []
-    (s, [.run p src env (.cons offered es)], [])
+    (s, [.run p src env (.cons (beginUnitTokenEntries batch replacements) es)], [])
   | none =>
     match applyPrim s p src env pr with
     | some (t, events) => (t, [.run p src env es], events)
@@ -5486,6 +6532,134 @@ def permanentDeathCostChoice (s : GameState) (card : ObjId) (plan : ReducedPerma
   let unit ← plan.extraObject
   if cost.kills then s.deathReplacementChoice unit else none
 
+/-- Execute a primitive instruction that may schedule further resolution or a decision. -/
+def runPrimEffect (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
+    (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
+  let skip : GameState × List Frame × List Event := (s, [.run p src env es], [Event.skipped src])
+  match pr with
+  | move@(.move ..) | move@(.swapPlaces ..) =>
+    moveEffectStep s p src env move .nop es funding
+  | .playUnitToken name | .playReadyUnitToken name =>
+    match s.tokenCard name with
+    | some c =>
+      let place := match pr with
+        | .playReadyUnitToken _ => Prim.playReadyUnitTokenAt name
+        | _ => Prim.playUnitTokenAt name
+      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (place dest))
+      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
+    | none => skip
+  | .burn who n => burnEffect s p src env who n es
+  | .burnWithUnitTrigger n idx => burnEffect s p src env .you n es (some idx)
+  | .predict n =>
+    match n.evalS s p src env with
+    | some count =>
+      match (s.zone (.player p .mainDeck)).take count with
+      | [] => (s, [.run p src env es], [])
+      | c :: cs =>
+        (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
+    | none => skip
+  | .draw sel n =>
+    match sel.resolve s p env, n.evalS s p src env with
+    | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
+    | _, _ => skip
+  | .reveal sel =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.lookFirst p env sel then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealNow sel)) es)))], [])
+    else
+      match applyPrim s p src env (.reveal sel) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
+  | .revealTop n =>
+    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
+    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
+        (s.activeMods g).contains .lookBeforeReveal) then
+      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
+        (.cons (.prim (.revealTopNow n)) es)))], [])
+    else
+      match applyPrim s p src env (.revealTop n) with
+      | some r => (r.1, [.run p src env es], r.2)
+      | none => skip
+  | .castInline sel => castInlineStep s p src env sel es funding
+  | pr@(.create ..) | pr@(.createAt ..) | pr@(.createAtPrev ..) |
+    pr@(.playUnitTokenAt ..) | pr@(.playReadyUnitTokenAt ..) | pr@(.cloneToken ..) =>
+    unitTokenPrimStep s p src env pr es
+  | .kill sel => killEffectStep s p src env sel none es
+  | .banishReplay sel replay =>
+    let units := (sel.eval s p src env).getD []
+    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
+    (s, [.run p src env (replays.append es)], [])
+  | .playReduced sel less dest =>
+    match castReducedStep s p src env sel less dest es funding with
+    | some r => r
+    | none =>
+      match permanentPlayEffects s p src env (.playReduced sel less dest) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.playReduced sel less dest) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
+  | .play sel =>
+    match playSpellStep s p src env sel es funding with
+    | some r => r
+    | none =>
+      match permanentPlayEffects s p src env (.play sel) with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env (.play sel) with
+        | some r => (r.1, [.run p src env es], r.2)
+        | none => skip
+  | .discard sel n =>
+    match sel.resolve s p env, n.evalS s p src env with
+    | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
+    | _, _ => skip
+  | pr =>
+    match effectDamageBatch? s p src env pr with
+    | some batch => (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
+    | none =>
+      match permanentPlayEffects s p src env pr with
+      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
+      | none =>
+        match applyPrim s p src env pr with
+        | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
+        | none => skip
+
+set_option maxHeartbeats 1200000 in
+/-- Executing a primitive instruction preserves the structural invariants. -/
+theorem runPrimEffect_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
+    (es : EffectList) (funding : EffectAddPolicy) : Safe s (runPrimEffect s p src env pr es funding).1 := by
+  unfold runPrimEffect
+  split <;> (try split) <;> (try split) <;> (try split) <;> first
+    | exact Safe.refl s
+    | exact moveEffectStep_safe s p src env _ _ es funding _
+    | exact burnEffect_safe s p src env _ _ es _
+    | exact castInlineStep_safe s p src env _ es funding
+    | exact unitTokenPrimStep_safe s p src env _ es
+    | exact killEffectStep_safe s p src env _ _ es
+    | exact playSpellStep_safe (by assumption)
+    | exact castReducedStep_safe (by assumption)
+    | exact applyPrim_safe (by assumption)
+
+/-- Update a Spell's choices and record any newly declared grouped Move destination. -/
+def GameState.replaceSpellChoices (s : GameState) (spell : ObjId) (pick : SpellPick)
+    (targets : List ObjId) : GameState :=
+  let updated := s.modObj spell fun o =>
+    let newPick : SpellPick := match o.spellPick.optionalCosts with
+      | some (printed, repeats) => .withCosts pick printed repeats
+      | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
+    let recorded := newPick.addPaidKill o.spellPick.paidKill
+    { o with targets, spellPick := recorded, targetPlayer := pick.playerTarget }
+  updated.recordDeclaredMoveBases spell
+
+/-- Replacing choices and recording their destinations changes no physical card or zone. -/
+theorem GameState.replaceSpellChoices_safe (s : GameState) (spell : ObjId) (pick : SpellPick)
+    (targets : List ObjId) : Safe s (s.replaceSpellChoices spell pick targets) := by
+  unfold replaceSpellChoices
+  dsimp only
+  refine Safe.trans ?_ (GameState.recordDeclaredMoveBases_safe _ spell)
+  exact Safe.modObj s spell (fun _ => rfl) (fun _ => rfl)
+
 /-- Execute one effect and prepare the frames that continue it. -/
 def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : GameState × List Frame × List Event :=
@@ -5507,9 +6681,12 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     match env.slots.head? with
     | some (.obj gear) => (animateGearObject s p src gear, [.run p src env es], [])
     | _ => skip
-  | .planUnitTokenEntries batch remaining chosen =>
-    let next := unitTokenEntryPlan s p batch remaining chosen funding
-    (s, [.run p src env (.cons next es)], [])
+  | .playUnitTokensThen name count place ready index target =>
+    match linkedUnitTokenBatch s p src env name count place ready index target with
+    | some batch => (s, [.run p src env (.cons (beginUnitTokenEntries batch (s.unitTokenReplacements p)) es)], [])
+    | none => skip
+  | .planUnitTokenEntries batch plan =>
+    (s, [.run p src env (.cons (nextUnitTokenPlan s p batch funding plan) es)], [])
   | .fundTokenAccelerate batch payment adds =>
     let opts := fundUnitTokenOptions s p batch ⟨payment.1, payment.2⟩ adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList opts)) es)], [])
@@ -5542,12 +6719,7 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .resolveSpellExecution pick targets =>
     (s, spellExecutionFrames s p src env pick targets ++ [.run p src env es], [])
   | .setSpellChoices spell pick targets =>
-    let updated := s.modObj spell fun o =>
-      let newPick := match o.spellPick.optionalCosts with
-        | some (printed, repeats) => .withCosts pick printed repeats
-        | none => if pick.hasExecutionChoices then .withCosts pick o.paid o.extraPaid else pick
-      { o with targets, spellPick := newPick, targetPlayer := pick.playerTarget }
-    (updated, [.run p src env es], targets.map (Event.chosenBySpell p))
+    (s.replaceSpellChoices spell pick targets, [.run p src env es], targets.map (Event.chosenBySpell p))
   | .moveChoosing unit home fs afterMove afterNegatedMove =>
     let chosen := chosenMove s p src env unit home fs afterMove afterNegatedMove
     (s, [.run p src chosen.1 (.cons chosen.2 es)], [])
@@ -5562,6 +6734,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | none => skip
   | .pickOwn place fs body =>
     (s, [.run p src env (.cons (.collectOwnPicks p s.pickOrder place fs body false) es)], [])
+  | .pickRequired place fs body =>
+    (s, [.run p src env (.cons (.collectOwnPicks p [p] place fs body false) es)], [])
   | .collectOwnPicks controller players place fs body capture =>
     (s, [collectOwnPicksFrame s controller src env players place fs body capture es], [])
   | .forEach sel body =>
@@ -5579,7 +6753,9 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       | .controllerOf i =>
         -- the controller of the object chosen at the slot
         match env.slots[i]? with
-        | some (.obj o) => (s.obj? o).map (fun (x : Object) => [x.controller])
+        | some (.obj o) =>
+          (s.obj? o).bind fun x =>
+            if s.departures.seats.contains x.controller then none else some [x.controller]
         | _ => none
       | _ => who.resolve s p env : Option (List PlayerId)) with
     | some ps =>
@@ -5631,8 +6807,8 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
   | .mayPlayCard sel price =>
     let cards := effectPlayCandidates s p src env sel
     (s, [.run p src env (.cons (.offerNextCardPlay cards 1 price) es)], [])
-  | .playCard sel price =>
-    (s, [requiredCardPlayFrame s p src env sel price funding es], [])
+  | .playCard sel price baseOnly =>
+    (s, [requiredCardPlayFrame s p src env sel price funding es baseOnly], [])
   | .banishTopForPlay =>
     let result := banishTopForPlay s p
     (result.1, [.run p src env es], result.2)
@@ -5668,14 +6844,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
         (s, [.mayDo p src env (.chooseOfferedPlay cards remaining price first others) es], [])
   | .chooseOfferedPlay cards remaining price first others =>
     (s, [.pickDo p src env first others (.playOfferedCard cards remaining price) es], [])
-  | .playOfferedCard cards remaining price =>
+  | .playOfferedCard cards remaining price baseOnly =>
     match env.lookup pickVar with
     | some (.obj card) =>
       if (s.cardDef? card).any (·.hasType .spell) then
         castLimitedStep s p src env card price .normal es funding
       else
-        let options := effectPermanentFinalizations s p card env price funding
-        let next := EffectList.cons (.afterOfferedPlay card (cards.erase card) remaining price) es
+        let options := effectPermanentFinalizations s p card env price funding baseOnly
+        let next := if baseOnly then es else
+          EffectList.cons (.afterOfferedPlay card (cards.erase card) remaining price) es
         (s, [.run p src env (.cons options next)], [])
     | _ => skip
   | .afterOfferedPlay card cards remaining price =>
@@ -5732,6 +6909,35 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     let choices := fundPermanentOptions s p card terms plan adds funding
     (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
   | .recycleLooked => recycleLookedStep s p src env es
+  | .recycleTrashTargets =>
+    recycleTrashStep s p src env es (((Selector.slotsFrom 0).eval s p src env).getD [])
+  | .finishTrashRecycle picked => recycleTrashStep s p src env es picked.reverse
+  | .recycleFromTrash side count upTo picked =>
+    let done := Effect.finishTrashRecycle picked
+    let (targets, filters) := es.trashPaymentRestrictions
+    match count, s.trashRecycleCandidates p src env side (picked ++ targets) filters with
+    | 0, _ | _, [] => (s, [.run p src env (.cons done es)], [])
+    | n + 1, first :: more =>
+      if upTo then
+        (s, [.eitherDo p src env (.chooseTrashRecycle side n picked) done es], [])
+      else
+        (s, [.pickDo p src env first more (.recordTrashRecycle side n false picked) es], [])
+  | .chooseTrashRecycle side count picked =>
+    let (targets, filters) := es.trashPaymentRestrictions
+    match s.trashRecycleCandidates p src env side (picked ++ targets) filters with
+    | [] => (s, [.run p src env (.cons (.finishTrashRecycle picked) es)], [])
+    | first :: more =>
+      (s, [.pickDo p src env first more (.recordTrashRecycle side count true picked) es], [])
+  | .recordTrashRecycle side count upTo picked =>
+    match env.bindings with
+    | (var, .obj id) :: previous =>
+      if var == pickVar then
+        (s, [.run p src { env with bindings := previous }
+          (.cons (.recycleFromTrash side count upTo (id :: picked)) es)], [])
+      else skip
+    | _ => skip
+  | .completeActivation source index baseEnergy _ _ =>
+    (s, [.run p src env es], [.activated p source index baseEnergy])
   | .recycleRunes =>
     let runes := s.inPlay.filter (fun id =>
       (s.cardDef? id).any (·.hasType .rune) && (s.obj? id).any (·.controller == p))
@@ -5759,22 +6965,15 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       else skip
     | _ => skip
   | .may e' =>
-    if (requiredPlayCandidates s p src env e' funding).any List.isEmpty then skip
-    else (s, [.mayDo p src env e' es], [])
+    if mayAvailable s p src env e' funding then (s, [.mayDo p src env e' es], [])
+    else skip
   | .doThen (.prim (.banish sel)) body => linked (.banish sel) body
   | .doThen (.prim (.disempower sel)) body => linked (.disempower sel) body
   | .doThen (.prim (.exhaust sel)) body => linked (.exhaust sel) body
   | .doThen (.prim (.spendBuff sel)) body => linked (.spendBuff sel) body
-  | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es
-  | .prim (move@(.move ..)) | .prim (move@(.swapPlaces ..)) =>
-    moveEffectStep s p src env move .nop es
-  | .moveAfterFee move body => moveEffectStep s p src env move body es true
-  | .prim (.playUnitToken name) =>
-    match s.tokenCard name with
-    | some c =>
-      let options := (s.unitTokenDestinations p c).map (fun dest => Effect.prim (.playUnitTokenAt name dest))
-      (s, [.run p src env (.cons (.eitherOf (EffectList.ofList options)) es)], [])
-    | none => skip
+  | .doThen (.prim (move@(.move ..))) body => moveEffectStep s p src env move body es funding
+  | .moveAfterFee move body => moveEffectStep s p src env move body es funding true
+  | .fundMoveFee move body adds commit => fundMoveFeeStep s p src env move body adds commit es funding
   | .payThen cost body gearPower =>
     match resolutionPayments s p src cost gearPower with
     | [] => skip
@@ -5797,40 +6996,6 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     | .nil => (s, [.run p src env (.cons a es)], [])
     | .cons b .nil => (s, [.eitherDo p src env a b es], [])
     | r => (s, [.eitherDo p src env a (.eitherOf r) es], [])
-  | .prim (.burn who n) => burnEffect s p src env who n es
-  | .prim (.burnWithUnitTrigger n idx) => burnEffect s p src env .you n es (some idx)
-  | .prim (.predict n) =>
-    match n.evalS s p src env with
-    | some count =>
-      match (s.zone (.player p .mainDeck)).take count with
-      | [] => (s, [.run p src env es], [])
-      | c :: cs =>
-        (s, [.predict p count c cs [] [], .run p src env es], (c :: cs).map (Event.lookedAt p))
-    | none => skip
-  | .prim (.draw sel n) =>
-    match sel.resolve s p env, n.evalS s p src env with
-    | some ps, some k => (s, ps.map (fun q => Frame.draw q k) ++ [.run p src env es], [])
-    | _, _ => skip
-  | .prim (.reveal sel) =>
-    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
-    if s.lookFirst p env sel then
-      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
-        (.cons (.prim (.revealNow sel)) es)))], [])
-    else
-      match applyPrim s p src env (.reveal sel) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
-  | .prim (.revealTop n) =>
-    -- the player looks at the top card first, and may recycle it, and then the cards are revealed
-    if s.passiveSources.any (fun g => (s.obj? g).any (·.controller == p) &&
-        (s.activeMods g).contains .lookBeforeReveal) then
-      (s, [.run p src env (.cons (.prim (.lookTop 1)) (.cons (.may (.prim (.recycleTop .you)))
-        (.cons (.prim (.revealTopNow n)) es)))], [])
-    else
-      match applyPrim s p src env (.revealTop n) with
-      | some r => (r.1, [.run p src env es], r.2)
-      | none => skip
-  | .prim (.castInline sel) => castInlineStep s p src env sel es funding
   | .finalizeLimitedSpell card => finalizeLimitedStep s p src env card es funding
   | .fundLimitedSpell card plan adds =>
     let choices := fundLimitedOptions s p card plan adds funding
@@ -5851,6 +7016,21 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
       let choices := (damageDivisions (first :: others) available).map Effect.applySplitDamage
       (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
     | _ => skip
+  | .splitUnitDamage dealer targets index =>
+    match dealer.eval s p src env, targets.eval s p src env,
+        env.sourceCard <|> (s.cardDef? src).map (·.id) with
+    | some [unit], some ids, some card =>
+      match s.mightNow unit with
+      | some might =>
+        let link : DamageKillLink := ⟨src, unit, p, card, index⟩
+        let choices := (damageDivisions ids might.toNat).map (fun hits =>
+          Effect.applyUnitSplitDamage hits link)
+        (s, [.run p src env (.cons (.eitherOf (EffectList.ofList choices)) es)], [])
+      | none => skip
+    | _, _, _ => skip
+  | .applyUnitSplitDamage hits link =>
+    if s.damageOff then (s, [.run p src env es], []) else
+      (s, [.run p src env (.cons (.resolveEffectDamage (unitSplitDamageBatch s hits link) none) es)], [])
   | .applySplitDamage hits =>
     if s.damageOff then (s, [.run p src env es], []) else
       let batch : EffectDamageBatch := {
@@ -5865,86 +7045,57 @@ def runEffect1 (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Eff
     orderCombatDamageStep s p src env target chosen remaining es
   | .chooseDeathBanisher unit banisher =>
     (s.addTurnFxOn banisher unit .chosenDeathBanisher, [.run p src env es], [])
+  | .chooseDeathGear unit gear =>
+    (s.addTurnFxOn p unit (.chosenDeathGear gear), [.run p src env es], [])
+  | .chooseDeathFree unit source =>
+    (s.addTurnFxOn p unit (.chosenDeathFree source), [.run p src env es], [])
   | .recordDeathSacrifice unit cost =>
     (s.addTurnFxOn p unit (.deathSacrificeChoice cost), [.run p src env es], [])
   | .recordDeathOrder group unit =>
     (s.addTurnFxOn p unit (.deathOrder group), [.run p src env es], [])
+  | .recordDeathReselection group earlier unit choice =>
+    (s.addTurnFxOn p unit (.deathReselection group earlier choice), [.run p src env es], [])
+  | .recordNestedDeathDecision root used unit choice groupScope =>
+    (s.addTurnFxOn p unit (.nestedDeathDecision root used choice groupScope), [.run p src env es], [])
   | .endCombatDamage excess =>
-    (recordCombatDamage s p excess, [.run p src env es], [])
-  | .prim (pr@(.create ..)) | .prim (pr@(.createAt ..)) | .prim (pr@(.createAtPrev ..)) |
-    .prim (pr@(.playUnitTokenAt ..)) | .prim (pr@(.cloneToken ..)) =>
-    unitTokenPrimStep s p src env pr es
-  | .prim (.kill sel) => killEffectStep s p src env sel none es
+    (recordCombatDamage s src excess, [.run p src env es], [])
   | .killThenAtEnd targets index => killEffectStep s p src env targets (some index) es
-  | .prim (.banishReplay sel replay) =>
-    let units := (sel.eval s p src env).getD []
-    let replays := EffectList.ofList (units.map (fun unit => .banishForReplay unit replay))
-    (s, [.run p src env (replays.append es)], [])
-  | .prim (.playReduced sel less dest) =>
-    match castReducedStep s p src env sel less dest es funding with
-    | some r => r
-    | none =>
-      match permanentPlayEffects s p src env (.playReduced sel less dest) with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env (.playReduced sel less dest) with
-        | some r => (r.1, [.run p src env es], r.2)
-        | none => skip
-  | .prim (.play sel) =>
-    match playSpellStep s p src env sel es funding with
-    | some r => r
-    | none =>
-      match permanentPlayEffects s p src env (.play sel) with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env (.play sel) with
-        | some r => (r.1, [.run p src env es], r.2)
-        | none => skip
-  | .prim (.discard sel n) =>
-    match sel.resolve s p env, n.evalS s p src env with
-    | some ps, some k => (s, ps.map (fun q => Frame.discard q k) ++ [.run p src env es], [])
-    | _, _ => skip
-  | .prim pr =>
-    match effectDamageBatch? s p src env pr with
-    | some batch => (s, [.run p src env (.cons (.resolveEffectDamage batch none) es)], [])
-    | none =>
-      match permanentPlayEffects s p src env pr with
-      | some (context, plays) => (s, [.run p src context plays, .run p src env es], [])
-      | none =>
-        match applyPrim s p src env pr with
-        | some r => (r.1, attachmentReplacementFrames r.1 r.2 ++ [.run p src env es], r.2)
-        | none => skip
+  | .killThenForController slot body =>
+    killEffectStep s p src env (.slot slot) none es (some ⟨slot, body, .forController⟩)
+  | .killThenIfKilled slot body =>
+    killEffectStep s p src env (.slot slot) none es (some ⟨slot, body, .ifKilled⟩)
   | .grant sel m d =>
     match applyGrant s p src env sel m d with
     | some r => (r.1, [.run p src env es], r.2)
     | none => skip
+  | .prim pr => runPrimEffect s p src env pr es funding
   | _ => skip
 
-set_option maxHeartbeats 800000 in
+set_option maxHeartbeats 2400000 in
 /-- Doing an effect, but not a choice, is a safe change of the state. -/
 theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (e : Effect)
     (es : EffectList) (funding : EffectAddPolicy) : Safe s (runEffect1 s p src env e es funding).1 := by
   unfold runEffect1
   split <;> (try split) <;> (try split) <;> (try split) <;> first
     | exact Safe.refl s
+    | exact runPrimEffect_safe s p src env _ es funding
     | exact Safe.modObj s src (fun _ => rfl) (fun _ => rfl)
     | exact Safe.modObj s _ (fun _ => rfl) (fun _ => rfl)
+    | exact GameState.replaceSpellChoices_safe s _ _ _
     | exact addReservedLegend_safe s p src _
-    | exact castInlineStep_safe s p src env _ es funding
     | exact castLimitedStep_safe s p src env _ _ _ es funding
     | exact finalizeLimitedStep_safe s p src env _ es funding
     | exact cancelLimitedStep_safe s p src env _ es
     | exact resolveEffectDamageStep_safe s p src env _ _ es
     | exact orderCombatDamageStep_safe s p src env _ _ _ es
     | exact killEffectStep_safe s p src env _ _ es
-    | exact unitTokenPrimStep_safe s p src env _ es
     | exact animateGearObject_safe s p src _
     | exact finishUnitTokenPlay_safe (by assumption)
-    | exact moveEffectStep_safe s p src env _ _ es _
-    | exact recordCombatDamage_safe s p _
+    | exact moveEffectStep_safe s p src env _ _ es funding _
+    | exact fundMoveFeeStep_safe s p src env _ _ _ _ es funding
+    | exact recordCombatDamage_safe s src _
     | exact addTurnFxOn_safe s _ _ _
     | exact commitLimitedSpell_safe (by assumption)
-    | exact burnEffect_safe s p src env _ _ es _
     | exact linkedAction_safe s p src env _
     | exact banishObj_safe p s _
     | exact banishReplayGroup_safe p _ s
@@ -5953,14 +7104,12 @@ theorem runEffect1_safe (s : GameState) (p : PlayerId) (src : ObjId) (env : Env)
     | exact banishTopForPlay_safe s p
     | exact banishLookedStep_safe s p src env _ es funding
     | exact recycleLookedStep_safe s p src env es
+    | exact recycleTrashStep_safe s p src env es _
     | exact recycleList_safe _ s
     | exact setPoolFor_safe s p src _
     | exact setPool_safe s p _
     | (exact applyReducedPermanent_safe (by assumption))
     | (exact finishFundedPermanentPlay_safe (by assumption))
-    | exact playSpellStep_safe (by assumption)
-    | exact castReducedStep_safe (by assumption)
-    | exact applyPrim_safe (by assumption)
     | exact applyGrant_safe (by assumption)
 
 /-- Do the first effect of `e :: es`: the new state, the frames that replace the `run` frame, and
@@ -6027,8 +7176,18 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
     let subject := o.triggerSubject.toList
     let targets := if o.spellPick == .plain then o.targets.take (o.targets.length - subject.length)
       else o.targets
-    let slots := if recheck then recheckedSlots s o.controller src targets definition ++
-      subject.map Value.obj else slotValues o.targets definition
+    let slots := match definition.bind (fun e => e.choices.find? Choice.recordsLocations) with
+      | some choice =>
+        let declared := s.turnFx.findSome? fun note =>
+          if note.target == some item then match note.kind with
+            | .declaredTargetLocations locations => some locations
+            | _ => none
+          else none
+        let valid := choice.candidatesAfter s o.controller src s.mightTable []
+        (declared.getD []).map fun (target, loc) =>
+          if valid.contains target && s.boardLocationOf target == some loc then .obj target else .int 0
+      | none => if recheck then recheckedSlots s o.controller src targets definition ++
+          subject.map Value.obj else slotValues o.targets definition
     let targetObjs := match ability with
       | some (.activated costs _ _ _) =>
         if costs.any (fun | .killFriendly .. => true | _ => false) then targets.dropLast
@@ -6049,6 +7208,7 @@ def itemFrames (s : GameState) (item : ObjId) (o : Object) (rest : List Frame) :
       sourceCard := some ((o.activationGrant.filter (·.copyStamp.isSome)).map (·.card) |>.getD card)
       abilityCopyStamp := o.abilityCopyStamp
       eventBattlefields := o.eventBattlefields
+      eventObjects := o.eventObjects
       shownOff := o.shownOff
       eventAmount := o.eventAmount }
     let body := match definition with
@@ -6094,7 +7254,7 @@ def resolveFrames (s : GameState) (rest : List Frame) : List Frame :=
           .run o.controller item { hiddenPlayLocation := o.hiddenAt, shownOff := o.shownOff }
             (.cons (.resolveSpellExecution pick targets) .nil)) ++ (.finishSpell item :: rest)
       else
-        let definition := d.spellEffect.bind (·.forPick o.spellPick)
+        let definition := d.spellForPick o.spellPick
         .run o.controller item {
           slots := finalizedSlots s o.controller item o.targets definition o.spellPick
           targetObjs := o.targets
@@ -6124,7 +7284,7 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
         | some s2 => (s2, [])
         | none => (s, [])
       | _ =>
-        match moveObj s item (s.chainDestination item o .trash) with
+        match moveObj s item (s.chainDestination item o .trash) o.chainExitPosition with
         | some r =>
           let es := s.chainExitEvents o item r.2 .trash
           (r.1, es ++ spellCompletion s item es)
@@ -6132,36 +7292,23 @@ def finishItem (s : GameState) (item : ObjId) : GameState × List Event :=
     else (s, [])
   | none => (s, [])
 
-/-- Follow a completed play to its new object and Recycle it if the limited Play requires it.
-A countered Spell has no resolution here (CR 420.4.a.1). -/
-def finishedItemFrames (s : GameState) (item : ObjId) (r : GameState × List Event) : List Frame :=
-  let recycle := (s.obj? item).toList.flatMap (fun o =>
-    if o.limitedSpellExit != .recycle then [] else
-    r.2.findSome? (fun
-      | .moved old next _ => if old == item then some next else none
-      | _ => none) |>.toList.map (fun next =>
-        Frame.run o.owner next {} (.cons (.prim (.recycle .self)) .nil)))
-  recycle ++ .cleanup :: afterItem r.1
+/-- After an item leaves the Chain, run Cleanup before continuing the Chain. -/
+def finishedItemFrames (s : GameState) : List Frame :=
+  .cleanup :: afterItem s
 
-/-- Recycling, Cleanup and continuing the Chain all consist of play frames. -/
-theorem finishedItemFrames_mem {s : GameState} {item : ObjId} {r : GameState × List Event}
-    {f : Frame} (hf : f ∈ finishedItemFrames s item r) : f.isPlay = true := by
+/-- Cleanup and continuing the Chain consist of play frames. -/
+theorem finishedItemFrames_mem {s : GameState} {f : Frame}
+    (hf : f ∈ finishedItemFrames s) : f.isPlay = true := by
   unfold finishedItemFrames at hf
-  rcases List.mem_append.mp hf with hr | hn
-  · obtain ⟨o, -, ho⟩ := List.mem_flatMap.mp hr
-    split at ho
-    · simp at ho
-    · obtain ⟨next, -, rfl⟩ := List.mem_map.mp ho
-      rfl
-  · rcases List.mem_cons.mp hn with rfl | hn
-    · rfl
-    · exact afterItem_mem hn
+  rcases List.mem_cons.mp hf with rfl | hn
+  · rfl
+  · exact afterItem_mem hn
 
 /-- Finishing an item either changes nothing, moves a Spell, or removes an ability. -/
 theorem finishItem_cases (s : GameState) (item : ObjId) :
     (finishItem s item).1 = s ∨
       (∃ o s2 id', s.obj? item = some o ∧ item ∈ s.zone .chain ∧
-        moveObj s item (s.chainDestination item o .trash) = some (s2, id') ∧
+        moveObj s item (s.chainDestination item o .trash) o.chainExitPosition = some (s2, id') ∧
           (finishItem s item).1 = s2) ∨
       (∃ o s2, s.obj? item = some o ∧ item ∈ s.zone .chain ∧ o.kind.phys? = none ∧
           removeObj s item = some s2 ∧ (finishItem s item).1 = s2) := by

@@ -1,0 +1,747 @@
+module
+
+public import Riftbound.Invariant.ExpirationWork
+public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.PlayDeclarationWork
+public import Riftbound.Invariant.ResourceDecisionWork
+public import Riftbound.Invariant.CombatWork
+public import Riftbound.Invariant.ConcessionWork
+public import Riftbound.Invariant.SetupDrawBound
+public import Riftbound.Invariant.BurnOutWork
+public import Riftbound.Invariant.DecisionHandoffs
+public import Riftbound.Invariant.RepeatedSpellWork
+public import Riftbound.Invariant.ObservedAddWork
+public import RiftboundCards.MightObservation
+
+/-!
+# Checks of the Might-related passive expressions in the registered cards
+-/
+
+public section
+
+namespace RiftboundCards
+
+set_option maxRecDepth 20000 in
+set_option maxHeartbeats 2000000 in
+/-- The registered cards' Might-related passive abilities use the supported read expressions. -/
+theorem db_mightReads : Riftbound.MightRead.database db := by decide
+
+/-- Ordinary trigger processing with the registered cards reaches a decision or its previous
+continuation within the queue length plus one work step. -/
+theorem advance_triggers (s : Riftbound.GameState) (wf : s.WF) (cards : s.cards = db)
+    (queue : List Riftbound.PendTrigger) (rest : List Riftbound.Frame)
+    (pending : s.pending = .triggers queue :: rest) :
+    ∃ t used, used ≤ queue.length + 1 ∧ Riftbound.AdvancePrefix s t used [] ∧
+      Riftbound.TriggerWorkStop rest t.pending :=
+  Riftbound.advance_triggers_checkedMight s wf queue rest pending (cards ▸ db_mightReads)
+
+private theorem mightReads_of_registered {cards : Riftbound.CardDB}
+    (registered : cards = db ∨ cards = db.withConcessionBattlefield) :
+    Riftbound.MightRead.database cards := by
+  rcases registered with h | h
+  · exact h ▸ db_mightReads
+  · exact h ▸ Riftbound.MightRead.database_withConcessionBattlefield db_mightReads
+
+private theorem ordinaryMight_of_registered {cards : Riftbound.CardDB}
+    (registered : cards = db ∨ cards = db.withConcessionBattlefield) : cards.mightTriggersAreOrdinary := by
+  rcases registered with h | h
+  · exact h ▸ db_mightTriggersAreOrdinary
+  · exact h ▸ Riftbound.CardDB.mightTriggersAreOrdinary_withConcessionBattlefield db_mightTriggersAreOrdinary
+
+private theorem ordinaryAwaken_of_registered {cards : Riftbound.CardDB}
+    (registered : cards = db ∨ cards = db.withConcessionBattlefield) : cards.awakenTriggersAreOrdinary := by
+  rcases registered with h | h
+  · exact h ▸ db_awakenTriggersAreOrdinary
+  · exact h ▸ Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield db_awakenTriggersAreOrdinary
+
+/-- With the registered cards, confirming an unchanged opening hand returns the next input in finite fuel. -/
+theorem step_emptyMulligan_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} (wf : s.WF) (phase : s.phase = .setup)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .mulligan p 0 :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .mulliganDone⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .mulliganDone⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .mulliganDone⟩ = .ok (t, events) :=
+  Riftbound.step_emptyMulligan_to_preparedDecision wf phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- Finishing the Mulligan with the registered cards reaches the following decision
+continuation, including after an opening concession. -/
+theorem step_emptyMulligan_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} (wf : s.WF) (phase : s.phase = .setup)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .mulligan p 0 :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .mulliganDone⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .mulliganDone⟩ =
+        Riftbound.advance extra t events :=
+  Riftbound.step_emptyMulligan_to_decision wf phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- With the registered cards, returning the Mulligan cards reaches the next input in finite fuel. -/
+theorem step_mulliganRecycle_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} {order : List Riftbound.ObjId} (wf : s.WF) (owners : s.OwnerOk)
+    (phase : s.phase = .setup) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chanceRecycle p :: rest) (legal : Riftbound.Legal s ⟨.chance, .arrange order⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.chance, .arrange order⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.chance, .arrange order⟩ = .ok (t, events) :=
+  Riftbound.step_mulliganRecycle_to_preparedDecision wf owners phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- The registered cards support the same continuation after returning the Mulligan cards. -/
+theorem step_mulliganRecycle_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {rest : List Riftbound.Frame} {order : List Riftbound.ObjId} (wf : s.WF) (owners : s.OwnerOk)
+    (phase : s.phase = .setup) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chanceRecycle p :: rest) (legal : Riftbound.Legal s ⟨.chance, .arrange order⟩)
+    (continuation : rest.head?.all (fun f => !f.isWork) = true ∨ rest = [.beginTurn]) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.chance, .arrange order⟩ =
+        Riftbound.advance extra t events :=
+  Riftbound.step_mulliganRecycle_to_decision wf owners phase (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- With the registered cards, a checked Burn Out answer reaches a prepared decision. -/
+theorem step_burnOutAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.burnOutAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.burnOutContinuation? (raw.pending.dropWhile Riftbound.isBurnOutWorkFrame) =
+        some (.priority p :: tail) → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_burnOutAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- With registered cards, a recorded time call reaches a prepared input with the new deadline. -/
+theorem step_timeCalled_to_preparedDecision {s : Riftbound.GameState}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s ⟨.clock, .timeCalled⟩)
+    (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.clock = some (s.config.ruleSet.callClock s.turn) ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.clock, .timeCalled⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.clock, .timeCalled⟩ = .ok (t, events) :=
+  Riftbound.step_timeCalled_to_preparedDecision wf (mightReads_of_registered cards) legal waiting quiet
+
+/-- A checked War concession with the registered cards reaches a decision or ends the game. -/
+theorem step_freeForAllConcede_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (ffa : s.config.mode.isFreeForAll = true) (legal : Riftbound.Legal s ⟨.player p, .concede⟩)
+    (checked : Riftbound.concessionWorkSupported s p = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .concede⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_freeForAllConcede_checked_to_decision wf
+    (Riftbound.MightRead.database_withConcessionBattlefield (mightReads_of_registered cards))
+    (Riftbound.CardDB.mightTriggersAreOrdinary_withConcessionBattlefield (ordinaryMight_of_registered cards))
+    (Riftbound.CardDB.awakenTriggersAreOrdinary_withConcessionBattlefield (ordinaryAwaken_of_registered cards))
+    ffa legal checked
+
+/-- The registered cards, including the Battlefield token used after a free-for-all concession,
+support the proof from a legal ordinary Pass through the Ending Phase and its ordinary triggers. -/
+theorem step_priority_pass_ending {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ Riftbound.EndingWorkStop t.pending.head? ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  exact Riftbound.step_priority_pass_ending wf (mightReads_of_registered cards) pending legal
+
+/-- A legal ordinary Pass with the registered cards resolves all immediate Adds during
+Ending and reaches a player decision, the end of the stack, or Begin Turn. -/
+theorem step_priority_pass_ending_with_adds {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧
+      (t.pending.head?.all (fun frame => !frame.isWork) = true ∨ t.pending = [.beginTurn]) ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  exact Riftbound.step_priority_pass_ending_with_adds wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) pending legal
+
+/-- A legal ordinary Pass resolves Ending's immediate Adds and reaches Awaken, an earlier
+decision, or the end of the stack, including after a free-for-all concession. -/
+theorem step_priority_pass_to_awaken {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ Riftbound.TurnBoundaryStop t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  exact Riftbound.step_priority_pass_to_awaken wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) pending legal
+
+/-- With the registered cards, a legal ordinary Pass resolves Ending's immediate Adds and
+proceeds through Awaken to Beginning, an earlier decision, or the end of the stack. -/
+theorem step_priority_pass_through_awaken {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ Riftbound.AwakenWorkStop s.cards t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) := by
+  exact Riftbound.step_priority_pass_through_awaken wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, an ordinary Pass succeeds in finite fuel, including through the next turn. -/
+theorem step_priority_pass_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  exact Riftbound.step_priority_pass_to_preparedDecision wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, a legal ordinary Pass reaches the next decision or game end
+in finite fuel, after which any final Cleanup uses the remaining fuel. -/
+theorem step_priority_pass_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (pending : s.pending = [.priority p])
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events := by
+  exact Riftbound.step_priority_pass_to_decision wf (mightReads_of_registered cards)
+    (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal
+
+/-- With the registered cards, a final Showdown Pass reaches the next decision or game end.
+Remaining fuel covers any final Cleanup before neutral priority. -/
+theorem step_showdownPass_last_to_decision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {p : Riftbound.PlayerId} {passes cleanups : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events := by
+  exact Riftbound.step_showdownPass_last_to_decision wf (mightReads_of_registered cards)
+    pending last legal decision front
+
+/-- A final Showdown Pass with the registered cards completes preparation for the next decision. -/
+theorem step_showdownPass_last_to_preparedDecision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {p : Riftbound.PlayerId} {passes cleanups : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .showdown bf p passes :: List.replicate cleanups .cleanup ++ rest)
+    (last : s.participatingCount ≤ passes + 1)
+    (legal : Riftbound.Legal s ⟨.player p, .pass⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
+  Riftbound.step_showdownPass_last_to_preparedDecision wf (mightReads_of_registered cards)
+    pending last legal decision front quiet
+
+/-- Assignment confirmation with the registered cards advances to a decision or game end,
+including when lethal damage needs a replacement choice. -/
+theorem step_assignDone_to_decision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {att side : Riftbound.PlayerId} {acc : List Riftbound.ObjId}
+    {done : List (Riftbound.ObjId × Nat)} {cleanups : Nat}
+    {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .assign bf att side acc done ::
+      Riftbound.combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Riftbound.Legal s ⟨.player side, .assignDone⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player side, .assignDone⟩ = Riftbound.advance extra t events := by
+  exact Riftbound.step_assignDone_to_decision wf (mightReads_of_registered cards)
+    pending legal decision front
+
+/-- Confirming an assignment with the registered cards returns a prepared decision. -/
+theorem step_assignDone_to_preparedDecision {s : Riftbound.GameState} {bf : Riftbound.ObjId}
+    {att side : Riftbound.PlayerId} {acc : List Riftbound.ObjId}
+    {done : List (Riftbound.ObjId × Nat)} {cleanups : Nat}
+    {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .assign bf att side acc done ::
+      Riftbound.combatSteps bf ++ (List.replicate cleanups .cleanup ++ rest))
+    (legal : Riftbound.Legal s ⟨.player side, .assignDone⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player side, .assignDone⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player side, .assignDone⟩ = .ok (t, events) :=
+  Riftbound.step_assignDone_to_preparedDecision wf (mightReads_of_registered cards)
+    pending legal decision front quiet
+
+/-- A checked answer inside Combat with the registered cards reaches a prepared decision. -/
+theorem step_combatAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.combatAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted cleanups p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.combatAnswerContinuation? (raw.pending.dropWhile Riftbound.isRunFrame) =
+        some (cleanups, .priority p :: tail) → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_combatAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- With the registered cards, a checked answer to a Chain effect advances to the next
+decision's continuation or game end, preserving the state and events along that prefix. -/
+theorem step_chainAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.chainAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_chainAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A checked answer finishing a Chain item with the registered cards reaches a prepared decision. -/
+theorem step_chainAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.chainAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted item tail p rest, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .finishSpell item :: tail →
+      Riftbound.chainAnswerContinuation? tail = some (.priority p :: rest) → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_chainAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- Complete a trigger declaration in the registered database, including a replacement
+prompt and the remaining ordinary queue when the underlying stack is already at a decision. -/
+theorem step_putTrigger_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger}
+    {funding : Option Riftbound.TriggerFunding} {index : Nat}
+    {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others funding :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .putTrigger index targets payment⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ =
+        Riftbound.advance extra t events :=
+  Riftbound.step_putTrigger_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- Finalizing a registered trigger includes any Cleanup needed to return ordinary priority. -/
+theorem step_putTrigger_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger}
+    {funding : Option Riftbound.TriggerFunding} {index : Nat}
+    {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others funding :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .putTrigger index targets payment⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .putTrigger index targets payment⟩ = .ok (t, events) :=
+  Riftbound.step_putTrigger_to_preparedDecision wf (mightReads_of_registered cards) pending legal decision quiet
+
+/-- Preparing the payment for a registered trigger reaches its funding decision. -/
+theorem step_prepareTrigger_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {index : Nat} {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others none :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .prepareTrigger index targets payment⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .prepareTrigger index targets payment⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .prepareTrigger index targets payment⟩ = .ok (t, events) :=
+  Riftbound.step_prepareTrigger_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Selecting an Add during registered trigger funding reaches a prepared decision. -/
+theorem step_triggerAdd_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {plan : Riftbound.TriggerFunding} {add : Riftbound.EffectAdd}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .triggerAdd add⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .triggerAdd add⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .triggerAdd add⟩ = .ok (t, events) :=
+  Riftbound.step_triggerAdd_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Cancelling registered trigger funding returns to a prepared decision. -/
+theorem step_cancelTriggerFunding_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {plan : Riftbound.TriggerFunding}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide false⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide false⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .decide false⟩ = .ok (t, events) :=
+  Riftbound.step_cancelTriggerFunding_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- A checked replacement answer can resume the locked trigger with the registered cards.
+Remaining fuel runs any further Cleanup required by the next decision. -/
+theorem step_triggerCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.triggerCostAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_triggerCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A checked replacement answer for a registered trigger succeeds at a prepared decision. -/
+theorem step_triggerCostAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.triggerCostAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted locked p first group others funding owner tail,
+      Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame =
+        .resumeCost locked :: .triggerOrder p first group others funding :: .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_triggerCostAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- A legal play or activation with registered cards reaches the next decision,
+including a decision requested during payment. -/
+theorem step_playDeclaration_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (play : Riftbound.isPlayDeclaration s a = true) (legal : Riftbound.Legal s a) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_playDeclaration_to_decision wf (mightReads_of_registered cards) play legal
+
+/-- The registered cards support a prepared decision after a legal play or activation. -/
+theorem step_playDeclaration_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (play : Riftbound.isPlayDeclaration s a = true) (legal : Riftbound.Legal s a)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_playDeclaration_to_preparedDecision wf (mightReads_of_registered cards) play legal quiet
+
+/-- A checked replacement answer can resume a locked play or activation with the registered cards. -/
+theorem step_playCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.playCostAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_playCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered replacement answer returns a prepared decision after retrying the declaration. -/
+theorem step_playCostAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.playCostAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted locked owner tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .resumeCost locked :: .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_playCostAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- A legal immediate resource activation with registered cards advances to a decision. -/
+theorem step_resourceActivation_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (resource : a.kind.isResourceActivation = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_resourceActivation_to_decision wf (mightReads_of_registered cards) legal resource
+
+/-- An immediate resource activation with the registered cards succeeds in finite fuel. -/
+theorem step_resourceActivation_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (resource : a.kind.isResourceActivation = true)
+    (quiet : ∀ p rest, s.pending = .priority p :: rest → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_resourceActivation_to_preparedDecision wf (mightReads_of_registered cards) legal resource quiet
+
+/-- A registered Standard Move reaches a decision, including through Cleanup and its observers. -/
+theorem step_standardMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {u : Riftbound.ObjId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .standardMove u dest pay⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .standardMove u dest pay⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_standardMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- A legal Standard Move with the registered cards returns a prepared decision in finite fuel. -/
+theorem step_standardMove_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {u : Riftbound.ObjId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .standardMove u dest pay⟩)
+    (quiet : ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .standardMove u dest pay⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .standardMove u dest pay⟩ = .ok (t, events) :=
+  Riftbound.step_standardMove_to_preparedDecision wf (mightReads_of_registered cards) pending legal quiet
+
+/-- A registered group move opens its unit selection. -/
+theorem step_startGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .startGroupMove dest pay⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .startGroupMove dest pay⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_startGroupMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- A registered group move reaches its unit selection in finite fuel. -/
+theorem step_startGroupMove_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .priority p :: rest) (legal : Riftbound.Legal s ⟨.player p, .startGroupMove dest pay⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .startGroupMove dest pay⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .startGroupMove dest pay⟩ = .ok (t, events) :=
+  Riftbound.step_startGroupMove_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Selecting another unit for a registered group move reaches a decision. -/
+theorem step_chooseGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {u : Riftbound.ObjId}
+    {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose u⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose u⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_chooseGroupMove_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- Selecting a unit for a registered group move reaches the next input in finite fuel. -/
+theorem step_chooseGroupMove_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {u : Riftbound.ObjId}
+    {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose u⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose u⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .choose u⟩ = .ok (t, events) :=
+  Riftbound.step_chooseGroupMove_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Cancelling a registered group move returns to a waiting decision. -/
+theorem step_cancelGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide false⟩) (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide false⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_cancelGroupMove_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- Cancelling a registered group move returns the prepared continuation in finite fuel. -/
+theorem step_cancelGroupMove_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide false⟩) (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide false⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .decide false⟩ = .ok (t, events) :=
+  Riftbound.step_cancelGroupMove_to_preparedDecision wf (mightReads_of_registered cards) pending legal decision quiet
+
+/-- A confirmed registered group move advances through Cleanup to a decision. -/
+theorem step_confirmGroupMove_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide true⟩) (decision : Riftbound.isOrdinaryDecisionTail rest = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide true⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_confirmGroupMove_to_decision wf (mightReads_of_registered cards) pending legal decision
+
+/-- Confirming a registered group move returns a prepared decision after Cleanup in finite fuel. -/
+theorem step_confirmGroupMove_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {dest : Riftbound.MoveDest} {pay : Riftbound.Cost} {units : List Riftbound.ObjId} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .groupMove p dest pay units :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide true⟩) (decision : Riftbound.isOrdinaryDecisionTail rest = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide true⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .decide true⟩ = .ok (t, events) :=
+  Riftbound.step_confirmGroupMove_to_preparedDecision wf (mightReads_of_registered cards) pending legal decision quiet
+
+/-- A registered choice among staged Battlefields advances to the next decision. -/
+theorem step_chooseShowdown_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {bf : Riftbound.ObjId}
+    {first : Riftbound.ObjId × Riftbound.PlayerId} {more : List (Riftbound.ObjId × Riftbound.PlayerId)}
+    {rest : List Riftbound.Frame} (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chooseShowdown p first more :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose bf⟩) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose bf⟩ = Riftbound.advance extra t events :=
+  Riftbound.step_chooseShowdown_to_decision wf (mightReads_of_registered cards) pending legal
+
+/-- A registered choice of a staged Battlefield returns the next input in finite fuel. -/
+theorem step_chooseShowdown_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId} {bf : Riftbound.ObjId}
+    {first : Riftbound.ObjId × Riftbound.PlayerId} {more : List (Riftbound.ObjId × Riftbound.PlayerId)}
+    {rest : List Riftbound.Frame} (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .chooseShowdown p first more :: rest) (legal : Riftbound.Legal s ⟨.player p, .choose bf⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .choose bf⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .choose bf⟩ = .ok (t, events) :=
+  Riftbound.step_chooseShowdown_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- A checked answer before Cleanup with the registered cards advances to a decision. -/
+theorem step_cleanupAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.cleanupAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_cleanupAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered checked answer returns a prepared decision after Cleanup. -/
+theorem step_cleanupAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.cleanupAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted stack rest owner tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .cleanup :: stack →
+      Riftbound.chainAnswerContinuation? stack = some rest → rest = .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_cleanupAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- A checked Predict answer with the registered cards can stop at the next input. -/
+theorem step_predictAnswer_waits_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.predictAnswerWaits s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_predictAnswer_waits_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered Predict answer that returns directly to a decision includes any priority Cleanup. -/
+theorem step_predictAnswer_waits_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.predictAnswerWaits s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_predictAnswer_waits_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- A checked choice or chance order can resume straight to an ordinary decision. -/
+theorem step_decisionRunAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.decisionRunAnswerWorkSupported s a = true) :
+    ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
+  Riftbound.step_decisionRunAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered checked program answer that returns to a decision succeeds in finite fuel. -/
+theorem step_decisionRunAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.decisionRunAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.chainAnswerContinuation? (raw.pending.dropWhile Riftbound.isRunFrame) = some (.priority p :: tail) →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_decisionRunAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- For registered cards, check the top item's actual Run programs and follow the final
+Chain Pass through deferred limited Spell declarations to a decision. -/
+theorem step_chainPass_last_checked {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ Riftbound.ChainWorkEnd t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
+  Riftbound.step_chainPass_last_checked wf (mightReads_of_registered cards) ongoing pending last checked front decision
+
+/-- A checked final Chain Pass reaches a decision after resolving deferred declarations,
+with the remaining fuel available for final Cleanup. -/
+theorem step_chainPass_last_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ t.pending.head?.all (fun f => !f.isWork) = true ∧
+      ∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events := by
+  obtain ⟨t, used, events, positive, stopped, continues, _⟩ :=
+    Riftbound.step_chainPass_last_checked_to_decision wf (mightReads_of_registered cards)
+      ongoing pending last checked front decision
+  exact ⟨t, used, events, positive, stopped, continues⟩
+
+/-- A checked last Chain Pass with the registered cards includes any priority Cleanup. -/
+theorem step_chainPass_last_checked_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} (wf : s.WF)
+    (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (checked : Riftbound.chainPassWorkSupported s p rest = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, 0 < used ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
+  Riftbound.step_chainPass_last_checked_to_preparedDecision wf (mightReads_of_registered cards)
+    ongoing pending last checked front decision quiet
+
+/-- For registered cards, a last Chain Pass follows each supported Repeat execution using
+the definition and targets that are available when it starts. -/
+theorem step_chainPass_last_repeated {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} {item : Riftbound.ObjId}
+    {older : List Riftbound.ObjId} {object : Riftbound.Object} {definition : Riftbound.CardDef}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (chain : s.zone .chain = item :: older) (found : s.obj? item = some object)
+    (printed : s.cardDef? item = some definition) (repeated : object.spellPick.hasExecutionChoices = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, 0 < used ∧ Riftbound.RepeatedSpellEnd t ∧
+      (∀ fuel, Riftbound.step (used + fuel) s ⟨.player p, .pass⟩ = Riftbound.advance fuel t events) ∧
+      (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true →
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) :=
+  Riftbound.step_chainPass_last_repeated wf (mightReads_of_registered cards) ongoing pending last
+    chain found printed repeated front decision
+
+/-- A final Repeat pass with the registered cards returns the prepared decision, or
+identifies the first unsupported execution. -/
+theorem step_chainPass_last_repeated_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {passes : Nat} {rest : List Riftbound.Frame} {item : Riftbound.ObjId}
+    {older : List Riftbound.ObjId} {object : Riftbound.Object} {definition : Riftbound.CardDef}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) (ongoing : s.result = none)
+    (pending : s.pending = .chainPass p passes :: rest) (last : s.participatingCount ≤ passes + 1)
+    (chain : s.zone .chain = item :: older) (found : s.obj? item = some object)
+    (printed : s.cardDef? item = some definition) (repeated : object.spellPick.hasExecutionChoices = true)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, 0 < used ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .pass⟩ = Riftbound.advance extra t events) ∧
+      ((t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+        Riftbound.step used s ⟨.player p, .pass⟩ = .ok (t, events)) ∨ Riftbound.RepeatWorkUnsupported t) :=
+  Riftbound.step_chainPass_last_repeated_to_preparedDecision wf (mightReads_of_registered cards) ongoing pending last
+    chain found printed repeated front decision quiet
+
+/-- A detected batch of immediate and ordinary triggers runs through the engine with the registered
+cards, including the Battlefield entry used after a concession. -/
+theorem advance_detectedTriggers (s : Riftbound.GameState) (triggers : List Riftbound.PendTrigger)
+    (rest : List Riftbound.Frame) (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield) :
+    ∃ t used events, Riftbound.AdvancePrefix
+      { s with pending := Riftbound.insertDetectedTriggers s triggers rest } t used events ∧
+      Riftbound.TriggerWorkStop (Riftbound.afterLeadingTriggers (Riftbound.ordinaryTriggerContinuation s triggers rest))
+        t.pending :=
+  Riftbound.advance_detectedTriggers_checkedMight s triggers rest wf (mightReads_of_registered cards)
+
+end RiftboundCards
+
+end

@@ -52,21 +52,24 @@ inductive PlayExtra where
   /-- A friendly Unit is killed (for a Spell: the first object it chooses; its first choice must be
   a friendly Unit). -/
   | killUnit
-  /-- The player spends this much XP (the object it is done to is their Legend). -/
+  /-- A friendly Unit is killed as a separate Spell cost. Its base costs bound the Spell's targets. -/
+  | killUnitForTarget
+  /-- The player spends this much of their own XP. -/
   | spendXP (n : Nat)
-  /-- For a Spell: the player spends this much XP if the first object it chooses has more Might than
-  the cap (Conscription: with the XP it can choose any unit). Nothing is chosen for the cost. -/
+  /-- For a Spell: spending this much XP lifts the first target's Might cap (Conscription). -/
   | spendXPOver (n : Nat) (cap : Nat)
+  /-- Another card is discarded from the hand as a permanent's play cost (CR 357.2, 423.3). -/
+  | discardCard
 deriving DecidableEq, Repr, Hashable
 
 /-- The Spell picks the object for this cost separately from its effect's choices (CR 355, 357). -/
 def PlayExtra.separateSpellObject : PlayExtra → Bool
-  | .returnUnit | .exhaustUnit => true
+  | .returnUnit | .exhaustUnit | .killUnitForTarget => true
   | _ => false
 
 /-- Whether this cost asks for a permanent to die. -/
 def PlayExtra.kills : PlayExtra → Bool
-  | .killGear | .killUnitOrGear | .killUnit | .killPet => true
+  | .killGear | .killUnitOrGear | .killUnit | .killUnitForTarget | .killPet => true
   | _ => false
 
 /-- What the additional cost of a card (its `playExtra`) takes off the cost of the card when it is
@@ -119,8 +122,14 @@ structure CardDef where
   /-- Abilities this card gives to other objects, through attachment or a resolving effect
   (CR 137, 479.3). They are not abilities of the card itself. -/
   grants : List Ability := []
+  /-- The Equip ability's printed Energy discount, which can read the recipient in slot 0. -/
+  equipEnergyDiscount : Option Amount := none
+  /-- The XP cost of Equip printed in words (CR 818.1.c.3). -/
+  equipXP : Option Nat := none
   /-- What a Spell does: the choices made when it is played, and the effect (CR 355, 359.3). -/
   spellEffect : Option EffectDef := none
+  /-- Energy discount when at least one declared target matches these filters (CR 355, 356.4). -/
+  chosenEnergyDiscount : Option (FilterList × Nat) := none
   /-- The cost the player may pay more when they play the card: "you may pay ... as an additional
   cost to play me" (CR 357.2). -/
   additionalCost : Option Cost := none
@@ -195,32 +204,40 @@ def equipCost (c : CardDef) : Option Cost :=
     | .equip, .cost cost | .equip, .costOrExhaustUnit cost => some cost
     | _, _ => none)
 
+/-- The resource payment and printed modifiers of the Equip ability (CR 356.4, 818). -/
+def equipResourceCosts (c : CardDef) (cost : Cost) : List AbilityCost :=
+  .pay cost :: c.equipEnergyDiscount.toList.map (AbilityCost.energyDiscount .always)
+
 /-- Whether the Equipment lets its controller exhaust a Unit to pay its Equip cost. -/
 def equipCanExhaust (c : CardDef) : Bool :=
   c.keywords.any (fun k => match k.keyword, k.arg with
     | .equip, .costOrExhaustUnit _ => true
     | _, _ => false)
 
-/-- Keyword effects that need an effective value captured when they trigger. -/
+/-- Triggered abilities supplied by the source's effective keywords. -/
 def keywordTrigger : Keyword → Option Ability
+  | .temporary => some (.triggered (Trigger.onSelf (.at_ .beginning))
+      (EffectDef.of [] (.prim (.kill .self))) .unlimited)
   | .disarm => some (.triggered (Trigger.onSelf .attack)
       (EffectDef.of [Choice.targetOf .one .enemy .here [.ofType .unit]]
         (.grant (.slot 0) (.mightMinus .it .eventAmount) .thisTurn)) .unlimited)
   | _ => none
 
 /-- The abilities that the printed keywords of the card stand for (design.md §7.4): Equip is an
-activated ability, "pay the cost: attach this to a unit you control" (CR 137, 825), and Hunt X
+activated ability, "pay the cost: attach this to a unit you control" (CR 137, 818), and Hunt X
 fires when the Unit conquers or holds: the player gains X XP (CR 823). -/
 def printedKeywordAbilities (c : CardDef) : List Ability :=
-  let equipAbility (cost : AbilityCost) : Ability :=
-    .activated [cost] .normal
-      (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.prim (.attach .self (.slot 0)))) .unlimited
+  let equipAbility (costs : List AbilityCost) : Ability :=
+    .activated costs .normal
+      { choices := [Choice.targetOf .one .you .anywhere [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.attach .self (.slot 0)) } .unlimited
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
-    | .equip, .cost cost => [equipAbility (.pay cost)]
+    | .equip, .cost cost => [equipAbility (c.equipResourceCosts cost)]
     | .equip, .costOrExhaustUnit cost =>
-      [equipAbility (.pay cost), equipAbility (.exhaustFriendly (.ofList [.ofType .unit]))]
+      [equipAbility (c.equipResourceCosts cost), equipAbility [.exhaustFriendly (.ofList [.ofType .unit])]]
+    | .equip, .none => c.equipXP.toList.map (fun n => equipAbility [.spendXP n])
     | _, _ => []) ++
   c.keywords.flatMap (fun k =>
     match k.keyword, k.arg with
@@ -233,14 +250,14 @@ def printedKeywordAbilities (c : CardDef) : List Ability :=
     -- Quick-Draw: when the card is played, attach it to a unit its player controls (CR 819)
     | .quickDraw, _ =>
       [.triggered (Trigger.onSelf .play)
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (EffectDef.of [Choice.targetOf .one .you .anywhere [.ofType .unit]]
           (.prim (.attach .self (.slot 0)))) .unlimited]
     -- Weaponmaster: when the Unit is played, its player may Equip one of their Equipment to it
     -- for one Power less, even if it is attached already (CR 821)
     | .weaponmaster, _ =>
-      [.triggered (Trigger.onSelf .play)
-        (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
-          (.may (.equipWithCost (.slot 0) .self 1))) .unlimited]
+      [.triggered { event := .play, optional := true }
+        (EffectDef.of [Choice.targetOf .one .you .anywhere [.tag ⟨"Equipment"⟩]]
+          (.equipWithCost (.slot 0) .self 1)) .unlimited]
     | .hidden, _ =>
       -- Hide: pay one Power of any domain, to hide the card at a Battlefield its player controls;
       -- play: from the turn after, as a Reaction, without paying (CR 811)
@@ -316,6 +333,12 @@ def nameKey (c : CardDef) : String × Option String := (c.name, c.subtitle)
 /-- The card has the type `t`. -/
 def hasType (c : CardDef) (t : CardType) : Bool := c.types.contains t
 
+/-- Identify token definitions, including the four Origins tokens numbered with the main set
+(CR 179, 185). -/
+def isTokenCard (c : CardDef) : Bool :=
+  c.id.code.startsWith "TKN-" || (c.id.code.splitOn "-T").length > 1 ||
+    ["OGN-271", "OGN-272", "OGN-273", "OGN-274"].contains c.id.code
+
 /-- The card has the supertype `s`. -/
 def hasSupertype (c : CardDef) (s : Supertype) : Bool := c.supertypes.contains s
 
@@ -348,6 +371,7 @@ theorem copyLimit_of_not_unique {c : CardDef} (h : c.hasKeyword .unique = false)
 `it` and the replaced event where they mean something (`Riftbound.Card.IR.Check`). -/
 def StaticOk (c : CardDef) : Prop :=
   c.abilities.all Ability.ok = true ∧ c.grants.all Ability.ok = true ∧
+    c.equipEnergyDiscount.all (Amount.ok { slots := 1 }) = true ∧
     (match c.spellEffect with
       | none => true
       | some d => d.ok {}) = true
@@ -356,8 +380,8 @@ instance (c : CardDef) : Decidable c.StaticOk := by unfold StaticOk; infer_insta
 
 /-- A card with no effect refers to nothing, so it passes the check. -/
 theorem staticOk_of_no_effects {c : CardDef} (h1 : c.abilities = []) (h2 : c.spellEffect = none)
-    (h3 : c.grants = []) : c.StaticOk := by
-  simp [StaticOk, h1, h2, h3]
+    (h3 : c.grants = []) (h4 : c.equipEnergyDiscount = none) : c.StaticOk := by
+  simp [StaticOk, h1, h2, h3, h4]
 
 end CardDef
 

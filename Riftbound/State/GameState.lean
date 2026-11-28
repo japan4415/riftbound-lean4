@@ -72,6 +72,37 @@ structure CardPlay where
   turn : Nat
   /-- Whether this is a finalization or a resolved play. -/
   moment : PlayMoment
+  /-- The Energy spent on this Spell finalization. Other entries record zero. -/
+  energyPaid : Nat := 0
+  /-- Physical identity at finalization, which survives any later move to a new object. -/
+  physical : Option PhysId := none
+  /-- The play timestamp at finalization, independent of later object allocations. -/
+  stamp : Option Nat := none
+deriving DecidableEq
+
+/-- Preserve the original state representation when supplemental play evidence is absent. -/
+instance : Repr CardPlay where
+  reprPrec play _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [
+      field "who" (repr play.who), field "object" (repr play.object),
+      field "types" (repr play.types), field "turn" (repr play.turn),
+      field "moment" (repr play.moment)]
+    let fields := if play.energyPaid == 0 then fields
+      else fields ++ [field "energyPaid" (repr play.energyPaid)]
+    let fields := if play.physical.isNone then fields
+      else fields ++ [field "physical" (repr play.physical)]
+    let fields := if play.stamp.isNone then fields
+      else fields ++ [field "stamp" (repr play.stamp)]
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
+
+/-- Withdrawn seats and the regular turn positions already skipped because of a withdrawal. -/
+structure SeatDepartures where
+  /-- Seats that have already left, in departure order. Their registration and zones remain. -/
+  seats : List PlayerId := []
+  /-- How many regular turn positions were skipped in the original turn order. -/
+  skippedTurns : Nat := 0
 deriving DecidableEq, Repr
 
 /-- The state of a game. The lists in `zones` are the source of truth for where objects are. -/
@@ -106,9 +137,9 @@ structure GameState where
   /-- The Rune Pool of each player, keyed by `PlayerId.n`. A missing player has an empty Pool
   (CR 166). -/
   pools : Std.ExtTreeMap Nat RunePool
-  /-- The turn after which the clock ends the game: when time is called, the turn that is going
-  on is played to its end, and 3 turns more (TR 408.2). `none` until time is called. -/
-  clock : Option Nat := none
+  /-- The schedule and end-of-match procedure once the tournament clock has been called
+  (TR 408.2, 408.4). -/
+  clock : Option RoundClock := none
   /-- What spells and abilities made true for the rest of a turn (CR 389-393). -/
   turnFx : List TurnFx := []
   /-- The cards drawn in the current turn: the player who drew, and the turn (older ones are
@@ -124,7 +155,43 @@ structure GameState where
   extraTurnsTaken : List PlayerId := []
   /-- The current Combat, including Units that left its Battlefield (CR 466, 468). -/
   combat : Option CombatParticipation := none
-deriving DecidableEq, Repr
+  /-- Seat withdrawals do not change zone numbering or the original turn order (CR 652.5). -/
+  departures : SeatDepartures := {}
+  /-- Public XP by seat. A missing player has 0 (CR 729, 732). -/
+  experience : Std.ExtTreeMap Nat Nat := {}
+  /-- The physical card registered as each seat's Chosen Champion (CR 103.3.a, 112). -/
+  chosenChampions : Std.ExtTreeMap Nat PhysId := {}
+  /-- Damage still marked on each object, newest first, with the responsible seat (CR 142.3). -/
+  damageMarks : Std.ExtTreeMap Nat (List (Option PlayerId × Nat)) := {}
+deriving DecidableEq
+
+/-- Game archives hashed the printed state before withdrawals were added. Preserve that format
+for games before their first withdrawal and include the new state once a seat has left. -/
+instance : Repr GameState where
+  reprPrec s _ :=
+    let field (name : String) (value : Std.Format) :=
+      Std.Format.text name ++ " := " ++ (Std.Format.nest (name.length + 4) value).group
+    let fields := [
+      field "config" (repr s.config), field "cards" (repr s.cards),
+      field "objects" (repr s.objects), field "zones" (repr s.zones),
+      field "points" (repr s.points), field "nextId" (repr s.nextId),
+      field "nextTimestamp" (repr s.nextTimestamp), field "pending" (repr s.pending),
+      field "turnOrder" (repr s.turnOrder), field "phase" (repr s.phase),
+      field "turn" (repr s.turn), field "active" (repr s.active),
+      field "result" (repr s.result), field "pools" (repr s.pools),
+      field "clock" (repr s.clock), field "turnFx" (repr s.turnFx),
+      field "drawLog" (repr s.drawLog), field "playLog" (repr s.playLog),
+      field "extraTurns" (repr s.extraTurns), field "turnShift" (repr s.turnShift),
+      field "extraTurnsTaken" (repr s.extraTurnsTaken), field "combat" (repr s.combat)]
+    let fields := if s.departures.seats.isEmpty && s.departures.skippedTurns == 0 then fields
+      else fields ++ [field "departures" (repr s.departures)]
+    let fields := if s.experience.isEmpty then fields
+      else fields ++ [field "experience" (repr s.experience)]
+    let fields := if s.chosenChampions.isEmpty then fields
+      else fields ++ [field "chosenChampions" (repr s.chosenChampions)]
+    let fields := if s.damageMarks.isEmpty then fields
+      else fields ++ [field "damageMarks" (repr s.damageMarks)]
+    Std.Format.bracket "{ " (Std.Format.joinSep fields (Std.Format.text "," ++ Std.Format.line)) " }"
 
 /-- Every zone of a game with `n` players. -/
 def allZones (n : Nat) : List Zone :=
@@ -179,8 +246,57 @@ theorem Zone.valid_chain (n : Nat) : Zone.chain.Valid n := by
 
 namespace GameState
 
+/-- Test an object mark, using the company's shared observation point for simultaneous deaths. -/
+def hasTurnMark (s : GameState) (id : ObjId) (kind : TurnEffect)
+    (who : Option PlayerId := none) : Bool :=
+  let applies := fun note : TurnFx =>
+    note.turn == s.turn && note.target == some id && who.all (· == note.who)
+  let recorded := fun () => s.turnFx.any (fun note => applies note && note.kind == kind)
+  if kind == .diedAlone then
+    (s.turnFx.findSome? (fun note => do
+      if !applies note then none else
+      match note.kind with
+      | .deathCompany alone => some alone
+      | _ => none)).getD (recorded ())
+  else recorded ()
+
 /-- The number of players. -/
 def playerCount (s : GameState) : Nat := s.config.mode.players
+
+/-- A registered seat still taking part in the game (CR 651.3). -/
+def participates (s : GameState) (p : PlayerId) : Bool :=
+  decide (p.n < s.playerCount) && !s.departures.seats.contains p
+
+/-- The seats that still take part, in registration order. -/
+def participatingSeats (s : GameState) : List PlayerId :=
+  ((List.range s.playerCount).map (fun i => (⟨i⟩ : PlayerId))).filter s.participates
+
+/-- The original turn order with departed seats removed (CR 652.5.a). -/
+def participatingOrder (s : GameState) : List PlayerId :=
+  s.turnOrder.filter s.participates
+
+/-- The number of seats whose passes are needed to close a Chain or Showdown. -/
+def participatingCount (s : GameState) : Nat :=
+  if s.departures.seats.isEmpty then s.playerCount else s.participatingSeats.length
+
+/-- Read an established handoff ring from the seat immediately after the holder.
+The current holder is last. -/
+def _root_.Riftbound.seatOrderAfter (order : List PlayerId) (holder : PlayerId) : List PlayerId :=
+  match order.idxOf? holder with
+  | none => []
+  | some index => order.drop (index + 1) ++ order.take (index + 1)
+
+/-- The next regular position in the original turn order. Extra turns do not advance it. -/
+def regularTurnPosition (s : GameState) : Nat :=
+  s.turn - s.turnShift + s.departures.skippedTurns
+
+/-- The original turn-order position with the next eligible turn player and any skipped seats. -/
+def nextRegularTurn (s : GameState) : PlayerId × Nat :=
+  let start := s.regularTurnPosition % s.playerCount
+  if s.departures.seats.isEmpty then (s.turnOrder.getD start ⟨0⟩, 0) else
+    let cycle := s.turnOrder.drop start ++ s.turnOrder.take start
+    let offset := (cycle.findIdx? s.participates).getD 0
+    (cycle.getD offset ⟨0⟩, offset)
 
 /-- The contents of a zone. -/
 def zone (s : GameState) (z : Zone) : List ObjId := s.zones.getD z.key []
@@ -221,8 +337,9 @@ def poolOf (s : GameState) (p : PlayerId) : RunePool := s.pools.getD p.n RunePoo
 def setPool (s : GameState) (p : PlayerId) (pool : RunePool) : GameState :=
   { s with pools := s.pools.insert p.n pool }
 
-/-- The points of a player. -/
-def pointsOf (s : GameState) (p : PlayerId) : Nat := s.points.getD p.n 0
+/-- The points of a player or their team (CR 491.8.d). -/
+def pointsOf (s : GameState) (p : PlayerId) : Nat :=
+  s.points.getD (s.config.mode.scoringSeat p).n 0
 
 /-- Every object on any zone, zone by zone. -/
 def zoneIds (s : GameState) : List ObjId :=

@@ -59,7 +59,10 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     let (i, r) := r.below (s.zone (.player p .outOfGame)).length
     some (⟨.chance, .pick i⟩, r)
   | .chanceTurnOrder :: _ =>
-    let (l, r) := shuffle r (allPlayers s.playerCount)
+    let (l, r) := if s.config.mode.isTeamDuel then
+      let (i, r) := r.below 2
+      (Mode.teamTurnOrder (i == 0), r)
+    else shuffle r s.participatingSeats
     some (⟨.chance, .arrangePlayers l⟩, r)
   | .chanceRecycle p :: _ =>
     let (l, r) := shuffle r (s.zone (.player p .setAside))
@@ -69,6 +72,9 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
     some (⟨.chance, .arrange l⟩, r)
   | .chancePredict _ _ _ bottom :: _ =>
     let (order, r) := shuffle r bottom
+    some (⟨.chance, .arrange order⟩, r)
+  | .chanceRecycleTrash _ _ cards :: _ =>
+    let (order, r) := shuffle r cards
     some (⟨.chance, .arrange order⟩, r)
   | .mulligan p _ :: _ => some (⟨.player p, .mulliganDone⟩, r)
   | .chainPass p _ :: _ => some (⟨.player p, .pass⟩, r)
@@ -80,8 +86,9 @@ def autoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   | .eitherDo .. :: _ => (legalFrameActions s).head?.map (fun a => (a, r))
   | .pickDo .. :: _ | .nameCard .. :: _ | .guessCardType .. :: _ | .predict .. :: _ =>
     (legalFrameActions s).head?.map (fun a => (a, r))
+  | .chooseBurnOutAmong p first _ :: _ => some (⟨.player p, .burnOutTarget first⟩, r)
   | .chooseBurnOut p :: _ =>
-    match (allPlayers s.playerCount).filter (· ≠ p) with
+    match (allPlayers s.playerCount).filter (fun q => !s.config.mode.sameSide p q) with
     | opp :: _ => some (⟨.player p, .burnOutTarget opp⟩, r)
     | [] => none
   | _ => none
@@ -91,6 +98,9 @@ priority. -/
 def playAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
   match s.pending with
   | .priority p :: _ => some (⟨.player p, .pass⟩, r)
+  | .teamInvitation guest :: _ => some (⟨.player guest, .pass⟩, r)
+  | .chooseShowdown p first _ :: _ => some (⟨.player p, .choose first.1⟩, r)
+  | .groupMove p .. :: _ => some (⟨.player p, .decide false⟩, r)
   | _ => autoAnswer r s
 
 /-- Play until `turns` turns have begun and the turn player has priority in the Main Phase, or

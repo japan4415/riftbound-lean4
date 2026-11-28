@@ -108,4 +108,81 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
     (paid.obj? item).any (fun o => o.paid && o.targets == [target]) &&
     events.contains (.chosenBySpell p target) && !(events.contains (.chosenBySpell p payer))
 
+-- A teammate's ready Unit can be exhausted for either spell. Only Ki Burst has a target.
+#guard radianceCase fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (RiftboundDriver.runUntilTurn 100 1 2000 (RiftboundDriver.Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, ki) ← put (s.rich p) p "RAD-028" .hand
+  let (s, life) ← put s p "RAD-029" .hand
+  let (s, payer) ← put s mate "RAD-061" .base
+  let (s, target) ← put s enemy "RAD-061" .base
+  let action (spell : ObjId) (targets : List ObjId) (cost : ObjId) : Action :=
+    ⟨.player p, .playCard spell ⟨1, []⟩ targets none none (.withExtraObject .plain cost)⟩
+  let kiPlay := action ki [target] payer
+  let lifePlay := action life [] payer
+  let (kiPaid, kiEvents) ← (step 100 s kiPlay).toOption
+  let (lifePaid, lifeEvents) ← (step 100 s lifePlay).toOption
+  let finished := settleChain {} 20 kiPaid
+  return (legalActions s).contains kiPlay && (legalActions s).contains lifePlay &&
+    !(step 100 s (action life [] target)).isOk && !(step 100 (s.tire payer) lifePlay).isOk &&
+    kiPaid.tired payer == some true && lifePaid.tired payer == some true &&
+    kiEvents.contains (.chosenBySpell p target) && !(kiEvents.contains (.chosenBySpell p payer)) &&
+    !lifeEvents.any (fun | .chosenBySpell .. | .chosenByAbility .. => true | _ => false) &&
+    (finished.obj? target).any (·.stunned)
+
+-- Ekko and Parallel Convergence return the chosen friendly Unit to its owner.
+#guard radianceCase fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (RiftboundDriver.runUntilTurn 100 1 2000 (RiftboundDriver.Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let field := s.bf0
+  let (s, spell) ← put (s.rich p) p "RAD-051" .hand
+  let (s, ekko) ← put s p "RAD-061" .hand
+  let (s, borrowed) ← put s enemy "RAD-011" .base
+  let (s, target) ← putAt (s.control enemy field) enemy "RAD-067" field
+  let s := (setController mate s borrowed).1
+  let spellPay (cost : ObjId) : Action :=
+    ⟨.player p, .playCard spell ⟨2, [.mind]⟩ [target] none none (.withExtraObject .plain cost)⟩
+  let unitPay (cost : ObjId) : Action := ⟨.player p, .playCard ekko ⟨3, []⟩ [cost] none none .plain⟩
+  let (casting, events) ← (step 100 s (spellPay borrowed)).toOption
+  let (played, _) ← (step 100 s (unitPay borrowed)).toOption
+  let finished := settleChain {} 20 casting
+  let returned (state : GameState) :=
+    state.countIn enemy .hand "RAD-011" == 1 && state.countIn mate .hand "RAD-011" == 0
+  return (legalActions s).contains (spellPay borrowed) && (legalActions s).contains (unitPay borrowed) &&
+    !(step 100 s (spellPay target)).isOk && !(step 100 s (unitPay target)).isOk &&
+    returned casting && returned played && played.countIn p .base "RAD-061" == 1 &&
+    events.contains (.chosenBySpell p target) && !(events.contains (.chosenBySpell p borrowed)) &&
+    (finished.obj? target).any (fun unit => unit.damage == 5)
+
+-- Starry-Eyed Songstress can share its three-Unit discount with the caster's teammate.
+#guard radianceCase fun labState => do
+  let config : GameConfig := { ruleSet := .coreOnly, mode := .teamDuel }
+  let initial ← GameState.initial labState.cards config (List.replicate 4 goodDeck)
+  let s ← (RiftboundDriver.runUntilTurn 100 1 2000 (RiftboundDriver.Rng.ofSeed 1) initial).toOption
+  let p := s.me
+  let mate ← s.players.find? (fun q => p != q && config.mode.sameSide p q)
+  let enemy ← s.players.find? (fun q => !config.mode.sameSide p q)
+  let (s, legend) ← put s p "RAD-151" .legendZone
+  let (s, own) ← put s p "RAD-061" .base
+  let (s, first) ← put s mate "RAD-061" .base
+  let (s, second) ← put s mate "RAD-061" .base
+  let (s, foe) ← put s enemy "RAD-061" .base
+  let (s, spell) ← put (s.fund p 1) p "RAD-047" .hand
+  let action ← (legalActions s).find? (fun a => match a.kind with
+    | .playCard id pay _ _ _ pick => id == spell && pay == ⟨1, []⟩ &&
+      (pick.spellExhausts.any (fun (source, units) => source == legend && units.length == 3 &&
+        [own, first, second].all units.contains))
+    | _ => false)
+  let (paid, _) ← (step 100 s action).toOption
+  return (paid.poolOf p).energy == 0 && [legend, own, first, second].all (fun id => paid.tired id == some true) &&
+    paid.tired foe == some false
+
 end RiftboundTest

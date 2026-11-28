@@ -159,7 +159,7 @@ meta def afterHerald : Option (GameState × List Event) :=
           match (stepT s4 ⟨.player p, .pass⟩).bind
               (fun s5 => stepT s5 ⟨.player q, .pass⟩) with
           | some s6 =>
-            -- the Unit is dead; its ability is on the Chain; the turn player has priority
+            -- the Unit is dead; its ability's controller has priority on the new Chain
             -- the Unit is a token in the test: off the Board, it ceases to exist (CR 183)
             (s6.zone (.player q .trash)).length == (s3.zone (.player q .trash)).length &&
             (s6.zone .chain).length == 1 &&
@@ -167,9 +167,9 @@ meta def afterHerald : Option (GameState × List Event) :=
               | some o => o.controller == q &&
                   (match o.kind with | .chainAbility c _ _ => c == cid "T-MAR" | _ => false)
               | none => false) &&
-            (match s6.pending with | .chainPass r 0 :: _ => r == p | _ => false) &&
-            (match (stepT s6 ⟨.player p, .pass⟩).bind
-                (fun s7 => stepT s7 ⟨.player q, .pass⟩) with
+            (match s6.pending with | .chainPass r 0 :: _ => r == q | _ => false) &&
+            (match (stepT s6 ⟨.player q, .pass⟩).bind
+                (fun s7 => stepT s7 ⟨.player p, .pass⟩) with
               | some s8 => (s8.zone .chain).isEmpty &&
                   (s8.zone (.player q .hand)).length == (s6.zone (.player q .hand)).length + 1
               | none => false)

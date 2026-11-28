@@ -23,6 +23,10 @@ open Riftbound RiftboundCards
 -- the cards of each set (first printings)
 #guard Origins.cards.length == 298
 #guard ProvingGrounds.cards.length == 24
+#guard (ProvingGrounds.cards.filter (·.hasSupertype .signature)).map (·.id.code) ==
+  ["OGS-018", "OGS-020", "OGS-022", "OGS-024"]
+#guard ProvingGrounds.OGS_018.cost == some ⟨8, [.own, .own]⟩
+#guard ProvingGrounds.OGS_024.cost == some ⟨5, [.own]⟩
 #guard Spiritforged.cards.length == 222
 #guard Unleashed.cards.length == 225
 #guard Vendetta.cards.length == 167
@@ -46,6 +50,19 @@ open Riftbound RiftboundCards
       c.sets == [⟨"OGN"⟩, ⟨"SFD"⟩, ⟨"VEN"⟩]
   | none => false
 
+-- Lee Sin, Centered and Leona, Determined were Chosen Champions at RQ Houston.
+#guard ["OGN-151", "OGN-238"].all fun code =>
+  (db.find? ⟨code⟩).any (fun c => decide c.IsChosenChampionCandidate)
+
+-- Riot lists these Choices in the Vi and Vex Champion Decks.
+#guard [("Vi", ["OGN-036", "UNL-030", "UNL-176"]), ("Vex", ["SFD-146", "UNL-055", "UNL-150"])].all
+  fun (tag, codes) => codes.all fun code =>
+    (db.find? ⟨code⟩).any (fun c => decide c.IsChosenChampionCandidate && c.tags.contains ⟨tag⟩)
+
+-- The printed Signature cards belong to the corresponding Champion's deck.
+#guard [("Vi", "UNL-188"), ("Vex", "UNL-194")].all fun (tag, code) =>
+  (db.find? ⟨code⟩).any (fun c => c.hasSupertype .signature && c.tags.contains ⟨tag⟩)
+
 -- a parameter that is a number, and a parameter that is a cost
 #guard match db.find? ⟨"OGN-003"⟩ with
   | some c => c.keywords.any (·.arg == .amount 2)
@@ -55,9 +72,11 @@ open Riftbound RiftboundCards
       [{ keyword := .action }, { keyword := .repeat_, arg := .cost ⟨1, []⟩ }]
   | none => false
 
--- the cards of Origins that do everything their text says (`CardDef.runs`): the measure of the
--- goal "every card of the first set works" (298)
-#guard (allCards.filter (fun c => c.id.code.startsWith "OGN-" && c.runs)).length == 298
+#guard Origins.cards.all CardDef.runs
+-- The death replacement, its interaction with Deathgrip, and the Kill cost of Cruel Patron
+-- are covered by their Origins and Spiritforged scenarios.
+#guard ["OGN-077", "OGN-208", "SFD-163"].all fun code =>
+  (db.find? ⟨code⟩).any (fun c => c.status == .full && c.runs)
 #guard (allCards.filter (fun c => c.id.code.startsWith "OGN-")).length == 298
 -- Spiritforged (222): the measure of the goal "every card of the second set works"
 #guard (allCards.filter (fun c => c.id.code.startsWith "SFD-" && c.runs)).length == 222
@@ -70,7 +89,7 @@ open Riftbound RiftboundCards
 #guard Vendetta.cards.all (fun c => c.status == .drafted || c.status == .full)
 #guard (Vendetta.cards.filter CardDef.runs).length == 167
 #guard Radiance.cards.all (fun c => c.status == .full && c.runs)
-#guard (allCards.filter (fun c => c.status == .drafted || c.status == .full)).length == 1102
+#guard allCards.all (fun c => c.status != .todo)
 
 -- The official image of Bilgewater Tracker shows Fury and the Bilgewater tag.
 #guard match db.find? ⟨"RAD-003"⟩ with
@@ -84,7 +103,7 @@ open Riftbound RiftboundCards
 
 -- Firestorm: one choice (the Battlefield), a spell effect and no abilities
 #guard match db.find? ⟨"OGS-002"⟩ with
-  | some c => c.spellEffect.isSome && c.abilities.isEmpty && c.status == .drafted &&
+  | some c => c.spellEffect.isSome && c.abilities.isEmpty && c.status == .full &&
       (match c.spellEffect with | some e => e.choices.length == 1 | none => false)
   | none => false
 
@@ -93,16 +112,13 @@ open Riftbound RiftboundCards
   | some c => c.abilities == [.passive .always [.triggersExtra .die .anywhere]]
   | none => false
 
--- Recruit the Vanguard cannot be written yet: the tokens go to a place chosen then
+-- Recruit the Vanguard runs the four placement choices when the spell resolves.
 #guard match db.find? ⟨"OGS-015"⟩ with
-  | some c => c.status == .todo && c.spellEffect.isNone
+  | some c => c.status == .full && c.spellRuns
   | none => false
 
--- the Spells with written effects: how many the interpreter runs from start to end (roadmap.md, M4d). The rest
--- use something it does not know yet: a mode, a choice of several objects, a place such as a chosen
--- Battlefield, a delayed or replaced event, taking control, an extra turn. A lasting change of
--- Might that ends with the turn (`grant`) runs since M6d.
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 270
-#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellRuns)).length == 269
+-- Every written Spell passes the interpreter's structural check.
+#guard (allCards.filter (fun c => (c.status == .drafted || c.status == .full) && c.spellEffect.isSome)).length == 271
+#guard allCards.all (fun c => c.spellEffect.isNone || c.spellRuns)
 
 end RiftboundTest

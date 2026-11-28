@@ -18,9 +18,7 @@ open RiftboundDriver
 
 /-- The demo game of `seed` is played to its end without an error of the engine. -/
 meta def playsThrough (seed turns : Nat) (timed limited : Bool) : Bool :=
-  match demoTrace seed turns timed false limited with
-  | .ok _ => true
-  | .error _ => false
+  (demoEndState seed turns timed false limited).isOk
 
 -- Core Rules: 12 seeds, played until a player wins
 #guard (List.range 12).all (fun i => playsThrough (i + 1) 40 false false)

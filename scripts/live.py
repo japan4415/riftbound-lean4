@@ -111,12 +111,16 @@ def make_handler(lean: Lean, port: int):
                             or match not in ("single", "bo1", "bo3")):
                         return self._json(400, {"error": "bad start"})
                     line = f"start {seed} {humans} {kind} {match}"
-                elif path == "/api/register-start":
+                elif path in ("/api/register-start", "/api/register-team-start"):
+                    team = path == "/api/register-team-start"
                     seed = int(req.get("seed", 1))
-                    humans = str(req.get("humans", "01"))
-                    if seed < 0 or humans not in ("0", "1", "01"):
+                    humans = str(req.get("humans", "0123" if team else "01"))
+                    valid_humans = (bool(humans) and set(humans) <= set("0123") and len(set(humans)) == len(humans)
+                                    if team else humans in ("0", "1", "01"))
+                    if seed < 0 or not valid_humans:
                         return self._json(400, {"error": "bad start"})
-                    line = f"start-json {seed} {humans} {json.dumps(req['setup'], ensure_ascii=True)}"
+                    start = "start-team-json" if team else "start-json"
+                    line = f"{start} {seed} {humans} {json.dumps(req['setup'], ensure_ascii=True)}"
                 elif path == "/api/clock":
                     line = "clock"
                 elif path == "/api/time-between-games":
@@ -125,30 +129,75 @@ def make_handler(lean: Lean, port: int):
                     line = "replay"
                 elif path == "/api/register":
                     seat = int(req["seat"])
-                    if seat not in (0, 1):
+                    if seat not in (0, 1, 2, 3):
                         return self._json(400, {"error": "bad seat"})
                     line = f"register {seat} {json.dumps(req['registration'], ensure_ascii=True)}"
                 elif path == "/api/concede-match":
                     seat = int(req["seat"])
-                    if seat not in (0, 1):
+                    if seat not in (0, 1, 2, 3):
                         return self._json(400, {"error": "bad seat"})
                     line = f"concede-match {seat}"
                 elif path == "/api/agree-match-draw":
                     line = "agree-match-draw"
                 elif path == "/api/judge":
                     line = "judge"
+                elif path == "/api/judge-rewind":
+                    target = req["target"]
+                    if type(target) is not int or target < 0:
+                        return self._json(400, {"error": "bad rewind checkpoint"})
+                    line = f"judge-rewind {target}"
+                elif path == "/api/judge-shuffle":
+                    line = "judge-shuffle " + json.dumps(req["shuffle"], ensure_ascii=True)
+                elif path == "/api/judge-private-rewind":
+                    line = "judge-private-rewind " + json.dumps(req["rewind"], ensure_ascii=True)
+                elif path == "/api/judge-timeline-rewind":
+                    line = "judge-timeline-rewind " + json.dumps(req["rewind"], ensure_ascii=True)
+                elif path == "/api/judge-game-loss":
+                    seats = req["seats"]
+                    if (not isinstance(seats, list) or not seats
+                            or not all(type(seat) is int and 0 <= seat < 4 for seat in seats)
+                            or len(set(seats)) != len(seats)):
+                        return self._json(400, {"error": "bad penalty seats"})
+                    line = "judge-game-loss " + "".join(map(str, seats))
+                elif path in ("/api/judge-match-loss", "/api/judge-disqualification"):
+                    seat = req["seat"]
+                    if type(seat) is not int or seat not in (0, 1, 2, 3):
+                        return self._json(400, {"error": "bad penalty seat"})
+                    line = f"{path.removeprefix('/api/')} {seat}"
                 elif path == "/api/undo":
                     line = "undo"
+                elif path == "/api/bo1-first":
+                    choice = req.get("choice")
+                    if choice not in ("first", "second"):
+                        return self._json(400, {"error": "bad choice"})
+                    line = f"bo1-first {choice}"
+                elif path == "/api/bo1-sideboard":
+                    line = "bo1-sideboard"
                 elif path == "/api/swap":
                     out, inn = str(req.get("out", "")), str(req.get("in", ""))
                     if not (CARD_ID.fullmatch(out) and CARD_ID.fullmatch(inn)):
                         return self._json(400, {"error": "bad card"})
                     line = f"swap {out} {inn}"
+                    if "seat" in req:
+                        seat = int(req["seat"])
+                        if seat not in (0, 1, 2, 3):
+                            return self._json(400, {"error": "bad seat"})
+                        line += f" {seat}"
                 elif path == "/api/next":
                     choice = req.get("choice")
                     if choice not in (None, "first", "second"):
                         return self._json(400, {"error": "bad choice"})
                     line = "next" + (f" {choice}" if choice else "")
+                elif path == "/api/team-next":
+                    order = req.get("order")
+                    if order is not None and (not isinstance(order, list) or len(order) != 4
+                                              or not all(type(seat) is int and 0 <= seat < 4 for seat in order)
+                                              or len(set(order)) != 4):
+                        return self._json(400, {"error": "bad team order"})
+                    digits = "".join(map(str, order)) if order is not None else "-"
+                    line = f"team-next {digits}"
+                    if "decks" in req:
+                        line += " " + json.dumps(req["decks"], ensure_ascii=True)
                 elif path == "/api/act":
                     k = int(req["k"])
                     if k < 0:

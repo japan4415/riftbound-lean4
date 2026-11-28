@@ -30,23 +30,18 @@ def GameState.actionKillCosts (s : GameState) (a : Action) : List ObjId :=
   match s.pending, a.kind with
   | .triggerOrder _ first more _ _ :: _, .putTrigger i _ (.pay ids ..) =>
     match (first :: more)[i]? with
-    | some t => match trigCost s t with | .killFriendly .. => ids | _ => []
+    | some t => match trigCost s t with | .killFriendly .. | .killControlled .. => ids | _ => []
     | none => []
   | .priority _ :: _, .playCard card _ targets _ _ pick
+  | .teamInvitation _ :: _, .playCard card _ targets _ _ pick
   | .chainPass .. :: _, .playCard card _ targets _ _ pick
   | .showdown .. :: _, .playCard card _ targets _ _ pick =>
     (s.playDeathCost card targets pick).toList
   | .priority _ :: _, .activate source index _ targets _ _ _ object
+  | .teamInvitation _ :: _, .activate source index _ targets _ _ _ object
   | .chainPass .. :: _, .activate source index _ targets _ _ _ object
   | .showdown .. :: _, .activate source index _ targets _ _ _ object =>
-    match s.activationAt source index with
-    | some (_, .activated costs _ _ _) =>
-      let last := if costKills costs then targets.getLast?.toList else []
-      let selected := match permanentCost costs with
-        | some (.kill, _) => object.toList
-        | _ => []
-      last ++ selected
-    | _ => []
+    (activationKillVictim s source index targets object).toList
   | _, _ => []
 
 /-- Check that the declaration came from a play decision before interrupting it for replacement
@@ -54,7 +49,7 @@ choices. No part of the declared payment has been committed yet. -/
 def GameState.actionDeathCostChoice (s : GameState) (a : Action) :
     Option (ObjId × PlayerId × Effect × Effect) :=
   match s.pending with
-  | .priority _ :: _ | .chainPass .. :: _ | .showdown .. :: _ | .triggerOrder .. :: _ =>
+  | .priority _ :: _ | .teamInvitation _ :: _ | .chainPass .. :: _ | .showdown .. :: _ | .triggerOrder .. :: _ =>
     if s.phase == .setup then none
     else s.deathGroupChoice (s.actionKillCosts a) false
   | _ => none
@@ -125,22 +120,175 @@ theorem workStep_cases {s s' : GameState} {es : List Event} (h : workStep s = so
       exact Or.inr ⟨h.1.symm, h.2.symm⟩
   · exact Or.inl h
 
+/-- Schedule Cleanup before a neutral priority decision if automatic board work remains
+(CR 322-323). Other decisions keep their original timing. -/
+def GameState.preparePriority (s : GameState) : GameState :=
+  match s.pending with
+  | .priority _ :: _ =>
+    if s.phase == .setup || (s.winner.isNone && (cleanupStep s).isNone) then s
+    else { s with pending := .cleanup :: s.pending }
+  | _ => s
+
+/-- Preparing a neutral decision changes at most the head of the stack. -/
+theorem GameState.preparePriority_cases (s : GameState) :
+    s.preparePriority = s ∨ ∃ p rest, s.pending = .priority p :: rest ∧ s.phase ≠ .setup ∧
+      s.preparePriority = { s with pending := .cleanup :: s.pending } := by
+  unfold GameState.preparePriority
+  split
+  · rename_i p rest pending
+    split
+    · exact Or.inl rfl
+    · rename_i unsettled
+      have play : s.phase ≠ .setup := by
+        intro setup
+        simp [setup] at unsettled
+      exact Or.inr ⟨p, rest, pending, play, rfl⟩
+  · exact Or.inl rfl
+
+/-- Preparing the next decision leaves the phase unchanged. -/
+theorem GameState.preparePriority_phase (s : GameState) : s.preparePriority.phase = s.phase := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · rw [unchanged]
+  · rw [staged]
+
+/-- During setup the engine follows the setup frames without inserting Cleanup. -/
+theorem GameState.preparePriority_of_setup {s : GameState} (phase : s.phase = .setup) :
+    s.preparePriority = s := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, playing, _⟩
+  · exact unchanged
+  · exact (playing phase).elim
+
+/-- Existing work frames run directly, with no additional preparation. -/
+theorem GameState.preparePriority_of_work {s : GameState} {f : Frame} {rest : List Frame}
+    (pending : s.pending = f :: rest) (work : f.isWork = true) :
+    s.preparePriority = s := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, tail, neutral, _, _⟩
+  · exact unchanged
+  · rw [neutral, List.cons.injEq] at pending
+    obtain ⟨rfl, _⟩ := pending
+    simp [Frame.isWork] at work
+
+/-- A frame other than neutral priority does not require preparation. -/
+theorem GameState.preparePriority_of_nonpriority {s : GameState} {frame : Frame} {rest : List Frame}
+    (pending : s.pending = frame :: rest) (notNeutral : ∀ p, frame ≠ .priority p) :
+    s.preparePriority = s := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, tail, neutral, _, _⟩
+  · exact unchanged
+  · rw [neutral, List.cons.injEq] at pending
+    exact (notNeutral p pending.1.symm).elim
+
+/-- A state can change during preparation only when a Cleanup frame becomes the next work. -/
+theorem GameState.preparePriority_of_idle {s : GameState}
+    (idle : s.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    s.preparePriority = s := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · exact unchanged
+  · simp [staged, Frame.isWork] at idle
+
+/-- A prepared state exposes neutral priority only at a Cleanup fixed point. -/
+theorem GameState.preparePriority_settled {s : GameState} {p : PlayerId} {rest : List Frame}
+    (pending : s.preparePriority.pending = .priority p :: rest)
+    (playing : s.preparePriority.phase ≠ .setup) : s.preparePriority.Settled := by
+  rw [s.preparePriority_phase] at playing
+  have phaseCheck : (s.phase == Phase.setup) = false := by simpa using playing
+  by_cases neutral : ∃ owner tail, s.pending = .priority owner :: tail
+  · obtain ⟨owner, tail, original⟩ := neutral
+    by_cases ready : (s.winner.isNone && (cleanupStep s).isNone) = true
+    · have unchanged : s.preparePriority = s := by
+        simp only [GameState.preparePriority, original, phaseCheck, Bool.false_or, ready, ite_true]
+      rw [unchanged]
+      simpa [GameState.Settled, Bool.and_eq_true] using ready
+    · simp only [GameState.preparePriority, original, phaseCheck, Bool.false_or, ite_eq_right ready] at pending
+      cases pending
+  · rcases s.preparePriority_cases with unchanged | ⟨owner, tail, original, _, _⟩
+    · rw [unchanged] at pending
+      exact (neutral ⟨_, _, pending⟩).elim
+    · exact (neutral ⟨owner, tail, original⟩).elim
+
 /-- Work through the work frames until the next decision or the end, one `workStep` at a time.
 `fuel` is the number of steps allowed. -/
 def advance : Nat → GameState → List Event → Except RuleError (GameState × List Event)
   | 0, s, es =>
-    match s.pending with
-    | f :: _ => if f.isWork then .error .fuelExhausted else .ok (s, es)
-    | [] => .ok (s, es)
+    let prepared := s.preparePriority
+    match prepared.pending with
+    | f :: _ => if f.isWork then .error .fuelExhausted else .ok (prepared, es)
+    | [] => .ok (prepared, es)
   | n + 1, s, es =>
-    match s.pending with
+    let prepared := s.preparePriority
+    match prepared.pending with
     | f :: _ =>
       if f.isWork then
-        match workStep s with
+        match workStep prepared with
         | some (s', es') => advance n s' (es ++ es')
         | none => .error (.internal "microStep")
-      else .ok (s, es)
-    | [] => .ok (s, es)
+      else .ok (prepared, es)
+    | [] => .ok (prepared, es)
+
+/-- Automatic work preserves any predicate respected by preparation and each work step. -/
+theorem advance_preserves (invariant : GameState → Prop)
+    (prepare : ∀ s, invariant s → invariant s.preparePriority)
+    (work : ∀ {s t : GameState} {events : List Event},
+      invariant s → workStep s = some (t, events) → invariant t) :
+    ∀ {fuel : Nat} {s t : GameState} {seen events : List Event},
+      invariant s → advance fuel s seen = .ok (t, events) → invariant t := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro s t seen events known done
+    unfold advance at done
+    dsimp only at done
+    split at done
+    · split at done
+      · contradiction
+      · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+        exact prepare s known
+    · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+      exact prepare s known
+  | succ fuel ih =>
+    intro s t seen events known done
+    unfold advance at done
+    dsimp only at done
+    split at done
+    · split at done
+      · split at done
+        · exact ih (work (prepare s known) (by assumption)) done
+        · contradiction
+      · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+        exact prepare s known
+    · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+      exact prepare s known
+
+/-- Every successful advance that offers neutral priority has reached a Cleanup fixed point. -/
+theorem advance_priority_settled {fuel : Nat} {s t : GameState} {seen events : List Event}
+    (done : advance fuel s seen = .ok (t, events)) {p : PlayerId} {rest : List Frame}
+    (pending : t.pending = .priority p :: rest) (playing : t.phase ≠ .setup) : t.Settled := by
+  induction fuel generalizing s t seen events with
+  | zero =>
+    unfold advance at done
+    dsimp only at done
+    split at done
+    · split at done
+      · contradiction
+      · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+        exact GameState.preparePriority_settled pending playing
+    · rename_i empty
+      obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+      rw [empty] at pending
+      contradiction
+  | succ fuel ih =>
+    unfold advance at done
+    dsimp only at done
+    split at done
+    · split at done
+      · split at done
+        · exact ih done pending playing
+        · contradiction
+      · obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+        exact GameState.preparePriority_settled pending playing
+    · rename_i empty
+      obtain ⟨rfl, _⟩ := Prod.mk.inj (Except.ok.inj done)
+      rw [empty] at pending
+      contradiction
 
 /-- Take one answer. -/
 def step (fuel : Nat) (s : GameState) (a : Action) :
@@ -232,6 +380,25 @@ def legalTriggerFunding (s : GameState) (p : PlayerId) (group : List PendTrigger
     (triggerFundingAdds s group plan).map (fun a => ⟨.player p, .triggerAdd a⟩) ++
     [⟨.player p, .decide false⟩]
 
+/-- Invitation grants spell timing without allowing a permanent to be played. -/
+def legalInvitedSpells (s : GameState) (p : PlayerId) : List Action :=
+  (legalPlays s p).filter (fun a =>
+    match a.kind with
+    | .playCard c pay targets flow _ pick => castable s p c pay targets flow pick
+    | _ => false)
+
+theorem mem_legalInvitedSpells (s : GameState) (p : PlayerId) (a : Action) :
+    a ∈ legalInvitedSpells s p ↔ ∃ c pay targets flow discard pick,
+      a = ⟨.player p, .playCard c pay targets flow discard pick⟩ ∧
+      c ∈ s.playSources p ∧ castable s p c pay targets flow pick = true ∧
+      s.playDiscardOk p c discard = true := by
+  simp only [legalInvitedSpells, List.mem_filter, mem_legalPlays]
+  constructor
+  · rintro ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, -, hd⟩, cast⟩
+    exact ⟨c, pay, ts, flow, discard, pick, rfl, hc, cast, hd⟩
+  · rintro ⟨c, pay, ts, flow, discard, pick, rfl, hc, cast, hd⟩
+    exact ⟨⟨c, pay, ts, flow, discard, pick, rfl, hc, .inr (.inl cast), hd⟩, cast⟩
+
 /-- The answers of the players to the open question. Chance answers are not listed. -/
 def legalFrameActions (s : GameState) : List Action :=
   match s.pending with
@@ -254,11 +421,23 @@ def legalFrameActions (s : GameState) : List Action :=
     CardTypeGuess.choices.map (fun guess => ⟨.player p, .guessCardType guess⟩)
   | .nameCard p _ _ c more _ :: _ => (c :: more).map (fun id => ⟨.player p, .nameCard id⟩)
   | .chooseBurnOut p :: _ =>
-    ((allPlayers s.playerCount).filter (fun o => o ≠ p)).map
+    ((allPlayers s.playerCount).filter (fun o => !s.config.mode.sameSide p o)).map
       (fun o => ⟨.player p, .burnOutTarget o⟩)
+  | .chooseBurnOutAmong p first more :: _ =>
+    (first :: more).map (fun o => ⟨.player p, .burnOutTarget o⟩)
   | .priority p :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalPlays s p ++
-      legalMoves s p ++ legalActivates s p true)
+      legalMoves s p ++ legalActivates s p true ++ legalGroupMoveStarts s p ++
+      ((s.teamInvitee p).toList.map (fun guest => ⟨.player p, .inviteTeammate guest⟩)))
+  | .groupMove p dest pay units :: _ =>
+    ⟨.player p, .decide false⟩ ::
+    ((if s.groupMoveReady p dest pay units then [⟨.player p, .decide true⟩] else []) ++
+      (s.groupMoveRemaining p dest pay units).map (fun u => ⟨.player p, .choose u⟩))
+  | .teamInvitation guest :: _ =>
+    ⟨.player guest, .pass⟩ :: (legalRunes s guest ++ legalManas s guest ++
+      legalInvitedSpells s guest ++ legalActivates s guest true)
+  | .chooseShowdown p first more :: _ =>
+    (first :: more).map (fun (bf, _) => ⟨.player p, .choose bf⟩)
   | .chainPass p _ :: _ =>
     ⟨.player p, .pass⟩ :: (legalRunes s p ++ legalManas s p ++ legalReactions s p ++
       legalActivates s p false)
@@ -273,9 +452,10 @@ def legalFrameActions (s : GameState) : List Action :=
     (c :: cs).flatMap (fun id => [⟨.player p, .predictPick id false⟩, ⟨.player p, .predictPick id true⟩])
   | _ => []
 
-/-- The concessions: any player may concede at any time in a 1v1 game (CR 649-651). -/
+/-- The eligible seats may concede regardless of the decision on top of the stack (CR 649-651). -/
 def concedeActions (s : GameState) : List Action :=
-  if s.playerCount = 2 then (allPlayers 2).map (fun p => ⟨.player p, .concede⟩) else []
+  ((allPlayers s.playerCount).filter (fun p => decide (s.canConcede p))).map
+    (fun p => ⟨.player p, .concede⟩)
 
 /-- The answers of the players: to the open question, and the concessions. Nothing once the game
 is over. -/

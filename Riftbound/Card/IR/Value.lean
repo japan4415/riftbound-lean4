@@ -58,6 +58,8 @@ structure Env where
   shownOff : Option ShownOff := none
   /-- The places referred to by a triggered ability, even if its source left the Board. -/
   eventBattlefields : Option (List ObjId) := none
+  /-- The original objects referred to by the triggering instruction. -/
+  eventObjects : List ObjId := []
   /-- The object a `forEach` is about: what `Selector.it` means (design.md §7.2). -/
   it : Option ObjId := none
   /-- What the passive abilities add to the Might of each object now (the Layers' last step). The

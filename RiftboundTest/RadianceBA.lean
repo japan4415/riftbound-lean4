@@ -22,10 +22,12 @@ open Riftbound
   let (asked, _) ← (advance 100 { s with pending := [.cleanup, .priority p] } []).toOption
   let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
-  let (saved, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, events) ← (step 100 asked answer).toOption
   let charged := saved.modObj mord (fun unit => { unit with damage := 8 })
   let (done, _) ← (advance 100 { charged with pending := [.cleanup, .priority p] } []).toOption
-  return controller == p && victim == mord && cost == ally &&
+  return cleanupAnswerWorkSupported asked answer && saved.pending == [.priority p] &&
+    controller == p && victim == mord && cost == ally &&
     (saved.zone (.player p .base)).contains mord && saved.tired mord == some true &&
     (saved.obj? mord).any (fun unit => unit.damage == 0 && unit.loc.isNone) &&
     saved.countIn p .trash "V0" == 1 && saved.inPlay.contains foe &&
@@ -34,7 +36,7 @@ open Riftbound
     done.countIn p .trash "RAD-020" == 1).getD false
 
 -- A Kill instruction can offer the optional replacement even without any damage.
--- Declining it leaves Tactical Retreat available and does not spend Mordekaiser's allowance.
+-- Choosing Tactical Retreat instead leaves Mordekaiser's allowance available.
 #guard (lab.bind fun s => do
   let p := s.me
   let q := s.you
@@ -45,11 +47,14 @@ open Riftbound
   let frames := [.run q source { slots := [.obj mord] } theKill, .cleanup, .priority p]
   let armed := s.addTurnFxOn p mord .saveOnce
   let (asked, _) ← (advance 100 { armed with pending := frames } []).toOption
-  let (options, _) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
-  let (declined, _) ← (step 100 options ⟨.player p, .decide false⟩).toOption
-  let (again, _) ← (advance 100 { declined with pending := frames } []).toOption
+  let .eitherDo _ _ _ (.chooseDeathFree affected none) _ _ :: _ := asked.pending | none
+  let (withRetreat, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let (optional, _) ← (step 100 asked ⟨.player p, .decide false⟩).toOption
+  let (sacrificed, _) ← (step 100 optional ⟨.player p, .decide true⟩).toOption
+  let (again, _) ← (advance 100 { withRetreat with pending := frames } []).toOption
   let (saved, _) ← (step 100 again ⟨.player p, .decide true⟩).toOption
-  return declined.inPlay.contains mord && declined.inPlay.contains ally &&
+  return affected == mord && withRetreat.inPlay.contains mord && withRetreat.inPlay.contains ally &&
+    (sacrificed.tacticalRetreatFor mord).isSome && sacrificed.countIn p .trash "V0" == 1 &&
     saved.inPlay.contains mord && saved.countIn p .trash "V0" == 1).getD false
 
 -- A limited play still pays its additional cost when Mordekaiser replaces his own death.
@@ -64,12 +69,15 @@ open Riftbound
   let plan ← (permanentPlayPlans funded p devourer terms).find?
     (fun plan => plan.extraObject == some mord && plan.battlefield.isNone)
   let play : Effect := .finishFundedPermanent devourer terms plan []
-  let frames := [.run p field {} (.cons play .nil), .priority p]
+  let frame := Frame.run p field {} (.cons play .nil)
+  let frames := [frame, Frame.priority p]
   let (asked, _) ← (advance 100 { funded with pending := frames } []).toOption
   let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
-  let (saved, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return controller == p && victim == mord && cost == ally &&
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, _) ← (step 100 asked answer).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported asked answer &&
+    controller == p && victim == mord && cost == ally &&
     asked.poolOf p == funded.poolOf p && asked.countIn p .hand "RAD-125" == 1 &&
     (saved.zone (.player p .base)).contains mord &&
     saved.countIn p .trash "V0" == 1 && saved.countIn p .base "RAD-125" == 1 &&
@@ -88,8 +96,14 @@ open Riftbound
   let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ ::
       .resumeCost locked :: _ := asked.pending
     | none
-  let (saved, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return locked == action && victim == mord && cost == ally && beforeEvents.isEmpty &&
+  let answer : Action := ⟨.player p, .decide true⟩
+  let (saved, events) ← (step 100 asked answer).toOption
+  let broken := (sendObj .trash asked devourer).1
+  let (restored, undone) ← (step 100 broken answer).toOption
+  return isPlayDeclaration before action && playCostAnswerWorkSupported asked answer &&
+    playCostAnswerWorkSupported broken answer && restored.pending == before.pending &&
+    restored.inPlay.contains ally && undone.isEmpty &&
+    locked == action && victim == mord && cost == ally && beforeEvents.isEmpty &&
     asked.inPlay.contains ally && asked.countIn p .hand "RAD-125" == 1 &&
     ((step 100 asked ⟨.player p, .pass⟩).toOption).isNone &&
     saved.countIn p .base "RAD-125" == 1 && saved.inPlay.contains mord &&
@@ -103,7 +117,7 @@ open Riftbound
   let (s, ally) ← put s p "V0" .base
   let (s, gear) ← put s p "RAD-022" .base
   let (s, amplifier) ← put s p "RAD-017" .base
-  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, []⟩ [] [] none none (some mord)⟩
+  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, [], none⟩ [] [] none none (some mord)⟩
   let (askActivation, _) ← (step 100 s ability).toOption
   let (activated, _) ← (step 100 askActivation ⟨.player p, .decide true⟩).toOption
   let trigger : PendTrigger := { source := amplifier, card := ⟨"RAD-017"⟩, idx := 0, controller := p }
@@ -117,7 +131,25 @@ open Riftbound
     triggered.inPlay.contains mord && activated.countIn p .trash "V0" == 1 &&
     triggered.countIn p .trash "V0" == 1).getD false
 
--- Temporary is a Kill at the beginning of the turn and can be replaced before it occurs.
+-- Choosing one of several Banish effects can replace a declared Kill cost.
+#guard (lab.bind fun s => do
+  let p := s.me
+  let q := s.you
+  let (s, mord) ← putAt (s.control p s.bf0) p "RAD-020" s.bf0
+  let (s, ally) ← put s p "V0" .base
+  let (s, gear) ← put s p "RAD-022" .base
+  let marked := (s.addTurnFxOn q mord .banishInstead).addTurnFxOn p mord .banishInstead
+  let ability : Action := ⟨.player p, .activate gear 2 ⟨0, [], none⟩ [] [] none none (some mord)⟩
+  let (asked, events) ← (step 100 marked ability).toOption
+  let .eitherDo chooser _ _ (.chooseDeathBanisher victim banisher) _ _ ::
+      .resumeCost locked :: _ := asked.pending | none
+  let (paid, settled) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  return chooser == p && victim == mord && banisher == q && locked == ability && events.isEmpty &&
+    paid.tired gear == some true && !(paid.zone .chain).isEmpty &&
+    paid.countIn p .banishment "RAD-020" == 1 && paid.inPlay.contains ally &&
+    settled.any (fun | .banished player _ _ => player == q | _ => false)).getD false
+
+-- Temporary can be replaced after the players pass priority and before its Kill occurs.
 #guard (lab.bind fun s => do
   let p := s.me
   let field := s.bf0
@@ -126,11 +158,13 @@ open Riftbound
   let marked := s.modObj mord (fun unit =>
     { unit with tempKws := [({ keyword := .temporary }, .never)] })
   let before := { marked with pending := [.phase .beginning, .priority p] }
-  let (asked, _) ← (advance 100 before []).toOption
+  let (waiting, _) ← (advance 100 before []).toOption
+  let (response, _) ← (step 100 waiting ⟨.player p, .pass⟩).toOption
+  let (asked, _) ← (step 100 response ⟨.player s.you, .pass⟩).toOption
   let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
     | none
   let (saved, _) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
-  return victim == mord && cost == ally && asked.inPlay.contains ally &&
+  return waiting.inPlay.contains mord && victim == mord && cost == ally && asked.inPlay.contains ally &&
     (saved.zone (.player p .base)).contains mord && saved.countIn p .trash "V0" == 1).getD false
 
 -- Mordekaiser can sacrifice a second copy, which can spend its own replacement on a third Unit.
@@ -152,10 +186,12 @@ open Riftbound
     | .eitherDo _ _ _ pick _ _ :: _ =>
       ((step 100 options ⟨.player p, .decide (choseSecond pick)⟩).toOption).map Prod.fst
     | _ => none
-  let .eitherDo _ _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := next.pending
+  let .eitherDo _ _ _ (.recordNestedDeathDecision root used victim (.sacrifice (some cost)) none)
+      _ _ :: _ := next.pending
     | none
   let (saved, events) ← (step 100 next ⟨.player p, .decide true⟩).toOption
-  return victim == second && cost == ally && es₁.isEmpty && es₂.isEmpty &&
+  return root == first && used == [(first, true)] &&
+    victim == second && cost == ally && es₁.isEmpty && es₂.isEmpty &&
     next.inPlay.contains ally && saved.countIn p .base "RAD-020" == 2 &&
     saved.countIn p .trash "V0" == 1 && saved.tired first == some true &&
     saved.tired second == some true &&
@@ -199,6 +235,26 @@ open Riftbound
   return before.isEmpty && controller == p && ordered == [other, original, gone] &&
     (settled.zone (.player p .base)).contains original && (settled.zone (.player p .base)).contains other &&
     !(settled.turnFx.any (fun note => match note.kind with | .deathOrder _ => true | _ => false))).getD false
+
+-- In 2v2 the replacement accepts a teammate's Unit and keeps the opponent in play.
+#guard (lab.bind fun labState => do
+  let p : PlayerId := ⟨0⟩
+  let ally : PlayerId := ⟨1⟩
+  let q : PlayerId := ⟨2⟩
+  let s := GameState.empty { mode := Mode.teamDuel, ruleSet := .coreOnly } labState.cards
+  let s := { s with phase := .main, active := some p, turn := 2, turnOrder := Mode.teamTurnOrder true }
+  let (s, mord) ← put s p "RAD-020" .base
+  let (s, teammate) ← put s ally "V0" .base
+  let (s, opponent) ← put s q "V1" .base
+  let run := Frame.run q opponent { slots := [.obj mord] } (.ofList [.prim (.kill (.slot 0))])
+  let (asked, _) ← (advance 100 { s with pending := [run, .cleanup, .priority p] } []).toOption
+  let .eitherDo controller _ _ (.recordDeathSacrifice victim (some cost)) _ _ :: _ := asked.pending
+    | none
+  let (settled, events) ← (step 100 asked ⟨.player p, .decide true⟩).toOption
+  let dead ← settled.firstOf ally .trash "V0"
+  return controller == p && victim == mord && cost == teammate &&
+    (settled.obj? opponent).isSome && settled.tired mord == some true &&
+    events.contains (.died dead ally)).getD false
 
 -- A limited Spell play still pays its mandatory Kill cost and can replace that death.
 #guard (lab.bind fun s => do

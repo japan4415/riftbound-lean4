@@ -596,8 +596,8 @@ def VEN_021.meta : CardDef :=
 def VEN_021 : CardDef :=
   { VEN_021.meta with
     abilities := [.passive (.empowered .self) [.mightPlus .self (.const 1)],
-      .triggered (.onSelf .move)
-        (.of [.targetOf (.upTo 1) .any .atBattlefield [.ofType .unit, .atEventBattlefield]]
+      .triggered { event := .move, optional := true }
+        (.of [.targetOf .one .any .atBattlefield [.ofType .unit, .atEventBattlefield]]
           (.ifThen (.empowered .self)
             (.prim (.deal (.slot 0) (.const 2))) (.prim (.deal (.slot 0) (.const 1))))) .unlimited],
     status := .full }
@@ -1913,14 +1913,15 @@ def VEN_068.meta : CardDef :=
 /-- Jayce can ready another object on play and when his controller's first Gear play resolves. -/
 def VEN_068 : CardDef :=
   let ready := EffectDef.of
-    [.targetOf (.upTo 1) .any .boardOrLegend [.exhausted, .notSelf]]
+    [.targetOf .one .any .boardOrLegend [.exhausted, .notSelf]]
     (.prim (.ready (.slot 0)))
   { VEN_068.meta with
-    abilities := [.triggered (.onSelf .play) ready .unlimited,
+    abilities := [.triggered { event := .play, optional := true } ready .unlimited,
       .triggered
         { event := .play,
-          subject := .all .friendly .anywhere [.ofType .gear, .not .token, .notSelf],
-          condition := .firstResolvedType .gear (.slot 0) }
+          subject := .all .you .anywhere [.ofType .gear, .not .token, .notSelf],
+          condition := .firstResolvedType .gear (.slot 0),
+          optional := true }
         ready .unlimited],
     status := .full }
 
@@ -2110,8 +2111,7 @@ def VEN_075.meta : CardDef :=
     types := [.gear],
     domains := [.body],
     cost := some ⟨3, []⟩,
-    keywords := [{ keyword := .empower },
-      { keyword := .reaction }],
+    keywords := [{ keyword := .empower }],
     sets := [⟨"VEN"⟩] }  -- keyword cost unread
 -- END GENERATED
 
@@ -2268,8 +2268,8 @@ def VEN_080.meta : CardDef :=
 /-- Noxian Demolitionist. -/
 def VEN_080 : CardDef :=
   { VEN_080.meta with
-    abilities := [.triggered (.onSelf .conquer)
-      (.of [.targetOf (.upTo 1) .any .anywhere
+    abilities := [.triggered { event := .conquer, optional := true }
+      (.of [.targetOf .one .any .anywhere
         [.ofType .gear, .cost .le (.mightOf .self)]] (.prim (.kill (.slot 0)))) .unlimited],
     status := .full }
 
@@ -2670,12 +2670,9 @@ def VEN_094.meta : CardDef :=
 /-- Mask Mother. -/
 def VEN_094 : CardDef :=
   { VEN_094.meta with
-    abilities := [.triggered (.onSelf .discard)
-      (.of [.targetOf (.upTo 1) .friendly .anywhere [.ofType .unit]]
-        (.ifThen (.exists (.slot 0))
-          (.eitherOf (.ofList [
-            .payThen ⟨1, []⟩ (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn),
-            .nop])) .nop)) .unlimited],
+    abilities := [.triggered { event := .discard, optional := true, cost := .energy 1 }
+      (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
+        (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
     status := .full }
 
 -- BEGIN GENERATED VEN-095
@@ -2954,8 +2951,8 @@ def VEN_104.meta : CardDef :=
 /-- Tail-Cloaked Matriarch. -/
 def VEN_104 : CardDef :=
   { VEN_104.meta with
-    abilities := [.triggered (Trigger.onSelf .becomeEmpowered)
-      (.of [.targetOf (.upTo 1) .friendly .inTrash
+    abilities := [.triggered { event := .becomeEmpowered, optional := true }
+      (.of [.targetOf .one .friendly .inTrash
         [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
         (.prim (.playAtBase (.slot 0)))) .unlimited],
     status := .full }
@@ -3176,7 +3173,6 @@ def VEN_112.meta : CardDef :=
     domains := [.chaos],
     cost := some ⟨5, []⟩,
     might := some 5,
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -3281,8 +3277,8 @@ def VEN_115.meta : CardDef :=
 def VEN_115 : CardDef :=
   { VEN_115.meta with
     abilities := [.passive .always [.playToBf [.openBf], .playToOpenBf],
-      .triggered (.onSelf .play)
-        (.of [.targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.tag ⟨"Dragon"⟩)]]
+      .triggered { event := .play, optional := true }
+        (.of [.targetOf .one .any .anywhere [.ofType .unit, .not (.tag ⟨"Dragon"⟩)]]
           (.prim (.returnToHand (.slot 0)))) .unlimited],
     status := .full }
 
@@ -3441,7 +3437,7 @@ def VEN_121.meta : CardDef :=
 /-- Reluctant Leader. -/
 def VEN_121 : CardDef :=
   let watch (event : TriggerEvent) : Ability :=
-    .triggered { event, subject := .all .friendly .anywhere [.ofType .unit, .notSelf] }
+    .triggered { event, subject := .all .you .anywhere [.ofType .unit, .notSelf] }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
   { VEN_121.meta with
     abilities := [watch .play, watch .playToken],
@@ -3961,8 +3957,7 @@ def VEN_139.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Akali"⟩],
     domains := [.fury, .calm],
-    keywords := [{ keyword := .empower, arg := .cost ⟨3, [.any]⟩ },
-      { keyword := .action }],
+    keywords := [{ keyword := .empower, arg := .cost ⟨3, [.any]⟩ }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4020,7 +4015,6 @@ def VEN_141.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Renekton"⟩],
     domains := [.fury, .body],
-    keywords := [{ keyword := .reaction }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4078,7 +4072,6 @@ def VEN_143.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Zed"⟩],
     domains := [.fury, .chaos],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4194,7 +4187,6 @@ def VEN_147.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Shen"⟩],
     domains := [.calm, .order],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4317,7 +4309,7 @@ def VEN_151.meta : CardDef :=
 def VEN_151 : CardDef :=
   { VEN_151.meta with
     abilities := [.triggered
-      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      { event := .becomeEmpowered, subject := .all .you .anywhere [.notSelf] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .exhaustSelf] .normal
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
@@ -4378,7 +4370,7 @@ def VEN_153.meta : CardDef :=
 def VEN_153 : CardDef :=
   { VEN_153.meta with
     abilities := [.triggered
-      { event := .becomeEmpowered, subject := .all .friendly .anywhere [.notSelf] }
+      { event := .becomeEmpowered, subject := .all .you .anywhere [.notSelf] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .pay ⟨0, [.any]⟩, .exhaustSelf] .normal
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]
@@ -4428,7 +4420,6 @@ def VEN_155.meta : CardDef :=
     types := [.legend],
     tags := [⟨"Yordle"⟩, ⟨"Kennen"⟩],
     domains := [.order, .chaos],
-    keywords := [{ keyword := .action }],
     sets := [⟨"VEN"⟩] }
 -- END GENERATED
 
@@ -4436,7 +4427,7 @@ def VEN_155.meta : CardDef :=
 def VEN_155 : CardDef :=
   { VEN_155.meta with
     abilities := [.triggered
-      { event := .play, subject := .all .friendly .anywhere [.playedFromElsewhere] }
+      { event := .play, subject := .all .you .anywhere [.playedFromElsewhere] }
       (.of [] (.prim (.empower .self))) .unlimited,
       .activated [.disempowerSelf, .exhaustSelf] .action
         (.of [.targetOf .one .any .anywhere [.ofType .unit]]

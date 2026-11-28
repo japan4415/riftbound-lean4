@@ -8,7 +8,7 @@ import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
 /-!
-# Tests: the clock (TR 408.2)
+# Tests: the clock (TR 408.2, 408.4)
 
 The clock calls time; the turn that is going on is played to its end and 3 turns more; then the game
 is over and the points decide.
@@ -48,7 +48,7 @@ meta def passToEnd : Nat → GameState → GameState
     (step 100 s ⟨.player ⟨0⟩, .timeCalled⟩).toOption.isNone &&
     (step 100 s ⟨.judge, .timeCalled⟩).toOption.isNone &&
     (match step 100 s callTime with
-      | .ok (s1, _) => (step 100 s1 callTime).toOption.isNone && s1.clock == some (s.turn + 3)
+      | .ok (s1, _) => (step 100 s1 callTime).toOption.isNone && s1.clock == some (.swiss (s.turn + 3))
       | .error _ => false)
   | none => false
 
@@ -80,5 +80,66 @@ meta def passToEnd : Nat → GameState → GameState
       (passToEnd 20 s2).turn ≤ 5
     | .error _ => false
   | none => false
+
+-- Single elimination settles on a one-point lead, or leaves an even game to the match leader.
+#guard (do
+  let tied ← atTurn (.tournamentElimination .constructed (.regular true)) 2
+  let leading ← atTurn (.tournamentElimination .constructed (.regular false)) 2
+  let (tied, _) ← (step 100 tied callTime).toOption
+  let (leading, _) ← (step 100 leading callTime).toOption
+  let pointWins := passToEnd 30 (tied.gainPoints ⟨1⟩ 1)
+  let matchWins := passToEnd 30 leading
+  return pointWins.turn == 5 && pointWins.result == some (GameResult.won [⟨1⟩]) &&
+    matchWins.turn == 5 && matchWins.result == some GameResult.draw).getD false
+
+-- A tiebreaker starts with its clock already set. Tied points allow turn 7, whose first actual
+-- point (here awarded through Burn Out) completes the game before any further decision.
+#guard (do
+  let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 6
+  let (overtime, _) ← (step 100 s ⟨.player (s.active.getD ⟨0⟩), .pass⟩).toOption
+  let p ← overtime.active
+  let recipient := otherPlayer p
+  let main := Zone.player p .mainDeck
+  let trash := Zone.player p .trash
+  let emptyDeck ← (overtime.zone main).foldlM
+    (fun board card => (moveObj board card trash).map Prod.fst) overtime
+  let drawing := { emptyDeck with pending := [.draw p 1, .priority p] }
+  let (shuffling, _) ← (advance 10 drawing []).toOption
+  let order := (shuffling.zone trash).reverse
+  let (waiting, _) ← (step 10 shuffling ⟨.chance, .arrange order⟩).toOption
+  let ((scored, es), seen) ←
+    (stepWithDisclosures 0 waiting ⟨.player p, .burnOutTarget recipient⟩).toOption
+  return s.clock == some (RoundClock.elimination 6 true) && overtime.turn == 7 && overtime.result.isNone &&
+    shuffling.pending.head? == some (Frame.chanceBurnOut p) &&
+    waiting.pending == [Frame.chooseBurnOut p, Frame.draw p 1, Frame.priority p] &&
+    scored.result == some (GameResult.won [recipient]) && scored.pending.isEmpty &&
+    scored.pointsOf recipient == waiting.pointsOf recipient + 1 &&
+    scored.zone main == waiting.zone main && scored.zone (.player p .hand) == waiting.zone (.player p .hand) &&
+    es == [Event.pointsGained recipient 1] && seen.isEmpty).getD false
+
+-- A scoring effect can also end sudden death before its following instructions.
+#guard (do
+  let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 7
+  let p ← s.active
+  let source ← s.battlefields.head?
+  let program := EffectList.ofList [.prim (.score .you (.const 1)), .prim (.draw .you (.const 1))]
+  let frame := Frame.run p source {} program
+  let scoring := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 1 scoring [] []).toOption
+  return runFrameSupported frame && finished.result == some (GameResult.won [p]) &&
+    finished.pending.isEmpty && finished.pointsOf p == s.pointsOf p + 1 &&
+    finished.zone (.player p .hand) == s.zone (.player p .hand) &&
+    events == [Event.pointsGained p 1] && seen.isEmpty).getD false
+
+-- Sudden death respects the Final Point restriction on Conquer, including the replacement draw.
+#guard (do
+  let s ← atTurn (.tournamentElimination .constructed .tiebreaker) 7
+  let [first, second] := s.battlefields | none
+  let p := s.active.getD ⟨0⟩
+  let s := (s.gainPoints ⟨0⟩ (s.victoryScore - 1)).gainPoints ⟨1⟩ (s.victoryScore - 1)
+  let (conquered, work, events) := scoreBf s p first true
+  let (held, _, points) := scoreBf conquered p second false
+  return work == [Frame.draw p 1] && (conquered.withTriggers events).result.isNone &&
+    (held.withTriggers points).result == some (GameResult.won [p])).getD false
 
 end RiftboundTest

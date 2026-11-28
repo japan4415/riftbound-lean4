@@ -27,7 +27,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let gear ← first.inPlay.find? (fun id => (first.cardDef? id).any (·.id == ⟨"RAD-012"⟩))
   let unit ← (first.zone claims).find? (fun id =>
     (first.cardDef? id).any (·.id == ⟨"RAD-088"⟩) && id != ordinary)
-  let (used, _) ← act first (.activate gear 2 ⟨2, [.chaos]⟩ [])
+  let (used, _) ← act first (.activate gear 2 ⟨2, [.chaos], none⟩ [])
   let second := settleChain {} 25 used
   let spell ← (second.zone claims).find? (fun id => (second.cardDef? id).any (·.id == ⟨"RAD-047"⟩))
   let expired := { second with phase := .ending }

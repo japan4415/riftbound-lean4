@@ -73,7 +73,7 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
 - 大会のルールでは、画面に「**時計: 時間切れを知らせる**」（今のターンと、さらに 3 ターンで終わる: TR 408.2）と「**ジャッジ: 引き分けを宣言する**」（TR 410.1、505.6）のボタンが、合法なときだけ出る。合法かどうかは Lean が決める。
 - 試合: 「1 ゲームだけ」「Best of 1」「Best of 3」。ゲームが終わると、結果がマッチ（`MatchState`）に数えられ、画面に勝ち数・サイドボードが使えるか・次の先手の決め方が出る。続くとき、「次のゲーム」のボタンが出る。**先手か後手かを選ぶのが、操作する席のプレイヤーなら、画面で選ぶ**（最初のゲームは、seed で抽選された人。その後は、負けた人。引き分けの後は、同じ順: TR 407）。選ぶのが自動の席なら、先手を選ぶ。
 
-**サイドボード**: 大会の Constructed のマッチで、サイドボードを使えるとき（最初のゲームの前と、引き分けの後は使えない）、ゲームが終わると、画面に Main Deck とサイドボードのカードが枚数つきで出る。出すカードと入れるカードを 1 枚ずつ選んで「入れ替える」を押すと、Lean が、入れ替えの後のデッキが Constructed で合法かどうかを確かめ（TR 403.4.c）、合法なら受ける。次のゲームは、そのデッキで始まる。
+大会の Constructed でサイドボードを使えるときは、画面に Main Deck とサイドボードのカードが枚数つきで出る。出すカードと入れるカードを1枚ずつ選んで「入れ替える」を押すと、Lean が変更後のデッキの合法性を確認する（TR 403.4.c）。通常は勝敗がついたゲームの後に使える。下記の任意のBo1手順では、初戦の準備中に使える。
 
 画面には双方の手札が表示される。両席を人が操作する場合は、この表示を含めて同じ画面を使う。
 
@@ -82,8 +82,9 @@ uv run --no-project python scripts/live.py            # http://127.0.0.1:8765/ �
 `lake build riftbound-live riftbound-replay` を実行し、上の手順でライブビューアを開く。「登録デッキで開始」から [Constructed の設定例](../data/replay/constructed-example.json) を読み込むと、実カードを使って Bo3 を始められる。操作する席を「両方」にすれば、双方の手を選べる。設定ファイルの型は `LiveSetup`。
 
 - `decks` に両席のデッキを席番号順に入れる。カード ID は `data/cards/logical.json` の `cardId` を使う。Constructed は登録時のサイドボードを含める。
-- `config` にゲーム形式とカードの合法性を入れる。公式 Constructed の `tournament` を指定すると、開催日・禁止改定の適用区分と `formatLegality` の整合性を確認する。`firstChooser` は最初の先手・後手を決める席、`first` は実際に先手で始める席。
+- `config` にゲーム形式とカードの合法性を入れる。公式 Constructed の `tournament` を指定すると、開催日・禁止改定の適用区分と `formatLegality` の整合性を確認する。`firstChooser` は最初の先手・後手を決める席。通常の手順では `first` の席が先手になる。
 - サイドボードの変更が許されているときは、その席の変更後の `ConstructedDeck` を JSON で読み込める。`decks.constructed.decks` の各要素と同じ形で、複数枚と Chosen Champion をまとめて変更できる。引き分けの後は先手と Battlefield を引き継ぐ。
+- 大会が任意の初戦サイドボード手順を使う場合は、Constructed の設定に `"winsRequired": 1` と `"bo1Sideboarding": true` を指定する（TR 406.1.h）。Battlefield の抽選後、`firstChooser` の席を操作していれば、画面で先手か後手かを選ぶ。自動の席が選ぶ場合は設定の `first` が先手になる。編集を終えたら「サイドボードを確定」を押す。Chosen Champion を配置してからシャッフルが始まり、アーカイブには変更前後の登録と確定した手が残る。
 - ゲームの合間に時間切れになったら「時間切れ」を押す。その時点の勝ち数でマッチが決まる。マッチ全体の投了と合意した引き分けは、標準入力プロトコルの `concede-match SEAT` と `agree-match-draw` で記録できる。
 - マッチ終了後に「マッチの記録を保存」を押す。アーカイブには両席の手札を再現できるデッキ順が含まれる。個々のゲームはビューアの「ゲーム」欄で切り替えられる。
 
@@ -97,13 +98,252 @@ uv run --no-project python scripts/build_viewer.py match-trace.json match.html
 
 `verify` はアーカイブのルール版とカード定義を照合し、すべての手を再実行する。各手で状態のハッシュとイベント列を比較し、違いがあれば最初のゲーム番号と手の位置を出す。`view` で書き出した JSON はビューアの「対局記録を開く」からも読み込める。
 
+カード定義の識別子は、使われなかったカードの効果や実装状況を更新しても変わる。後から検証する記録には、記録時に使った実行ファイルか、その実行ファイルを再ビルドできる Git コミット ID を一緒に保存する。
+
 外部の対局から記録を起こす場合は、アーカイブの `input` と同じ形の JSON を作り、`riftbound-replay record INPUT.json ARCHIVE.json` で照合用の記録を作る。`answers` にはシャッフル後のオブジェクト順、選択、支払い、時計やジャッジの決定を、適用された順に入れる。`observed` は直接観測した答え、`inferred` は根拠付きの推定、`unknown` は答えを確定できない箇所。推定を含むマッチは `exact: false` になり、`unknown` では該当する手で止まる。
 
-ゲームごとの `uncheckedCards` は、各席の登録に含まれる `full` 未満のカードを示す。`exact` は操作の観測状態を示し、カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。
+カードの並びを直接確認できた場合は、内部IDの代わりに
+`{"observedChance":{"outcome":{"cardOrder":{"cards":[{"code":"OGN-001"},{"code":"OGN-002"}]}}}}`
+の形で記録できる。シャッフル前にあったカードを、同じカードの枚数も含め、結果の順番で全て並べる。山札は上から順に指定する。
+この形式は山札のシャッフル、マリガン、Burn Out、Predict、Trash からのランダムなリサイクルに使える。
+Battlefield の抽選は `{"observedChance":{"outcome":{"battlefield":{"card":{"code":"RAD-157"}}}}}` の形で、選ばれたコードを指定する。
+後から推定した結果には `inferredChance` を使い、`outcome` と根拠を記した `evidence` を入れる。
+
+同じコードの現物を区別できない場合、シャッフル前の並びから未使用の現物を順に割り当て、`exact: false` を記録する。
+現物まで特定できる場合は `observed` でIDを指定できる。
+元ログで並べ替え前の位置から現物を追える場合は、内部IDの代わりに `observedChance` の `outcome` に `cardOrderByPosition` を使える。`cards` に結果の順番で `{"before":2,"card":{"code":"OGN-001"}}` のように並べる。`before` は並べ替え前の候補列の先頭を0とした位置で、`inspect` では `decision.cards[].position` に出る。全候補を一度ずつ指定し、各位置のカードコードが一致する必要がある。同じコードの現物を位置で区別できれば、その手を一意に照合できる。
+`exact` は操作と2v2・War の初期手番順をどこまで特定できたかを示す。カードの実装状況は `cardsFullyChecked` と `uncheckedCards` で確認する。`uncheckedCards` はゲームごとに、各席が登録した `full` 未満のカードを示す。
+
+マリガン、捨て札、Predict、戦闘ダメージの割り当て、効果の途中などで提示された対象の選択は `{"observedCardPick":{"choice":{"seat":{"n":0},"kind":"mulligan","card":{"code":"OGN-001"}}}}` のように、選択した席とカードのコードで記録できる。`kind` は `mulligan`、`discard`、`predictTop`、`predictRecycle`、`assignDamage`、`chooseObject` のいずれか。該当する合法手が1つならその手を適用する。同じコードのカードを複数選べる場合は列挙順の最初を採用し、`exact: false` になる。後から推定した選択は `inferredCardPick` の `choice` と `evidence` に記録する。これらの手は `inspect` の候補欄にも `answerByCode` として出る。
+
+同じコードのカードが別々の場所にある場合は、`choice` の `location` で区別できる。席1の Base は `{"zone":{"zone":{"player":{"p":{"n":1},"k":"base"}}}}`、席1の Battlefield は `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}` と指定する。場所まで含む候補は `inspect` の `answerByLocation` に出る。同じ場所にも複数の候補があれば、再生結果の `exact` は `false` になる。
+
+Basic Rune は `kind` を `runeExhaust` または `runeRecycle` として、使った Rune のコードを記録できる。盤上のカードには `exhausted` も指定できる。たとえば同じ Rune が Ready と Exhaust の状態で一枚ずつある場合、どちらを Recycle したかを区別できる。
+
+単体の Standard Move は `observedStandardMove` の `move` に `seat`、Unit のコード `unit`、移動先 `destination` を指定できる。移動先は `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"OGN-275"}}}`。観測した出発地は `from`、支払った移動費用は `fee` に入れ、該当する手を絞れる。`inspect` の `answerByCode` から転記できる。推定した移動には `inferredStandardMove` の `move` と `evidence` を使う。
+
+グループで Standard Move する場合、最初の宣言は `observedGroupMove` の `move` に `seat`、`destination`、観測した `fee` を指定する。後に選ぶ Unit は `observedCardPick` の `chooseObject`、最後の確定か取り消しは `decide` で記録する。最初の宣言を推定した場合は `inferredGroupMove` の `move` と `evidence` を使う。
+
+カードのプレイは `observedCardPlay` の `play` に、プレイした `seat`、出したカード `source`、宣言順の対象 `targets` を指定できる。各カードを `{"card":{"code":"OGN-001"}}` で表し、観測できた `location`、`controller`、`exhausted` で候補を絞れる。支払いは `payment`、Flow の費用は `flowCost`、追加コストの捨て札は `discard`、最初のモードや移動先は `choice`、対象のプレイヤーは `playerTarget` で指定できる。入力例は `inspect` の `answerByCode` に出る。一致する合法手が複数なら `exact: false` になる。推定したプレイは `inferredCardPlay` の `play` と `evidence` に記録する。
+
+呪文や起動型能力の Deflect を別に支払った場合は、使った Power を `deflectPayment` に指定できる。例えば `[{"domain":{"value":"calm"}},"flexible"]` は Calm と虹 Power を1ずつ使った記録。支払いの候補が複数あれば、ビューアで対象を選んだ後に内訳から選ぶ。`inspect` で入力例を確認できる。
+
+起動型能力は `observedAbilityUse` の `activation` に `seat`、`kind`（`activated` または `add`）、`source`、能力の番号 `ability`、宣言順の `targets` を指定できる。カードはプレイの入力と同じ形式で表す。`inspect` の `answerByCode` には、支払い、捨て札、コストで使う物体、対象の席など、その候補から記録できる項目も出る。推定した場合は `inferredAbilityUse` の `activation` と `evidence` に記録する。
+
+誘発型能力は `observedTriggerUse` の `trigger` に、席 `seat`、宣言の段階 `stage`（`prepare`、`finalize`、`decline`）、誘発元のカードコード `source`、宣言順の対象 `targets` を記録できる。誘発元がすでに場を離れていても、そのコードを `source` に指定できる。分かる場合は能力番号 `ability`、誘発のきっかけになったカード `subject`、宣言した `mode`、`playerTarget`、`costObjects` も指定できる。`inspect` の `answerByCode` に入力例が出る。複数の合法な宣言が一致すれば `exact: false` になる。推定した宣言は `inferredTriggerUse` の `trigger` と `evidence` に記録する。
+
+誘発型能力を確定するために選んだ Add も、カードコードで記録できる。Basic Rune は `observedCardPick` の `kind` に `triggerRuneExhaust` または `triggerRuneRecycle`、それ以外は `observedAbilityUse` の `kind` に `triggerAdd` を指定する。
+
+ジャッジが大会で選択した Constructed Bo1 の準備手順（TR 406.1.h）を記録する場合は、最初のゲームの `bo1Setup` に2席の元の登録を、`decks` にサイドボード後の登録を入れる。`answers` には各席の Battlefield の抽選、先手の決定、`"bo1Sideboard"`、Main Deck と Rune Deck のシャッフルを順に記録する。入れ替えがないときも、`"bo1Sideboard"` は準備手順の区切りになる。ビューアのログで確定前後を確認できる。
+
+Sealed や Draft のサイドボードを照合する場合は、`limitedPools` に各席が受け取ったカードの ID を、同じカードの枚数も含めて登録する。ゲームごとに選んだデッキを `games[].decks.limited.decks` に記録する。Basic Rune はプール外から持ち込める。ブランクの Battlefield は `{"code":"TKN-LimitedBlank"}` で表す。
+
+時間制限付きシングルエリミネーション（TR 408.4）は、ライブ対局の設定 JSON に `"singleElimination": true`、外部の大会記録に `"elimination": {}` を指定する。ゲームの合間に時間切れとなり、勝数が同じため次のゲームを行う場合は、`elimination.timeAfterGames` に時間切れ時点で終了していたゲーム数を入れる。次のゲームは初手番に加えて5ターンを行い、同点ならサドンデスになる。ビューアでは期限のターンと、サドンデスに入った手を確認できる。
+
+#### 外部対戦を入力している途中で次の手を確認する
+
+RiftAtlas 本体の History & Replays から取得した JSON は、転記前に次のコマンドで確認できる。
+
+```sh
+uv run --no-project python -B scripts/audit_atlas_replay.py riftatlas-replay.json
+```
+
+`firstMulliganFrame` と `firstInGameFrame` は元ファイル内の0始まりの位置。マリガン時点の手札・山札について、席ごとに記録上の要素数とカードコードがある要素数を出す。元データに該当ゾーンが無ければ `null`、空の配列なら0。マリガンより後から始まった記録では、その時点の情報を使って初期状態を埋めない。出力には参加者名、カードコード、デッキリストを含めない。
+
+リストの文字列や結果欄の有無、山札にカードコードがあることは、登録リストや並び順の完全性を保証しない。元ファイルのフレーム番号は Lean の手番号と別なので、操作と観測を転記してから照合する。対象は `nodes` と `root` を持つ [RiftAtlas 本体の書き出し](https://riftatlas.com/changelog/2026/week/43) で、同じ形式名を持つ [拡張機能のパッチ記録](https://github.com/EagleVee/riftatlas-replay/blob/main/docs/replay-format.md) は読み込まない。
+
+席と手番号の対応が分かっている場合は、同じコマンドに `--observations ALIGNMENT.json` を付けて、照合に使える観測を出力できる。
+
+```json
+{
+  "seats": [{"source": 0, "target": 1}, {"source": 1, "target": 0}],
+  "frames": [{"frame": 42, "checkpoint": 18, "through": 20}]
+}
+```
+
+`source` はRiftAtlasの席番号、`target` はLean側の席番号。手番号を特定できるときは `through` を省略する。出力された `observations` を対象ゲームの観測に追記できる。2席の得点と、コードと識別子が各要素に入っている手札・山札の枚数を抽出する。空配列や伏せ札を含む列からは枚数を確定しない。操作やシャッフル順は別に転記する。
+
+```sh
+.lake/build/bin/riftbound-replay inspect INPUT.json 2 next.json
+```
+
+第2ゲームを調べる例。ゲーム番号は1から始まる。2v2 は `inspect-team`、FFA は `inspect-ffa` を使う。FFA のゲーム番号は1。
+指定したゲームより前はゲームの終了まで照合する。指定したゲームでは `answers` が尽きるか、最初の `unknown` に達するまで再生する。調査中はマッチ全体の `ending` を省略できる。2v2 では調べるゲームの `battlefields`、`points`、`ending`、`timed` も省略できる。
+
+- `checkpoint` は適用済みの手番号。初期状態は0。`nextAnswer` は次に入力する手番号で、ゲーム終了時は `null`。`missing` は `unknown` に記録した説明、`exactPrefix` は再生済みの手と初期順序が確定しているかを表す。
+- `inexactAnswers` は、調べているゲームで適用した手のうち、元ログから一意に決まらなかった手を示す。`answer` は1始まりの手番号で、推定入力には元の説明が `evidence` に入る。コードなどの指定に複数の合法手が一致した場合は `evidence` が `null` になる。初期順序を推定した場合は `openingOrderEvidence` に説明が入り、先行ゲームの不確定さは `inexactEarlierGames` にゲーム番号で出る。
+- `state` に盤面とオブジェクトID、`choices` に現在の決定点で入力できる操作が出る。元の対戦で行われた操作を確認し、対応する `answer` を `answers` に入れる。`decision` が `cardOrder` のときは、カードの集合から観測した並びを作る。
+- この出力は転記者向けで、全席の手札や山札を含む。試合全体を照合するときは、結果と未記入の操作をそろえてから `record`、`record-team` または `record-ffa` を実行する。
+
+元ログから転記した手で照合が止まる場合は、出力ファイル名の後ろに `--explain` を付ける。最後に照合できた地点の盤面と候補を出力し、`failure` に止まった手番号（`answer`）、理由（`message`）、種類（`kind`）を追加する。手を適用できなければ `kind` は `"answer"`、適用した結果が観測と食い違えば `"observation"`。観測の範囲がある場合、手番号は不一致が確定した地点を示す。障害より前の盤面を調べるための出力なので、`exactPrefix` が `true` でも対局全体の確認には `record` と `verify` が必要になる。ゲームの設定、初期状態の観測、先行ゲームを照合できない場合は、通常どおりエラーで終了する。
+
+#### 映像や対戦ログで確認した情報を照合する
+
+ゲームの入力に `observations` を指定する。1対1 と 2v2 は `games[]`、FFA は `game` に置く。`checkpoint` は適用した操作の数で、初期状態は0。映像の時刻やログの行番号は省略可能な `source` に記録できる。
+
+`disclosuresInOrder` には、同じ手の途中で公開・閲覧されたカードを順番に指定する。各項目の `onlyFor` は全員への公開なら `null`、特定の席だけの閲覧なら `{"n": 0}` のように席番号を指定する。`cards` は確認できたカードコードを記録し、同じカードが複数枚見えた場合は見えた枚数分を並べる。公開した札がその手のうちに別のゾーンへ移っても照合できる。
+
+`priority` には、映像で確認した通常の優先権（`neutral`）、Chain の優先権（`chain`）、Showdown の Focus（`showdown`）と、その席（`seat`）を指定できる。Showdown では Battlefield の所有者（`owner`）とカードコード（`field`）も指定する。連続 Pass 数は `passes` に指定し、分からない場合は `null` を使う。
+
+手番号を範囲でしか特定できない場合は、最初の候補を `checkpoint`、最後の候補を `through` に入れる。両端を含む範囲で、同じチェックポイントですべての `facts` が一致すれば照合が通る。再生が途中の場合、範囲内でまだ一致していない観測は `inspect` の `pendingObservations` に残る。`exactPrefix` は手と初期順序の確かさを示す。
+
+```json
+{
+  "observations": [
+    {
+      "checkpoint": 18,
+      "source": "映像 00:03:21",
+      "facts": [
+        {"turn": {"number": 4}},
+        {"score": {"seat": {"n": 0}, "points": 2}},
+        {"zoneCount": {"zone": {"player": {"p": {"n": 1}, "k": "hand"}}, "count": 3}}
+      ]
+    }
+  ]
+}
+```
+
+- 得点（`score`）、ターン（`turn`）、フェイズ（`phase`）、手番（`active`）、時間切れの宣言（`clockCalled`）、ゲームの結果（`result`）を照合できる。席番号は0から始まる。2v2 の `score` には、その席のチームの得点を入れる。
+- `xp` は各席の未使用 XP を照合する。たとえば `{"xp":{"seat":{"n":0},"amount":3}}` で席0の XP が3であることを確認できる。
+- `poolResource` は指定した席の Pool に残っている Energy や Power を種類ごとに照合する。`{"poolResource":{"seat":{"n":0},"resource":"spellEnergy","amount":2}}` は席0の Spell 専用 Energy が2であることを表す。`resource` には `"energy"`、`"unitEnergy"`、`"spellEnergy"`、`"anyPower"`、または `{"domainPower":{"domain":"mind"}}` のようにドメインを指定した Power を使う。観測できた種類だけを記録できる。
+- `spentPower` は、席ごとにそのターンに支払った Power の累計を照合する。別払の Deflect と Main Phase より前に支払った分も含む。
+- 公開ゾーンにあるカードを全て確認できたときは `zoneCards`、映像に一部だけ映ったときは `zoneContains` を使う。どちらも `zone` と `cards`（`[{"code":"RAD-094"}]` など）を指定する。並び順を問わず、同じコードの枚数を数える。手札・山札・伏せ札は `zoneCount` で枚数を照合できる。
+- `battlefieldControl` は Battlefield の支配者、`battlefieldUnits` はその Battlefield にいる指定プレイヤーの Unit を照合する。どちらも Battlefield を持ち込んだ席を `owner`、現在のカードコードを `field`、確認する席を `controller` に入れる。`battlefieldUnits` では `cards` に全 Unit のコードを入れる。`battlefieldControl` の `controller: null` は支配者なしを表す。
+
+- `unitStates` は Unit のカードコード、Exhaust の有無、与えられたダメージを照合する。`controller` に席、`place` に `"base"` または `{"battlefield":{"owner":{"n":1},"field":{"code":"RAD-157"}}}` を指定する。`units` にはその席がその場所でコントロールする全 Unit を `{"card":{"code":"RAD-026"},"exhausted":true,"damage":2}` の形で入れる。同名の Unit はそれぞれ記録し、並び順は問わない。
+- `unitMights` は同じ `controller` と `place` で、装備や一時的な増減を含むその時点の Might を照合する。`units` には `{"card":{"code":"OGN-027"},"might":7}` の形で、その席がその場所でコントロールする全 Unit を記録する。
+- `markedUnits` は同じ `controller` と `place` の指定で、`marker` が `"buffed"` または `"stunned"` に当てはまる全 Unit のコードを `cards` に入れる。同じコードの Unit が複数該当する場合は枚数分を記録する。
+- `unitAttachments` は、同じ `controller` と `place` の指定で Unit ごとの装備を照合する。`units` に `{"unit":{"code":"OGN-051"},"attached":[{"code":"SFD-009"}]}` の形で全 Unit を入れる。装備が無い Unit は `"attached":[]` にする。同じコードの Unit が複数いても、どの装備が同じ Unit に付いているかを照合できる。
+
+- `visibleZoneContains` は、席別の画面や本人の記録で確認した手札などのカードを照合する。見た席を `viewer`、そのカードがあったゾーンを `zone`、確認できたカードを `cards` に入れる。たとえば Predict でその席に開示された山札のカードを指定できる。
+- 山札順を含む元ログがある場合は、Main Deck または Rune Deck の `recordedDeckOrder` を照合できる。`zone` に席と山札を指定し、`cards` に上から順にカードコードを入れる。同じコードのカードも1枚ずつ記録する。全体の並びが分かる場合は `offset` に `null` を指定し、一部だけ分かる場合は先頭から数えた0始まりの位置を指定する。これは元ログの順序と再生結果を照合する項目で、シャッフルの操作は `answers` に別途記録する。この観測を含む入出力JSONには非公開の山札順が入る。
+- `chainOrder` の `items` には、Chain の一番上から順に全項目を入れる。Spell は `{"spell":{"controller":{"n":0},"card":{"code":"SFD-087"}}}`、能力は `{"ability":{"controller":{"n":1},"source":{"code":"SFD-046"}}}` とする。能力の発生元が盤面を離れた後も照合できる。
+- `hiddenAt` は、`seat` の伏せ札のうち、`owner` が持ち込んだコード `field` の Battlefield にある枚数 `count` を照合する。公開された伏せ札の位置と枚数から記録できる。
+- `eventsInOrder` は、そのチェックポイントに進んだ一手の中で起きた公開イベントを順番に照合する。`events` に `[ {"discarded":{"seat":{"n":0}}}, {"drew":{"seat":{"n":0}}} ]` を入れると、席0が捨ててから引いたことを照合できる。映像に映らなかったイベントは省略でき、同じイベントを複数入れるとその回数も照合する。使える名前は `drew`、`discarded`、`recycled`、`playedCard`、`playedToken`、`buffedUnit`、`stunnedUnit`、`burnedOut`、`pointsGained`。`pointsGained` には `seat` と `points` を入れる。チェックポイント0のイベント列は空。
+- ダメージは `damaged` の `amount`、死亡は `died` の `controller` で照合できる。対象のカードコードも分かる場合は `damagedCard` または `diedCard` に `card` を加える。ダメージを受けた Unit がその手のうちに Trash に移ってもコードを照合できる。 手を始めた時点で盤面にいたトークンは、その手で消えても死亡時のコードをたどれる。
+- Spell による撃破がどの席に帰属したかは `{"killedBySpell":{"seat":{"n":0}}}` で照合できる。たとえば Imperial Decree が解決したダメージ誘発で Unit を倒すと、その Spell を使った席が記録される。
+- プレイしたカードのコードも観測できた場合は `playedCardCode` または `playedTokenCode` に `seat` と `card` を入れる。たとえば `{"playedCardCode":{"seat":{"n":0},"card":{"code":"OGN-001"}}}` で、席0がそのカードをプレイしたことを照合できる。
+
+`record` と `verify` は、指定した観測を全て照合する。不一致は最初に食い違ったゲーム、手番号、項目、期待値と再生結果を示す。`inspect` は再生できた手までを照合し、そのゲームの照合済み件数と後の手に残った件数を `checkedObservations` と `pendingObservations` に出す。
+
+Lean の `ReplayObservation.checkAt_removed_matched` は、照合待ちから外れた観測の全項目が、指定された手番号の範囲内にある同じ地点で一致したことを示す。
+
+同じ入力とカード定義で記録や照合に成功した後、一手あたりの自動処理の上限を増やしても、チェックポイントと最終結果は一致する。公開されたカードの情報も、各手で同じ順に記録される。[Replay.lean](../RiftboundDriver/Replay.lean)
+
+#### カード定義を更新した後に再照合する
+
+```sh
+.lake/build/bin/riftbound-replay revalidate riftbound-match.json checked-match.json
+.lake/build/bin/riftbound-replay verify checked-match.json
+```
+
+カード定義を更新したら、`revalidate` で以前のアーカイブを現在の実行ファイルで照合できる。2v2は `revalidate-team`、FFAは `revalidate-ffa` を使う。保存形式とルールの版が同じ場合に、初期状態と各手の状態ハッシュ、イベント列、勝敗を照合する。一致すれば、現在のカード定義の識別子と実装状況を反映したアーカイブを書き出す。出力先には別のファイルを指定する。同じファイルやそこを指すシンボリックリンクを指定するとエラーになる。出力は書き込みを完了した時点で差し替える。
+
+新しいアーカイブでは、各チェックポイントの `chosenChampions` に、席番号と登録した Chosen Champion の物理 ID の組を記録する。Bo1 では初回のサイドボード確定時に登録される。古いアーカイブはこの項目がなくても状態ハッシュとイベント列で照合でき、`revalidate` の出力に登録情報が加わる。
+
+同じく `playEnergy` には、そのターンのプレイ履歴順にエナジー支払いを記録する。呪文をプレイする費用を確定した記録に支払い額を、ほかの記録に0を入れる。この項目を含むアーカイブは支払い額まで照合し、古いアーカイブを再照合した出力にも追加する。
+
+`playPhysical` は同じ履歴順の物理カードIDを照合する。手札に戻るなどして盤面上のオブジェクトIDが変わっても、同じカードを追跡できる。
+
+`playStamps` は同じ履歴順に、プレイを確定した時点の内部タイムスタンプを照合する。「次にプレイするカード」に効く効果がどのプレイまで有効だったかを確認できる。
+
+`buffAttributions` は、Buff を実行した席と、その入力で発行されたイベント列における0始まりの位置を照合する。旧アーカイブも元の Buff イベントを使って再照合できる。 `stunAttributions` は同じ形式で Stun の実行席を照合する。
+
+`deathCompany` は、従来の記録と判定が異なる場合に、死亡した Unit、支配者、ターン、タイムスタンプ、同じ場所に味方がいなかったかを照合する。同時死亡の判定にはグループの処理を始める直前の盤面を使う。旧アーカイブを再照合すると、この項目も出力に加わる。
+
+再生内容が変わった場合は、最初に差が出たゲーム番号と手番号が分かる。保存形式やルールの版が異なる場合は、記録時に使った実行ファイルで照合する。
+
+#### 公開・閲覧の履歴を席別に書き出す
+
+```sh
+.lake/build/bin/riftbound-replay disclosures riftbound-match.json 0 disclosures-p0.json
+```
+
+`disclosures` は、指定された席が公開または閲覧で見たカードを、ゲームと手の順に JSON に書き出す。席番号は0から始まる。2v2 は `disclosures-team`、FFA は `disclosures-ffa` を使う。同じ手の途中でカードが移動し、決定点に元のオブジェクトが残らない場合も、見えた時点のカードを記録する。
+
+この出力に含まれるのは公開・閲覧の履歴。ジャッジが巻き戻した場合も、各席がその時点で見られたと再現された内容は元の手に残る。推定した手を含む記録では `exact` が `false` になる。アーカイブと通常の `view` の出力には全席の情報が含まれるため、席ごとに履歴を渡すときは `disclosures` の出力を使う。
+
+#### 各手の盤面を席別に書き出す
+
+```sh
+.lake/build/bin/riftbound-replay view-seat riftbound-match.json 0 board-p0.json
+```
+
+2v2 では `view-team-seat`、FFA では `view-ffa-seat` を使う。記録を検証し、各ゲームの初期状態（`i: 0`）と各手の決定後の状態を `games[].steps` に出力する。各手では盤面、ターン、得点、勝敗、指定席に見えた公開・閲覧の履歴を確認できる。`judgeRewind` は戻し先の手番号を表す。推定した手を含む記録では `exact` が `false` になる。
+
+`state.zones` のうち、山札と他席の手札の裏面は `null` で表す。公開・閲覧の効果が続いている間は、その席に見える表面も出力する。自分の手札はカードコード順に並ぶ。伏せ札は支配者と置かれた Battlefield が見え、表面は閲覧権限がある席にだけ出力される。装備先などの参照は `zone` とゼロ始まりの `index` で、その手の盤面内の位置を指す。
+
+Scuttle Crab のように、伏せ札をターン中に閲覧できる権限も席別の盤面に反映される。その間の表面は `visibleZoneContains` で照合できる。履歴に記録される公開・閲覧イベントは、カードが公開されたり、効果の指示で実際に閲覧したりしたときに発生する。
+
+### ジャッジの裁定
+
+登録デッキを使う大会では、ライブ画面で「ジャッジの裁定を記録」を開くと、対象席を選んでゲームロス、マッチロス、失格によるマッチ終了を記録できる。ゲームの合間に記録したゲームロスは次のゲームの開始時に適用する。同じ時点で両チームにゲームロスが適用される場合は、対象をまとめて選ぶとゲームが引き分けになる（TR 701.2.b–d）。マッチロスと失格はマッチの勝敗を記録し、大会の順位表は別途扱う。
+
+外部記録では、ゲームロスが適用された位置の `answers` に `{"gameLoss":{"seats":[{"n":1}]}}` を入れる。2v2ではそのゲームの `ending` にも同じ対象席を記録する。公開済みの名前付きBattlefieldは、以後のゲームで同じ席が使うと照合時に拒否される（TR 406.1.c）。マッチロスや失格は、マッチ全体の `ending` に `{"matchLoss":{"seat":{"n":1}}}` または `{"disqualification":{"seat":{"n":1}}}` を記録する。
+
+標準入力では `judge-game-loss SEATS`、`judge-match-loss SEAT`、`judge-disqualification SEAT` を使う。`judge-game-loss 13` は P1 と P3 への同時裁定を表す。
+
+プレイを巻き戻した場合は「ジャッジの裁定を記録」で戻す手を指定する。巻き戻す前の操作もログに残る。外部記録では `{"judgeRewind":{"target":18}}` を裁定位置の `answers` に置く。手番号は初期状態を0とする。通常の指定では、時計や別の裁定を挟まない同じゲームのプレイ区間を戻せる。
+
+非公開のドローを戻す際にジャッジがカードを選び直した場合は、「巻き戻し裁定の JSON を読み込む」で `target` と `returns` を持つJSONを使う。各要素の `drawn` はドローによって手札に作られたオブジェクトのID。候補の `candidates` と実際に戻した `returned` は、巻き戻し先のチェックポイントにおける各カードのオブジェクトIDで指定する。対象は、巻き戻し先の Main Deck にあったカードのドロー。Burn Out などで途中のオブジェクトIDが変わった場合も、同じ現物を巻き戻し先の山札の位置に対応付ける。複数のドローは後のものから戻し、その時点で手札に残っているカードを候補にする。同じカードを引き直した場合も、ドローごとに別の `drawn` を記録する。後の裁定で別のカードを戻すと、前のドローを戻すときの手札にもその入れ替えを反映する。必要なら `shuffles` に部分シャッフルを含め、プレイを再開する前にまとめて適用できる。その `order` も巻き戻し先のIDを使う（TR 701.5.d.3–4）。外部記録では `{"judgePrivateRewind":{"rewind":{...}}}` としてこのJSONを入れる。
+
+効果で公開してから引いたカードは、巻き戻し先の Main Deck の元の位置に戻る。このドローは `returns` に指定せず、同じ巻き戻しで非公開のドローを戻す際の候補にも含めない（TR 701.5.d.3）。
+
+巻き戻し先の時点から新たに表面が見えた Main Deck や Rune Deck のカードは、その後に引いたり Channel したりしていなければ、巻き戻しの `shuffles` に含める。先に別の裁定で取り消した手で見たカードも、当時の順番を復元する場合は照合する。ドローの戻しが無ければ `returns: []` とする。ジャッジがランダムな部分のないデッキを混ぜずに戻す裁定を下した場合は、`unshuffledDecks` に `{"seat":{"n":0},"deck":"mainDeck"}` のように対象を記録する。この項目は時計や別の裁定を挟む巻き戻しでも使える（TR 701.4.b.1、701.5.d.4）。
+
+時計が鳴る前に戻す場合は `target` と、裁定で確定した最終予定ターン `deadline` を記録する。時計の方式と時間切れが宣言済みであることは引き継ぐ。前の巻き戻しや裁定シャッフルも取り消す場合は、対象の裁定の手番号を `rulings` に新しい順で並べる。以前の巻き戻しで取り消された手は、元のログから参照できる。復元先は現在の進行経路から選ぶ。外部記録では `{"judgeTimelineRewind":{"rewind":{"target":9,"deadline":5,"rulings":[16,12]}}}` の形を使い、必要に応じて `returns` と `shuffles` を追加できる。
+
+山札の一部をジャッジが混ぜ直した場合は、変更した位置と混ぜ直した後のオブジェクトIDを保存する。ライブ画面の「裁定シャッフルを読み込む」では `seat`、`deck`（`"mainDeck"` または `"runeDeck"`）、`positions`、`order` を持つJSONを使う。位置は山札の上を0として昇順に並べ、`order` の各IDは `{"n":42}` の形で同じ順に並べる。外部記録では `{"judgeShuffle":{"shuffle":{...}}}` としてそのJSONを入れる。選んだ位置にあったカードの集合を照合し、他の位置とゲーム内のシャッフル誘発には影響させない（TR 701.4）。
+
+標準入力では `judge-rewind CHECKPOINT`、`judge-private-rewind REWIND_JSON`、`judge-timeline-rewind REWIND_JSON`、`judge-shuffle SHUFFLE_JSON` を使う。
 
 ### 2v2 の大会記録
 
-`riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。チームの操作列は記録欄に保持できる。個々の操作の再実行は 1v1 のエンジンが対象で、2v2 の対戦処理は [ロードマップの M9](roadmap.md) にある。
+ライブで記録する場合は、操作する席を「4席すべて（2v2）」にして、「登録デッキで開始」から [2v2 Constructed の設定例](../data/replay/team-constructed-example.json) を読み込む。設定の型は `LiveTeamSetup`。最初に手番順を選んだチームを `firstChooser` に、選ばれた手番順を `order` に入れる。ゲームに勝敗がつくと負けたチームが次の手番順を選び、引き分けなら直前の手番順と Battlefield を引き継ぐ。
+
+Sealed では `tournament` に代えて `sealed` に両チームの共有プールを入れ、`decks.limited.decks` に最初の4席の登録を入れる。2ゲーム目以降はサイドボードを使えるときに4席の `LimitedDeck` をまとめて読み込める。次のゲームを始めるときに、共有プールの枚数と Battlefield の使用履歴を照合する。
+
+対局終了後に「マッチの記録を保存」を押し、`riftbound-replay verify-team riftbound-match.json` で照合する。標準入力から操作する場合は `start-team-json SEED HUMANS SETUP`、`team-next [ORDER|- [SEALED_DECKS]]`、`replay` を使う。たとえば `team-next 1302` は P1、P3、P0、P2 の順に次のゲームを始める。
+
+`riftbound-replay check-team TEAM.json` は、`TeamMatchRecord` の4席分の登録、チーム A/B の手番順、選ばれた Battlefield、共有得点から決まるゲームとマッチの勝敗を確認する。
+
+操作列を記録できた試合では、`riftbound-replay record-team TEAM.json ARCHIVE.json` と `riftbound-replay verify-team ARCHIVE.json` で、ゲームごとの入力と状態を再照合できる。操作列に使う席番号は第1チームの A/B が 0/1、第2チームの A/B が 2/3。`order` を使って開始時の手番順を設定するため、最初の入力は最初のシャッフル。Battlefield の選択は先手以外の3席分を記録する。
+
+先手は交互に並んだ A/B の順序上のどの席からでも選べる（TR 603.7.c）。たとえば、第1チームの B が先手で第2チームの B が次なら `order` は 1、3、0、2。引き分け後は同じ4席の順序を使う。
+
+初期手番順を推定した場合は、`order` に推定した順を、`openingOrderEvidence` に `{"inferred":{"evidence":"映像は2人目の手番から始まり、以後の手番から推定"}}` のように根拠を記録する。この場合は `exact: false` になる。順序を確定できない場合は、`order: []` と `{"unknown":{"description":"初期手番が映っていない"}}` を記録する。照合は該当ゲームの開始前で止まる。直接観測した場合は `openingOrderEvidence` を省略する。
+
+2v2 Sealed の場合は `sealed.team0` と `sealed.team1` に、各チームが開封した8パックの中身を記録する（TR 603.6）。各ゲームの `sealedDecks` に4席の Limited デッキを入れる。プールにあるカードの枚数をチーム内で合算し、サイドボードの利用可否と Battlefield の使用履歴を確認する。Bo1 では各席に3枚の候補を登録する。Bo3 では Battlefield を出す席が選んだ1枚だけを登録し、操作列にはその候補を確定する `pick 0` を入れる。Bo3 の先手席は候補を空にできる。
+
+ゲーム途中にマッチ投了や合意の引き分けで終了した場合、最後のゲームの `ending` を `"matchEnded"` にする。そこまでの操作と終了時点の得点を照合し、そのゲームはマッチのゲーム勝数に加えない。
+
+2v2 のシングルエリミネーションも `elimination` で指定する。サドンデスで決まったゲームは `ending` に `{"suddenDeath":{"team":{"n":0}}}` の形で得点したチームを記録する。
+
+`record-team` と `verify-team` の出力には `exact` と `cardsFullyChecked` が含まれる。`exact` は操作と初期手番順をすべて直接観測した場合に `true` になる。カードの実装状況は `cardsFullyChecked` と席別の `uncheckedCards` で確認する。
+
+`riftbound-replay view-team ARCHIVE.json TRACE.json` で検証済みの対局を閲覧用に変換できる。既存ビューアの「閲覧用 JSON」から `TRACE.json` を開くと、チームの所属、ゲーム勝数、招待や Battlefield の選択を追える。
+
+4席のセットアップ、手番、チームの共有得点、スイスラウンドの時間切れや投了まで再実行できる。味方が得点ステップで占めていた Battlefield は、そのターンの Final Point 判定にも使う。味方がいる Battlefield への移動を制限し、Combat の参加者やカード効果の対象を判定するときはチームを区別する。
+
+Main Phase の Neutral Open で味方を招待するときは、手番プレイヤーの `inviteTeammate` と味方の席番号 `guest` を記録する。招待された席は、自分のルーンから支払いを用意してスペルや起動型能力を使うか、`pass` で辞退する。開始できる Showdown や Combat が複数ある場合は、手番プレイヤーが `choose` で Battlefield のオブジェクト ID を指定する。
+
+複数のユニットを同じ場所へ Standard Move で動かすときは、`startGroupMove` に移動先と支払いを指定し、各ユニットの ID を `choose` で記録する。最後の `decide true` で全員が同時に移動し、移動先の追加コストがあれば1回分を支払う。`decide false` で取り消せる。
+
+### 3人戦・4人戦の記録
+
+Skirmish（FFA3）と War（FFA4）は Core Rules の1ゲームを `FreeForAllInputs` で記録する。`mode` には `players`（3 または 4）、`victoryScore`（8）、`battlefieldsInPlay`（3）、`deckBattlefields`（3）を指定する。`game.decks.core.decks` に席番号順のデッキを、`game.answers` にシャッフルや選択を含む操作列を入れる。入力の途中で終わっているゲームは記録エラーになる。
+
+- Skirmish は各席の Main Deck と Rune Deck のシャッフル、3席の Battlefield 選択、`arrangePlayers` による手番順の記録、マリガンの順に進む。
+- War は `game.openingOrder` に全4席の手番順を入れる。操作列はシャッフルから始まり、手番順の先頭を除く3席が手番順に Battlefield を選ぶ。手番順を推定した場合は `game.openingOrderEvidence` に、`{"inferred":{"evidence":"映像から推定した根拠"}}` の形で根拠を記録する。
+- 席1が投了した場合は、その時点の `game.answers` に `{"observed":{"action":{"actor":{"player":{"p":{"n":1}}},"kind":"concede"}}}` を入れる。2席以上が残る間は、その後の操作も記録する。Skirmish で初期手番順を決める前に投了があった場合、`arrangePlayers` には残った席の順序を指定できる。
+
+```sh
+.lake/build/bin/riftbound-replay record-ffa INPUT.json ARCHIVE.json
+.lake/build/bin/riftbound-replay verify-ffa ARCHIVE.json
+.lake/build/bin/riftbound-replay view-ffa ARCHIVE.json TRACE.json
+```
+
+`verify-ffa` では勝者、各席の得点、チェックポイントの一致、観測の確かさ、使用カードの確認状況を調べられる。`TRACE.json` はビューアの「閲覧用 JSON」から開ける。上のコマンドは、Showdown 中に投了がある [4人戦の入力例](../data/replay/war-concession-example.json) で試せる。
 
 ## カードの詳細と画像
 

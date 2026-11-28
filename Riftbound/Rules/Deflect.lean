@@ -11,8 +11,9 @@ domain more, as an additional cost. The picks of targets are legal only when the
 (`paySurcharge`), whichever kind of answer chose the target: a Spell, an activated ability, or a
 triggered ability.
 
-Model decision: the player does not choose which Power pays. The Power of a domain goes first, in
-the order of the domains, and Power of any domain last, so the flexible Power is kept.
+Direct Spells can declare exact sources for a separate surcharge. Its canonical allocation
+spends domain Power first and flexible Power last. Other answers still use the canonical
+allocation when their cost does not include Deflect in an ordinary payment.
 -/
 
 @[expose] public section
@@ -24,50 +25,72 @@ namespace RunePool
 /-- Take one Power out of the Pool, if there is one: Power of a domain first, Power of any domain
 last. -/
 def takeOne (p : RunePool) : RunePool :=
-  if 0 < p.fury then { p with fury := p.fury - 1 }
-  else if 0 < p.calm then { p with calm := p.calm - 1 }
-  else if 0 < p.mind then { p with mind := p.mind - 1 }
-  else if 0 < p.body then { p with body := p.body - 1 }
-  else if 0 < p.chaos then { p with chaos := p.chaos - 1 }
-  else if 0 < p.order then { p with order := p.order - 1 }
-  else if 0 < p.any then { p with any := p.any - 1 }
-  else p
+  (PowerBucket.all.findSome? (fun bucket => p.takeBucket bucket 1)).getD p
 
 /-- Take `n` Power out of the Pool, one at a time. -/
 def takeN (p : RunePool) : Nat → RunePool
   | 0 => p
   | n + 1 => (p.takeOne).takeN n
 
-/-- Taking one Power takes exactly one when there is some. -/
-theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) :
-    p.takeOne.total + 1 = p.total := by
+/-- The physical source buckets consumed by the ordinary ordering. -/
+def canonicalPowerSources (pool : RunePool) (amount : Nat) : List PowerBucket :=
+  let after := pool.takeN amount
+  PowerBucket.all.flatMap (fun source =>
+    List.replicate (pool.powerIn source - after.powerIn source) source)
+
+/-- Every affordable allocation that leaves a different balance from the ordinary ordering. -/
+def alternatePowerAllocations (pool : RunePool) (amount : Nat) : List (List PowerBucket) :=
+  let canonical := pool.takeN amount
+  (pool.allocatedPowerPayments amount).filter (fun sources => pool.takeBuckets sources != some canonical)
+
+private theorem takeOne_paid {p : RunePool} (available : 0 < p.totalPower) :
+    ∃ bucket, p.takeBucket bucket 1 = some p.takeOne := by
   unfold takeOne
-  unfold total totalPower at *
-  split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
-    (try split) <;> simp_all <;> omega
+  cases chosen : PowerBucket.all.findSome? (fun bucket => p.takeBucket bucket 1) with
+  | some reduced =>
+    obtain ⟨bucket, _, paid⟩ := List.exists_of_findSome?_eq_some chosen
+    exact ⟨bucket, paid⟩
+  | none =>
+    have allEmpty (bucket : PowerBucket) : p.powerIn bucket < 1 :=
+      (p.takeBucket_eq_none bucket 1).mp
+        (List.findSome?_eq_none_iff.mp chosen bucket (PowerBucket.mem_all bucket))
+    have fury := allEmpty (.domain .fury)
+    have calm := allEmpty (.domain .calm)
+    have mind := allEmpty (.domain .mind)
+    have body := allEmpty (.domain .body)
+    have chaos := allEmpty (.domain .chaos)
+    have order := allEmpty (.domain .order)
+    have flexible := allEmpty .flexible
+    simp only [powerIn, get, totalPower] at *
+    omega
+
+/-- Taking one Power takes exactly one when there is some. -/
+theorem total_takeOne {p : RunePool} (h : 0 < p.totalPower) : p.takeOne.total + 1 = p.total := by
+  obtain ⟨_, paid⟩ := takeOne_paid h
+  exact total_takeBucket paid
 
 /-- Taking one Power leaves one less. -/
 theorem totalPower_takeOne {p : RunePool} (h : 0 < p.totalPower) :
     p.takeOne.totalPower + 1 = p.totalPower := by
-  have h1 := total_takeOne h
-  have h2 : p.takeOne.energy + p.takeOne.unitEnergy = p.energy + p.unitEnergy := by
-    unfold takeOne
-    split <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;> (try split) <;>
-      (try split) <;> simp
-  unfold total at h1
-  omega
+  obtain ⟨_, paid⟩ := takeOne_paid h
+  exact totalPower_takeBucket paid
+
+/-- The canonical deduction can always be witnessed by an exact source allocation. -/
+theorem takeN_realizesBuckets : ∀ (n : Nat) (p : RunePool), n ≤ p.totalPower →
+    ∃ sources : List PowerBucket, sources.length = n ∧ p.takeBuckets sources = some (p.takeN n)
+  | 0, p, _ => ⟨[], rfl, rfl⟩
+  | n + 1, p, budget => by
+    have available : 0 < p.totalPower := by omega
+    obtain ⟨first, used⟩ := takeOne_paid available
+    have remaining := totalPower_takeBucket used
+    obtain ⟨sources, length, paid⟩ := takeN_realizesBuckets n p.takeOne (by omega)
+    exact ⟨first :: sources, by simp [length], by simp [takeN, takeBuckets, used, paid]⟩
 
 /-- **Taking `n` Power takes exactly `n`** when the Pool has that much. -/
-theorem total_takeN : ∀ (n : Nat) (p : RunePool), n ≤ p.totalPower →
-    (p.takeN n).total + n = p.total
-  | 0, p, _ => by simp [takeN]
-  | n + 1, p, h => by
-    have h0 : 0 < p.totalPower := by omega
-    have h1 := totalPower_takeOne h0
-    have h2 := total_takeOne h0
-    have h3 := total_takeN n p.takeOne (by omega)
-    simp only [takeN]
-    omega
+theorem total_takeN (n : Nat) (p : RunePool) (budget : n ≤ p.totalPower) :
+    (p.takeN n).total + n = p.total := by
+  obtain ⟨sources, length, paid⟩ := takeN_realizesBuckets n p budget
+  simpa only [length] using total_takeBuckets paid
 
 end RunePool
 
@@ -87,14 +110,11 @@ def Action.spellSource (a : Action) : Option ObjId :=
 
 namespace GameState
 
-/-- The X of the Deflect of an object: its card prints it, or an Equipment gives it. A Deflect with
-no number is Deflect 1 (CR 809). -/
+/-- The total active Deflect of an object. A Deflect without a number is Deflect 1 (CR 809). -/
 def deflectOf (s : GameState) (u : ObjId) : Nat :=
   let amount (i : KeywordInst) : Nat :=
     if i.keyword == .deflect then (match i.arg with | .amount n => n | _ => 1) else 0
-  (match s.cardDef? u with
-    | some d => (d.keywords.map amount).sum
-    | none => 0) + ((s.grantedKws u).map amount).sum
+  ((s.activeKeywords u).map amount).sum
 
 /-- The Deflect surcharge for the entire spell or ability. Heisho waives it when any target
 is there (CR 766-767, 809). -/
@@ -105,7 +125,7 @@ def deflectCost (s : GameState) (p : PlayerId) (ts : List ObjId)
         ((s.obj? t).bind (·.loc)).any (fun bf => (s.activeMods bf).contains .ignoreDeflectHere)) then 0
   else
     (ts.map (fun t =>
-      if s.passiveSources.contains t && (s.obj? t).any (·.controller != p) then
+      if s.passiveSources.contains t && (s.obj? t).any (fun o => !s.config.mode.sameSide p o.controller) then
         s.deflectOf t
       else 0)).sum
 
@@ -120,7 +140,7 @@ def choosePowerCut (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) 
   if (s.cardDef? c).any (·.hasType .spell) then
     let fields := ts.filterMap (fun t =>
       if (s.cardDef? t).any (·.hasType .unit) then
-        ((s.obj? t).filter (·.controller == p)).bind (·.loc)
+        ((s.obj? t).filter (fun o => s.config.mode.sameSide p o.controller)).bind (·.loc)
       else none)
     (fields.eraseDups.flatMap (fun bf => (s.activeMods bf).filterMap (fun
       | .friendlyTargetPowerCut n => some n
@@ -147,6 +167,47 @@ def deflectInPayment (s : GameState) (p : PlayerId) (a : Action) : Bool :=
       | _ => false)
   | _ => false
 
+/-- The surcharge paid separately from a direct Spell's printed and additional costs. -/
+def separateSpellDeflectCost (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId) : Nat :=
+  if (s.cardDef? c).any (·.hasType .spell) && s.playPowerCut p c ts == 0 then
+    s.deflectCost p ts (some c)
+  else 0
+
+/-- Exchange the canonical allocation for its named sources when describing a declaration. -/
+def spellDeflectSources (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId)
+    (pay : RunePool.Payment) (pick : SpellPick) : Option (List PowerBucket) := do
+  let amount := s.separateSpellDeflectCost p c ts
+  if amount == 0 then none else
+    let pool ← s.spendFor p false pay (spell := true)
+    if pool.totalPower < amount then none else
+      some (pick.deflectPayment.getD (pool.canonicalPowerSources amount))
+
+/-- Offer each affordable alternative to the canonical allocation for a direct Spell's
+separate Deflect cost. The canonical choice already has the ordinary input form. -/
+def spellDeflectPicks (s : GameState) (p : PlayerId) (c : ObjId)
+    (targets : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) : List SpellPick :=
+  let amount := s.separateSpellDeflectCost p c targets
+  pick :: (if amount == 0 then [] else
+    match s.spendFor p false pay (spell := true) with
+    | some pool =>
+      (pool.alternatePowerAllocations amount).map (SpellPick.withDeflectPayment pick)
+    | none => [])
+
+/-- The ordinary submission names the canonical separate payment. -/
+theorem mem_spellDeflectPicks_base (s : GameState) (p : PlayerId) (c : ObjId)
+    (targets : List ObjId) (pay : RunePool.Payment) (pick : SpellPick) :
+    pick ∈ s.spellDeflectPicks p c targets pay pick :=
+  List.mem_cons_self
+
+/-- The separate surcharge uses any recorded sources and otherwise its canonical allocation. -/
+def paidDeflectPool (pool : RunePool) (a : Action) (amount : Nat) : RunePool :=
+  let explicitSources := match a.kind with
+    | .playCard _ _ _ _ _ pick => pick.deflectPayment
+    | .activate _ _ pay _ _ _ _ _ => pay.deflectPayment?
+    | _ => none
+  let paid := (explicitSources.bind pool.takeBuckets).getD (pool.takeN amount)
+  pool.recordDeflectDebit paid
+
 /-- Pay what choosing the objects of an answer costs more (CR 809): `s2` is the state the answer
 leads to, and the objects are looked at as they were in `s`. -/
 def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
@@ -158,7 +219,7 @@ def paySurcharge (s : GameState) (a : Action) (s2 : GameState) : GameState :=
       else ((s2.spendSymbols p pay false).map (s2.setPool p)).getD s2
     | _ =>
       if s.deflectInPayment p a then s2
-      else s2.setPool p ((s2.poolOf p).takeN (s.deflectCost p a.targetsOf a.spellSource))
+      else s2.setPool p (paidDeflectPool (s2.poolOf p) a (s.deflectCost p a.targetsOf a.spellSource))
   | _ => s2
 
 /-- Paying the surcharge changes nothing, or the Pool of a player. -/

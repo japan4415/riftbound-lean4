@@ -60,6 +60,48 @@ meta def bfReady : Option (GameState × PlayerId × ObjId × ObjId × ObjId × O
 
 #guard bfReady.isSome
 
+-- Selecting two Units changes neither their locations nor the pool. Confirmation pays
+-- the shared fee once and leaves both Units at the Battlefield before its Showdown.
+#guard (do
+  let (s, p, first, second, field, _) ← bfReady
+  let feeCard : CardDef := { vanilla 0 with
+    id := cid "Test Fee", abilities := [.passive .always [.moveFeeHere ⟨1, []⟩]] }
+  let s := { s with cards := ⟨s.cards.cards ++ [feeCard]⟩ }
+  let feeSource := { newCard s.cards s (otherP p) feeCard.id with loc := some field }
+  let (s, _) ← addObject s feeSource .battlefieldZone
+  let s := s.modObj field (fun battlefield => { battlefield with control := some (otherP p) })
+  let s := s.setPool p { energy := 1 }
+  let send (s : GameState) (kind : ActionKind) := (step 100 s ⟨.player p, kind⟩).toOption
+  let start := ActionKind.startGroupMove (.battlefield field) ⟨1, []⟩
+  let (choosing, _) ← send s start
+  let (one, _) ← send choosing (.choose first)
+  let (both, _) ← send one (.choose second)
+  let (cancelled, _) ← send both (.decide false)
+  let (moved, events) ← send both (.decide true)
+  return (legalFrameActions s).contains ⟨.player p, start⟩ &&
+    (send one (.decide true)).isNone && (send one (.choose first)).isNone &&
+    (both.poolOf p).energy == 1 && (both.unitsOf p field).isEmpty &&
+    cancelled.pending == s.pending && cancelled.poolOf p == s.poolOf p &&
+    (moved.poolOf p).energy == 0 &&
+    [first, second].all (fun u => (moved.obj? u).any
+      (fun o : Object => o.exhausted && o.loc == some field)) &&
+    (events.filterMap (fun | Event.standardMoved u _ => some u | _ => none)) == [first, second]).getD false
+
+-- A shared destination can be the Base even when the Units start at different Battlefields.
+#guard (do
+  let (s, p, first, second, a, b) ← bfReady
+  let (s, _) ← applyMove s p first (.battlefield a)
+  let (s, _) ← applyMove s p second (.battlefield b)
+  let s := (s.modObj first (fun o => { o with exhausted := false })).modObj second
+    (fun o => { o with exhausted := false })
+  let send (s : GameState) (kind : ActionKind) := (step 100 s ⟨.player p, kind⟩).toOption
+  let (choosing, _) ← send s (.startGroupMove .base Cost.zero)
+  let (one, _) ← send choosing (.choose first)
+  let (both, _) ← send one (.choose second)
+  let (moved, _) ← send both (.decide true)
+  return [first, second].all (fun u => (moved.zone (.player p .base)).contains u) &&
+    (moved.unitsOf p a).isEmpty && (moved.unitsOf p b).isEmpty).getD false
+
 /-- Whether an action is a Standard Move. -/
 meta def isMove (a : Action) : Bool :=
   match a.kind with | .standardMove .. => true | _ => false

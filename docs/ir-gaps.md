@@ -45,12 +45,13 @@
 
 | カード | 文 | 足りないもの |
 |---|---|---|
-| Recruit the Vanguard | "Play four 1 Might Recruit unit tokens." | トークンの定義（名前、型、Might）と、プレイする場所の選択。`Prim.create` は名前と場所だけ |
-| Mirror Image | "Play a ready Reflection unit token ... It becomes a copy of that unit. Give it [Temporary]." | 作ったオブジェクトを後続の指示で参照すること、コピー（CR 479.1）、トークンの定義 |
+| Recruit the Vanguard（解決済み） | "Play four 1 Might Recruit unit tokens." | 各トークンの配置先を `Prim.playUnitToken` で順に選ぶ |
+| Mirror Image、Keeper of Masks、Deceiver | Reflection のプレイ後に、別の誘発型能力でコピーにする | `playUnitTokensThen` は Heimerdinger の置換や Zilean の追加を含め、実際に入ったトークンの ID を誘発に渡す。Deceiver は得点した Battlefield を記録し、捨て札と Exhaust を支払ってから、その Battlefield の別の Unit を選ぶ（CR 375、388–389）。 [Unleashed 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) |
+| Zilean, Time Mage（解決済み） | トークンをプレイする前に、ターンに一度だけ追加トークンを選ぶ | 置換を選んだ場合に使用を記録する。元の指示の場所、Ready、後続の誘発を引き継ぎ、他の置換との適用順を選べる（CR 370–375）。 [Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/) |
 | Svellsongur | "copy that unit's text to this Equipment's effect text for as long as this is attached to it" | 文のコピー（CR 479.1）、Attach に連動する期間。**近似して書いた**（`StaticMod.copiesUnitText`: 付いたユニットが、自分のカードの誘発する能力を、もう一度持つ。起動する能力、パッシブ、死ぬときの誘発（死ぬと、Equipment が外れた新しい物になる）は、複製しない）。 |
-| Whirlwind（2 人戦では書けた） | "Starting with the next player, each player may return a unit ..." | 手番順に従ってプレイヤーを走査する（多人数。M9）。2 人戦は `eachPlayer .eachOpponent` の次に `eachPlayer .you` |
+| Whirlwind（解決済み） | "Starting with the next player, each player may return a unit ..." | `eachPlayerFromNext` で現手番の次の席から全員を順に回る。2v2 で味方を含む4席の選択と手札への帰還を確認した |
 | Spiritforged 22 の近似（[roadmap.md](roadmap.md) 『Spiritforged 22』） | 山札から公開（Undertitan）、公開の置き換え（Void Hatchling）、手札以外から遊ぶときの Accelerate（Rek'Sai）、選ぶ呪文の費用（Irelia）、追放したユニットの記録（The Zero Drive）、Akshan の『離れるまで支配』 | `Prim.reveal` を使うカードだけが `Event.revealed` を出す。置き換えは、公開のあとの誘発で近似する。費用は、Energy の払い戻しで近似する。ほかは、書いていない |
-| Heimerdinger, Academy Instructor | "If you would play a unit token to a location ... play a 3 Might Mech unit token to that same location instead." | トークンのプレイを置換すること、置換前の場所を参照すること |
+| Heimerdinger, Academy Instructor（解決済み） | 同じ場所に Mech をプレイする置換 | 出る前にどのトークンを置き換えるか選び、元のプレイ先と着地時の状態を引き継ぐ。Zilean との適用順も選べる |
 
 ## 4. 書けたが、近似したもの
 
@@ -63,8 +64,9 @@
 | （他の弾）呪文を、タダでプレイする | `Prim.play` は、対象を選ばない呪文だけを、チェーンを開かずに、すぐに解決する。対象のある呪文は、プレイしない |
 | Kai'Sa, Evolutionary | 墓地から唱えられるのは、対象を選ばない呪文だけ。チェーンを使わず、すぐに解決し、「呪文をプレイしたとき」の誘発は、働かない |
 | Promising Future | 山札の上 5 枚から、選べるのは、ユニットとギアだけ（呪文を、エネルギーなしで、プレイする手段が、まだ無い）。プレイは、各プレイヤーが、続けて行う（呪文をかけた人が先。見る・選ぶ・プレイ・リサイクルを、プレイヤーごとに続ける）。払えないカードを選ぶと、そのカードも、リサイクルされる |
-| Quick-Draw（Spiritforged） | Reaction の速さを持つギアとユニットを、Chain への応答としてプレイすることは、まだできない（メインフェイズに、Chain が空のときだけ）。付けるのは、場に出たときの誘発 |
-| Weaponmaster（Spiritforged） | Equip コストから Power 1 つを引く（先頭の 1 つ）。付けてもよい Equipment は、味方のもの。払うのは、解決のとき、Rune Pool にあるものだけ（足りなければ付かない）。解決のとき、ユニットが場に無ければ、何もしない。Equip コストが、読めていない Equipment（コストが Kill や Recycle のもの）を選ぶと、何も起きない（選ぶ候補から外す手段が、まだ無い）。「Equipment」のタグが無いカード（RAD-123）は、選べない |
+| Quick-Draw（Spiritforged、解決済み） | Chain への応答で Gear をプレイでき、プレイ時の誘発は自分が支配する Unit を選ぶ。2v2 で味方だけが支配する Unit は対象に含めない。 |
+| Spinning Axe・Turn to Dust（解決済み） | 装備中は印刷された Temporary の能力が停止する。付与された Temporary は有効で、その Gear を支配するプレイヤーの次の Beginning Phase に死亡する。対象条件からは印刷されたキーワードを参照できる。 [公式 Unleashed FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/) |
+| Weaponmaster（Spiritforged） | 誘発の確定時、Equipment を選ぶ前に見送れる。Equip コストは解決時に支払い、任意ドメインの Power `[A]` が含まれる場合だけ1つ減らす。Rune Pool の資源と基本 Rune で払う。Exhaust で払う選択肢には対応済み。Kill や Recycle を含む Equip コストは未対応。 [公式 Spiritforged FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/) |
 | 戦闘に勝つ（Spiritforged） | 「勝つ」は、戦闘の終わりに、Recall のあとで、その Battlefield に残る Unit が、1 人のプレイヤーのものだけであること。攻撃側は、防御側が残ると Recall されるので、防御側が勝つ。規則の原文（CR 468）では、Recall の前で数える読み方も、ありうる（未確認） |
 | 解決のときに払う（Spiritforged） | 「you may pay X. If you do, ...」は、解決のときに、Rune Pool にあるものから払う。Draven, Vanquisher、Sunken Temple、Treasure Hoard、Emperor's Dais、Power Nexus がそう。相手のターン（Draven の防御側の誘発）は、Rune Pool が空なので、払えない。Sunken Temple の「Mighty」は、解決のときに調べる |
 | Emperor's Dais・Piercing Light・Emperor's Divide（Spiritforged） | 返すユニットと 2 つ目の対象を、解決のときに選ぶ（Deflect の追加支払いが掛からず、「選んだとき」の誘発も働かない） |
@@ -78,7 +80,7 @@
 | Smite | "If it would die this turn" を「次に死ぬとき」で表した。ユニットは 1 回しか死なないので同じ |
 | Blue Sentinel | "at the start of your next Main Phase" を、自分の次の Main Phase 開始の遅延効果で表した。`delayed` の期間は `permanent`（発火するまで） |
 | Forgotten Monument | 「その場所で、プレイヤーが自分の 3 ターン目まで得点できない」を `untilTurn := 3` で表した |
-| Retreat（OGN-104） | 「Its owner channels」を `PlayerSel.you` で表した。友軍の Unit の owner と controller が違う場合（take control の後）は、誤る。「slot の物体の owner」を表す `PlayerSel` が無い |
+| Retreat（OGN-104、解決済み） | `PlayerSel.ownerOf` で帰還前に持ち主を確定する。2v2 で持ち主と操作者が異なる場合も、持ち主がユニットを手札に戻し、Exhausted の Rune を Channel する |
 | Gust（OGN-169） | 「3 Might or less」の Might フィルタは、印刷の Might、持続する増減、Buff を読む。Equipment の加算と Passive は読まない（`mightNow` は、フィルタより後で定義されている） |
 | Lux, Illuminated ほか | 「コストが 5 以上の Spell をプレイしたとき」を、トリガーの subject に Spell のフィルタを置いて表した。subject は「イベントの対象」と「世界にあるもの」の両方を表せてしまい、解釈器で意味を決める必要がある |
 

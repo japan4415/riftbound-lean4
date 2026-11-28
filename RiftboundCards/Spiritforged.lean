@@ -43,7 +43,7 @@ def SFD_001 : CardDef :=
       (.grant (.slot 0) (.mightPlus .it (.mul (.const 2)
         (.count (Selector.all .enemy .atBattlefield [.ofType .unit, .at_ (.slot 0)]))))
         .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-002
 /--
@@ -71,7 +71,7 @@ def SFD_002.meta : CardDef :=
 /-- Armed Assailant. -/
 def SFD_002 : CardDef :=
   { SFD_002.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-003
 /--
@@ -99,7 +99,7 @@ def SFD_003 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.keyword .it ⟨.assault, .amount 2⟩) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-004
 /--
@@ -123,9 +123,9 @@ def SFD_004.meta : CardDef :=
 def SFD_004 : CardDef :=
   { SFD_004.meta with
 
-    spellEffect := some (.of [] (.seqOf [.prim (.turnEffect .unitsReady),
+    spellEffect := some (.of [] (.seqOf [.prim (.turnEffect .friendlyUnitsReady),
       .prim (.create "Gold" (.const 1) .atBase false)])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-005
 /--
@@ -148,11 +148,9 @@ def SFD_005 : CardDef :=
   { SFD_005.meta with
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
-      (.ifThen (.exists (Selector.all .friendly .anywhere [.sameAs (.slot 0)]))
-        (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2))])
-        (.ifThen (.exists (Selector.all .enemy .anywhere [.sameAs (.slot 0)]))
-          (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .opponent (.const 2))]) .nop))),
-    status := .drafted }
+      (.eachPlayer (.controllerOf 0)
+        (.seqOf [.prim (.kill (.slot 0)), .prim (.draw .you (.const 2))]))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-006
 /--
@@ -176,7 +174,7 @@ def SFD_006.meta : CardDef :=
 def SFD_006 : CardDef :=
   { SFD_006.meta with
     abilities := [.passive .always [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-007
 /--
@@ -204,7 +202,7 @@ def SFD_007 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .unit]]
         (.grant (.slot 0) (.keyword .it { keyword := .ganking }) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-008
 /--
@@ -229,7 +227,7 @@ def SFD_008.meta : CardDef :=
 /-- Sentinel Adept. -/
 def SFD_008 : CardDef :=
   { SFD_008.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-009
 /--
@@ -259,7 +257,7 @@ def SFD_009.meta : CardDef :=
 def SFD_009 : CardDef :=
   { SFD_009.meta with
     grants := [.passive .always [.keyword .self { keyword := .assault, arg := .amount 2 }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-010
 /--
@@ -285,7 +283,7 @@ def SFD_010 : CardDef :=
 
     abilities := [.passive (.not (.matches .self .inHandZone))
       [.costMinus .self (.const 2)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-011
 /--
@@ -343,7 +341,7 @@ def SFD_012 : CardDef :=
   { SFD_012.meta with
 
     abilities := [.passive .always [.costMinusMin .self .cardsPlayed 1]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-013
 /--
@@ -371,7 +369,7 @@ def SFD_013 : CardDef :=
     abilities := [.triggered { Trigger.onSelf .play with condition := .paid }
         (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
         (.prim (.deal (.slot 0) (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-014
 /--
@@ -396,7 +394,7 @@ def SFD_014 : CardDef :=
   { SFD_014.meta with
 
     abilities := [.passive .always [.noMoveToBaseAny]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-015
 /--
@@ -421,7 +419,7 @@ def SFD_015 : CardDef :=
   { SFD_015.meta with
 
     abilities := [.passive .always [.playToBf [.conqueredByMine], .noPlayToBase]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-016
 /--
@@ -485,7 +483,7 @@ def SFD_017 : CardDef :=
     spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
       (.ifThen (.matches (.slot 0) .attacker) (.prim (.deal (.slot 0) (.const 4)))
         (.prim (.deal (.slot 0) (.const 2))))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-018
 /--
@@ -534,12 +532,10 @@ def SFD_019.meta : CardDef :=
 def SFD_019 : CardDef :=
   { SFD_019.meta with
 
-    abilities := [.activated [.pay ⟨1, [.domain .fury]⟩, .exhaustSelf] .normal
-      (.of [] (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [.ofType .unit]))
-          (.const 1))
-        (.seqOf [.prim (.recycle (Selector.one .friendly .inTrash [.ofType .unit])),
-          .prim (.create "Mech" (.const 1) .atBase false)]) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.activated [.pay ⟨1, [.domain .fury]⟩,
+        .recycleFromTrash 1 (FilterList.ofList [.ofType .unit]), .exhaustSelf] .normal
+      (.of [] (.prim (.create "Mech" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-020
 /--
@@ -547,8 +543,7 @@ def SFD_019 : CardDef :=
 Printings: SFD-020/221, SFD-020a/221
 
 > When I win a combat, play a Gold gear token exhausted.
-> When I attack or defend, you may pay :rb_rune_fury:. If you do, give me +2 :rb_might: this
-> turn.
+> When I attack or defend, you may pay :rb_rune_fury: to give me +2 :rb_might: this turn.
 -/
 def SFD_020.meta : CardDef :=
   { id := ⟨"SFD-020"⟩,
@@ -564,19 +559,15 @@ def SFD_020.meta : CardDef :=
 
 /-- Draven, Vanquisher. -/
 def SFD_020 : CardDef :=
+  let payForMight (event : TriggerEvent) : Ability :=
+    .triggered { Trigger.onSelf event with optional := true, cost := .pay ⟨0, [.domain .fury]⟩ }
+      (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited
   { SFD_020.meta with
-
     abilities := [.triggered (.onSelf .winCombat)
         (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
-      .triggered (.onSelf .attack)
-        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
-            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited,
-      .triggered (.onSelf .defend)
-        (.of [] (.ifThen (.canPay ⟨0, [.domain .fury]⟩)
-          (.may (.seqOf [.prim (.pay ⟨0, [.domain .fury]⟩),
-            .grant .self (.mightPlus .it (.const 2)) .thisTurn])) .nop)) .unlimited],
-    status := .drafted }
+      payForMight .attack,
+      payForMight .defend],
+    status := .full }
 
 -- BEGIN GENERATED SFD-021
 /--
@@ -604,7 +595,7 @@ def SFD_021 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Mech" (.const 2) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-022
 /--
@@ -631,7 +622,7 @@ def SFD_022.meta : CardDef :=
 /-- Long Sword. -/
 def SFD_022 : CardDef :=
   { SFD_022.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-023
 /--
@@ -655,11 +646,12 @@ def SFD_023.meta : CardDef :=
 /-- Piercing Light. -/
 def SFD_023 : CardDef :=
   { SFD_023.meta with
-
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit],
+    spellEffect := some {
+      choices := [.targetOf .one .any .atBattlefield [.ofType .unit],
         .targetOf (.upTo 1) .any .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 2)), .prim (.deal (.slot 1) (.const 2))])),
-    status := .drafted }
+      body := .seqOf [.prim (.deal (.slot 0) (.const 2)), .prim (.deal (.slot 1) (.const 2))]
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED SFD-024
 /--
@@ -724,7 +716,7 @@ def SFD_025 : CardDef :=
   { SFD_025.meta with
 
     abilities := [.passive .always [.playToBf [.attackedByMine]]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-026
 /--
@@ -792,7 +784,7 @@ def SFD_027 : CardDef :=
         (.count (Selector.all .friendly .inHand [.sameAs .self]))) (.const 2))
         [.entersReady .self],
       .triggered (.onSelf .hold) (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-028
 /--
@@ -822,7 +814,7 @@ def SFD_028 : CardDef :=
     abilities := [.triggered (.onSelf .attack)
       (.of [.targetOf .one .enemy .here [.ofType .unit]]
         (.prim (.deal (.slot 0) (.kwAmount .self .assault)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-029
 /--
@@ -913,7 +905,7 @@ def SFD_030 : CardDef :=
   { SFD_030.meta with
 
     grants := [.passive .always [.holdIsConquer]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-031
 /--
@@ -965,7 +957,7 @@ def SFD_032 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .any .anywhere [.ofType .gear]] (.may (.prim (.kill (.slot 0)))))
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-033
 /--
@@ -995,7 +987,7 @@ def SFD_033.meta : CardDef :=
 def SFD_033 : CardDef :=
   { SFD_033.meta with
     grants := [.passive .always [.keyword .self { keyword := .tank }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-034
 /--
@@ -1022,7 +1014,7 @@ def SFD_034 : CardDef :=
   { SFD_034.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 2)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-035
 /--
@@ -1045,11 +1037,10 @@ def SFD_035.meta : CardDef :=
 /-- Guardian of the Passage. -/
 def SFD_035 : CardDef :=
   { SFD_035.meta with
-
-    abilities := [.triggered (.onSelf .hold)
-      (.of [] (.may (.prim (.returnToHand
-        (Selector.one .friendly .inTrash [.not (.ofType .spell)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .hold, optional := true }
+      { EffectDef.of [.targetOf .one .you .inTrash [.either (.ofType .unit) (.ofType .gear)]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-036
 /--
@@ -1077,7 +1068,7 @@ def SFD_036 : CardDef :=
 
     abilities := [.triggered (.onSelf .die)
       (.of [] (.ifThen (.marked .diedAlone) (.prim (.draw .you (.const 1))) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-037
 /--
@@ -1101,7 +1092,7 @@ def SFD_037.meta : CardDef :=
 /-- Navori Scout. -/
 def SFD_037 : CardDef :=
   { SFD_037.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-038
 /--
@@ -1128,7 +1119,7 @@ def SFD_038 : CardDef :=
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .notSelf]]
         (.grant (.slot 0) (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-039
 /--
@@ -1156,7 +1147,7 @@ def SFD_039 : CardDef :=
       (.of [] (.eitherOf (EffectList.ofList
         [.prim (.ready (Selector.one .any .inLegendZone [])),
          .prim (.exhaust (Selector.one .any .inLegendZone []))]))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-040
 /--
@@ -1212,9 +1203,9 @@ def SFD_041 : CardDef :=
     abilities := [.triggered (.onSelf .move)
       (.of [] (.seqOf [.prim (.revealTop 1), .ifThen
         (.cmp .ge (.count (Selector.all .friendly .inMainDeck [.top 1, .ofType .gear])) (.const 1))
-        (.prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 1])))
+        (.prim (.draw .you (.const 1)))
         (.prim (.recycle (Selector.one .friendly .inMainDeck [.top 1])))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-042
 /--
@@ -1245,7 +1236,7 @@ def SFD_042 : CardDef :=
   { SFD_042.meta with
 
     grants := [.passive .always [.mightIfFresh 2]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-043
 /--
@@ -1300,7 +1291,7 @@ def SFD_044 : CardDef :=
 
     -- as an additional cost to play it, a friendly gear returns to its owner's hand
     playExtra := some (.returnGear, true),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-045
 /--
@@ -1324,9 +1315,9 @@ def SFD_045.meta : CardDef :=
 def SFD_045 : CardDef :=
   { SFD_045.meta with
 
-    spellEffect := some (.of [.targetOf .one .enemy .onChainAll [.choosesMine]]
-      (.prim (.counter (.slot 0)))),
-    status := .drafted }
+    spellEffect := some { EffectDef.of [.targetOf .one .enemy .onChainAll [.choosesFriendly]]
+      (.prim (.counter (.slot 0))) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED SFD-046
 /--
@@ -1350,9 +1341,9 @@ def SFD_046 : CardDef :=
   { SFD_046.meta with
 
     abilities := [.triggered (.onSelf .play) (.of [] (.prim (.draw .you (.const 1)))) .unlimited,
-      .activated [.pay ⟨1, [.domain .calm]⟩, .exhaustSelf] .normal
-        (.of [] (.seqOf [.prim (.kill .self), .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+      .activated [.pay ⟨1, [.domain .calm]⟩, .exhaustSelf, .killSelf] .normal
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-047
 /--
@@ -1376,8 +1367,8 @@ def SFD_047.meta : CardDef :=
 def SFD_047 : CardDef :=
   { SFD_047.meta with
 
-    abilities := [.triggered (.onSelf .buff) (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered (.onSelf .buffByYou) (.of [] (.prim (.ready .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-048
 /--
@@ -1403,7 +1394,7 @@ def SFD_048 : CardDef :=
     abilities := [.triggered (.onSelf .move)
         (.of []
         (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-049
 /--
@@ -1506,7 +1497,7 @@ def SFD_051 : CardDef :=
   { SFD_051.meta with
 
     grants := [.passive .always [.diesInsteadGear]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-052
 /--
@@ -1539,7 +1530,7 @@ Printings: SFD-053/221
 
 > [Reaction] (Play any time, even before spells and abilities resolve, including to a
 > battlefield you control.)
-> When you play me, heal your units here, then move an enemy unit from here to its base.
+> When you play me, heal your units here, then move up to one enemy unit from here to its base.
 -/
 def SFD_053.meta : CardDef :=
   { id := ⟨"SFD-053"⟩,
@@ -1557,13 +1548,11 @@ def SFD_053.meta : CardDef :=
 /-- Janna, Savior. -/
 def SFD_053 : CardDef :=
   { SFD_053.meta with
-
     abilities := [.passive .always [.playToBf [.controlled]], .triggered (.onSelf .play)
-      (.of [] (.seqOf [
-        .prim (.heal (Selector.all .friendly .anywhere [.ofType .unit, .at_ .self]) (.const 99)),
-        .prim (.move (Selector.one .enemy .anywhere [.ofType .unit, .at_ .self]) .base)]))
-      .unlimited],
-    status := .drafted }
+      (.of [.targetOf (.upTo 1) .enemy .here [.ofType .unit]] (.seqOf [
+        .prim (.healAll (.all .you .here [.ofType .unit])),
+        .prim (.move (.slot 0) .base)])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-054
 /--
@@ -1592,7 +1581,7 @@ def SFD_054 : CardDef :=
   { SFD_054.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere
+      { event := .play, subject := Selector.all .you .anywhere
           [.tag ⟨"Equipment"⟩, .not (.hasKeyword .quickDraw)] }
       (.of [Choice.targetOf .one .friendly .anywhere [.ofType .unit]]
         (.prim (.attach (.slot 1) (.slot 0)))) .unlimited],
@@ -1653,7 +1642,7 @@ def SFD_056.meta : CardDef :=
 /-- Sterak's Gage. -/
 def SFD_056 : CardDef :=
   { SFD_056.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-057
 /--
@@ -1799,9 +1788,9 @@ def SFD_061.meta : CardDef :=
 def SFD_061 : CardDef :=
   { SFD_061.meta with
     abilities := [.triggered (.onSelf .play)
-        (.of []
-        (.prim (.returnToHand (.one .friendly .inTrash [.ofType .gear])))) .unlimited],
-    status := .drafted }
+      { EffectDef.of [.targetOf .one .you .inTrash [.ofType .gear]]
+        (.prim (.returnToHand (.slot 0))) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-062
 /--
@@ -1828,7 +1817,7 @@ def SFD_062 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit, .tag ⟨"Mech"⟩, .notSelf]]
         (.prim (.ready (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-063
 /--
@@ -1850,14 +1839,11 @@ def SFD_063.meta : CardDef :=
 /-- Chemtech Cask. -/
 def SFD_063 : CardDef :=
   { SFD_063.meta with
-
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.ofType .spell],
-        condition := .not .yourTurn }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-        .nop)) .unlimited],
-    status := .drafted }
+      { event := .play, subject := Selector.all .you .anywhere [.ofType .spell],
+        condition := .opponentTurn, optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-064
 /--
@@ -1889,7 +1875,7 @@ def SFD_064.meta : CardDef :=
 def SFD_064 : CardDef :=
   { SFD_064.meta with
     grants := [.passive .always [.keyword .self { keyword := .shield, arg := .amount 2 }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-065
 /--
@@ -1916,11 +1902,11 @@ def SFD_065 : CardDef :=
 
     -- a Mech token that is played counts too
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere
+      { event := .play, subject := Selector.all .you .anywhere
           [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited,
       .triggered
-      { event := .playToken, subject := Selector.all .friendly .anywhere
+      { event := .playToken, subject := Selector.all .you .anywhere
           [.ofType .unit, .tag ⟨"Mech"⟩] }
       (.of [] (.seqOf [.prim (.lookTop 1), .may (.prim (.recycleTop .you))])) .unlimited],
     status := .drafted }
@@ -1950,7 +1936,7 @@ def SFD_066 : CardDef :=
   { SFD_066.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightMinus .it (.const 2)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-067
 /--
@@ -2006,7 +1992,7 @@ def SFD_068 : CardDef :=
   { SFD_068.meta with
 
     abilities := [.passive .always [.doubleEquip]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-069
 /--
@@ -2032,7 +2018,7 @@ def SFD_069 : CardDef :=
     abilities := [.triggered (.onSelf .conquer)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-070
 /--
@@ -2117,12 +2103,12 @@ def SFD_072 : CardDef :=
 
     abilities :=
       let twoGear : Condition :=
-        .cmp .ge (.count (Selector.all .friendly .anywhere [.ofType .gear])) (.const 2)
+        .cmp .ge (.count (Selector.all .you .anywhere [.ofType .gear])) (.const 2)
       -- "if you control two or more gear": it is asked when the ability is set off, and again
       -- when it resolves
       [.triggered { event := .play, condition := twoGear }
         (.of [] (.ifThen twoGear (.prim (.ready .self)) .nop)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-073
 /--
@@ -2153,7 +2139,7 @@ def SFD_073 : CardDef :=
   { SFD_073.meta with
 
     grants := [.passive .always [.gainsTag ⟨"Mech"⟩]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-074
 /--
@@ -2209,7 +2195,7 @@ def SFD_075 : CardDef :=
 
     abilities := [.triggered (.onSelf .useGearAbility)
       (.of [] (.grant .self (.mightPlus .it (.const 1)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-076
 /--
@@ -2233,11 +2219,11 @@ def SFD_076.meta : CardDef :=
 def SFD_076 : CardDef :=
   { SFD_076.meta with
 
-    abilities := [.passive (.exists (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]))
+    abilities := [.passive (.exists (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]))
       [.costMinus .self (.const 2)]],
     spellEffect := some (.of [] (.seqOf [.prim (.create "Mech" (.const 1) .atBase false),
       .prim (.draw .you (.const 1))])),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-077
 /--
@@ -2267,7 +2253,7 @@ def SFD_077 : CardDef :=
         .prim (.deal (.slot 0) (.const 4)), none⟩,
       ⟨"Gear を Kill", [.targetOf .one .any .anywhere [.ofType .gear]],
         .prim (.kill (.slot 0)), none⟩] },
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-078
 /--
@@ -2351,15 +2337,11 @@ def SFD_080.meta : CardDef :=
 /-- Bellows Breath. -/
 def SFD_080 : CardDef :=
   { SFD_080.meta with
-
-    spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit],
-        .targetOf (.upTo 1) .any .anywhere
-          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0))],
-        .targetOf (.upTo 1) .any .anywhere
-          [.ofType .unit, .at_ (.slot 0), .not (.sameAs (.slot 0)), .not (.sameAs (.slot 1))]]
-      (.seqOf [.prim (.deal (.slot 0) (.const 1)), .prim (.deal (.slot 1) (.const 1)),
-        .prim (.deal (.slot 2) (.const 1))])),
-    status := .drafted }
+    spellEffect := some {
+      choices := [.targetOf (.atOneLocation 3) .any .anywhere [.ofType .unit]]
+      body := .prim (.deal (.slotsFrom 0) (.const 1))
+      recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED SFD-081
 /--
@@ -2519,7 +2501,7 @@ def SFD_085 : CardDef :=
 
     abilities := [.passive .always
       [.mightPlus .self (.count (Selector.all .friendly .anywhere [.ofType .gear]))]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-086
 /--
@@ -2576,7 +2558,7 @@ def SFD_087 : CardDef :=
   { SFD_087.meta with
     spellEffect := some (.of []
       (.prim (.draw .you (.const 3)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-088
 /--
@@ -2638,10 +2620,10 @@ def SFD_089 : CardDef :=
   { SFD_089.meta with
 
     abilities := [.passive .always
-        [.mightPlus (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]) (.const 1)],
+        [.mightPlus (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]) (.const 1)],
       .triggered (.onSelf .hold)
         (.of [] (.prim (.create "Mech" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-090
 /--
@@ -2711,7 +2693,7 @@ def SFD_091 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [] (.may (.eitherOf (EffectList.ofList
         [.prim (.draw .you (.const 1)), .prim (.buff .self)])))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-092
 /--
@@ -2736,7 +2718,7 @@ def SFD_092.meta : CardDef :=
 /-- Combat Chef. -/
 def SFD_092 : CardDef :=
   { SFD_092.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-093
 /--
@@ -2762,7 +2744,7 @@ def SFD_093 : CardDef :=
 
     -- may be played to an occupied enemy Battlefield (as it is played, with its cost)
     abilities := [.passive .always [.playToBf [.enemyOccupied]]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-094
 /--
@@ -2787,9 +2769,9 @@ def SFD_094 : CardDef :=
   { SFD_094.meta with
 
     abilities := [.passive
-      (.exists (Selector.all .friendly .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
+      (.exists (Selector.all .you .anywhere [.tag ⟨"Dragon"⟩, .notSelf]))
       [.entersReady .self]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-095
 /--
@@ -2814,7 +2796,7 @@ def SFD_095.meta : CardDef :=
 /-- Doran's Blade. -/
 def SFD_095 : CardDef :=
   { SFD_095.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-096
 /--
@@ -2838,7 +2820,7 @@ def SFD_096.meta : CardDef :=
 def SFD_096 : CardDef :=
   { SFD_096.meta with
     keywords := [{ keyword := .ganking }],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-097
 /--
@@ -2863,7 +2845,7 @@ def SFD_097 : CardDef :=
   { SFD_097.meta with
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .unit]]
       (.grant (.slot 0) (.mightPlus .it (.const 5)) .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-098
 /--
@@ -2917,7 +2899,7 @@ def SFD_099.meta : CardDef :=
 /-- Veteran Poro. -/
 def SFD_099 : CardDef :=
   { SFD_099.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-100
 /--
@@ -2942,9 +2924,9 @@ def SFD_100 : CardDef :=
   { SFD_100.meta with
 
     abilities := [.triggered
-      { event := .play, subject := Selector.all .friendly .anywhere [.powerCost .ge (.const 2)] }
+      { event := .play, subject := Selector.all .you .anywhere [.powerCost .ge (.const 2)] }
       (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-101
 /--
@@ -2976,7 +2958,7 @@ def SFD_101 : CardDef :=
             (.ifThen (.matches .it (.not .buffed)) (.prim (.buff .it)) .nop))) .unlimited,
       .triggered (.onSelf .spendBuff)
         (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-102
 /--
@@ -3006,7 +2988,7 @@ def SFD_102.meta : CardDef :=
 def SFD_102 : CardDef :=
   { SFD_102.meta with
     grants := [.passive .always [.keyword .self { keyword := .deflect }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-103
 /--
@@ -3060,10 +3042,9 @@ def SFD_104.meta : CardDef :=
 /-- Petricite Monument. -/
 def SFD_104 : CardDef :=
   { SFD_104.meta with
-
     abilities := [.passive .always
       [.keyword (Selector.all .friendly .anywhere [.ofType .unit]) { keyword := .deflect }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-105
 /--
@@ -3083,12 +3064,11 @@ def SFD_105.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Ruin Runner. -/
+/-- Opponents cannot choose Ruin Runner with spells or abilities. -/
 def SFD_105 : CardDef :=
   { SFD_105.meta with
-
     abilities := [.passive .always [.cant .self .beChosen]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-106
 /--
@@ -3113,8 +3093,8 @@ def SFD_106 : CardDef :=
   { SFD_106.meta with
 
     spellEffect := some (.of [] (.prim (.draw .you
-      (.count (Selector.all .friendly .anywhere [.ofType .unit, .mighty]))))),
-    status := .drafted }
+      (.count (Selector.all .you .anywhere [.ofType .unit, .mighty]))))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-107
 /--
@@ -3335,7 +3315,7 @@ def SFD_113 : CardDef :=
   { SFD_113.meta with
 
     abilities := [.triggered (.onSelf .conquer) (.of [] (.prim (.ready .self))) (.perTurn 1)],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-114
 /--
@@ -3548,11 +3528,13 @@ def SFD_120.meta : CardDef :=
 /-- Sivir, Ambitious. -/
 def SFD_120 : CardDef :=
   { SFD_120.meta with
-
-    abilities := [.triggered { event := .conquer, condition := .excessAtLeast 5 }
-      (.of [] (.may (.prim (.deal (Selector.one .enemy .anywhere [.ofType .unit]) .excess))))
+    abilities := [.triggered
+      { event := .conquer, optional := true, condition := .and (.matches .self .attacker) (.excessAtLeast 5) }
+      { choices := [.targetOf .one .enemy .anywhere [.ofType .unit]]
+        recheckTargets := true
+        body := .prim (.deal (.slot 0) .excess) }
       .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-121
 /--
@@ -3578,7 +3560,7 @@ def SFD_121 : CardDef :=
 
     abilities := [.triggered (.onSelf .playHidden)
       (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-122
 /--
@@ -3604,10 +3586,10 @@ def SFD_122.meta : CardDef :=
 def SFD_122 : CardDef :=
   { SFD_122.meta with
 
-    spellEffect := some (.of [] (.seqOf [
-      .prim (.returnToHand (Selector.one .friendly .inMainDeck [.top 2])),
-      .prim (.recycle (Selector.one .friendly .inMainDeck [.top 1]))])),
-    status := .drafted }
+    spellEffect := some (.of [] (.lookAtTop 2 (.seqOf [
+      .chooseObject .you .inMainDeck (.ofList [.top 2]) (.prim (.drawLooked (.var pickVar))),
+      .recycleLooked]))),
+    status := .full }
 
 -- BEGIN GENERATED SFD-123
 /--
@@ -3635,7 +3617,7 @@ def SFD_123 : CardDef :=
     abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
         (.of [] (.prim (.discard .you (.const 1)))) .unlimited,
       .triggered (.onSelf .winCombat) (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-124
 /--
@@ -3668,7 +3650,7 @@ def SFD_124 : CardDef :=
         (.of []
         (.seqOf [.prim (.discard .you (.const 1)),
           .prim (.draw .you (.const 1))])) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-125
 /--
@@ -3689,17 +3671,15 @@ def SFD_125.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Fae Porter. -/
+/-- Fae Porter pays Chaos Power to move a Unit its controller controls to the recorded destination. -/
 def SFD_125 : CardDef :=
   { SFD_125.meta with
-
-    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
-      (.of [] (.ifThen (.and (.canPay ⟨0, [.domain .chaos]⟩)
-          (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf])))
-        (.may (.seqOf [.prim (.pay ⟨0, [.domain .chaos]⟩),
-          .prim (.move (Selector.one .friendly .anywhere [.ofType .unit, .notSelf])
-            (.at_ .self))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { Trigger.onSelf .moveToBattlefield with optional := true, cost := .pay ⟨0, [.domain .chaos]⟩ }
+      (.of [.targetOf .one .you .anywhere [.ofType .unit]]
+        (.prim (.move (.slot 0) (.at_
+          (.all .any .atBattlefield [.ofType .battlefield, .atEventBattlefield none]))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-126
 /--
@@ -3719,13 +3699,12 @@ def SFD_126.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Loyal Pup. -/
+/-- Loyal Pup may join the Battlefield its controller defends. -/
 def SFD_126 : CardDef :=
   { SFD_126.meta with
-
-    abilities := [.triggered (.onSelf .youDefend)
-      (.of [] (.may (.prim (.move .self (.at_ (.slot 0)))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .youDefend with optional := true }
+      (.of [] (.prim (.move .self (.at_ (.slot 0))))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-127
 /--
@@ -3750,7 +3729,7 @@ def SFD_127.meta : CardDef :=
 /-- Master Bingwen. -/
 def SFD_127 : CardDef :=
   { SFD_127.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-128
 /--
@@ -3833,7 +3812,7 @@ def SFD_130 : CardDef :=
     abilities := [.triggered (.onSelf .move)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-131
 /--
@@ -3863,7 +3842,7 @@ def SFD_131 : CardDef :=
 
     abilities := [.passive .always
       [.assaultCount (Selector.all .enemy .here [.ofType .unit])]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-132
 /--
@@ -3921,7 +3900,7 @@ def SFD_133.meta : CardDef :=
 def SFD_133 : CardDef :=
   { SFD_133.meta with
     grants := [.passive .always [.keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-134
 /--
@@ -3953,7 +3932,7 @@ def SFD_134 : CardDef :=
     grants := [.triggered (.onSelf .conquer)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-135
 /--
@@ -3979,7 +3958,7 @@ def SFD_135 : CardDef :=
 
     spellEffect := some (.of [.targetOf .one .any .anywhere [.ofType .gear]]
       (.prim (.returnToHand (.slot 0)))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-136
 /--
@@ -4038,7 +4017,7 @@ def SFD_137 : CardDef :=
 
     abilities := [.triggered { event := .move, condition := .matches .self .fromBattlefield }
       (.of [] (.grant .self (.mightPlus .it (.const 2)) .thisTurn)) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-138
 /--
@@ -4109,8 +4088,7 @@ def SFD_139 : CardDef :=
 Printings: SFD-140/221
 
 > When you play me, you may play a spell from your trash with Energy cost no more than
-> :rb_energy_3:, ignoring its Energy cost. Recycle that spell after you play it. (You must still
-> pay its Power cost.)
+> :rb_energy_3:, ignoring its Energy cost. Then recycle it. (You must still pay its Power cost.)
 -/
 def SFD_140.meta : CardDef :=
   { id := ⟨"SFD-140"⟩,
@@ -4127,11 +4105,10 @@ def SFD_140.meta : CardDef :=
 /-- Fizz, Trickster. -/
 def SFD_140 : CardDef :=
   { SFD_140.meta with
-
-    abilities := [.triggered (.onSelf .play)
-      (.of [] (.may (.prim (.castInline (Selector.one .friendly .inTrash
-        [.ofType .spell, .cost .le (.const 3)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { Trigger.onSelf .play with optional := true }
+      (.of [] (.prim (.castInline (Selector.one .you .inTrash
+        [.ofType .spell, .cost .le (.const 3)])))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-141
 /--
@@ -4214,7 +4191,7 @@ def SFD_143 : CardDef :=
 
     abilities := [.passive (.cmp .ge .powerSpent (.const 2))
       [.mightPlus .self (.const 2), .keyword .self { keyword := .ganking }]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-144
 /--
@@ -4232,16 +4209,14 @@ def SFD_144.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Spirit Wheel. -/
+/-- Spirit Wheel pays and exhausts when finalized, then draws on resolution. -/
 def SFD_144 : CardDef :=
   { SFD_144.meta with
-
     abilities := [.triggered
-      { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩) (.matches .self .ready))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.exhaust .self),
-          .prim (.draw .you (.const 1))])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .chosenAny, subject := .all .you .anywhere [.ofType .unit]
+        optional := true, cost := .pay ⟨1, []⟩ true }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-145
 /--
@@ -4292,6 +4267,7 @@ def SFD_146.meta : CardDef :=
     name := "Vex",
     subtitle := some "Cheerless",
     types := [.unit],
+    supertypes := [.champion],
     tags := [⟨"Yordle"⟩, ⟨"Vex"⟩, ⟨"Shadow Isles"⟩],
     domains := [.chaos],
     cost := some ⟨5, [.domain .chaos]⟩,
@@ -4308,7 +4284,7 @@ def SFD_146 : CardDef :=
        .costPower (Selector.all .friendly .anywhere [.ofType .spell]) (.const 1) none false,
        .costPlus (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1),
        .costPower (Selector.all .enemy .anywhere [.ofType .spell]) (.const 1) none true]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-147
 /--
@@ -4426,18 +4402,16 @@ def SFD_150.meta : CardDef :=
 def SFD_150 : CardDef :=
   { SFD_150.meta with
 
-    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩] .normal
+    abilities := [.activated [.pay ⟨0, [.domain .chaos]⟩, .recycleFromTrash 2] .normal
       (.of [.targetOf .one .friendly .anywhere [.ofType .unit]]
-        (.ifThen (.cmp .ge (.count (Selector.all .friendly .inTrash [])) (.const 2))
-          (.seqOf [.repeatN (.const 2) (.prim (.recycle (Selector.one .friendly .inTrash []))),
-            .prim (.attach .self (.slot 0))]) .nop)) .unlimited],
+        (.prim (.attach .self (.slot 0)))) .unlimited],
     grants := [.triggered (.onSelf .conquer)
         (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
           (.const 0) none)))) .unlimited,
       .triggered (.onSelf .hold)
         (.of [] (.may (.prim (.playReduced (Selector.one .friendly .inTrash [.ofType .unit])
           (.const 0) none)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-151
 /--
@@ -4583,7 +4557,7 @@ def SFD_155 : CardDef :=
     abilities := [.triggered (.onSelf .die)
         (.of []
         (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-156
 /--
@@ -4607,7 +4581,7 @@ def SFD_156.meta : CardDef :=
 /-- Laurent Duelist. -/
 def SFD_156 : CardDef :=
   { SFD_156.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-157
 /--
@@ -4660,7 +4634,7 @@ def SFD_158 : CardDef :=
     abilities := [.triggered (.onSelf .play)
       (.of [.targetOf .one .enemy .anywhere [.ofType .unit, .might .le (.const 3)]]
         (.prim (.kill (.slot 0)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-159
 /--
@@ -4685,9 +4659,9 @@ def SFD_159 : CardDef :=
   { SFD_159.meta with
 
     abilities := [.passive
-      (.exists (Selector.all .friendly .anywhere [.ofType .unit, .notSelf, .at_ .self]))
+      (.exists (Selector.all .you .anywhere [.ofType .unit, .notSelf, .at_ .self]))
       [.mightPlus .self (.const 1)]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-160
 /--
@@ -4741,7 +4715,7 @@ def SFD_161.meta : CardDef :=
 /-- B.F. Sword. -/
 def SFD_161 : CardDef :=
   { SFD_161.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-162
 /--
@@ -4781,8 +4755,9 @@ def SFD_162 : CardDef :=
 Printings: SFD-163/221
 
 > [Reaction] (Play any time, even before spells and abilities resolve.)
-> Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this
-> turn. Draw 1.
+> Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit
+> this turn.
+> Draw 1.
 -/
 def SFD_163.meta : CardDef :=
   { id := ⟨"SFD-163"⟩,
@@ -4794,15 +4769,19 @@ def SFD_163.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Deathgrip. -/
+/-- Deathgrip applies its Might bonus only after its first target dies from this Kill. -/
 def SFD_163 : CardDef :=
+  let victimMight : VarId := ⟨"victimMight"⟩
   { SFD_163.meta with
-
-    spellEffect := some (.of [.targetOf .one .friendly .anywhere [.ofType .unit],
+    spellEffect := some {
+      choices := [.targetOf .one .friendly .anywhere [.ofType .unit],
         .targetOf .one .friendly .anywhere [.ofType .unit, .not (.sameAs (.slot 0))]]
-      (.seqOf [.grant (.slot 1) (.mightPlus .it (.mightOf (.slot 0))) .thisTurn,
-        .prim (.kill (.slot 0)), .prim (.draw .you (.const 1))])),
-    status := .drafted }
+      body := .seqOf [
+        .bind victimMight (.mightOf (.slot 0))
+          (.killThenIfKilled 0 (.grant (.slot 1) (.mightPlus .it (.var victimMight)) .thisTurn)),
+        .prim (.draw .you (.const 1))]
+      recheckTargets := true }
+    status := .full }
 
 -- BEGIN GENERATED SFD-164
 /--
@@ -4830,9 +4809,9 @@ def SFD_164 : CardDef :=
     -- costs 2 less to play from anywhere other than the hand
     abilities := [.passive (.not (.matches .self .inHandZone))
       [.costMinus .self (.const 2)]],
-    spellEffect := some (.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
-      (.prim (.kill (.slot 0)))),
-    status := .drafted }
+    spellEffect := some { EffectDef.of [.targetOf .one .any .atBattlefield [.ofType .unit]]
+      (.prim (.kill (.slot 0))) with recheckTargets := true },
+    status := .full }
 
 -- BEGIN GENERATED SFD-165
 /--
@@ -4857,11 +4836,11 @@ def SFD_165.meta : CardDef :=
 /-- Glasc Mixologist. -/
 def SFD_165 : CardDef :=
   { SFD_165.meta with
-
-    abilities := [.triggered (.onSelf .die)
-      (.of [] (.may (.prim (.play (Selector.one .friendly .inTrash
-        [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]))))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .die, optional := true }
+      { EffectDef.of
+        [.targetOf .one .you .inTrash [.ofType .unit, .cost .le (.const 3), .powerCost .le (.const 1)]]
+        (.playCard (.slot 0) .ignoreBase) with recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-166
 /--
@@ -4917,7 +4896,7 @@ def SFD_167 : CardDef :=
 
     abilities := [.triggered { event := .die, condition := .diedWith .mightyUnitDied }
       (.of [] (.prim (.draw .you (.const 2)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-168
 /--
@@ -4964,15 +4943,14 @@ def SFD_169.meta : CardDef :=
 /-- Altar of Memories. -/
 def SFD_169 : CardDef :=
   { SFD_169.meta with
-
     abilities := [.triggered
-      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.draw .you (.const 1)),
-          .eitherOf (EffectList.ofList
-            [.prim (.topdeck (Selector.one .friendly .inHand [])),
-             .prim (.recycle (Selector.one .friendly .inHand []))])])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .die, subject := Selector.all .friendly .anywhere [.ofType .unit],
+        optional := true, cost := .exhaustSelf }
+      (.of [] (.seqOf [.prim (.draw .you (.const 1)),
+        .eitherOf (EffectList.ofList
+          [.prim (.topdeck (Selector.one .you .inHand [])),
+           .prim (.recycle (Selector.one .you .inHand []))])])) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-170
 /--
@@ -5033,8 +5011,8 @@ def SFD_171 : CardDef :=
   { SFD_171.meta with
 
     abilities := [.passive .always
-      [.entersReady (Selector.all .friendly .anywhere [.token])]],
-    status := .drafted }
+      [.entersReady (Selector.all .you .anywhere [.token])]],
+    status := .full }
 
 -- BEGIN GENERATED SFD-172
 /--
@@ -5063,10 +5041,11 @@ def SFD_172.meta : CardDef :=
 /-- Sacred Shears. -/
 def SFD_172 : CardDef :=
   { SFD_172.meta with
-    grants := [.triggered (.onSelf .die)
-        (.of []
-        (.prim (.draw .you (.const 1)))) .unlimited],
-    status := .drafted }
+    grants := [
+      .passive .always [.keyword .self { keyword := .deathknell }],
+      .triggered (.onSelf .deathknell)
+        (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-173
 /--
@@ -5094,7 +5073,7 @@ def SFD_173 : CardDef :=
   { SFD_173.meta with
 
     abilities := [.passive .always [.assignedLast, .rescueWeakerHere]],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-174
 /--
@@ -5203,15 +5182,15 @@ def SFD_177.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Azir, Sovereign. -/
+/-- Azir moves the chosen tokens together to his Battlefield when the ability resolves. -/
 def SFD_177 : CardDef :=
   { SFD_177.meta with
-
-    abilities := [.triggered (.onSelf .attack)
-      (.of [] (.forEach (Selector.all .friendly .anywhere
-          [.ofType .unit, .token, .not (.at_ .self)])
-        (.may (.seqOf [.prim (.choose .it), .prim (.move .it (.at_ .self))])))) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .attack, optional := true }
+      { choices := [.targetOf .anyNumber .you .anywhere
+          [.ofType .unit, .token]]
+        body := .prim (.move (.slotsFrom 0) (.at_ (.locationOf .self)))
+        recheckTargets := true } .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-178
 /--
@@ -5270,10 +5249,9 @@ def SFD_179.meta : CardDef :=
 /-- Corina Veraza. -/
 def SFD_179 : CardDef :=
   { SFD_179.meta with
-
-    abilities := [.triggered { event := .move, condition := .matches .self .onBattlefield }
+    abilities := [.triggered (.onSelf .moveToBattlefield)
       (.of [] (.prim (.create "Recruit" (.const 3) .here false))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-180
 /--
@@ -5300,7 +5278,7 @@ def SFD_180 : CardDef :=
   { SFD_180.meta with
 
     abilities := [.triggered
-      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
+      { event := .becomeMighty, subject := Selector.all .you .anywhere [.ofType .unit] }
       (.of [] (.ifThen (.canPay ⟨0, [.domain .order]⟩)
         (.may (.seqOf [.prim (.pay ⟨0, [.domain .order]⟩), .prim (.ready (.slot 0))])) .nop))
       .unlimited],
@@ -5357,9 +5335,9 @@ def SFD_182 : CardDef :=
   { SFD_182.meta with
 
     spellEffect := some (.of []
-      (.grant (Selector.all .friendly .anywhere [.tag ⟨"Mech"⟩]) (.mightPlus .it (.const 1))
+      (.grant (Selector.all .you .anywhere [.tag ⟨"Mech"⟩]) (.mightPlus .it (.const 1))
         .thisTurn)),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-183
 /--
@@ -5472,7 +5450,7 @@ def SFD_186.meta : CardDef :=
 /-- Spinning Axe. -/
 def SFD_186 : CardDef :=
   { SFD_186.meta with
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-187
 /--
@@ -5534,7 +5512,7 @@ def SFD_188 : CardDef :=
       (.seqOf [.prim (.revealTop 2),
         .may (.prim (.playReduced (Selector.one .friendly .inMainDeck [.top 2]) (.const 2) none)),
         .prim (.draw .you (.sub (.min (.const 2) (.var ⟨"d"⟩)) (.sub (.var ⟨"d"⟩) deckSize)))]))),
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-189
 /--
@@ -5743,19 +5721,16 @@ def SFD_195.meta : CardDef :=
     sets := [⟨"SFD"⟩] }
 -- END GENERATED
 
-/-- Blade Dancer. -/
+/-- Blade Dancer may pay to ready a chosen friendly Unit, or to ready itself on Conquer. -/
 def SFD_195 : CardDef :=
   { SFD_195.meta with
-
     abilities := [.triggered
-        { event := .chosenAny, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-        (.of [] (.ifThen (.and (.canPay ⟨0, [.any]⟩) (.matches .self .ready))
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.pay ⟨0, [.any]⟩),
-            .prim (.ready (.slot 0))])) .nop)) .unlimited,
-      .triggered (.onSelf .youConquer)
-        (.of [] (.ifThen (.canPay ⟨1, []⟩)
-          (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.ready .self)])) .nop)) .unlimited],
-    status := .drafted }
+      { event := .chosenAny, subject := .all .you .anywhere [.ofType .unit]
+        optional := true, cost := .pay ⟨0, [.any]⟩ true }
+      (.of [] (.prim (.ready (.slot 0)))) .unlimited,
+      .triggered { Trigger.onSelf .youConquer with optional := true, cost := .energy 1 }
+        (.of [] (.prim (.ready .self))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-196
 /--
@@ -5815,7 +5790,7 @@ def SFD_197 : CardDef :=
       -- for 1 less, even if it is attached already
       .triggered
         { event := .playToken,
-          subject := Selector.all .friendly .anywhere [.named "Sand Soldier"] }
+          subject := Selector.all .you .anywhere [.named "Sand Soldier"] }
         (EffectDef.of [Choice.targetOf .one .friendly .anywhere [.tag ⟨"Equipment"⟩]]
           (.may (.equipWithCost (.slot 0) (.slot 1) 1))) .unlimited],
     status := .drafted }
@@ -5928,14 +5903,13 @@ def SFD_201.meta : CardDef :=
 /-- Chem-Baroness. -/
 def SFD_201 : CardDef :=
   { SFD_201.meta with
-
-    abilities := [.triggered (.onSelf .youHold)
-        (.of [] (.ifThen (.matches .self .ready)
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-          .nop)) .unlimited,
+    abilities := [.triggered
+        { event := .hold, subject := Selector.all .friendly .anywhere [.ofType .battlefield],
+          optional := true, cost := .exhaustSelf }
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
       .passive (.cmp .ge (.points .you) (.sub .victoryScore (.const 3)))
-        [.manaExtraEnergy (Selector.all .friendly .anywhere [.named "Gold"]) (.const 1)]],
-    status := .drafted }
+        [.manaExtraEnergy (Selector.all .you .anywhere [.named "Gold"]) (.const 1)]],
+    status := .full }
 
 -- BEGIN GENERATED SFD-202
 /--
@@ -5989,14 +5963,13 @@ def SFD_203.meta : CardDef :=
 /-- Battle Mistress. -/
 def SFD_203 : CardDef :=
   { SFD_203.meta with
-
-    abilities := [.triggered (.onSelf .recycleRune)
-        (.of [] (.ifThen (.matches .self .ready)
-          (.may (.seqOf [.prim (.exhaust .self), .prim (.create "Gold" (.const 1) .atBase false)]))
-          .nop)) .unlimited,
-      .triggered { event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit] }
+    abilities := [.triggered { event := .recycleRune, optional := true, cost := .exhaustSelf }
+        (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited,
+      .triggered {
+        event := .die, subject := Selector.all .enemy .anywhere [.ofType .unit],
+        occurrence := .deathGroup }
         (.of [] (.prim (.ready .self))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-204
 /--
@@ -6043,13 +6016,11 @@ def SFD_205.meta : CardDef :=
 /-- Grand Duelist. -/
 def SFD_205 : CardDef :=
   { SFD_205.meta with
-
     abilities := [.triggered
-      { event := .becomeMighty, subject := Selector.all .friendly .anywhere [.ofType .unit] }
-      (.of [] (.ifThen (.matches .self .ready)
-        (.may (.seqOf [.prim (.exhaust .self), .prim (.channel .you (.const 0) (.const 1))])) .nop))
-      .unlimited],
-    status := .drafted }
+      { event := .becomeMighty, subject := Selector.all .you .anywhere [.ofType .unit],
+        optional := true, cost := .exhaustSelf }
+      (.of [] (.prim (.channel .you (.const 0) (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-206
 /--
@@ -6087,7 +6058,7 @@ def SFD_206 : CardDef :=
 Printings: SFD-207/221
 
 > When you conquer here, you may pay :rb_energy_1: and return a unit you control here to its
-> owner's hand. If you do, play a 2 :rb_might: Sand Soldier unit token here.
+> owner's hand to play a 2 :rb_might: Sand Soldier unit token here.
 -/
 def SFD_207.meta : CardDef :=
   { id := ⟨"SFD-207"⟩,
@@ -6099,14 +6070,10 @@ def SFD_207.meta : CardDef :=
 /-- Emperor's Dais. -/
 def SFD_207 : CardDef :=
   { SFD_207.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
-          (.exists (Selector.all .friendly .here [.ofType .unit])))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .prim (.returnToHand (Selector.one .friendly .here [.ofType .unit])),
-          .prim (.create "Sand Soldier" (.const 1) .here false)])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { Trigger.onSelf .youConquer with optional := true, cost := .payAndReturnUnitHere ⟨1, []⟩ }
+      (.of [] (.prim (.create "Sand Soldier" (.const 1) .here false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-208
 /--
@@ -6167,12 +6134,9 @@ def SFD_210.meta : CardDef :=
 /-- Hall of Legends. -/
 def SFD_210 : CardDef :=
   { SFD_210.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩),
-          .prim (.ready (Selector.one .friendly .inLegendZone []))])) .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youConquer, optional := true, cost := .energy 1 }
+      (.of [] (.prim (.ready (Selector.one .you .inLegendZone [])))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-211
 /--
@@ -6354,13 +6318,12 @@ def SFD_218.meta : CardDef :=
 /-- Sunken Temple. -/
 def SFD_218 : CardDef :=
   { SFD_218.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.and (.canPay ⟨1, []⟩)
-          (.exists (Selector.all .friendly .here [.ofType .unit, .mighty])))
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.draw .you (.const 1))])) .nop))
-      .unlimited],
-    status := .drafted }
+    abilities := [.triggered
+      { event := .youConquer,
+        condition := .exists (Selector.all .you .here [.ofType .unit, .mighty]),
+        optional := true, cost := .energy 1 }
+      (.of [] (.prim (.draw .you (.const 1)))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-219
 /--
@@ -6379,10 +6342,9 @@ def SFD_219.meta : CardDef :=
 /-- The Papertree. -/
 def SFD_219 : CardDef :=
   { SFD_219.meta with
-
     abilities := [.triggered (.onSelf .youHold)
       (.of [] (.prim (.channel .eachPlayer (.const 0) (.const 1)))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED SFD-220
 /--
@@ -6401,12 +6363,9 @@ def SFD_220.meta : CardDef :=
 /-- Treasure Hoard. -/
 def SFD_220 : CardDef :=
   { SFD_220.meta with
-
-    abilities := [.triggered (.onSelf .youConquer)
-      (.of [] (.ifThen (.canPay ⟨1, []⟩)
-        (.may (.seqOf [.prim (.pay ⟨1, []⟩), .prim (.create "Gold" (.const 1) .atBase false)]))
-        .nop)) .unlimited],
-    status := .drafted }
+    abilities := [.triggered { event := .youConquer, optional := true, cost := .energy 1 }
+      (.of [] (.prim (.create "Gold" (.const 1) .atBase false))) .unlimited],
+    status := .full }
 
 -- BEGIN GENERATED SFD-221
 /--
@@ -6453,7 +6412,7 @@ def SFD_T03 : CardDef :=
   { SFD_T03.meta with
     abilities := [.activated [.killSelf, .exhaustSelf] .reaction
       (.of [] (.prim (.addPower .you (.const 1) none none))) .unlimited],
-    status := .drafted }
+    status := .full }
 
 -- BEGIN GENERATED LIST
 /-- The cards first printed in Spiritforged. -/

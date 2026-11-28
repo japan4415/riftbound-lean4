@@ -164,6 +164,11 @@ meta def play (s : GameState) (p : PlayerId) (c : ObjId) (ts : List ObjId := [])
     (says : Says := {}) : Option GameState :=
   cast (s.rich p) p c (payOf s c) ts says
 
+/-- Run the Beginning Phase, including its Chain and Scoring Step. -/
+meta def settleBeginning (s : GameState) (p : PlayerId) : Option GameState := do
+  let (started, _) ← (advance 100 { s with active := some p, pending := [.phase .beginning] } []).toOption
+  return settleChain {} 24 started
+
 /-- What waits below the abilities that the events set off: the frames of the state, but not the
 priority of the Main Phase (the Cleanup that follows would start a Showdown of its own, and the
 attackers and defenders would set off their abilities again). -/

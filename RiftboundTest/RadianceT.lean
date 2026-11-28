@@ -67,12 +67,15 @@ private meta def playRecruitAt (s : GameState) (p : PlayerId) (field : ObjId) :
   let plan ← (permanentPlayOptions funded p toField { price := .reduceEnergy 0 }).find?
     (fun option => option.battlefield == some field)
   let (effectPlayed, effectUnit, _) ← applyReducedPermanent funded p toField plan
+  let (free, freeEvents) := playFreeAt p field s toField
+  let freeUnit ← freeEvents.findSome? (fun | .played _ unit => some unit | _ => none)
   let recruit : ObjId := ⟨based.nextId⟩
   let (friendly, _) ← playRecruitAt based p field
   let (enemy, _) ← playRecruitAt based q field
   let (uncontrolled, _) ← playRecruitAt (based.control q field) p field
   return !exhausted entered located && exhausted based atBase &&
     (effectPlayed.obj? effectUnit).any (fun o => o.loc == some field && !o.exhausted) &&
+    (free.obj? freeUnit).any (fun o => o.loc == some field && !o.exhausted) &&
     (friendly.obj? recruit).any (fun o => o.loc == some field && !o.exhausted) &&
     exhausted enemy recruit && exhausted uncontrolled recruit
 

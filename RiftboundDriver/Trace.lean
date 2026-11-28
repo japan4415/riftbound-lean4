@@ -53,13 +53,52 @@ def costJson (k : Cost) : String :=
 
 /-- The chosen token placement, or the decision to see the remaining locations. -/
 def tokenLocationFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let placement : Effect → Option (String × Option ObjId × Bool) := fun
+    | .prim (.playUnitTokenAt name dest) => some (name, dest, false)
+    | .prim (.playReadyUnitTokenAt name dest) => some (name, dest, true)
+    | _ => none
   match frame with
-  | some (.eitherDo _ _ _ a@(.prim (.playUnitTokenAt name _)) b _) =>
-    match if yes then a else b with
-    | .prim (.playUnitTokenAt _ dest) =>
-      [("token", jstr name), ("dest", dest.elim "null" (fun bf => toString bf.n))]
-    | .eitherOf _ => [("token", jstr name), ("moreLocations", "true")]
-    | _ => []
+  | some (.eitherDo _ _ _ first other _) =>
+    match placement first with
+    | some (name, _, _) =>
+      let fields := [("token", jstr name)]
+      match if yes then first else other with
+      | .eitherOf _ => fields ++ [("moreLocations", "true")]
+      | chosen => (placement chosen).toList.flatMap (fun (_, dest, ready) => fields ++
+        [("dest", dest.elim "null" (fun bf => toString bf.n))] ++
+        if ready then [("ready", "true")] else [])
+    | none => []
+  | _ => []
+
+/-- Describe which Unit token replacement was offered or chosen (CR 372-375). -/
+def unitTokenReplacementFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let fields (kind : String) (values : List (String × String) := []) :=
+    [("unitTokenReplacement", jobj (("kind", jstr kind) :: values))]
+  match frame with
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries _ (.apply ..)) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries _ (.apply (.substitute cards) _) =>
+      fields "substituteFirst" [("cards", jarr (cards.map (jstr ∘ CardId.code)))]
+    | .planUnitTokenEntries _ (.apply (.duplicate src _) _) =>
+      fields "duplicateFirst" [("source", toString src.n)]
+    | _ => fields "moreOrder"
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries _ (.duplicate ..)) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries batch (.duplicate src _ (some i) _) =>
+      match batch.entries[i]? with
+      | some (card, _) => fields "duplicate" [("source", toString src.n), ("card", jstr card.code),
+          ("number", toString (i + 1)), ("total", toString batch.entries.length)]
+      | none => []
+    | .planUnitTokenEntries _ (.duplicate src _ none _) => fields "declineDuplicate" [("source", toString src.n)]
+    | _ => fields "moreDuplicates"
+  | some (.eitherDo _ _ _ first@(.planUnitTokenEntries ..) other _) =>
+    match if yes then first else other with
+    | .planUnitTokenEntries batch (.substitute _ _ ((card, _) :: chosen) _) =>
+      match batch.entries[chosen.length]? with
+      | some (original, _) => fields (if original == card then "keep" else "substitute")
+          [("original", jstr original.code), ("card", jstr card.code)]
+      | none => []
+    | _ => fields "moreSubstitutes"
   | _ => []
 
 /-- Serialize the destination and costs chosen for a permanent played by an effect. -/
@@ -68,6 +107,7 @@ def reducedPlayFields (card : ObjId) (plan : ReducedPermanentPlay) : List (Strin
     ("destination", plan.battlefield.elim "null" (fun id => toString id.n)),
     ("additionalPaid", if plan.additionalPaid then "true" else "false"),
     ("accelerated", if plan.accelerated then "true" else "false")] ++
+    (if plan.spendXP then [("xpPaid", "true")] else []) ++
     (if plan.battlefieldFees.isEmpty then [] else
       [("battlefieldFees", jarr (plan.battlefieldFees.map (fun id => toString id.n)))]) ++
     (if plan.gearDiscounts.isEmpty then [] else
@@ -148,6 +188,7 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     [("battlefieldFees", jarr (sources.map (fun id => toString id.n)))] ++
       permanentCostFields (state.bind (·.cardDef? c)) own
   | .withPermanentCosts own => permanentCostFields (state.bind (·.cardDef? c)) own
+  | .withXP pick => spellPickFields state c pick
   | .withGearDiscounts pick sources =>
     spellPickFields state c pick ++ [("gearDiscounts", jarr (sources.map (fun id => toString id.n)))]
   | .withPlayer pick player =>
@@ -156,12 +197,15 @@ def spellPickFields (state : Option GameState) (c : ObjId) : SpellPick → List 
     spellPickFields state c pick ++ [("showOff", toString object.n)]
   | .withExtraObject pick object =>
     spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
+  | .withPaidKill pick object _ _ =>
+    spellPickFields state c pick ++ [("extraCostObject", toString object.n)]
   | .withSpellExhausts pick groups =>
     let payers := groups.flatMap (fun (legend, units) => legend :: units)
     spellPickFields state c pick ++ [("spellExhaustPayers", jarr (payers.map (fun id => toString id.n)))]
   | .thenRepeat pick _ _ => spellPickFields state c pick
   | .withVariablePower pick n =>
     spellPickFields state c pick ++ [("variablePower", toString n)]
+  | .withDeflectPayment pick _ => spellPickFields state c pick
   | .withCosts pick printed repeats =>
     spellPickFields state c pick ++
       [("additionalCostPaid", if printed then "true" else "false"), ("repeatsPaid", toString repeats)]
@@ -187,36 +231,69 @@ def damageOrderFields (frame : Option Frame) (yes : Bool) : List (String × Stri
     | _ => [("moreDamageReplacements", "true")]
   | _ => []
 
+/-- Identify the Unit and the requirement chosen for its combat assignment. -/
+def combatPriorityFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ unit _ first other _) =>
+    match if yes then first else other with
+    | .prim (.markOn .self (.combatAssignmentPriority priority)) =>
+      let choice := match priority with | .tank => "tank" | .backline => "backline"
+      [("combatPriorityUnit", toString unit.n), ("combatAssignmentPriority", jstr choice)]
+    | _ => []
+  | _ => []
+
 /-- Describe the allocation selected for split damage (CR 355.14). -/
 def damageDivisionFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  let hitsOf : Effect → Option (List (ObjId × Nat))
+    | .applySplitDamage hits | .applyUnitSplitDamage hits _ => some hits
+    | _ => none
   match frame with
-  | some (.eitherDo _ _ _ first@(.applySplitDamage _) other _) =>
-    match if yes then first else other with
-    | .applySplitDamage hits =>
-      [("damageDivision", jarr (hits.map (fun (unit, amount) =>
-        jobj [("unit", toString unit.n), ("amount", toString amount)])))]
-    | _ => [("moreDamageDivisions", "true")]
+  | some (.eitherDo _ _ _ first other _) =>
+    if (hitsOf first).isNone then [] else
+    let selected := if yes then first else other
+    match hitsOf selected with
+    | some hits =>
+      let source := match selected with
+        | .applyUnitSplitDamage _ link => [("damageSourceUnit", toString link.dealer.n)]
+        | _ => []
+      ("damageDivision", jarr (hits.map (fun (unit, amount) =>
+        jobj [("unit", toString unit.n), ("amount", toString amount)]))) :: source
+    | none => [("moreDamageDivisions", "true")]
   | _ => []
 
-/-- Describe whose effect can replace this Unit's pending death (CR 372). -/
-def deathBanishFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
-  match frame with
-  | some (.eitherDo _ unit _ first@(.chooseDeathBanisher ..) other _) =>
-    [("banishDeathUnit", toString unit.n)] ++
-      (match if yes then first else other with
-      | .chooseDeathBanisher _ player => [("banishingPlayer", toString player.n)]
-      | _ => [])
-  | _ => []
+/-- Name the affected Unit field and the choice field for a death replacement. -/
+def deathDecisionFields : DeathDecision → String × String × String
+  | .banish player => ("banishDeathUnit", "banishingPlayer", toString player.n)
+  | .gear gear => ("deathGearUnit", "deathGearSource", toString gear.n)
+  | .free source => ("deathFreeUnit", "deathFreeSource", source.elim "null" (fun id => toString id.n))
+  | .sacrifice cost =>
+    ("deathSacrificeUnit", "deathSacrificeCost", cost.elim "null" (fun id => toString id.n))
 
-/-- Identify the affected Unit and the exact sacrifice elected during its death replacement. -/
-def deathSacrificeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+/-- A revised selection is shown with the same labels as the original replacement. -/
+def deathChoiceFields : Effect → Option (String × String × String)
+  | .chooseDeathBanisher _ player => some (deathDecisionFields (.banish player))
+  | .chooseDeathGear _ gear => some (deathDecisionFields (.gear gear))
+  | .chooseDeathFree _ source => some (deathDecisionFields (.free source))
+  | .recordDeathSacrifice _ cost => some (deathDecisionFields (.sacrifice cost))
+  | .recordDeathReselection _ _ _ decision => some (deathDecisionFields decision)
+  | .recordNestedDeathDecision _ _ _ decision _ => some (deathDecisionFields decision)
+  | _ => none
+
+/-- Also label the affected Unit when browsing a list of more death replacements. -/
+def deathReplacementFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
   match frame with
-  | some (.eitherDo _ _ _ first@(.recordDeathSacrifice unit _) other _) =>
-    [("deathSacrificeUnit", toString unit.n)] ++
-      (match if yes then first else other with
-      | .recordDeathSacrifice _ cost =>
-        [("deathSacrificeCost", cost.elim "null" (fun id => toString id.n))]
-      | _ => [])
+  | some (.eitherDo _ unit _ first other _) =>
+    let affected := toString unit.n
+    let scope := match first with
+      | .recordNestedDeathDecision root used _ _ _ =>
+        [("deathRootUnit", toString root.n), ("deathDepth", toString used.length)]
+      | _ => []
+    let firstKey := (deathChoiceFields first).map (·.1)
+    scope ++ match deathChoiceFields (if yes then first else other) with
+    | some (unitKey, choiceKey, choice) =>
+      ((firstKey.filter (· != unitKey)).toList.map (·, affected)) ++
+        [(unitKey, affected), (choiceKey, choice)]
+    | none => firstKey.toList.map (·, affected)
   | _ => []
 
 /-- Identify the replacement that the controller puts next. -/
@@ -247,6 +324,26 @@ def effectPaymentFields (state : Option GameState) (frame : Option Frame)
     | _ => [("moreEffectPayments", "true")]
   | _ => []
 
+/-- Identify selected Add activations, confirmation or a decline for a movement fee. -/
+def movementFeeFields (frame : Option Frame) (yes : Bool) : List (String × String) :=
+  match frame with
+  | some (.eitherDo _ _ _ first other _) =>
+    let recognizable := match first with
+      | .fundMoveFee .. | .payThen _ (.moveAfterFee ..) _ => true
+      | .eitherOf (.cons (.fundMoveFee ..) _) |
+          .eitherOf (.cons (.payThen _ (.moveAfterFee ..) _) _) => true
+      | _ => false
+    if !recognizable then [] else
+      match if yes then first else other with
+      | .fundMoveFee _ _ adds true => [("confirmMoveFee", "true"),
+          ("preparedMoveAdds", jarr (adds.map effectAddJson))]
+      | .fundMoveFee _ _ adds false =>
+        adds.getLast?.toList.map (fun add => ("moveFeeAdd", effectAddJson add))
+      | .nop => [("declineMoveFee", "true")]
+      | .eitherOf _ => [("chooseMoveFeePayment", "true")]
+      | _ => []
+  | _ => []
+
 /-- Encode the targets together with their controllers for the viewer. -/
 def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (String × String) :=
   let controllers := targets.map (fun id =>
@@ -255,8 +352,9 @@ def spellTargetFields (state : Option GameState) (targets : List ObjId) : List (
     ("targetControllers", jarr controllers)]
 
 /-- Record targets beside the mode and destination for each execution of a repeated Spell. -/
-def spellExecutionFields (state : Option GameState) (card : ObjId) (pick : SpellPick)
+def spellExecutionFields (state : Option GameState) (card : ObjId) (declared : SpellPick)
     (targets : List ObjId) : List (String × String) :=
+  let pick := declared.withoutDeflectPayment
   if pick.hasExecutionChoices then
     [("repeatExecutions", jarr ((pick.executions targets).map (fun (choice, ts) =>
       jobj (spellTargetFields state ts ++ spellPickFields state card choice))))]
@@ -282,6 +380,9 @@ def effectSpellPlayFields (state : Option GameState) (card : ObjId) (plan : Effe
   [("queuedSpell", toString card.n), ("queuedCost", costJson plan.cost)] ++
     spellTargetFields state plan.targets ++ spellPickFields state card plan.pick ++
     spellExecutionFields state card plan.pick plan.targets ++
+    (if (state.bind (fun s => (s.cardDef? card).bind (·.playExtra))).any
+      (fun | (.spendXPOver .., _) => true | _ => false) then
+      [("card", toString card.n), ("xpPaid", toString plan.pick.paysXP)] else []) ++
     (if plan.discard.isSome || (state.bind (·.cardDef? card)).any (·.discardToPlay) then
       [("playDiscard", plan.discard.elim "null" (fun id => toString id.n))]
     else [])
@@ -330,9 +431,21 @@ def triggerCostBanishes (state : Option GameState) (ids : List ObjId)
         s.banishOnDeathBy id <|> ((s.obj? id).filter (s.replacesTrash id)).map (·.owner))
     (applied <|> declared <|> automatic).map (costBanishJson id))
 
+/-- JSON fields shared by individual and simultaneous Standard Moves. -/
+def moveFields (dest : MoveDest) (pay : Cost) : List (String × String) :=
+  [("dest", match dest with | .base => "null" | .battlefield bf => toString bf.n)] ++
+    (if pay == Cost.zero then [] else [("movePayment", costJson pay)])
+
+/-- Display the physical Power sources used for a separate Deflect payment. -/
+def deflectFields (payment : Option (List PowerBucket)) : List (String × String) :=
+  payment.toList.map (fun sources => ("deflectPayment", jarr (sources.map (fun
+    | .domain domain => jstr (ctorName domain)
+    | .flexible => jstr "flexible"))))
+
 /-- An action as JSON, with any context needed to describe the choice. -/
 def actionJson (a : Action) (frame : Option Frame := none)
-    (state : Option GameState := none) (events : List Event := []) : String :=
+    (state : Option GameState := none) (events : List Event := [])
+    (before : Option GameState := none) : String :=
   let who := match a.actor with
     | .player p => s!"p{p.n}"
     | .chance => "chance"
@@ -340,8 +453,17 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .judge => "judge"
   let kind := ctorName a.kind
   let extra : List (String × String) := match a.kind with
+    | .timeCalled =>
+      if state.any (fun s => match s.config.ruleSet with
+          | .tournamentElimination .. => true
+          | _ => false) then [("singleElimination", "true")] else []
     | .runeAbility c ab => [("card", toString c.n), ("ability", jstr (ctorName ab))]
-    | .playCard c pay ts flow discard pick =>
+    | .playCard c pay ts flow discard declared =>
+      let pick := declared.withoutDeflectPayment
+      let deflect := ((before <|> state).bind (fun s =>
+        match a.actor with
+        | .player p => s.spellDeflectSources p c ts pay declared
+        | _ => none)) <|> declared.deflectPayment
       let played := (events.findSome? (fun
         | .moved before after _ => if before == c then some after else none
         | _ => none)).getD c
@@ -349,23 +471,27 @@ def actionJson (a : Action) (frame : Option Frame := none)
         if (s.cardDef? played).any (fun d => d.hasType .unit && !d.hasType .spell) then s.bfPick ts else none)
       let hidden := state.any (fun s =>
         (s.obj? played).any (fun o => o.fromHidden || s.playingFromHidden o.owner c))
+      let extra := state.bind (fun s => (s.cardDef? played).bind (·.playExtra))
+      let hasXP := extra.any (fun | (.spendXP _, _) | (.spendXPOver .., _) => true | _ => false)
+      let legacyXP := extra.any (fun | (.spendXP _, _) => true | _ => false) &&
+        ts.length == 1 && battlefield.isNone
+      let xp := if hasXP || pick.paysXP then [("xpPaid", toString (pick.paysXP || legacyXP))] else []
+      let targets := if legacyXP then [] else ts
       [("card", toString c.n), ("pay", toString (pay.energy + pay.power.length)),
         ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
-        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+        ("targets", jarr (targets.map (fun t => toString t.n)))] ++
         (flow.toList.map (fun k => ("flowCost", costJson k))) ++
         (discard.toList.map (fun o => ("discards", jarr [toString o.n]))) ++
         (battlefield.toList.map (fun id => ("playDestination", toString id.n))) ++
         (if hidden then [("hiddenPlay", "true")] else []) ++
-        spellPickFields state played pick ++ spellExecutionFields state played pick ts
-    | .standardMove u d pay =>
-      [("unit", toString u.n),
-       ("dest", match d with | .base => "null" | .battlefield bf => toString bf.n)] ++
-      (if pay.energy == 0 && pay.power.isEmpty then [] else
-        [("movePayment", costJson pay)])
+        xp ++ deflectFields deflect ++ spellPickFields state played pick ++ spellExecutionFields state played pick ts
+    | .standardMove u d pay => [("unit", toString u.n)] ++ moveFields d pay
+    | .startGroupMove d pay => moveFields d pay
     | .assignPick u => [("unit", toString u.n)]
     | .manaAbility src idx pay banish =>
       let restricted := match state.bind (fun s => s.manaOffer src idx) with
         | some (_, _, .unitEnergy n) => [("unitEnergyAdded", toString n)]
+        | some (_, _, .spellEnergy n) => [("spellEnergyAdded", toString n)]
         | some (_, _, .permanent) => [("permanentPowerAdded", "1")]
         | _ => []
       [("source", toString src.n), ("index", toString idx), ("energy", toString pay.energy),
@@ -387,24 +513,31 @@ def actionJson (a : Action) (frame : Option Frame := none)
       (match payment with
        | .skip => [("decline", "true")]
        | .pay ids mode player banishers =>
+         let triggerCost := (state.bind (fun s => trigger.map (trigCost s))).getD .free
          let costs := match state, trigger with
            | some s, some t =>
              if mode.isNone && player.isNone && ts.isEmpty && !trigOptional s t &&
-                 (!(trigChoices s t).isEmpty || !(trigModes s t).contains none ||
-                   !(trigPlayerOptions s t).contains none) then
+                 (!trigTargetOk s t mode ts || !(trigPlayerOptions s t).contains none) then
                [("unavailable", "true")]
-             else match trigCost s t with
+             else match triggerCost with
                | .energy n => [("energy", toString n)]
+               | .payAndReturnUnitHere cost => [("energy", toString cost.energy)]
+               | .spendXP n => [("xpCost", toString n)]
                | .burn n => [("burn", toString n)]
                | .exhaustSelf => [("exhaustSource", "true")]
+               | .discardAndExhaust _ => [("exhaustSource", "true"), ("discardCost", "true")]
+               | .spendBuff => [("spendBuff", "true")]
                | _ => []
            | _, _ => []
          let definition := state.bind (fun s => trigger.bind (fun t => abilityDef s t.card t.idx))
          let replacements := triggerCostBanishes state ids banishers events
+         let objectCostField := match triggerCost with
+           | .payAndReturnUnitHere _ => "returnToHandCost"
+           | _ => "sacrifices"
          mode.toList.flatMap (modeFields definition) ++ costs ++
            player.toList.map (fun p => ("targetPlayer", toString p.n)) ++
            (if replacements.isEmpty then [] else [("costBanishes", jarr replacements)]) ++
-           (if ids.isEmpty then [] else [("sacrifices", jarr (ids.map (fun id => toString id.n)))]))
+           (if ids.isEmpty then [] else [(objectCostField, jarr (ids.map (fun id => toString id.n)))]))
     | .triggerAdd add =>
       [("playAdd", effectAddJson add)] ++
         (match frame with
@@ -412,10 +545,15 @@ def actionJson (a : Action) (frame : Option Frame := none)
           [("triggerPreparedAdds", jarr (plan.adds.map effectAddJson))]
         | _ => [])
     | .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+      let deflect := ((before <|> state).bind (fun s =>
+        match a.actor with
+        | .player p => s.activationDeflectSources p src idx ts pay
+        | _ => none)) <|> pay.deflectPayment?
       [("source", toString src.n), ("index", toString idx),
        ("pay", toString (pay.energy + pay.power.length)),
        ("power", jarr (pay.power.map (fun d => jstr (ctorName d)))),
        ("targets", jarr (ts.map (fun t => toString t.n)))] ++
+      deflectFields deflect ++
       (if discards.isEmpty then [] else [("discards", jarr (discards.map (fun id => toString id.n)))]) ++
       targetPlayer.toList.map (fun q => ("targetPlayer", toString q.n)) ++
       (costBanisher.toList.flatMap (fun who => (costObject <|> ts.getLast?).toList.map (fun unit =>
@@ -428,28 +566,43 @@ def actionJson (a : Action) (frame : Option Frame := none)
         | _, _ => []) ++
         (if grant.isSome && e.body == .prim (.ready .self) then
           [("abilityEffect", jstr "readySelf")] else []) ++
+        ((activationXP costs).toList.map (fun n => ("xpCost", toString n))) ++
         (if costs.contains .disempowerSelf then [("disempowerSelf", "true")] else []) ++
         (if costs.contains .exhaustSelf then [("exhaustSelf", "true")] else [])
       | _ => [])
     | .mulliganPick c => [("card", toString c.n)]
     | .discardPick c => [("card", toString c.n)]
+    | .arrangePlayers order => [("turnOrder", jarr (order.map (fun p => toString p.n)))]
+    | .arrange order =>
+      if frame.any (fun | .chanceRecycleTrash .. => true | _ => false) then
+        [("recycleOrder", jarr (order.map (fun id => toString id.n)))]
+      else []
     | .decide yes =>
       [("yes", if yes then "true" else "false")] ++
         (match frame with
+        | some (.groupMove _ dest pay units) =>
+          [("groupMoveUnits", jarr (units.map (fun u => toString u.n)))] ++ moveFields dest pay
         | some (.triggerOrder _ _ _ _ (some _)) => [("cancelTriggerFunding", "true")]
+        | some (.eitherDo _ _ _ (.chooseTrashRecycle ..) _ _) =>
+          [("choiceContext", jstr "recycleTrash")]
         | some (.eitherDo _ _ _ (.prim (.attachPaying ..)) (.doThen (.prim (.exhaust _)) _) _) =>
           [("equipPayment", jstr (if yes then "resources" else "exhaust"))]
         | _ => []) ++
-        tokenLocationFields frame yes ++ damageOrderFields frame yes ++ damageDivisionFields frame yes ++
-        deathBanishFields frame yes ++ deathSacrificeFields frame yes ++ deathOrderFields frame yes ++
+        tokenLocationFields frame yes ++ unitTokenReplacementFields frame yes ++
+        damageOrderFields frame yes ++ combatPriorityFields frame yes ++ damageDivisionFields frame yes ++
+        deathReplacementFields frame yes ++ deathOrderFields frame yes ++
         reducedPermanentFields frame yes ++
-        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++
+        empowerChoiceFields frame ++ effectPaymentFields state frame yes ++ movementFeeFields frame yes ++
         remakeSpellFields state frame yes ++ effectSpellFields state frame yes
     | .choose o =>
       [("obj", toString o.n)] ++
         (match frame with
+        | some (.groupMove ..) => [("choiceContext", jstr "groupMove")]
         | some (.pickDo _ _ _ _ _ (.collectOwnPicks ..) _) => [("choiceContext", jstr "own")]
         | some (.pickDo _ _ _ _ _ (.recordBanishReplay ..) _) => [("choiceContext", jstr "banishReplay")]
+        | some (.pickDo _ _ _ _ _ (.recordTrashRecycle ..) (.cons (.completeActivation ..) _)) =>
+          [("choiceContext", jstr "recycleTrashCost")]
+        | some (.pickDo _ _ _ _ _ (.recordTrashRecycle ..) _) => [("choiceContext", jstr "recycleTrash")]
         | some (.pickDo _ _ _ _ _ .addReservedLegendPicked _) => [("choiceContext", jstr "reserveLegend")]
         | some (.pickDo _ _ _ _ _ (.retainTargetSet _) _) => [("choiceContext", jstr "retain")]
         | some (.pickDo _ _ _ _ _ (.doThen (.prim (.exhaust _)) _) _) =>
@@ -471,6 +624,7 @@ def actionJson (a : Action) (frame : Option Frame := none)
     | .nameCard card => [("cardCode", jstr card.code)]
     | .guessCardType guess => [("cardType", jstr (ctorName guess))]
     | .burnOutTarget o => [("opponent", toString o.n)]
+    | .inviteTeammate guest => [("guest", toString guest.n)]
     | .pick i => [("index", toString i)]
     | _ => []
   jobj ([("actor", jstr who), ("kind", jstr kind)] ++ extra)
@@ -492,6 +646,15 @@ def eventJson : Event → String
   | .discardedTypeFor p source _ idx card =>
     jobj [("t", jstr "discarded_type"), ("player", toString p.n), ("source", toString source.n),
       ("index", toString idx), ("card", toString card.n)]
+  | .killedByLinkedDamage p source _ idx unit =>
+    jobj [("t", jstr "linked_damage_kill"), ("player", toString p.n),
+      ("source", toString source.n), ("index", toString idx), ("unit", toString unit.n)]
+  | .linkedDamageCleanupDone => jobj [("t", jstr "linked_damage_cleanup_done")]
+  | .unitTokensFor p source _ idx target tokens destination =>
+    jobj [("t", jstr "unit_tokens_for"), ("player", toString p.n), ("source", toString source.n),
+      ("index", toString idx), ("target", target.elim "null" (fun id => toString id.n)),
+      ("battlefield", destination.elim "null" (fun id => toString id.n)),
+      ("tokens", jarr (tokens.map (fun id => toString id.n)))]
   | .skipped o => jobj [("t", jstr "skipped"), ("card", toString o.n)]
   | .damaged o n => jobj [("t", jstr "damaged"), ("target", toString o.n), ("n", toString n)]
   | .healed o n => jobj [("t", jstr "healed"), ("target", toString o.n), ("n", toString n)]
@@ -502,7 +665,10 @@ def eventJson : Event → String
         | .setup => "setup" | .awaken => "awaken" | .beginning => "beginning"
         | .channel => "channel" | .draw => "draw" | .main => "main" | .ending => "ending"))]
   | .stunned o => jobj [("t", jstr "stunned"), ("target", toString o.n)]
+  | .stunnedBy o p => jobj [("t", jstr "stunned"), ("target", toString o.n), ("player", toString p.n)]
   | .buffed o => jobj [("t", jstr "buffed"), ("target", toString o.n)]
+  | .buffedBy o p =>
+    jobj [("t", jstr "buffed"), ("target", toString o.n), ("player", toString p.n)]
   | .becameMighty o => jobj [("t", jstr "became_mighty"), ("unit", toString o.n)]
   | .mightReached o n => jobj [("t", jstr "might_reached"), ("unit", toString o.n),
       ("threshold", toString n)]
@@ -551,6 +717,7 @@ def eventJson : Event → String
   | .died o p => jobj [("t", jstr "died"), ("obj", toString o.n), ("player", toString p.n)]
   | .combatStarted bf att =>
     jobj [("t", jstr "combat"), ("battlefield", toString bf.n), ("attacker", toString att.n)]
+  | .showdownOpened bf => jobj [("t", jstr "showdown_opened"), ("battlefield", toString bf.n)]
   | .combatJoined bf att units =>
     jobj [("t", jstr "combat_joined"), ("battlefield", toString bf.n), ("attacker", toString att.n),
       ("units", jarr (units.map (fun u => toString u.n)))]
@@ -588,7 +755,7 @@ def objJson (s : GameState) (id : ObjId) : String :=
   | some o =>
     let card := match o.kind with
       | .card _ c => c.code
-      | .token c => c.code
+      | .token c => (o.originalToken.getD c).code
       | .chainAbility c _ _ => c.code
     let ability : List (String × String) := match o.kind with
       | .chainAbility _ idx src => [("source", toString src.n), ("ability", toString idx)]
@@ -599,10 +766,11 @@ def objJson (s : GameState) (id : ObjId) : String :=
 
 /-- The Rune Pool of a player as JSON. -/
 def poolJson (p : RunePool) : String :=
-  jobj [("energy", toString p.energy), ("unitEnergy", toString p.unitEnergy),
+  jobj ([("energy", toString p.energy), ("unitEnergy", toString p.unitEnergy),
     ("fury", toString p.fury), ("calm", toString p.calm),
     ("mind", toString p.mind), ("body", toString p.body), ("chaos", toString p.chaos),
-    ("order", toString p.order), ("any", toString p.any)]
+    ("order", toString p.order), ("any", toString p.any)] ++
+    (if p.spellEnergy == 0 then [] else [("spellEnergy", toString p.spellEnergy)]))
 
 /-- The state as JSON. `seen` are the identifiers already sent: only new objects are described. -/
 def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet Nat :=
@@ -635,8 +803,9 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     ((s.obj? id).bind (·.namedCard)).map (fun card => (toString id.n, jstr card.code)))
   let copies := s.inPlay.filterMap (fun id => do
     let o ← s.obj? id
-    let copy ← s.attachmentCopyOf id o
-    return (toString id.n, jstr copy.card.code))
+    let copied ← (s.attachmentCopyOf id o).map (·.card) <|>
+      o.originalToken.bind (fun _ => o.kind.cardId?)
+    return (toString id.n, jstr copied.code))
   let players := allPlayers s.playerCount
   let bfs := s.battlefields.map (fun b =>
     jobj [("id", toString b.n),
@@ -647,7 +816,12 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
     match (s.obj? u).bind (·.loc) with
     | some b => some (jarr [toString u.n, toString b.n])
     | none => none)
-  let json := jobj [
+  let clock := match s.clock with
+    | some (.elimination deadline _) => [("eliminationDeadline", toString deadline)]
+    | _ => []
+  let departures := if s.departures.seats.isEmpty then [] else
+    [("departed", jarr (s.departures.seats.map (fun p => toString p.n)))]
+  let json := jobj ([
     ("turn", toString s.turn), ("phase", jstr (ctorName s.phase)),
     ("active", match s.active with | some p => toString p.n | none => "null"),
     ("pending", match s.pending with | f :: _ => jstr (ctorName f) | [] => "null"),
@@ -657,22 +831,43 @@ def stateJson (s : GameState) (seen : Std.HashSet Nat) : String × Std.HashSet N
       | none => "null"),
     ("points", jarr (players.map (fun p => toString (s.pointsOf p)))),
     ("pools", jarr (players.map (fun p => poolJson (s.poolOf p)))),
+    ("xp", jarr (players.map (fun p => toString (s.xpOf p)))),
     ("zones", jobj zones),
     ("battlefields", jarr bfs), ("at", jarr locs),
     ("new", jobj (fresh.map (fun id => (toString id.n, objJson s id)))),
     ("exhausted", jarr (exhausted.map (fun id => toString id.n))),
     ("damaged", jarr damaged), ("boosted", jarr boosted),
     ("attached", jarr attached), ("namedCards", jobj named), ("copies", jobj copies),
-    ("stunned", jarr (stunned.map (fun id => toString id.n)))]
+    ("stunned", jarr (stunned.map (fun id => toString id.n)))] ++ clock ++ departures)
   (json, seen')
+
+/-- Faces shown during an answer, tagged with who could see them. -/
+def cardDisclosureJson (disclosure : CardDisclosure) : String :=
+  jobj [("event", toString disclosure.eventIndex),
+    ("onlyFor", disclosure.onlyFor.elim "null" (fun seat => toString seat.n)),
+    ("cards", jarr (disclosure.cards.map (fun card => jstr card.code)))]
+
+/-- The optional trace field for disclosures, absent when no faces were shown. -/
+def cardDisclosureFields (disclosures : List CardDisclosure) : List (String × String) :=
+  if disclosures.isEmpty then [] else [("disclosures", jarr (disclosures.map cardDisclosureJson))]
 
 /-- One step of the trace: the answer given (if any), its events, and the state after it. -/
 def stepJson (i : Nat) (a : Option Action) (es : List Event) (s : GameState)
-    (seen : Std.HashSet Nat) (frame : Option Frame := none) : String × Std.HashSet Nat :=
+    (seen : Std.HashSet Nat) (frame : Option Frame := none) (bo1Sideboard : Bool := false)
+    (bo1Initiative : Bool := false) (gameLoss : Option (List PlayerId) := none)
+    (extra : List (String × String) := []) (before : Option GameState := none) :
+    String × Std.HashSet Nat :=
+  -- A concession can replace a Battlefield in place while its identifier stays the same.
+  let seen := if a.any (fun action => action.kind == .concede) && !s.departures.seats.isEmpty then
+    s.battlefields.foldl (fun known id => known.erase id.n) seen
+  else seen
   let (st, seen') := stateJson s seen
-  (jobj [("i", toString i),
-    ("action", match a with | some a => actionJson a frame (some s) es | none => "null"),
-    ("events", jarr (es.map eventJson)), ("state", st)], seen')
+  let penalty := (gameLoss.map (fun seats => ("gameLoss", jarr (seats.map (fun p => toString p.n))))).toList
+  (jobj ([("i", toString i),
+    ("action", match a with | some a => actionJson a frame (some s) es before | none => "null"),
+    ("events", jarr (es.map eventJson)), ("state", st)] ++
+    (if bo1Sideboard then [("bo1Sideboard", "true")] else []) ++
+    (if bo1Initiative then [("bo1Initiative", "true")] else []) ++ penalty ++ extra), seen')
 
 /-- The parameter of a keyword as JSON. -/
 def kwArgJson : KeywordArg → String
@@ -709,6 +904,9 @@ def cardJson (c : CardDef) : String :=
     ("mightBonus", match c.mightBonus with | some m => toString m | none => "null"),
     ("ir", jstr (irText c))] ++
     c.additionalCost.toList.map (fun cost => ("optionalCost", costJson cost)) ++
+    (match c.playExtra with
+    | some (.spendXP n, _) | some (.spendXPOver n _, _) => [("optionalXP", toString n)]
+    | _ => []) ++
     c.spellObjectCost.toList.map (fun cost => ("spellObjectCost", jstr (ctorName cost.1))) ++
     (if c.discardToPlay then [("discardToPlay", "true")] else []))
 
@@ -790,13 +988,12 @@ def demoAnswer (r : Rng) (s : GameState) : Option (Action × Rng) :=
         else some (⟨.player p, .pass⟩, r)
   | _ => autoAnswer r s
 
-/-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
-of the trace come back in reverse order. -/
-def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
-    Nat → Nat → Rng → GameState → Std.HashSet Nat → List String →
-      Except RuleError (List String)
-  | 0, _, _, _, _, acc => .ok acc
-  | n + 1, i, r, s, seen, acc =>
+/-- Run the demo's decisions, collecting the selected data after each completed answer. -/
+def playDemoWith {α : Type} (turns : Nat) (cap : Option Nat) (judge : Bool)
+    (collect : Nat → Action → List Event → GameState → GameState → α → α) :
+    Nat → Nat → Rng → GameState → α → Except RuleError α
+  | 0, _, _, _, acc => .ok acc
+  | n + 1, i, r, s, acc =>
     match (if (cap.any (· ≤ s.turn)) && s.clock.isNone && s.active.isSome && s.result.isNone then
         some ((if judge then ⟨.judge, .declareDraw⟩ else ⟨.clock, .timeCalled⟩), r)
       else demoAnswer r s) with
@@ -805,10 +1002,44 @@ def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false) :
       match step 100 s a with
       | .error e => .error e
       | .ok (s', es) =>
-        let (j, seen') := stepJson i (some a) es s' seen s.pending.head?
+        let acc' := collect i a es s' s acc
         let atPriority := match s.pending with | .priority _ :: _ => true | _ => false
-        if a.kind == .pass && atPriority && turns ≤ s.turn then .ok (j :: acc)
-        else playTrace turns cap judge n (i + 1) r' s' seen' (j :: acc)
+        if a.kind == .pass && atPriority && turns ≤ s.turn then .ok acc'
+        else playDemoWith turns cap judge collect n (i + 1) r' s' acc'
+
+/-- Play with `demoAnswer` until the turn player passes in turn `turns`, or `n` answers. The steps
+of the trace come back in reverse order. -/
+def playTrace (turns : Nat) (cap : Option Nat := none) (judge : Bool := false)
+    (n i : Nat) (r : Rng) (s : GameState) (seen : Std.HashSet Nat) (steps : List String) :
+    Except RuleError (List String) :=
+  let collect i a es next before (acc : Std.HashSet Nat × List String) :=
+    let (j, seen') := stepJson i (some a) es next acc.1 before.pending.head? (before := some before)
+    (seen', j :: acc.2)
+  (playDemoWith turns cap judge collect n i r s (seen, steps)).map Prod.snd
+
+/-- Set up the demo game under the selected timing and deck rules. -/
+def initialDemo (timed judge limited : Bool) : Except String GameState :=
+  let initial := if limited then
+    GameState.initialLimited demoDB { legalSets := [], banned := [] }
+      { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
+  else
+    GameState.initial demoDB
+      (if timed || judge then
+        { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
+      else demoConfig)
+      [demoDeck, demoDeck]
+  match initial with
+  | some s => .ok s
+  | none => .error "the demo game cannot be set up"
+
+/-- Run the same seeded demo as the trace exporter and return its final game state. -/
+def demoEndState (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
+    (limited : Bool := false) : Except String GameState := do
+  let s ← initialDemo timed judge limited
+  let cap := if timed || judge then some turns else none
+  (playDemoWith (if cap.isSome then 100000 else turns) cap judge
+    (fun _ _ _ next _ _ => next) 100000 1 (Rng.ofSeed seed) s s).mapError
+      (fun e => s!"the engine refused an answer: {repr e}")
 
 /-- The whole trace of a demo game of `turns` turns from `seed`, as JSON. With `timed`, the game is
 played under the Tournament Rules, and the clock calls time when `turns` turns have begun: the
@@ -816,27 +1047,16 @@ game goes on to its end (TR 408.2). With `judge`, the judge declares a draw then
 (TR 505.6). With `limited`, the game is set up from Sealed decks with no Legend and no Chosen
 Champion, so that each player draws 1 more in their first turn (TR 602.4.a.5.b). -/
 def demoTrace (seed turns : Nat) (timed : Bool := false) (judge : Bool := false)
-    (limited : Bool := false) : Except String String :=
-  match (if limited then
-      GameState.initialLimited demoDB { legalSets := [], banned := [] }
-        { ruleSet := .tournament .sealed, mode := Mode.duel } [demoLimitedDeck, demoLimitedDeck]
-    else
-      GameState.initial demoDB
-        (if timed || judge then
-          { ruleSet := .tournament .constructed, mode := Mode.duel, formatLegality := some demoEnv }
-        else demoConfig)
-        [demoDeck, demoDeck]) with
-  | none => .error "the demo game cannot be set up"
-  | some s0 =>
-    let (j0, seen) := stepJson 0 none [] s0 {}
-    match playTrace (if timed || judge then 100000 else turns)
-        (if timed || judge then some turns else none) judge 100000 1 (Rng.ofSeed seed) s0 seen
-        [j0] with
-    | .error e => .error s!"the engine refused an answer: {repr e}"
-    | .ok acc =>
-      .ok (jobj [("seed", toString seed), ("players", toString s0.playerCount),
-        ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c)))),
-        ("steps", jarr acc.reverse)])
+    (limited : Bool := false) : Except String String := do
+  let s0 ← initialDemo timed judge limited
+  let (j0, seen) := stepJson 0 none [] s0 {}
+  let cap := if timed || judge then some turns else none
+  let acc ← (playTrace (if cap.isSome then 100000 else turns) cap judge
+    100000 1 (Rng.ofSeed seed) s0 seen [j0]).mapError
+      (fun e => s!"the engine refused an answer: {repr e}")
+  return jobj [("seed", toString seed), ("players", toString s0.playerCount),
+    ("cards", jobj (demoCards.map (fun c => (c.id.code, cardJson c)))),
+    ("steps", jarr acc.reverse)]
 
 end RiftboundDriver
 

@@ -88,7 +88,8 @@ def EffectDef.forPick (e : EffectDef) : SpellPick → Option EffectDef
   | .withShowOff pick _ => (e.forPick pick).map (fun branch =>
     { branch with choices := branch.choices ++ e.showOffChoices, showOffChoices := [] })
   | .withCosts pick _ _ | .thenRepeat pick _ _ | .withExtraObject pick _ |
-      .withSpellExhausts pick _ => e.forPick pick
+      .withSpellExhausts pick _ | .withXP pick | .withPaidKill pick .. |
+      .withDeflectPayment pick _ => e.forPick pick
   | .withVariablePower pick n => (e.forPick pick).map (fun branch =>
     if branch.variablePowerTargets then
       { branch with choices := branch.choices.map (fun

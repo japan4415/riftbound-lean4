@@ -38,6 +38,14 @@ meta def start (cfg : GameConfig) (d : LimitedDeck) : Option GameState :=
 #guard !(start sealedCfg (limDeck 24 none none)).isSome
 #guard (start { sealedCfg with ruleSet := .tournament .draft } (limDeck 20 none none)).isSome
 #guard !(start { sealedCfg with ruleSet := .tournament .draft } (limDeck 19 none none)).isSome
+-- A Legend's domains and one chosen domain form a set. Choosing one of the Legend's own
+-- domains is legal in both Limited formats (TR 602.4.a.3, 602.4.b.4).
+#guard (start sealedCfg { limDeck 25 (some "L1") none with identity := [.calm, .fury] }).isSome
+#guard (start { sealedCfg with ruleSet := .tournament .draft }
+  { limDeck 20 (some "L1") none with identity := [.calm, .fury] }).isSome
+#guard !(start sealedCfg { limDeck 25 (some "L1") none with identity := [.fury, .mind] }).isSome
+#guard !(start sealedCfg { limDeck 25 none none with identity := [.calm, .fury] }).isSome
+#guard !(start sealedCfg { limDeck 25 (some "L1") none with identity := [.calm, .fury, .fury] }).isSome
 -- not a Limited format: no game
 #guard !(start { sealedCfg with ruleSet := .tournament .constructed } (limDeck 25 none none)).isSome
 #guard !(start { sealedCfg with ruleSet := .coreOnly } (limDeck 25 none none)).isSome
@@ -53,12 +61,13 @@ meta def start (cfg : GameConfig) (d : LimitedDeck) : Option GameState :=
 #guard match start sealedCfg (limDeck 25 none none) with
   | some s => (s.zone (.player ⟨0⟩ .legendZone)).isEmpty &&
       (s.zone (.player ⟨1⟩ .championZone)).isEmpty &&
-      (s.zone (.player ⟨0⟩ .mainDeck)).length == 25
+      (s.zone (.player ⟨0⟩ .mainDeck)).length == 25 && s.chosenChampions.isEmpty
   | none => false
 #guard match start sealedCfg (limDeck 24 (some "L1") (some "C1")) with
   | some s => (s.zone (.player ⟨0⟩ .legendZone)).length == 1 &&
       (s.zone (.player ⟨0⟩ .championZone)).length == 1 &&
-      (s.zone (.player ⟨0⟩ .mainDeck)).length == 24
+      (s.zone (.player ⟨0⟩ .mainDeck)).length == 24 &&
+      s.players.all (fun p => (s.zone (.player p .championZone)).any (s.chosenOf p))
   | none => false
 
 /-- The hands in the Main Phase of turn `n`. -/

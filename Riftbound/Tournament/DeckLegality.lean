@@ -9,10 +9,8 @@ public import Riftbound.Tournament.Format
 Constructed (TR 402, 403, 601) and Limited (TR 602). A Constructed deck is also a legal deck
 under the Core Rules (`constructedDeckValid_deckValid`, theorem I13 in roadmap.md).
 
-The rules of Sealed and Draft are taken from tournament-model.md §2.2 and simplified in two
-places that are listed in tournament-model.md §7: the Domain Identity is any three domains
-(the variant of one domain plus the Legend's is left out), and the Main Deck count includes the
-Chosen Champion.
+The rules of Sealed and Draft are taken from tournament-model.md §2.2. The Main Deck count
+includes the Chosen Champion, as described in tournament-model.md §7.
 -/
 
 @[expose] public section
@@ -129,7 +127,7 @@ theorem constructedDeckValid_deckValid_duel {db : CardDB} {env : LegalityEnv}
 /-- A Limited deck (TR 602.4). The Domain Identity is declared; the Legend and the Chosen
 Champion are optional (TR 602.4.a.5). -/
 structure LimitedDeck where
-  /-- The declared Domain Identity: three domains (TR 602.4.a.3). -/
+  /-- The declared Domain Identity (TR 602.4.a.3, 602.4.b.4). -/
   identity : List Domain
   /-- The Legend, if the deck uses one. -/
   legend : Option CardId
@@ -173,14 +171,24 @@ def LimitedDeck.resolve (db : CardDB) (d : LimitedDeck) : Option LimitedDeck.Res
   let reserveLegends ← d.reserveLegends.mapM db.find?
   pure { identity := d.identity, legend, chosenChampion, main, runes, battlefields, reserveLegends }
 
-/-- A resolved Limited deck is legal (TR 602.4) with at least `minMain` Main Deck cards:
-three different Domain Identity domains; every Main Deck and Rune Deck card fits the identity;
-exactly 12 Runes; a Legend and a Chosen Champion that are what they should be, if present; no
-card is banned. There is no limit on how many copies of a name the deck holds
+/-- The declared identity is any three domains, or the union of the Legend's domains and
+one chosen domain (TR 602.4.a.3, 602.4.b.4). -/
+def LimitedDeck.Resolved.IdentityOk (r : LimitedDeck.Resolved) : Prop :=
+  r.identity.length = 3 ∨ ∃ legend ∈ r.legend.toList, ∃ extra ∈ r.identity,
+    r.identity.Perm ((extra :: legend.domains).eraseDups)
+
+instance (r : LimitedDeck.Resolved) : Decidable r.IdentityOk := by
+  unfold LimitedDeck.Resolved.IdentityOk
+  infer_instance
+
+/-- A resolved Limited deck is legal (TR 602.4) with at least `minMain` Main Deck cards.
+Each Main Deck and Rune Deck card fits a valid Domain Identity. It has exactly 12 Runes,
+a Legend and a Chosen Champion of the proper types if present, and no banned cards.
+There is no limit on how many copies of a name the deck holds
 (TR 602.4.a.6). -/
 def LimitedDeck.Resolved.Valid (env : LegalityEnv) (minMain : Nat)
     (r : LimitedDeck.Resolved) : Prop :=
-  r.identity.Nodup ∧ r.identity.length = 3 ∧ minMain ≤ r.main.length ∧
+  r.identity.Nodup ∧ r.IdentityOk ∧ minMain ≤ r.main.length ∧
     Deck.MainTypesOk r.main ∧ Deck.DomainsIn r.identity (r.main ++ r.runes) ∧
     r.runes.length = 12 ∧ (∀ c ∈ r.runes, c.hasType .rune = true) ∧
     (∀ l ∈ r.legend.toList, l.hasType .legend = true) ∧

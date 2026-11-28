@@ -1,6 +1,6 @@
 module
 
-public import RiftboundDriver.ReplayCodec
+public import RiftboundDriver.ReplayObservation
 public import RiftboundCards.Registry
 
 /-!
@@ -26,35 +26,894 @@ inductive ReplayDecks where
   | limited (decks : List LimitedDeck)
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- A private deck whose randomized portion can be shuffled by a judge (TR 701.4). -/
+inductive JudgeDeck where
+  /-- The player's Main Deck. -/
+  | mainDeck
+  /-- The player's Rune Deck. -/
+  | runeDeck
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A deck for which the judge found no randomized portion and could complete the remedy
+without a shuffle (TR 701.4.b.1). -/
+structure JudgeUnshuffledDeck where
+  /-- The seat whose deck had no randomized portion. -/
+  seat : PlayerId
+  /-- Which of that seat's decks was left as it was. -/
+  deck : JudgeDeck
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The observed positions and outcome of a remedy shuffle. -/
+structure JudgeShuffle where
+  /-- The owner of the affected deck. -/
+  seat : PlayerId
+  /-- The affected deck. -/
+  deck : JudgeDeck
+  /-- Zero-based positions, in ascending order, included in the random portion. -/
+  positions : List Nat
+  /-- The resulting object IDs at those positions, in the same order. -/
+  order : List ObjId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The judge's candidate set and the observed result of undoing one private draw (TR 701.5.d.3). -/
+structure JudgeDrawReturn where
+  /-- The hand object's ID created by the recorded draw. -/
+  drawn : ObjId
+  /-- Candidate physical cards, identified by their object IDs at the rewind target. -/
+  candidates : List ObjId
+  /-- The candidate the judge returned to the deck. -/
+  returned : ObjId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A rewind with observed private draws and any subsequent remedy shuffles. -/
+structure JudgePrivateRewind where
+  /-- The game checkpoint to restore. -/
+  target : Nat
+  /-- The judge's recorded random selections, keyed by the corresponding draw. -/
+  returns : List JudgeDrawReturn
+  /-- Optional remedy shuffles before play resumes. Order IDs refer to the rewind target
+  (TR 701.5.d.4). -/
+  shuffles? : Option (List JudgeShuffle) := none
+  /-- The judge's recorded exceptions when there was no randomized portion of a deck. -/
+  unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A judge's recorded rewind across earlier administrative actions. -/
+structure JudgeTimelineRewind where
+  /-- The checkpoint on the active line to restore. -/
+  target : Nat
+  /-- The judge's final scheduled turn when the called clock is carried across the rewind. -/
+  deadline? : Option Nat := none
+  /-- Checkpoints of all earlier remedies the judge explicitly reversed, latest first. -/
+  rulings? : Option (List Nat) := none
+  /-- Private draw selections made while restoring this state. -/
+  returns? : Option (List JudgeDrawReturn) := none
+  /-- Optional remedy shuffles using object IDs at the rewind target. -/
+  shuffles? : Option (List JudgeShuffle) := none
+  /-- The judge's recorded exceptions when there was no randomized portion of a deck. -/
+  unshuffledDecks? : Option (List JudgeUnshuffledDeck) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- One card in a recorded permutation, identified by its pre-permutation position. -/
+structure ReplayPositionedCard where
+  /-- Zero-based position in the pending sequence before it is reordered. -/
+  before : Nat
+  /-- The card code independently witnessed at that position. -/
+  card : CardId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A chance outcome reported without the engine's object IDs. -/
+inductive ReplayChance where
+  /-- Complete output order of the cards in the pending random permutation. -/
+  | cardOrder (cards : List CardId)
+  /-- Complete output order when the source tracked distinct copies by position. -/
+  | cardOrderByPosition (cards : List ReplayPositionedCard)
+  /-- The Battlefield selected by a random draw. -/
+  | battlefield (card : CardId)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The decision a transcription answers by card code. -/
+inductive ReplayCardPickKind where
+  /-- Set one opening hand card aside. -/
+  | mulligan
+  /-- Discard one card from hand. -/
+  | discard
+  /-- Return a Predict card to the top of the deck. -/
+  | predictTop
+  /-- Recycle a Predict card. -/
+  | predictRecycle
+  /-- Name the next Unit to receive a Combat damage assignment. -/
+  | assignDamage
+  /-- Choose one of the objects offered at a decision during play. -/
+  | chooseObject
+  /-- Exhaust a Basic Rune to add Energy. -/
+  | runeExhaust
+  /-- Recycle a Basic Rune to add Power. -/
+  | runeRecycle
+  /-- Exhaust a Basic Rune to fund a trigger. -/
+  | triggerRuneExhaust
+  /-- Recycle a Basic Rune to fund a trigger. -/
+  | triggerRuneRecycle
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A recorded location used to tell two copies of an offered card apart. -/
+inductive ReplayCardLocation where
+  /-- A zone, including a particular seat's Base or hand. -/
+  | zone (zone : Zone)
+  /-- A Battlefield identified by its owner and card code. -/
+  | battlefield (owner : PlayerId) (field : CardId)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A card chosen by a recorded player, identified by its visible card code. -/
+structure ReplayCardPick where
+  /-- The player who made the choice. -/
+  seat : PlayerId
+  /-- The specific decision being answered. -/
+  kind : ReplayCardPickKind
+  /-- The printed identity of the card selected. -/
+  card : CardId
+  /-- An observed location that can distinguish otherwise identical codes. -/
+  location? : Option ReplayCardLocation := none
+  /-- Whether the card on the Board was exhausted before the answer. -/
+  exhausted? : Option Bool := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A Unit's Standard Move recorded without engine-generated object IDs. -/
+structure ReplayStandardMove where
+  /-- The seat that made the move. -/
+  seat : PlayerId
+  /-- The visible Unit's card or token code. -/
+  unit : CardId
+  /-- The Unit's departure location, if it was observed. -/
+  from? : Option ReplayCardLocation := none
+  /-- The destination Battlefield, or the named seat's Base. -/
+  destination : ReplayUnitPlace
+  /-- The fee specified by the source, if it recorded one. -/
+  fee? : Option Cost := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The destination and fee declared before choosing Units for a group Standard Move. -/
+structure ReplayGroupMove where
+  /-- The seat that declared the group move. -/
+  seat : PlayerId
+  /-- The shared destination, identified without an object ID. -/
+  destination : ReplayUnitPlace
+  /-- The fee selected for the group, when observed. -/
+  fee? : Option Cost := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A physical card described by its printed code and, when observed, its location. -/
+structure ReplayCardReference where
+  /-- The printed identity of the card. -/
+  card : CardId
+  /-- The zone or Battlefield before the answer was applied. -/
+  location? : Option ReplayCardLocation := none
+  /-- The controlling seat, if the source records it. -/
+  controller? : Option PlayerId := none
+  /-- Whether a permanent was exhausted, if visible in the source. -/
+  exhausted? : Option Bool := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The response to a play's separately declared discard cost. -/
+inductive ReplayPlayDiscard where
+  /-- The play did not declare a discard. -/
+  | none
+  /-- The card used to pay the cost. -/
+  | card (reference : ReplayCardReference)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The mode and shared destination of the first effect on a play. -/
+inductive ReplayPlayChoice where
+  /-- The play has no mode or shared destination. -/
+  | plain
+  /-- The chosen mode index. -/
+  | mode (index : Nat)
+  /-- The chosen Battlefield, or the Base indicated by the effect. -/
+  | destination (place : ReplayUnitPlace)
+  /-- A mode that also chooses a destination. -/
+  | modeDestination (index : Nat) (place : ReplayUnitPlace)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A card play transcribed from the declaration without engine-generated object IDs. -/
+structure ReplayCardPlay where
+  /-- The seat playing the card. -/
+  seat : PlayerId
+  /-- The card and its zone before the play. -/
+  source : ReplayCardReference
+  /-- The object targets, in declaration order. -/
+  targets : List ReplayCardReference
+  /-- The exact declared payment, if available. -/
+  payment? : Option RunePool.Payment := none
+  /-- The stated Flow price, before discounts, if available. -/
+  flowCost? : Option Cost := none
+  /-- The stated discard, including an explicit decision to decline it. -/
+  discard? : Option ReplayPlayDiscard := none
+  /-- The first effect's mode or destination, if observed. -/
+  choice? : Option ReplayPlayChoice := none
+  /-- The player selected by the declaration, if recorded. -/
+  playerTarget? : Option PlayerId := none
+  /-- The actual Power sources used for a separate Deflect surcharge, if observed. -/
+  deflectPayment? : Option (List PowerBucket) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- Which kind of activation the player declared. -/
+inductive ReplayAbilityKind where
+  /-- A regular activated ability, including Hidden's abilities. -/
+  | activated
+  /-- An immediate Add ability other than the Basic Rune abilities. -/
+  | add
+  /-- A non-Rune Add ability selected while funding a trigger. -/
+  | triggerAdd
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- An activation transcribed using the source's code and declared objects. -/
+structure ReplayAbilityUse where
+  /-- The seat activating the ability. -/
+  seat : PlayerId
+  /-- Whether the declaration is a regular activation or an immediate Add. -/
+  kind : ReplayAbilityKind
+  /-- The source and its location before the activation. -/
+  source : ReplayCardReference
+  /-- The index of the source's activated ability, as listed by the inspector. -/
+  ability : Nat
+  /-- The object targets, in the order declared. -/
+  targets : List ReplayCardReference
+  /-- The declared Energy and Power, when observed. -/
+  payment? : Option RunePool.Payment := none
+  /-- The cards discarded for the activation, when observed. -/
+  discards? : Option (List ReplayCardReference) := none
+  /-- A targeted player, if recorded. -/
+  playerTarget? : Option PlayerId := none
+  /-- The controller selected to replace a pending Kill cost with Banish, if observed. -/
+  costBanisher? : Option PlayerId := none
+  /-- An object used for a non-resource cost, if recorded. -/
+  costObject? : Option ReplayCardReference := none
+  /-- The physical Power sources for a separate Deflect surcharge, if observed. -/
+  deflectPayment? : Option (List PowerBucket) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- An observable step in declaring a triggered ability. -/
+inductive ReplayTriggerStage where
+  /-- Lock the declarations before using Add abilities to prepare the payment. -/
+  | prepare
+  /-- Pay any remaining costs and put the ability on the Chain. -/
+  | finalize
+  /-- Decline to put an optional trigger on the Chain. -/
+  | decline
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A choice between death replacements while paying a trigger's cost. -/
+structure ReplayTriggerBanish where
+  /-- The card or token used as a cost. -/
+  card : ReplayCardReference
+  /-- The controller of the selected replacement. -/
+  controller : PlayerId
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- A triggered-ability declaration expressed without a queue index or object IDs. -/
+structure ReplayTriggerUse where
+  /-- The controller who makes the declaration. -/
+  seat : PlayerId
+  /-- Which step of declaring the ability was observed. -/
+  stage : ReplayTriggerStage
+  /-- The printed code of the ability's source, even when the source no longer exists. -/
+  source : CardId
+  /-- The ability index on that source, if observed. -/
+  ability? : Option Nat := none
+  /-- The source object and its visible status, if it still exists and is recorded. -/
+  sourceObject? : Option ReplayCardReference := none
+  /-- The object that caused the trigger, when recorded separately from its targets. -/
+  subject? : Option ReplayCardReference := none
+  /-- The object targets, in declaration order. -/
+  targets : List ReplayCardReference := []
+  /-- The selected mode, if recorded. -/
+  mode? : Option Nat := none
+  /-- The targeted player, if recorded. -/
+  playerTarget? : Option PlayerId := none
+  /-- The objects used as costs in declaration order, if recorded. -/
+  costObjects? : Option (List ReplayCardReference) := none
+  /-- The chosen Banish replacements for those costs, if recorded. -/
+  costBanishers? : Option (List ReplayTriggerBanish) := none
+deriving DecidableEq, Repr, ToJson, FromJson
+
 /-- A recorded answer, including how it was observed. -/
 inductive ReplayAnswer where
   /-- The answer was recorded directly. -/
   | observed (action : Action)
   /-- The answer is a reconstruction of an incompletely observed choice. -/
   | inferred (action : Action) (evidence : String)
+  /-- The chance outcome was recorded by card code. Copies may still need to be distinguished. -/
+  | observedChance (outcome : ReplayChance)
+  /-- The chance outcome by card code was reconstructed from incomplete observations. -/
+  | inferredChance (outcome : ReplayChance) (evidence : String)
+  /-- The seat, decision and chosen card code were observed. -/
+  | observedCardPick (choice : ReplayCardPick)
+  /-- The chosen card code was inferred from incomplete observations. -/
+  | inferredCardPick (choice : ReplayCardPick) (evidence : String)
+  /-- The Unit and destination of a Standard Move were observed. -/
+  | observedStandardMove (move : ReplayStandardMove)
+  /-- A Standard Move was inferred from incomplete observations. -/
+  | inferredStandardMove (move : ReplayStandardMove) (evidence : String)
+  /-- The destination and fee declared for a group Standard Move were observed. -/
+  | observedGroupMove (move : ReplayGroupMove)
+  /-- A group Standard Move declaration was inferred from incomplete observations. -/
+  | inferredGroupMove (move : ReplayGroupMove) (evidence : String)
+  /-- The card played and its declared targets were observed. -/
+  | observedCardPlay (play : ReplayCardPlay)
+  /-- The declaration of a card play was reconstructed from incomplete observations. -/
+  | inferredCardPlay (play : ReplayCardPlay) (evidence : String)
+  /-- The source, ability, and the activation's declared object targets were observed. -/
+  | observedAbilityUse (activation : ReplayAbilityUse)
+  /-- The activation was reconstructed from incomplete observations. -/
+  | inferredAbilityUse (activation : ReplayAbilityUse) (evidence : String)
+  /-- The triggered ability and its declaration were observed. -/
+  | observedTriggerUse (trigger : ReplayTriggerUse)
+  /-- The triggered ability's declaration was reconstructed from incomplete observations. -/
+  | inferredTriggerUse (trigger : ReplayTriggerUse) (evidence : String)
   /-- Available evidence did not establish an answer. -/
   | unknown (description : String)
+  /-- The initial Constructed Best of 1 sideboard window closes (TR 406.1.h.5). -/
+  | bo1Sideboard
+  /-- The judge applies simultaneous Game Loss penalties to these seats (TR 701.2.b). -/
+  | gameLoss (seats : List PlayerId)
+  /-- The judge restores the state at a preceding game checkpoint (TR 701.5). -/
+  | judgeRewind (target : Nat)
+  /-- The judge reorders a private deck's randomized portion (TR 701.4). -/
+  | judgeShuffle (shuffle : JudgeShuffle)
+  /-- Rewind with the judge's observed selections for private draws. -/
+  | judgePrivateRewind (rewind : JudgePrivateRewind)
+  /-- Rewind across a time call or earlier correction under a recorded ruling. -/
+  | judgeTimelineRewind (rewind : JudgeTimelineRewind)
 deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The action, if the input directly specifies one without consulting a game state. -/
+def ReplayAnswer.action? : ReplayAnswer → Option Action
+  | .observed a | .inferred a _ => some a
+  | _ => none
+
+private def checkInference (index : Nat) (evidence : String) : Except String Unit :=
+  if evidence.trimAscii.toString.isEmpty then
+    throw s!"answer {index}: an inferred answer needs an explanation"
+  else pure ()
 
 /-- Resolve a recorded answer, retaining a diagnostic for missing or undocumented input. -/
 def ReplayAnswer.resolve (answer : ReplayAnswer) (index : Nat) : Except String Action :=
   match answer with
   | .observed a => pure a
-  | .inferred a evidence =>
-    if evidence.trimAscii.toString.isEmpty then
-      throw s!"answer {index}: an inferred answer needs an explanation"
-    else pure a
+  | .inferred a evidence => checkInference index evidence *> pure a
+  | .observedChance _ | .inferredChance _ _ =>
+    throw s!"answer {index}: a chance outcome by card code needs the current game state"
+  | .observedCardPick _ | .inferredCardPick _ _ =>
+    throw s!"answer {index}: a card pick by code needs the current game state"
+  | .observedStandardMove _ | .inferredStandardMove _ _ =>
+    throw s!"answer {index}: a move by card code needs the current game state"
+  | .observedGroupMove _ | .inferredGroupMove _ _ =>
+    throw s!"answer {index}: a group move by card code needs the current game state"
+  | .observedCardPlay _ | .inferredCardPlay _ _ =>
+    throw s!"answer {index}: a play by card code needs the current game state"
+  | .observedAbilityUse _ | .inferredAbilityUse _ _ =>
+    throw s!"answer {index}: an ability by card code needs the current game state"
+  | .observedTriggerUse _ | .inferredTriggerUse _ _ =>
+    throw s!"answer {index}: a triggered ability by card code needs the current game state"
   | .unknown description => throw s!"answer {index} is unobserved: {description}"
+  | .bo1Sideboard => throw s!"answer {index}: Best of 1 sideboarding is a setup step"
+  | .gameLoss _ => throw s!"answer {index}: a Game Loss is a judge ruling"
+  | .judgeRewind _ | .judgeShuffle _ | .judgePrivateRewind _ | .judgeTimelineRewind _ =>
+    throw s!"answer {index}: a correction is a judge ruling"
+
+private def replayCardCode (s : GameState) (id : ObjId) : Option CardId :=
+  (s.obj? id).bind (·.kind.cardId?)
+
+private def ReplayCardPick.fromActionWithObject? (s : GameState) (action : Action) :
+    Option (ReplayCardPick × ObjId) := do
+  let .player seat := action.actor | none
+  let (kind, id) ← match action.kind with
+    | .mulliganPick id => some (.mulligan, id)
+    | .discardPick id => some (.discard, id)
+    | .predictPick id false => some (.predictTop, id)
+    | .predictPick id true => some (.predictRecycle, id)
+    | .assignPick id => some (.assignDamage, id)
+    | .choose id => some (.chooseObject, id)
+    | .runeAbility id .exhaust => some (.runeExhaust, id)
+    | .runeAbility id .recycle => some (.runeRecycle, id)
+    | .triggerAdd (.rune id false) => some (.triggerRuneExhaust, id)
+    | .triggerAdd (.rune id true) => some (.triggerRuneRecycle, id)
+    | _ => none
+  let card ← replayCardCode s id
+  return ({ seat, kind, card }, id)
+
+/-- Describe a card or Unit pick in the full replay transcription. -/
+def ReplayCardPick.fromAction? (s : GameState) (action : Action) : Option ReplayCardPick :=
+  (fromActionWithObject? s action).map Prod.fst
+
+private def replayCardLocation (s : GameState) (id : ObjId) : Option ReplayCardLocation := do
+  let zone ← s.locate id
+  if zone != .battlefieldZone then return .zone zone
+  let battlefield ← s.hereOf id
+  let field ← s.obj? battlefield
+  let code ← field.kind.cardId?
+  return .battlefield field.owner code
+
+/-- Describe a pick with its observed location and, on the Board, its exhaustion status. -/
+def ReplayCardPick.fromActionAtLocation? (s : GameState) (action : Action) :
+    Option ReplayCardPick := do
+  let (pick, id) ← fromActionWithObject? s action
+  let location ← replayCardLocation s id
+  let exhausted := if s.inPlay.contains id then (s.obj? id).map (·.exhausted) else none
+  return { pick with location? := some location, exhausted? := exhausted }
+
+private def ReplayCardLocation.matches (s : GameState) (id : ObjId) :
+    ReplayCardLocation → Bool
+  | .zone locationZone => s.locate id == some locationZone
+  | .battlefield owner field => replayCardLocation s id == some (.battlefield owner field)
+
+private def ReplayCardPick.resolve (choice : ReplayCardPick) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter (fun action =>
+    (ReplayCardPick.fromActionWithObject? s action).any (fun (pick, id) =>
+      pick == { choice with location? := none, exhausted? := none } &&
+        choice.location?.all (·.matches s id) &&
+        choice.exhausted?.all (fun exhausted => s.inPlay.contains id &&
+          (s.obj? id).any (fun object => object.exhausted == exhausted))))
+  let some action := matching.head?
+    | throw s!"seat {choice.seat.n} has no legal {reprStr choice.kind} pick of {choice.card.code}"
+  return (action, matching.length == 1)
+
+private def replayMoveDestination (s : GameState) : MoveDest → Option ReplayUnitPlace
+  | .base => some .base
+  | .battlefield id => do
+    let .battlefield owner field ← replayCardLocation s id | none
+    return .battlefield owner field
+
+/-- Describe one legal Standard Move by the Unit's code and printed Battlefield identity. -/
+def ReplayStandardMove.fromAction? (s : GameState) (action : Action) : Option ReplayStandardMove := do
+  let .player seat := action.actor | none
+  let .standardMove unit dest fee := action.kind | none
+  let code ← replayCardCode s unit
+  let destination ← replayMoveDestination s dest
+  return { seat, unit := code, from? := replayCardLocation s unit, destination, fee? := some fee }
+
+private def ReplayStandardMove.resolve (move : ReplayStandardMove) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun a =>
+    a.actor == .player move.seat && match a.kind with
+    | .standardMove unit dest fee =>
+      replayCardCode s unit == some move.unit &&
+        replayMoveDestination s dest == some move.destination &&
+        move.from?.all (·.matches s unit) && move.fee?.all (· == fee)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {move.seat.n} has no legal Standard Move of {move.unit.code} to {(toJson move.destination).compress}"
+  return (action, matching.length == 1)
+
+/-- Describe the first declaration of a group Standard Move by Battlefield code and fee. -/
+def ReplayGroupMove.fromAction? (s : GameState) (action : Action) : Option ReplayGroupMove := do
+  let .player seat := action.actor | none
+  let .startGroupMove dest fee := action.kind | none
+  let destination ← replayMoveDestination s dest
+  return { seat, destination, fee? := some fee }
+
+private def ReplayGroupMove.resolve (move : ReplayGroupMove) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player move.seat && match action.kind with
+    | .startGroupMove dest fee =>
+      replayMoveDestination s dest == some move.destination && move.fee?.all (· == fee)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {move.seat.n} has no legal group move to {(toJson move.destination).compress} for the recorded fee"
+  return (action, matching.length == 1)
+
+private def ReplayCardReference.ofObject? (s : GameState) (id : ObjId) :
+    Option ReplayCardReference := do
+  let object ← s.obj? id
+  let card ← object.kind.cardId?
+  return {
+    card, location? := replayCardLocation s id, controller? := some object.controller
+    exhausted? := if s.inPlay.contains id then some object.exhausted else none }
+
+private def ReplayCardReference.matches (s : GameState) (ref : ReplayCardReference) (id : ObjId) : Bool :=
+  (s.obj? id).any (fun object =>
+    object.kind.cardId? == some ref.card && ref.location?.all (·.matches s id) &&
+      ref.controller?.all (· == object.controller) &&
+      ref.exhausted?.all (fun exhausted => s.inPlay.contains id && exhausted == object.exhausted))
+
+private def ReplayCardReference.matchesOrdered (s : GameState)
+    (recorded : List ReplayCardReference) (actual : List ObjId) : Bool :=
+  recorded.length == actual.length &&
+    (recorded.zip actual).all (fun (reference, id) => reference.matches s id)
+
+private def ReplayPlayDiscard.ofObject? (s : GameState) : Option ObjId → Option ReplayPlayDiscard
+  | .none => some .none
+  | some id => (.card ·) <$> ReplayCardReference.ofObject? s id
+
+private def ReplayPlayDiscard.matches (s : GameState) : ReplayPlayDiscard → Option ObjId → Bool
+  | .none, .none => true
+  | .card ref, some id => ref.matches s id
+  | _, _ => false
+
+private def ReplayPlayChoice.ofPick? (s : GameState) (declared : SpellPick) : Option ReplayPlayChoice :=
+  let pick := declared.withoutDeflectPayment
+  let place (field : Option ObjId) := replayMoveDestination s (field.elim .base .battlefield)
+  match pick.effectChoice with
+  | .plain => some .plain
+  | .mode index => some (.mode index)
+  | .destination field => .destination <$> place field
+  | .modeDestination index field => .modeDestination index <$> place field
+  | _ => none
+
+/-- Describe a play with the known card identities, targets, and transcribable choices. -/
+def ReplayCardPlay.fromAction? (s : GameState) (action : Action) : Option ReplayCardPlay := do
+  let .player seat := action.actor | none
+  let .playCard id payment targets flowCost? discard pick := action.kind | none
+  let source ← ReplayCardReference.ofObject? s id
+  let targets ← targets.mapM (ReplayCardReference.ofObject? s)
+  return {
+    seat, source, targets, payment? := some payment, flowCost?
+    discard? := ReplayPlayDiscard.ofObject? s discard, choice? := ReplayPlayChoice.ofPick? s pick
+    playerTarget? := pick.withoutDeflectPayment.playerTarget
+    deflectPayment? := s.spellDeflectSources seat id action.targetsOf payment pick }
+
+private def ReplayCardPlay.resolve (play : ReplayCardPlay) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player play.seat && match action.kind with
+    | .playCard id payment targets flowCost discard pick =>
+      play.source.matches s id && ReplayCardReference.matchesOrdered s play.targets targets &&
+        play.payment?.all (· == payment) && play.flowCost?.all (some · == flowCost) &&
+        play.discard?.all (fun declared => declared.matches s discard) &&
+        play.choice?.all (fun declared => some declared == ReplayPlayChoice.ofPick? s pick) &&
+        play.playerTarget?.all (some · == pick.withoutDeflectPayment.playerTarget) &&
+        play.deflectPayment?.all (some · == s.spellDeflectSources play.seat id targets payment pick)
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {play.seat.n} has no legal play of {play.source.card.code} with the recorded declaration"
+  return (action, matching.length == 1)
+
+/-- Describe a legal activation or a declared Add using printed card identities. -/
+def ReplayAbilityUse.fromAction? (s : GameState) (action : Action) : Option ReplayAbilityUse := do
+  let .player seat := action.actor | none
+  let reference := ReplayCardReference.ofObject? s
+  let add (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) : Option ReplayAbilityUse := do
+    let source ← reference id
+    return {
+      seat, kind, source, ability, targets := [], payment? := some payment
+      costObject? := costObject.bind reference }
+  match action.kind with
+  | .activate id ability payment targets discards playerTarget? costBanisher? costObject =>
+    let source ← reference id
+    let deflect := s.activationDeflectSources seat id ability targets payment
+    let targets ← targets.mapM reference
+    let discards ← discards.mapM reference
+    return {
+      seat, kind := .activated, source, ability, targets, payment? := some payment.base
+      discards? := some discards, playerTarget?, costBanisher?, costObject? := costObject.bind reference
+      deflectPayment? := deflect }
+  | .manaAbility id ability payment costObject => add .add id ability payment costObject
+  | .triggerAdd (.ability id ability energy power costObject) =>
+    add .triggerAdd id ability ⟨energy, power⟩ costObject
+  | _ => none
+
+private def ReplayAbilityUse.resolve (activation : ReplayAbilityUse) (s : GameState) :
+    Except String (Action × Bool) := do
+  let fitsSourceAndPrice (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) :=
+    activation.kind == kind && activation.ability == ability && activation.source.matches s id &&
+      activation.payment?.all (· == payment) &&
+      activation.costObject?.all (fun reference => costObject.any (reference.matches s))
+  let add (kind : ReplayAbilityKind) (id : ObjId) (ability : Nat)
+      (payment : RunePool.Payment) (costObject : Option ObjId) :=
+    fitsSourceAndPrice kind id ability payment costObject && activation.targets.isEmpty &&
+      activation.discards?.all List.isEmpty && activation.playerTarget?.isNone &&
+      activation.costBanisher?.isNone && activation.deflectPayment?.isNone
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player activation.seat && match action.kind with
+    | .activate id ability payment targets discards targetPlayer costBanisher costObject =>
+      fitsSourceAndPrice .activated id ability payment.base costObject &&
+        ReplayCardReference.matchesOrdered s activation.targets targets &&
+        activation.discards?.all (fun recorded => ReplayCardReference.matchesOrdered s recorded discards) &&
+        activation.playerTarget?.all (some · == targetPlayer) &&
+        activation.costBanisher?.all (some · == costBanisher) &&
+        activation.deflectPayment?.all (some · == s.activationDeflectSources activation.seat id ability targets payment)
+    | .manaAbility id ability payment costObject => add .add id ability payment costObject
+    | .triggerAdd (.ability id ability energy power costObject) =>
+      add .triggerAdd id ability ⟨energy, power⟩ costObject
+    | _ => false
+  let some action := matching.head?
+    | throw s!"seat {activation.seat.n} has no legal ability {activation.ability} on {activation.source.card.code} with the recorded declaration"
+  return (action, matching.length == 1)
+
+private def replayTriggerDeclaration (s : GameState) (action : Action) :
+    Option (PendTrigger × ReplayTriggerStage × List ObjId × TriggerPayment) := do
+  let .triggerOrder _ first rest _ _ :: _ := s.pending | none
+  let (index, stage, targets, payment) ← match action.kind with
+    | .prepareTrigger index targets payment => some (index, .prepare, targets, payment)
+    | .putTrigger index targets payment =>
+      some (index, if payment == .skip then .decline else .finalize, targets, payment)
+    | _ => none
+  let trigger ← (first :: rest)[index]?
+  return (trigger, stage, targets, payment)
+
+/-- Describe the declaration of a triggered ability by the source code and observed objects. -/
+def ReplayTriggerUse.fromAction? (s : GameState) (action : Action) : Option ReplayTriggerUse := do
+  let .player seat := action.actor | none
+  let (trigger, stage, targets, payment) ← replayTriggerDeclaration s action
+  let reference := ReplayCardReference.ofObject? s
+  let targets ← targets.mapM reference
+  let choice : ReplayTriggerUse := {
+    seat, stage, source := trigger.card, ability? := some trigger.idx
+    sourceObject? := reference trigger.source, subject? := trigger.subject.bind reference, targets }
+  match payment with
+  | .skip => return choice
+  | .pay objects mode player replacements =>
+    let costs ← objects.mapM reference
+    let banishers ← replacements.mapM fun (id, controller) => do
+      let card ← reference id
+      return ({ card, controller } : ReplayTriggerBanish)
+    return { choice with
+      mode? := mode
+      playerTarget? := player
+      costObjects? := some costs
+      costBanishers? := some banishers }
+
+private def ReplayTriggerUse.matchesPayment (choice : ReplayTriggerUse) (s : GameState) :
+    TriggerPayment → Bool
+  | .skip =>
+    choice.mode?.isNone && choice.playerTarget?.isNone &&
+      choice.costObjects?.all List.isEmpty && choice.costBanishers?.all List.isEmpty
+  | .pay objects mode player replacements =>
+    choice.mode?.all (some · == mode) && choice.playerTarget?.all (some · == player) &&
+      choice.costObjects?.all (fun declared => ReplayCardReference.matchesOrdered s declared objects) &&
+      choice.costBanishers?.all (fun declared => declared.length == replacements.length &&
+        (declared.zip replacements).all fun (banish, id, controller) =>
+          banish.controller == controller && banish.card.matches s id)
+
+private def ReplayTriggerUse.resolve (choice : ReplayTriggerUse) (s : GameState) :
+    Except String (Action × Bool) := do
+  let matching := (legalFrameActions s).filter fun action =>
+    action.actor == .player choice.seat && match replayTriggerDeclaration s action with
+    | some (trigger, stage, targets, payment) =>
+      trigger.card == choice.source && stage == choice.stage &&
+        choice.ability?.all (· == trigger.idx) &&
+        choice.sourceObject?.all (fun ref => ref.matches s trigger.source) &&
+        choice.subject?.all (fun ref => trigger.subject.any (ref.matches s)) &&
+        ReplayCardReference.matchesOrdered s choice.targets targets &&
+        choice.matchesPayment s payment
+    | none => false
+  let some action := matching.head?
+    | throw s!"seat {choice.seat.n} has no legal {repr choice.stage} declaration for the trigger from {choice.source.code}"
+  return (action, matching.length == 1)
+
+/-- Data needed to transcribe the currently pending random decision. -/
+inductive ReplayChanceDecision where
+  /-- A permutation of these objects. -/
+  | cardOrder (candidates : List ObjId)
+  /-- A selection from the seat's Battlefield candidates, by index. -/
+  | battlefield (seat : PlayerId) (candidates : List ObjId)
+  /-- A choice of starting turn order. -/
+  | turnOrder
+
+/-- Obtain the candidates used both for inspection and for resolving recorded chance answers. -/
+def ReplayChanceDecision.pending (s : GameState) : Option ReplayChanceDecision :=
+  match s.pending.head? with
+  | some (.chanceShuffle z) => some (.cardOrder (s.zone z))
+  | some (.chanceRecycle p) => some (.cardOrder (s.zone (.player p .setAside)))
+  | some (.chanceBurnOut p) => some (.cardOrder (s.zone (.player p .trash)))
+  | some (.chancePredict _ _ _ bottom) => some (.cardOrder bottom)
+  | some (.chanceRecycleTrash _ _ picked) => some (.cardOrder picked)
+  | some (.chanceBattlefield p) => some (.battlefield p (s.zone (.player p .outOfGame)))
+  | some .chanceTurnOrder => some .turnOrder
+  | _ => none
+
+/-- Resolve one witnessed position in the sequence before the random permutation. -/
+def ReplayPositionedCard.resolve (read : ObjId → Option CardId) (candidates : List ObjId)
+    (entry : ReplayPositionedCard) : Except String ObjId :=
+  match candidates[entry.before]? with
+  | none => .error s!"source position {entry.before} is outside the pending card order"
+  | some id =>
+    if read id == some entry.card then .ok id
+    else .error s!"source position {entry.before} does not hold the recorded card code"
+
+/-- Renaming the candidate objects and their lookup preserves the positional evidence. -/
+theorem ReplayPositionedCard.resolve_rename (entry : ReplayPositionedCard)
+    (candidates : List ObjId) (rename : ObjId → ObjId) (read renamed : ObjId → Option CardId)
+    (agrees : ∀ id, renamed (rename id) = read id) :
+    entry.resolve renamed (candidates.map rename) = (entry.resolve read candidates).map rename := by
+  simp only [resolve, List.getElem?_map]
+  cases found : candidates[entry.before]? with
+  | none => rfl
+  | some id =>
+    simp only [Option.map_some, agrees]
+    split <;> rfl
+
+/-- Check the original positions and card codes in the declared output order. -/
+def ReplayPositionedCard.resolveOrder (cards : List ReplayPositionedCard)
+    (read : ObjId → Option CardId) (candidates : List ObjId) : Except String (List ObjId) :=
+  if cards.length != candidates.length then
+    .error s!"the card order has {cards.length} cards but needs {candidates.length}"
+  else if decide (cards.map (·.before)).Nodup then
+    cards.mapM (resolve read candidates)
+  else .error "the recorded card order repeats a source position"
+
+/-- Changing engine IDs while keeping the before-order and face lookup preserves the result. -/
+theorem ReplayPositionedCard.resolveOrder_rename (cards : List ReplayPositionedCard)
+    (candidates : List ObjId) (rename : ObjId → ObjId) (read renamed : ObjId → Option CardId)
+    (agrees : ∀ id, renamed (rename id) = read id) :
+    resolveOrder cards renamed (candidates.map rename) =
+      (resolveOrder cards read candidates).map (List.map rename) := by
+  simp only [resolveOrder, List.length_map]
+  split
+  · rfl
+  · rename_i lengthMatches
+    split
+    · rename_i distinct
+      clear lengthMatches distinct
+      induction cards with
+      | nil => rfl
+      | cons entry rest ih =>
+        rw [List.mapM_cons, List.mapM_cons, entry.resolve_rename candidates rename read renamed agrees]
+        cases h : entry.resolve read candidates with
+        | error reason => rfl
+        | ok id =>
+          cases more : rest.mapM (resolve read candidates) with
+          | error reason => simp [ih, more, Except.map, bind, Except.bind]
+          | ok ids => simp [ih, more, Except.map, bind, Except.bind, pure, Except.pure]
+    · rfl
+
+private def ReplayChance.resolve (outcome : ReplayChance) (s : GameState) :
+    Except String (Action × Bool) := do
+  match outcome, ReplayChanceDecision.pending s with
+  | .battlefield card, some (.battlefield _ candidates) =>
+    let matching := candidates.zipIdx.filter (fun (id, _) => replayCardCode s id == some card)
+    let some (_, index) := matching.head? | throw s!"Battlefield {card.code} is not a candidate"
+    return (⟨.chance, .pick index⟩, matching.length == 1)
+  | .battlefield _, _ => throw "no random Battlefield selection is pending"
+  | .cardOrder cards, some (.cardOrder candidates) =>
+    if cards.length != candidates.length then
+      throw s!"the card order has {cards.length} cards but needs {candidates.length}"
+    let mut remaining := candidates
+    let mut order := []
+    for card in cards do
+      let some id := remaining.find? (fun id => replayCardCode s id == some card)
+        | throw s!"card order contains an unavailable copy of {card.code}"
+      order := id :: order
+      remaining := remaining.erase id
+    return (⟨.chance, .arrange order.reverse⟩, decide cards.Nodup)
+  | .cardOrder _, _ => throw "no random card order is pending"
+  | .cardOrderByPosition cards, some (.cardOrder candidates) => do
+    let order ← ReplayPositionedCard.resolveOrder cards (replayCardCode s) candidates
+    return (⟨.chance, .arrange order⟩, true)
+  | .cardOrderByPosition _, _ => throw "no random card order is pending"
+
+/-- Resolve a replay answer at the decision it answers. The flag records whether the
+input uniquely determines the choice and contains no explicit inference. -/
+def ReplayAnswer.resolveAt (answer : ReplayAnswer) (s : GameState) (index : Nat) :
+    Except String (Action × Bool) := do
+  let resolveChance (outcome : ReplayChance) :=
+    (outcome.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolvePick (choice : ReplayCardPick) :=
+    (choice.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveMove (move : ReplayStandardMove) :=
+    (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveGroupMove (move : ReplayGroupMove) :=
+    (move.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolvePlay (play : ReplayCardPlay) :=
+    (play.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveAbility (activation : ReplayAbilityUse) :=
+    (activation.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  let resolveTrigger (trigger : ReplayTriggerUse) :=
+    (trigger.resolve s).mapError (fun error => s!"answer {index}: {error}")
+  match answer with
+  | .observedChance outcome => resolveChance outcome
+  | .inferredChance outcome evidence =>
+    checkInference index evidence
+    return ((← resolveChance outcome).1, false)
+  | .observedCardPick choice => resolvePick choice
+  | .inferredCardPick choice evidence =>
+    checkInference index evidence
+    return ((← resolvePick choice).1, false)
+  | .observedStandardMove move => resolveMove move
+  | .inferredStandardMove move evidence =>
+    checkInference index evidence
+    return ((← resolveMove move).1, false)
+  | .observedGroupMove move => resolveGroupMove move
+  | .inferredGroupMove move evidence =>
+    checkInference index evidence
+    return ((← resolveGroupMove move).1, false)
+  | .observedCardPlay play => resolvePlay play
+  | .inferredCardPlay play evidence =>
+    checkInference index evidence
+    return ((← resolvePlay play).1, false)
+  | .observedAbilityUse activation => resolveAbility activation
+  | .inferredAbilityUse activation evidence =>
+    checkInference index evidence
+    return ((← resolveAbility activation).1, false)
+  | .observedTriggerUse trigger => resolveTrigger trigger
+  | .inferredTriggerUse trigger evidence =>
+    checkInference index evidence
+    return ((← resolveTrigger trigger).1, false)
+  | _ =>
+    return (← answer.resolve index, match answer with | .observed _ => true | _ => false)
+
+private def unshuffledDecksJson (decks : Option (List JudgeUnshuffledDeck)) :
+    List (String × String) :=
+  let recorded := decks.getD []
+  if recorded.isEmpty then [] else [("rewindUnshuffledDecks", (toJson recorded).compress)]
+
+/-- Additional trace metadata for a judge correction, independent of in-game actions. -/
+def ReplayAnswer.correctionJson : ReplayAnswer → List (String × String)
+  | .judgeRewind target => [("judgeRewind", toString target)]
+  | .judgeShuffle shuffle => [("judgeShuffle", (toJson shuffle).compress)]
+  | .judgePrivateRewind rewind =>
+    [("judgeRewind", toString rewind.target), ("privateDrawReturns", toString rewind.returns.length),
+     ("rewindShuffles", toString (rewind.shuffles?.getD []).length)] ++
+      unshuffledDecksJson rewind.unshuffledDecks?
+  | .judgeTimelineRewind rewind =>
+    [("judgeRewind", toString rewind.target), ("privateDrawReturns", toString (rewind.returns?.getD []).length),
+     ("rewindShuffles", toString (rewind.shuffles?.getD []).length),
+     ("rewindRulings", toString (rewind.rulings?.getD []).length)] ++
+      (rewind.deadline?.map (fun deadline => ("rewindDeadline", toString deadline))).toList ++
+      unshuffledDecksJson rewind.unshuffledDecks?
+  | _ => []
+
+/-- Whether a trace row needs to rescan object metadata after restoring an earlier state. -/
+def ReplayAnswer.rewinds : ReplayAnswer → Bool
+  | .judgeRewind _ | .judgePrivateRewind _ | .judgeTimelineRewind _ => true
+  | _ => false
+
+/-- A Game Loss affects the whole side; if neither side remains, the game is a draw (TR 701.2.b). -/
+def judgeGameLossResult (players : List PlayerId) (sameSide : PlayerId → PlayerId → Bool)
+    (seats : List PlayerId) : Except String GameResult := do
+  unless !seats.isEmpty && decide seats.Nodup && seats.all players.contains do
+    throw "a Game Loss requires distinct registered seats"
+  let remaining := players.filter (fun p => !(seats.any (sameSide p)))
+  return if remaining.isEmpty then .draw else .won remaining
+
+/-- The affected seats, if the final answer was a Game Loss. -/
+def ReplayAnswer.penalizedSeats : ReplayAnswer → Option (List PlayerId)
+  | .gameLoss seats => some seats
+  | _ => none
+
+/-- Evidence for the starting turn order supplied before a team game's answer stream. -/
+inductive ReplayOpeningOrderEvidence where
+  /-- The order was reconstructed from indirect evidence. -/
+  | inferred (evidence : String)
+  /-- The order could not be determined. -/
+  | unknown (description : String)
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- Reject an undocumented inference or a starting order that could not be established. -/
+def ReplayOpeningOrderEvidence.check : ReplayOpeningOrderEvidence → Except String Unit
+  | .inferred evidence =>
+    if evidence.trimAscii.toString.isEmpty then
+      throw "an inferred starting turn order needs an explanation"
+    else pure ()
+  | .unknown description => throw s!"starting turn order is unobserved: {description}"
 
 /-- The data required to set up and replay one game. -/
 structure GameInputs where
   /-- The submitted decks for all seats, in seat order. -/
   decks : ReplayDecks
-  /-- Exact answers in the order they were applied. -/
+  /-- Recorded answers in the order they were applied. -/
   answers : Array ReplayAnswer
   /-- The seat entitled to choose first or second, when the match made such a choice. -/
   chooser : Option PlayerId := none
+  /-- Four-seat War or team turn order, known before choosing the three Battlefields. -/
+  openingOrder : Option (List PlayerId) := none
+  /-- Evidence when the supplied starting order was not observed directly. -/
+  openingOrderEvidence? : Option ReplayOpeningOrderEvidence := none
+  /-- The original registrations when the event uses the optional Constructed Best of 1 setup.
+  The game decks describe the configuration after the initial sideboard window (TR 406.1.h). -/
+  bo1Setup? : Option (List ConstructedDeck) := none
+  /-- Independently observed facts to check against the reconstructed game. -/
+  observations? : Option (List ReplayObservation) := none
 deriving DecidableEq, Repr, ToJson, FromJson
+
+private def GameInputs.observationSchedule (input : GameInputs) : Except String (List ReplayObservation) := do
+  let observations := input.observations?.getD []
+  observations.forM ReplayObservation.checkWindow
+  return observations.mergeSort (fun a b => a.checkpoint <= b.checkpoint)
 
 /-- Rules pinned by a saved recording. -/
 structure ReplayRules where
@@ -70,7 +929,18 @@ deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- Rules metadata for replays produced by this driver. -/
 def ReplayRules.current (db : CardDB) : ReplayRules :=
-  ⟨1, coreRulesVersion, tournamentRulesVersion, toString (hash (reprStr db))⟩
+  ⟨2, coreRulesVersion, tournamentRulesVersion, toString (hash (reprStr db))⟩
+
+/-- Schema 1 could label a permanent's destination or cost as a Spell target. -/
+def ReplayRules.upgradesPermanentChoices (saved current : ReplayRules) : Bool :=
+  saved.schema == 1 && current.schema == 2
+
+/-- A revalidation can compare fingerprints only within the same format and rule editions. -/
+def ReplayRules.checkEditions (saved current : ReplayRules) : Except String Unit := do
+  unless (saved.schema == current.schema || saved.upgradesPermanentChoices current) &&
+      saved.core == current.core &&
+      saved.tournament == current.tournament do
+    throw "the replay format or rules editions differ"
 
 /-- The replay comparison data for the state and events after one answer. -/
 structure ReplayCheckpoint where
@@ -78,6 +948,26 @@ structure ReplayCheckpoint where
   state : String
   /-- The events in the order the engine emitted them. -/
   events : List Event
+  /-- Seat numbers and physical Chosen Champion IDs. Earlier archives did not store this. -/
+  chosenChampions? : Option (List (Nat × Nat)) := none
+  /-- Marked damage and the responsible seat of each hit. Earlier archives did not store this. -/
+  damageMarks? : Option (List (Nat × List (Option Nat × Nat))) := none
+  /-- Energy payments in play-log order. Earlier archives did not store this. -/
+  playEnergy? : Option (List Nat) := none
+  /-- Physical card numbers in play-log order, with entries only for finalizations. -/
+  playPhysical? : Option (List (Option Nat)) := none
+  /-- Timestamps in play-log order, with entries only for finalizations. -/
+  playStamps? : Option (List (Option Nat)) := none
+  /-- Zero-based event positions and the seats responsible for recorded buffs. -/
+  buffAttributions? : Option (List (Nat × PlayerId)) := none
+  /-- Zero-based event positions and the seats responsible for recorded stuns. -/
+  stunAttributions? : Option (List (Nat × PlayerId)) := none
+  /-- Victim, controller, turn, stamp, and actual company when the historical mark differs. -/
+  deathCompany? : Option (List (Nat × PlayerId × Nat × Nat × Bool)) := none
+  /-- Separate Deflect Power already spent, reported for seats with a positive balance. -/
+  deflectSpent? : Option (List (Nat × Nat)) := none
+  /-- Power spent earlier in this turn before the Main Phase emptied the pools. -/
+  spentBeforeMain? : Option (List (Nat × Nat)) := none
 deriving DecidableEq, Repr, ToJson, FromJson
 
 /-- What the engine established by the end of a game. -/
@@ -92,7 +982,9 @@ structure ReplayGameResult where
   result : Option GameResult
   /-- Whether time had been called in this game. -/
   timed : Bool
-  /-- Whether all answers were directly observed. -/
+  /-- The last turn number when play continued beyond the scheduled turns (TR 408.4.c.3). -/
+  suddenDeathTurn? : Option Nat := none
+  /-- Whether all answers and the supplied starting order were directly and uniquely observed. -/
   exact : Bool
   /-- Registered cards below `full`, in seat order. -/
   uncheckedCards : List (List (CardId × ImplStatus))
@@ -102,26 +994,255 @@ deriving DecidableEq, Repr, ToJson, FromJson
 structure RecordedGame where
   /-- The submitted decks and the input stream. -/
   input : GameInputs
+  /-- Rules derived from the preceding games of a single-elimination match. -/
+  eliminationConfig? : Option GameConfig := none
   /-- A checkpoint for the initial state and for each successful answer. -/
   checkpoints : Array ReplayCheckpoint
   /-- The resulting setup details, score and winner. -/
   summary : ReplayGameResult
 deriving DecidableEq, Repr, ToJson, FromJson
 
+/-- The seats sanctioned by the judge, when the game ended with a Game Loss. -/
+def RecordedGame.gameLossSeats (game : RecordedGame) : Option (List PlayerId) :=
+  game.input.answers.back?.bind ReplayAnswer.penalizedSeats
+
+/-- The named Battlefields revealed before a Game Loss cannot be reused (TR 406.1.c).
+Each unlimited blank in Limited can be represented by a new physical copy. -/
+def RecordedGame.penaltyBattlefields (game : RecordedGame) : List (PlayerId × CardId) :=
+  if game.gameLossSeats.isSome then
+    game.summary.battlefields.filter (·.2 != limitedBlankBattlefield.id)
+  else []
+
+/-- Ensure a seat uses a different Battlefield from any game ended by a Game Loss. -/
+def checkPenaltyBattlefields (forbidden selected : List (PlayerId × CardId)) : Except String Unit := do
+  for (seat, card) in selected do
+    if forbidden.contains (seat, card) then
+      throw s!"seat {seat.n} must use a different Battlefield after a Game Loss: {card.code}"
+
 /-- Set up the recorded decks using the existing deck validation paths and pinned format legality. -/
-def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig) :
+def ReplayDecks.initial (decks : ReplayDecks) (db : CardDB) (config : GameConfig)
+    (openingOrder : Option (List PlayerId) := none) :
     Except String GameState := do
-  let state ← match decks, config.ruleSet, config.formatLegality with
-    | .core ds, .coreOnly, none => pure (GameState.initial db config ds)
-    | .constructed ds, .tournament .constructed, some env =>
+  if config.mode.isTeamDuel then
+    let some env := config.formatLegality | throw "team replay requires pinned format legality"
+    let some order := openingOrder | throw "team replay requires the starting turn order"
+    let setup := match decks, config.ruleSet.tournamentFormat with
+      | .constructed registrations, some .constructed =>
+        GameState.initialTeamConstructed db env order registrations config.ruleSet
+      | .limited registrations, some .sealed =>
+        GameState.initialTeamSealed db.withLimitedBlank env order registrations config.ruleSet
+      | _, _ => none
+    let some state := setup
+      | throw "the team game cannot be set up from the submitted registrations and order"
+    return state
+  if config.mode == Mode.ffa4 then
+    let some order := openingOrder | throw "War replay requires the starting turn order"
+    let .core submitted := decks | throw "War replay requires Core Rules decks"
+    unless config.ruleSet == .coreOnly && config.formatLegality.isNone do
+      throw "War replay requires the Core Rules"
+    let some state := GameState.initialFfa4 db order submitted
+      | throw "the War game cannot be set up from the submitted decks and order"
+    return state
+  if openingOrder.isSome then throw "a supplied starting order requires War or a team game"
+  let state ← match decks, config.ruleSet.tournamentFormat, config.formatLegality with
+    | .core ds, none, none => pure (GameState.initial db config ds)
+    | .constructed ds, some .constructed, some env =>
       pure (GameState.initialConstructed db env config ds)
-    | .limited ds, .tournament format, some env =>
-      if format.isLimited then pure (GameState.initialLimited db env config ds)
+    | .limited ds, some format, some env =>
+      if format.isLimited then pure (GameState.initialLimited db.withLimitedBlank env config ds)
       else throw "Limited decks require Sealed or Draft"
     | _, _, _ => throw "deck type, rules and format legality do not agree"
   match state with
   | some s => pure s
   | none => throw "the game cannot be set up from the submitted decks"
+
+/-- A Constructed sideboard must use the registered pool and preserve the fixed slots (TR 403.4). -/
+def sameRegisteredPool (old new : ConstructedDeck) : Bool :=
+  let a := old.deck
+  let b := new.deck
+  a.legend == b.legend && decide (a.runes.Perm b.runes) &&
+    decide (a.battlefields.Perm b.battlefields) && decide (a.reserveLegends.Perm b.reserveLegends) &&
+    decide (List.Perm (a.main ++ old.sideboard) (b.main ++ new.sideboard))
+
+/-- Initialize the replay at the official setup boundary. In the optional Best of 1 procedure,
+put out the Legends and Battlefield candidates before committing the cards from the closed decks. -/
+def GameInputs.initial (input : GameInputs) (db : CardDB) (config : GameConfig) :
+    Except String GameState := do
+  if let some evidence := input.openingOrderEvidence? then
+    unless config.mode.isTeamDuel || config.mode == Mode.ffa4 do
+      throw "supplied starting turn order evidence requires War or a team game"
+    evidence.check
+  let some registered := input.bo1Setup? | return ← input.decks.initial db config input.openingOrder
+  unless config.mode == Mode.duel && config.ruleSet.tournamentFormat == some .constructed &&
+      input.openingOrder.isNone do
+    throw "the optional Best of 1 setup requires a Constructed Duel"
+  let some env := config.formatLegality | throw "the Best of 1 setup needs pinned format legality"
+  let .constructed submitted := input.decks | throw "the Best of 1 setup needs final registrations"
+  unless registered.length == 2 && submitted.length == 2 do
+    throw "two original and two final registrations are required"
+  let mut s := GameState.empty config db
+  for ((original, final), index) in (registered.zip submitted).zipIdx do
+    unless decide (ConstructedDeckValid db env original) &&
+        decide (ConstructedDeckValid db env final) do
+      throw s!"seat {index} has an illegal Best of 1 registration"
+    unless sameRegisteredPool original final do
+      throw s!"seat {index} must sideboard from the registered pool and preserve the fixed slots"
+    let p : PlayerId := ⟨index⟩
+    let placed := do
+      let next ← addCards db p (.player p .legendZone) s [original.deck.legend]
+      addCards db p (.player p .outOfGame) next original.deck.battlefields
+    let some next := placed
+      | throw s!"seat {index} could not place the Legend and Battlefields"
+    s := next
+  return { s with pending := [.chanceBattlefield ⟨0⟩, .chanceBattlefield ⟨1⟩, .chanceTurnOrder] }
+
+private def addBo1Deck (db : CardDB) (s : GameState) (p : PlayerId) (deck : Deck) :
+    Option GameState := do
+  let s ← addCards db p (.player p .reserveLegends) s deck.reserveLegends
+  let s ← addChosenChampion db p s (some deck.chosenChampion)
+  let s ← addCards db p (.player p .mainDeck) s (deck.main.erase deck.chosenChampion)
+  addCards db p (.player p .runeDeck) s deck.runes
+
+/-- Whether the optional Best of 1 setup is waiting for the initiative choice. -/
+def GameInputs.awaitsBo1Initiative (input : GameInputs) (s : GameState) : Bool :=
+  input.bo1Setup?.isSome && s.phase == .setup && s.pending == [.chanceTurnOrder] && s.result.isNone
+
+/-- Identify the initiative answer in this setup for trace presentation. -/
+def GameInputs.isBo1Initiative (input : GameInputs) (s : GameState) (action : Option Action) : Bool :=
+  input.awaitsBo1Initiative s && action.any (fun a => match a.kind with
+    | .arrangePlayers _ => true
+    | _ => false)
+
+/-- Whether the optional Best of 1 setup is waiting for the final registrations. -/
+def GameInputs.awaitsBo1Sideboard (input : GameInputs) (s : GameState) : Bool :=
+  input.bo1Setup?.isSome && s.phase == .setup && s.pending == [.setupHands] && s.result.isNone
+
+/-- A remedy shuffle leaves known positions and the game's trigger stream alone (TR 701.4). -/
+def JudgeShuffle.apply (shuffle : JudgeShuffle) (s : GameState) : Except String GameState := do
+  unless s.config.ruleSet.isTournament && s.result.isNone && s.phase != .setup do
+    throw "a judge shuffle requires ongoing tournament play"
+  unless s.players.contains shuffle.seat do throw "invalid judge shuffle seat"
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let zone := Zone.player shuffle.seat kind
+  let previous := s.zone zone
+  unless !shuffle.positions.isEmpty && decide (shuffle.positions.Pairwise (· < ·)) do
+    throw "judge shuffle positions must be nonempty and strictly increasing"
+  let some selected := shuffle.positions.mapM (fun i => previous[i]?)
+    | throw "a judge shuffle position is outside the deck"
+  unless decide (selected.Perm shuffle.order) do
+    throw "a judge shuffle must keep exactly the objects selected from that deck"
+  let changes := shuffle.positions.zip shuffle.order
+  return s.reorder zone (previous.zipIdx.map (fun (card, i) => (changes.lookup i).getD card))
+
+private def GameInputs.answerTransition (input : GameInputs) (s : GameState) (action : Action)
+    (fuel : Nat) (observeFaces : Bool) :
+    Except RuleError ((GameState × List Event) × List CardDisclosure) :=
+  if input.isBo1Initiative s (some action) then
+    if Legal s action then
+      match applyFrame0 s action with
+      | some (next, events) => .ok ((next, events),
+          if observeFaces then CardDisclosure.capture s next 0 events else [])
+      | none => .error (.internal "applyFrame0")
+    else .error .illegal
+  else if observeFaces then stepWithDisclosures fuel s action
+  else (step fuel s action).map (·, [])
+
+private theorem GameInputs.answerTransition_ok_add_fuel {input : GameInputs} {s : GameState}
+    {action : Action} {fuel : Nat} {observeFaces : Bool}
+    {result : (GameState × List Event) × List CardDisclosure}
+    (done : input.answerTransition s action fuel observeFaces = .ok result) (extra : Nat) :
+    input.answerTransition s action (fuel + extra) observeFaces = .ok result := by
+  by_cases initiative : input.isBo1Initiative s (some action) = true
+  · simpa only [GameInputs.answerTransition, initiative, ↓reduceIte] using done
+  · simp only [GameInputs.answerTransition, ite_eq_right initiative] at done ⊢
+    cases observeFaces
+    · simp only [Bool.false_eq_true, ↓reduceIte] at done ⊢
+      cases stepEq : step fuel s action with
+      | error error => simp [stepEq, Except.map] at done
+      | ok transition =>
+        obtain ⟨next, events⟩ := transition
+        rw [step_ok_add_fuel stepEq extra]
+        simpa only [stepEq] using done
+    · simp only [↓reduceIte] at done ⊢
+      exact stepWithDisclosures_ok_add_fuel done extra
+
+private def GameInputs.applyEngineAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) (observeFaces : Bool) :
+    Except String (Option Action × (GameState × List Event) × List CardDisclosure × Bool) := do
+  let (action, exact) ← answer.resolveAt s index
+  if input.awaitsBo1Sideboard s && action.kind != .concede && action.kind != .declareDraw then
+    throw s!"answer {index}: close the Best of 1 sideboard window before shuffling"
+  let (result, disclosures) ← (input.answerTransition s action fuel observeFaces).mapError
+    (fun error => s!"answer {index}: {repr error}")
+  return (some action, result, disclosures, exact)
+
+private theorem GameInputs.applyEngineAnswerWith_ok_add_fuel {input : GameInputs} {s : GameState}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {result : Option Action × (GameState × List Event) × List CardDisclosure × Bool}
+    (done : input.applyEngineAnswerWith s answer index fuel observeFaces = .ok result) (extra : Nat) :
+    input.applyEngineAnswerWith s answer index (fuel + extra) observeFaces = .ok result := by
+  unfold GameInputs.applyEngineAnswerWith at done ⊢
+  cases resolution : answer.resolveAt s index with
+  | error error =>
+    rw [resolution] at done
+    change Except.error error = .ok result at done
+    cases done
+  | ok pair =>
+    obtain ⟨action, exactAnswer⟩ := pair
+    simp only [resolution, bind, Except.bind] at done ⊢
+    by_cases cannotProceed :
+        (input.awaitsBo1Sideboard s && action.kind != .concede && action.kind != .declareDraw) = true
+    · simp only [cannotProceed, ↓reduceIte] at done
+      change Except.error _ = .ok result at done
+      cases done
+    · simp only [ite_eq_right cannotProceed] at done ⊢
+      cases observed : input.answerTransition s action fuel observeFaces with
+      | error error =>
+        rw [observed] at done
+        change Except.error _ = .ok result at done
+        cases done
+      | ok answer =>
+        rw [GameInputs.answerTransition_ok_add_fuel observed extra]
+        simpa only [observed] using done
+
+private def GameInputs.applyAnswerWith (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) (observeFaces : Bool) :
+    Except String (Option Action × (GameState × List Event) × List CardDisclosure × Bool) := do
+  if let .judgeShuffle shuffle := answer then
+    let next ← (shuffle.apply s).mapError (fun error => s!"answer {index}: {error}")
+    return (none, (next, []), [], true)
+  if let .gameLoss seats := answer then
+    unless s.config.ruleSet.isTournament && s.config.mode.hasTwoSides && s.result.isNone do
+      throw s!"answer {index}: a Game Loss requires an ongoing tournament game"
+    let result ← (judgeGameLossResult s.players s.config.mode.sameSide seats).mapError
+      (fun error => s!"answer {index}: {error}")
+    return (none, ({ s with result := some result, pending := [] }, []), [], true)
+  let awaitingSideboard := input.awaitsBo1Sideboard s
+  if let .bo1Sideboard := answer then
+    unless awaitingSideboard do throw s!"answer {index}: no Best of 1 sideboard window is open"
+    let .constructed registrations := input.decks | throw "the Best of 1 setup needs final registrations"
+    let mut next := s
+    for (registration, seat) in registrations.zipIdx do
+      let some built := addBo1Deck s.cards next ⟨seat⟩ registration.deck
+        | throw s!"seat {seat} could not set out the final registration"
+      next := built
+    let shuffles := (startFrames s.playerCount).filter (fun | .chanceShuffle _ => true | _ => false)
+    return (none, ({ next with pending := shuffles ++ [.setupHands] }, []), [], true)
+  input.applyEngineAnswerWith s answer index fuel observeFaces
+
+private theorem GameInputs.applyAnswerWith_ok_add_fuel {input : GameInputs} {s : GameState}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {result : Option Action × (GameState × List Event) × List CardDisclosure × Bool}
+    (done : input.applyAnswerWith s answer index fuel observeFaces = .ok result) (extra : Nat) :
+    input.applyAnswerWith s answer index (fuel + extra) observeFaces = .ok result := by
+  cases answer <;> simp only [GameInputs.applyAnswerWith] at done ⊢ <;>
+    first | exact done | exact GameInputs.applyEngineAnswerWith_ok_add_fuel done extra
+
+/-- Reproduce an answer, including the administrative boundary before shuffling in TR 406.1.h. -/
+def GameInputs.applyAnswer (input : GameInputs) (s : GameState) (answer : ReplayAnswer)
+    (index fuel : Nat) : Except String (Option Action × GameState × List Event) := do
+  let (action, (next, events), _, _) ← input.applyAnswerWith s answer index fuel false
+  return (action, next, events)
 
 private def deckIds (d : Deck) : List CardId :=
   d.legend :: d.main ++ d.runes ++ d.battlefields ++ d.reserveLegends
@@ -138,10 +1259,65 @@ def ReplayDecks.uncheckedCards (decks : ReplayDecks) (db : CardDB) :
     let card ← db.find? id
     if card.status == .full then none else some (id, card.status)))
 
+/-- Encode XP in the old legend field when the seat has a Legend, preserving existing
+checkpoints for games where XP was tracked correctly. Seats without a Legend keep the XP field. -/
+private def replayXP (s : GameState) : GameState :=
+  if s.experience.isEmpty then s else
+    s.players.foldl (fun state p =>
+      match s.xpOf p, (s.zone (.player p .legendZone)).head? with
+      | n + 1, some legend =>
+        (state.modObj legend (fun o => { o with xp := n + 1 })).setXP p 0
+      | _, _ => state) s
+
 /-- Capture the state fingerprint and the events that the engine actually returned. -/
 def ReplayCheckpoint.capture (s : GameState) (events : List Event) : ReplayCheckpoint :=
   -- Card definitions are immutable and fingerprinted once in ReplayRules.
-  ⟨toString (hash (reprStr { s with cards := ⟨[]⟩ })), events⟩
+  -- Keep the original state fingerprint and record new evidence separately.
+  let playLog := s.playLog.map (fun play => { play with energyPaid := 0, physical := none, stamp := none })
+  let turnFx := s.turnFx.filter (fun note => match note.kind with
+    | .deathCompany _ | .powerSpentBeforeMain _ => false
+    | _ => true)
+  let company := s.turnFx.filterMap (fun note => do
+    let target ← note.target
+    match note.kind with
+    | .deathCompany alone => some (target.n, note.who, note.turn, note.stamp, alone)
+    | _ => none)
+  let legacy := replayXP { s with cards := ⟨[]⟩, chosenChampions := {}, damageMarks := {}, playLog, turnFx }
+  let deflect := s.pools.toList.filterMap (fun (seat, pool) =>
+    if pool.deflectSpent == 0 then none else some (seat, pool.deflectSpent))
+  let earlierPower := s.players.filterMap (fun seat =>
+    let amount := s.powerSpentBeforeMain seat
+    if amount == 0 then none else some (seat.n, amount))
+  let buffs := events.zipIdx.filterMap fun (event, index) =>
+    match event with
+    | .buffedBy _ p => some (index, p)
+    | _ => none
+  let stuns := events.zipIdx.filterMap fun (event, index) =>
+    match event with
+    | .stunnedBy _ p => some (index, p)
+    | _ => none
+  { state := toString (hash (reprStr legacy))
+    events := events.map fun
+      | .buffedBy id _ => .buffed id
+      | .stunnedBy id _ => .stunned id
+      | event => event
+    chosenChampions? := some (s.chosenChampions.toList.map (fun (seat, card) => (seat, card.n)))
+    damageMarks? := some (s.damageMarks.toList.map (fun (id, marks) =>
+      (id, marks.map (fun (seat, amount) => (seat.map PlayerId.n, amount)))))
+    playEnergy? := some (s.playLog.map (·.energyPaid))
+    playPhysical? := some (s.playLog.map (fun play => play.physical.map PhysId.n))
+    playStamps? := some (s.playLog.map (·.stamp))
+    buffAttributions? := some buffs
+    stunAttributions? := if stuns.isEmpty then none else some stuns
+    deathCompany? := if company.isEmpty then none else some company
+    deflectSpent? := if deflect.isEmpty then none else some deflect
+    spentBeforeMain? := if earlierPower.isEmpty then none else some earlierPower }
+
+/-- Save the computed per-game single-elimination rules with the evidence and viewer trace. -/
+def replayEliminationConfig (config : GameConfig) : Option GameConfig :=
+  match config.ruleSet with
+  | .tournamentElimination .. => some config
+  | _ => none
 
 /-- Summarize the engine state together with its recorded Battlefield selections. -/
 def ReplayGameResult.fromState (s : GameState) (decks : ReplayDecks)
@@ -151,6 +1327,8 @@ def ReplayGameResult.fromState (s : GameState) (decks : ReplayDecks)
     points := (allPlayers s.playerCount).map s.pointsOf
     result := s.result
     timed := s.clock.isSome
+    suddenDeathTurn? := s.clock.bind (fun clock =>
+      if clock.allowsSuddenDeath && decide (clock.lastTurn < s.turn) then some s.turn else none)
     exact
     uncheckedCards := decks.uncheckedCards s.cards }
 
@@ -162,47 +1340,970 @@ def pickedBattlefield (s : GameState) (action : Action) : Option (PlayerId × Ca
   let card ← s.cardDef? id
   pure (p, card.id)
 
-private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
-    (index : Nat) (actual : ReplayCheckpoint) : Except String Unit := do
-  if let some witnesses := expected then
-    if witnesses[index]? != some actual then
-      throw s!"checkpoint {index}: state or events differ"
+private inductive RewindBoundary where
+  | play
+  | clock
+  | ruling
+  | setup
+deriving DecidableEq
 
-private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
-    (fuel : Nat) (expected : Option (Array ReplayCheckpoint)) : Except String RecordedGame := do
+private structure ObservedDraw where
+  seat : PlayerId
+  source : ObjId
+  drawn : ObjId
+  physical : Option PhysId
+  wasRevealed : Bool
+
+private abbrev DeckKnowledge := PlayerId × PhysId
+
+/-- Information gained from a deck and the withdrawals that may follow it in the same answer. -/
+private inductive DeckObservation where
+  | seen (viewer : PlayerId) (card : PhysId)
+  | drawn (handObject : ObjId) (card : PhysId)
+  | channeled (card : PhysId)
+
+/-- The state and setup observations at a chronological checkpoint. -/
+structure ReplayPosition where
+  /-- The state at the checkpoint. -/
+  state : GameState
+  /-- Setup observations made by this checkpoint, newest first. -/
+  fields : List (PlayerId × CardId) := []
+  /-- Events in the action that produced this checkpoint. -/
+  events : List Event := []
+  /-- Faces shown during the answer that produced this position. -/
+  disclosures : List CardDisclosure := []
+  /-- Whether the answer producing this checkpoint was directly and uniquely observed. -/
+  answerExact : Bool := true
+  /-- Publicly revealed cards still identifiable in a player's Main Deck or hand. -/
+  private knownCards : List ObjId := []
+  /-- Faces that were known at this checkpoint, keyed by seat and physical deck card. -/
+  private knownDeckCards : List (PlayerId × PhysId) := []
+  /-- What the preceding answer showed or took from a deck, in event order. -/
+  private deckObservations : List DeckObservation := []
+  /-- Draws made by this answer, newest first. -/
+  private draws : List ObservedDraw := []
+  /-- The kind of transition that ended at this checkpoint. -/
+  private boundary : RewindBoundary := .setup
+  /-- A rewind's parent on the active line, skipping the abandoned operations. -/
+  private rewindParent : Option Nat := none
+
+/-- Capture a state without rewind metadata. -/
+def ReplayPosition.fromState (state : GameState) (fields : List (PlayerId × CardId) := [])
+    (disclosures : List CardDisclosure := []) (answerExact : Bool := true) : ReplayPosition :=
+  { state, fields, disclosures, answerExact }
+
+/-- One draw from a position in the deck at the rewind target. -/
+private structure DrawSlot extends ObservedDraw where
+  index : Nat
+
+private def notePublicMove (known : List ObjId) (source moved : ObjId) : List ObjId :=
+  if known.contains source then moved :: known.erase source else known
+
+private def observeDraws (physical : List (ObjId × PhysId)) (known : List ObjId)
+    (draws : List ObservedDraw) : List Event → List ObjId × List ObservedDraw
+  | .revealed _ card :: rest => observeDraws physical (card :: known.erase card) draws rest
+  | .handRevealed _ cards :: rest => observeDraws physical ((cards ++ known).eraseDups) draws rest
+  | .moved source drawn (.player seat .hand) :: .drew p :: rest =>
+    let draws := if seat == p then
+      ⟨seat, source, drawn, physical.lookup drawn, known.contains source⟩ :: draws
+      else draws
+    observeDraws physical (notePublicMove known source drawn) draws rest
+  | .moved source moved _ :: rest => observeDraws physical (notePublicMove known source moved) draws rest
+  | _ :: rest => observeDraws physical known draws rest
+  | [] => (known, draws)
+
+private def JudgeShuffle.selectedCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let deck := before.zone (.player shuffle.seat kind)
+  shuffle.positions.filterMap (fun index => deck[index]?)
+
+private def JudgeShuffle.obscuredCards (shuffle : JudgeShuffle) (before : GameState) : List ObjId :=
+  if shuffle.deck == .mainDeck then shuffle.selectedCards before else []
+
+private def obscuredDeckCards (before : GameState) (answer : ReplayAnswer) (action : Option Action) : List ObjId :=
+  match answer with
+  | .judgeShuffle shuffle => shuffle.obscuredCards before
+  | _ =>
+    match action, before.pending with
+    | some ⟨.chance, .arrange _⟩, .chanceShuffle (.player p .mainDeck) :: _ =>
+      before.zone (.player p .mainDeck)
+    | some ⟨.chance, .arrange _⟩, .chancePredict _ _ _ bottom :: _ => bottom
+    | some ⟨.chance, .arrange _⟩, .chanceRecycleTrash _ _ cards :: _ => cards
+    | _, _ => []
+
+private def trackedInPrivateZones (s : GameState) (known : List ObjId) : List ObjId :=
+  known.filter (fun id => match s.locate id with
+    | some (.player _ .mainDeck) | some (.player _ .hand) => true
+    | _ => false)
+
+private def physicalCard (s : GameState) (id : ObjId) : Option PhysId :=
+  (s.obj? id).bind (·.kind.phys?)
+
+/-- Find the slot of the drawn physical card at the rewind target, even if the draw used a newer
+object ID after a movement or Burn Out (TR 701.5.d.3). -/
+private def DrawSlot.atTarget (base : GameState) (draw : ObservedDraw) : Option DrawSlot := do
+  let index ← (base.zone (.player draw.seat .mainDeck)).findIdx? (fun id =>
+    match draw.physical with
+    | some card => physicalCard base id == some card
+    | none => id == draw.source)
+  pure { toObservedDraw := draw, index }
+
+private def deckPhysicalCards (s : GameState) : List PhysId :=
+  s.players.flatMap (fun seat =>
+    (s.zone (.player seat .mainDeck) ++ s.zone (.player seat .runeDeck)).filterMap (physicalCard s))
+
+/-- Recover a newly allocated object's identity from the final state, following any subsequent
+moves in the same answer. A Burn Out shuffle may have allocated the first ID without a move event. -/
+private def physicalAfterMoves (after : GameState) (id : ObjId) : List Event → Option PhysId
+  | .moved source next _ :: rest =>
+    physicalAfterMoves after (if source == id then next else id) rest
+  | _ :: rest => physicalAfterMoves after id rest
+  | [] => physicalCard after id
+
+/-- A move may rename an object between the look and the draw. Follow the actual physical cards
+through the answer without using its final zones to decide where the look took place. -/
+private def observeDeckCards (before after : GameState) (events : List Event) : List DeckObservation :=
+  go [] events
+where
+  go (moved : List (ObjId × (Zone × PhysId))) : List Event → List DeckObservation
+    | [] => []
+    | event :: rest =>
+      let location (id : ObjId) := (moved.lookup id).map Prod.fst <|> before.locate id
+      let physical (id : ObjId) := (moved.lookup id).map Prod.snd <|> physicalCard before id
+      let seen (id : ObjId) (audience : List PlayerId) :=
+        match location id, physical id with
+        | some (.player _ .mainDeck), some card | some (.player _ .runeDeck), some card =>
+          audience.map (fun seat => DeckObservation.seen seat card)
+        | _, _ => []
+      match event with
+      | .lookedAt viewer id => seen id [viewer] ++ go moved rest
+      | .revealed _ id => seen id before.players ++ go moved rest
+      | .moved old next dest =>
+        match physical old <|> physicalCard after next <|> physicalAfterMoves after next rest with
+        | none => go moved rest
+        | some card =>
+          let later := go ((next, (dest, card)) :: moved) rest
+          match location old, dest, rest with
+          | _, .player seat .hand, .drew drawer :: _ =>
+            if seat == drawer then .drawn next card :: later else later
+          | some (.player seat .runeDeck), .player owner .base, _ =>
+            if seat == owner then .channeled card :: later else later
+          | _, _, _ => later
+      | _ => go moved rest
+
+private def obscuredDeckPhysicalCards (before : GameState) (answer : ReplayAnswer)
+    (action : Option Action) : List PhysId :=
+  let ids := match answer with
+    | .judgeShuffle shuffle => shuffle.selectedCards before
+    | _ =>
+      match action, before.pending with
+      | some ⟨.chance, .arrange _⟩, .chanceShuffle (.player p .runeDeck) :: _ =>
+        before.zone (.player p .runeDeck)
+      | _, _ => obscuredDeckCards before answer action
+  ids.filterMap (physicalCard before)
+
+private def DeckObservation.remember (known : List DeckKnowledge) :
+    DeckObservation → List DeckKnowledge
+  | .seen seat card => if known.contains (seat, card) then known else (seat, card) :: known
+  | .drawn _ card | .channeled card => known.filter (fun knownCard => knownCard.2 != card)
+
+/-- What a rewind would expose again in an unreordered deck (TR 701.5.d.4). -/
+private def rewindDeckKnowledge (target : ReplayPosition) (chronology : List ReplayPosition) :
+    List DeckKnowledge :=
+  let newlySeen := chronology.foldl (fun known pos =>
+    pos.deckObservations.foldl DeckObservation.remember known) []
+  if newlySeen.isEmpty then [] else
+    let deck := deckPhysicalCards target.state
+    newlySeen.filter (fun known => !target.knownDeckCards.contains known && deck.contains known.2)
+
+private def shuffleAfterRewind (base current : GameState) (shuffle : JudgeShuffle) :
+    Except String GameState := do
+  let kind := match shuffle.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+  let cards := current.zone (.player shuffle.seat kind)
+  let order ← shuffle.order.mapM (fun ref => do
+    let some phys := physicalCard base ref | throw "a rewind shuffle must name a card at the rewind target"
+    let some id := cards.find? (fun id => physicalCard current id == some phys)
+      | throw "a rewind shuffle card is not in the restored deck"
+    pure id)
+  ({ shuffle with order }).apply current
+
+private def exchangeDrawSlot (s : GameState) (draw : DrawSlot) (returned : ObjId) :
+    Except String GameState := do
+  let deck := Zone.player draw.seat .mainDeck
+  let hand := Zone.player draw.seat .hand
+  let some slot := (s.zone deck)[draw.index]? | throw "the original draw position is missing"
+  if slot == returned then return s
+  if (s.zone deck).contains returned then
+    return s.reorder deck ((s.zone deck).map (fun id =>
+      if id == slot then returned else if id == returned then slot else id))
+  let some place := (s.zone hand).findIdx? (· == returned)
+    | throw "the selected card is no longer in the hand"
+  let some (afterDraw, _) := moveObj s slot hand (.atIndex place)
+    | throw "the drawn card could not be kept in the hand"
+  let some (restored, _) := moveObj afterDraw returned deck (.atIndex draw.index)
+    | throw "the selected card could not be returned to the deck"
+  return restored
+
+private def applyDrawReturns (base : GameState) (known : List ObjId) (returns : List JudgeDrawReturn) :
+    List DrawSlot → GameState → Except String GameState
+  | [], s => pure s
+  | draw :: more, s => do
+    let some choice := returns.find? (·.drawn == draw.drawn) | applyDrawReturns base known returns more s
+    let deck := s.zone (.player draw.seat .mainDeck)
+    -- Earlier private draws are still in the hand at this stage of reversing the actions.
+    let drawCards := (draw :: more).filterMap (fun slot =>
+      if slot.seat == draw.seat && !slot.wasRevealed then deck[slot.index]? else none)
+    let hiddenHand := (s.zone (.player draw.seat .hand)).filter (fun id => !known.contains id)
+    let available := hiddenHand ++ drawCards
+    let findAvailable (ref : ObjId) : Option ObjId := do
+      let phys ← physicalCard base ref
+      available.find? (fun id => physicalCard s id == some phys)
+    unless decide choice.candidates.Nodup && choice.candidates.contains choice.returned &&
+        choice.candidates.all (fun id => (findAvailable id).isSome) do
+      throw "private draw candidates must be distinct cards available in the affected hand"
+    let some chosen := findAvailable choice.returned
+      | throw "the card being returned is no longer available for this draw"
+    let next ← exchangeDrawSlot s draw chosen
+    applyDrawReturns base known returns more next
+
+private inductive DrawReversal where
+  | draw (handObject : ObjId) (card : PhysId) (privateHand : List PhysId)
+  | publicCard (card : PhysId)
+
+private def hasPublicFace : Zone → Bool
+  | .battlefieldZone | .chain | .player _ .base | .player _ .legendZone
+  | .player _ .championZone | .player _ .trash | .player _ .banishment => true
+  | _ => false
+
+/-- Recover the hand at each draw, including when there are several draws or other moves
+in the same answer. Public appearances constrain substitutions made at later draws. -/
+private def drawReversals (before after : ReplayPosition) (publicHand : List ObjId) :
+    List DrawReversal × List ObjId :=
+  let s := before.state
+  let hands := s.players.flatMap (fun seat =>
+    (s.zone (.player seat .hand)).filterMap (fun id =>
+      (physicalCard s id).map (fun card => (id, seat, card))))
+  let known := if after.boundary == .ruling then before.knownCards
+    else before.knownCards ++ publicHand
+  let (steps, known) := go [] hands known after.events
+  let stillInHand := known.filter (fun id => match after.state.locate id with
+    | some (.player _ .hand) => true
+    | _ => false)
+  (steps.reverse, stillInHand.eraseDups)
+where
+  go (moved : List (ObjId × (Zone × PhysId)))
+      (hands : List (ObjId × PlayerId × PhysId)) (known : List ObjId) :
+      List Event → List DrawReversal × List ObjId
+    | [] => ([], known)
+    | event :: rest =>
+      let location (id : ObjId) := (moved.lookup id).map Prod.fst <|> before.state.locate id
+      let physical (id : ObjId) := (moved.lookup id).map Prod.snd <|> physicalCard before.state id
+      let prepend (steps : List DrawReversal) (result : List DrawReversal × List ObjId) :=
+        (steps ++ result.1, result.2)
+      let published (ids : List ObjId) :=
+        (ids.filterMap (fun id => physical id <|> physicalAfterMoves after.state id rest))
+          |>.map DrawReversal.publicCard
+      match event with
+      | .revealed _ id => prepend (published [id]) (go moved hands (id :: known) rest)
+      | .handRevealed _ ids => prepend (published ids) (go moved hands (ids ++ known) rest)
+      | .moved old next dest =>
+        let remaining := hands.filter (fun entry => entry.1 != old)
+        let remembered := notePublicMove known old next
+        match physical old <|> physicalCard after.state next <|>
+            physicalAfterMoves after.state next rest with
+        | none => go moved remaining remembered rest
+        | some card =>
+          let visible := hasPublicFace dest || (location old).any hasPublicFace
+          let remembered := if visible then next :: remembered else remembered
+          let hands := match dest with
+            | .player seat .hand => (next, seat, card) :: remaining
+            | _ => remaining
+          let later := go ((next, (dest, card)) :: moved) hands remembered rest
+          let movement := if visible then [.publicCard card] else []
+          match dest, rest with
+          | .player seat .hand, .drew drawer :: _ =>
+            if seat == drawer then
+              let eligible := hands.filterMap (fun (id, owner, member) =>
+                if owner == seat && !remembered.contains id then some member else none)
+              prepend (movement ++ [.draw next card eligible]) later
+            else prepend movement later
+          | _, _ => prepend movement later
+      | _ => go moved hands known rest
+
+/-- Each swap changes the physical identities occupying the two original trajectories.
+The most recent swap in reverse play is applied last to each original identity. -/
+private def rewindIdentity (swaps : List (PhysId × PhysId)) (card : PhysId) : PhysId :=
+  swaps.foldr (fun (first, second) id =>
+    if id == first then second else if id == second then first else id) card
+
+private def reverseDrawChoices (base : GameState) (returns : List JudgeDrawReturn)
+    (steps : List DrawReversal) : Except String (List (PhysId × PhysId)) := do
+  let mut swaps := []
+  for step in steps do
+    match step with
+    | .publicCard card =>
+      unless rewindIdentity swaps card == card do
+        throw "a private draw return conflicts with a card that was public in the undone play"
+    | .draw handObject original privateHand =>
+      if let some choice := returns.find? (·.drawn == handObject) then
+        let drawn := rewindIdentity swaps original
+        let available := privateHand.map (rewindIdentity swaps)
+        let candidates := choice.candidates.filterMap (physicalCard base)
+        unless available.contains drawn && decide choice.candidates.Nodup &&
+            candidates.length == choice.candidates.length && candidates.all available.contains &&
+            choice.candidates.contains choice.returned do
+          throw "private draw candidates must be distinct cards available in the affected hand"
+        let some returned := physicalCard base choice.returned
+          | throw "the card being returned is no longer available for this draw"
+        if returned != drawn then
+          swaps := (drawn, returned) :: swaps
+  return swaps
+
+private def handDeckZones (s : GameState) : List Zone :=
+  s.players.flatMap (fun seat => [.player seat .mainDeck, .player seat .hand])
+
+private def physicalInHandOrDeck (s : GameState) (seat : PlayerId) (card : PhysId) : Option ObjId :=
+  (s.zone (.player seat .mainDeck) ++ s.zone (.player seat .hand)).find?
+    (fun id => physicalCard s id == some card)
+
+/-- Apply the net substitutions to the target's original slots. Move changed cards
+across zones using the same engine primitive as a single draw correction. -/
+private def restoreDrawIdentities (target : ReplayPosition) (swaps : List (PhysId × PhysId)) :
+    Except String GameState := do
+  let base := target.state
+  if swaps.isEmpty then return base
+  let image := rewindIdentity swaps
+  unless target.knownCards.all (fun id => (physicalCard base id).all (fun card =>
+      image card == card)) do
+    throw "a private draw return would change a card already public at the rewind target"
+  let affected := swaps.flatMap (fun (a, b) => [a, b])
+  let zones := handDeckZones base
+  let wanted := zones.map (fun zone =>
+    (zone, (base.zone zone).filterMap (physicalCard base) |>.map image))
+  let privateCards := zones.flatMap (fun zone => (base.zone zone).filterMap (physicalCard base))
+  unless affected.all (fun card => image card == card || privateCards.contains card) do
+    throw "a private draw return would change a card outside the hand or deck at the rewind target"
+  let mut state := base
+  for (zone, cards) in wanted do
+    if let .player seat _ := zone then
+      for card in cards do
+        let some id := physicalInHandOrDeck state seat card
+          | throw "a private draw return would move a card to another seat"
+        if !(state.zone zone).contains id then
+          let some (next, _) := moveObj state id zone
+            | throw "the private draw return could not restore a card to its zone"
+          state := next
+  for (zone, cards) in wanted do
+    let some order := cards.mapM (fun card =>
+      (state.zone zone).find? (fun id => physicalCard state id == some card))
+      | throw "the private draw return could not restore the order of a zone"
+    unless decide (order.Perm (state.zone zone)) do
+      throw "the private draw return would change which cards belong to the restored zone"
+    if state.zone zone != order then state := state.reorder zone order
+  return state
+
+private def restoreRepeatedDraws (target : ReplayPosition) (undone : List ReplayPosition)
+    (returns : List JudgeDrawReturn) : Except String GameState := do
+  let transitions := (undone.zip (undone.drop 1 ++ [target])).reverse
+  let (steps, _) := transitions.foldl (fun (prior, known) (after, before) =>
+    let (steps, known) := drawReversals before after known
+    (steps ++ prior, known)) ([], [])
+  unless returns.all (fun choice => steps.any (fun
+    | .draw id _ _ => id == choice.drawn
+    | _ => false)) do
+    throw "a private return needs the physical cards present for that draw"
+  let swaps ← reverseDrawChoices target.state returns steps
+  restoreDrawIdentities target swaps
+
+private def applyRewindRemedies (target : ReplayPosition) (undone chronology : List ReplayPosition)
+    (returns : List JudgeDrawReturn) (shuffles : List JudgeShuffle)
+    (unshuffled : List JudgeUnshuffledDeck) : Except String ReplayPosition := do
+  let restored ← if returns.isEmpty then pure target.state else do
+    let observed := undone.flatMap (·.draws)
+    let named : List ObjId := returns.map (·.drawn)
+    unless decide named.Nodup && named.all (fun id => observed.any (·.drawn == id)) do
+      throw "each private return needs a distinct undone draw from the target deck"
+    if observed.any (fun draw => draw.wasRevealed && named.contains draw.drawn) then
+      throw "a publicly revealed draw must restore the revealed card"
+    if decide ((observed.filterMap (·.physical)).Nodup) then
+      let draws := observed.filterMap (DrawSlot.atTarget target.state)
+      unless named.all (fun id => draws.any (·.drawn == id)) do
+        throw "each private return needs a distinct undone draw from the target deck"
+      applyDrawReturns target.state target.knownCards returns draws target.state
+    else
+      restoreRepeatedDraws target undone returns
+  let shuffle (acc : GameState × List ObjId × List PhysId) (change : JudgeShuffle) := do
+    let (state, known, shuffled) := acc
+    let obscured := change.obscuredCards state
+    let covered := (change.selectedCards state).filterMap (physicalCard state)
+    let next ← shuffleAfterRewind target.state state change
+    let shuffled := if covered.length < 2 then shuffled else covered ++ shuffled
+    return (next, known.filter (fun id => !obscured.contains id), shuffled)
+  let (state, known, shuffled) ← shuffles.foldlM shuffle (restored, target.knownCards, [])
+  let learned := rewindDeckKnowledge target chronology
+  let required := (learned.map Prod.snd).eraseDups
+  unless decide unshuffled.Nodup do throw "each unshuffled deck must be named once"
+  let waived ← unshuffled.flatMapM (fun deck => do
+    let kind := match deck.deck with | .mainDeck => ZoneKind.mainDeck | .runeDeck => .runeDeck
+    let cards := (state.zone (.player deck.seat kind)).filterMap (physicalCard state)
+    unless restored.players.contains deck.seat && cards.any required.contains do
+      throw "an unshuffled deck must contain a card affected by the rewind"
+    if shuffles.any (fun change => change.seat == deck.seat && change.deck == deck.deck) then
+      throw "a deck cannot be both shuffled and left unshuffled in one rewind"
+    return cards.filter required.contains)
+  unless required.all (fun card => shuffled.contains card || waived.contains card) do
+    throw "a rewind must shuffle deck cards seen without drawing or channeling them"
+  let remainingDeck := deckPhysicalCards state
+  let remembered := target.knownDeckCards ++ learned.filter (fun card => waived.contains card.2)
+  let knownDeckCards := remembered.filter (fun card =>
+    remainingDeck.contains card.2 && !shuffled.contains card.2)
+  return { target with state, knownCards := trackedInPrivateZones state known, knownDeckCards }
+
+/-- Knowledge from an abandoned line remains when an earlier deck order is restored. -/
+private def rewindChronology (history : List ReplayPosition) (target index : Nat) :
+    List ReplayPosition :=
+  (history.take (index - (target + 1))).reverse
+
+private def rewindPath (history : List ReplayPosition) (target index : Nat) :
+    Except String (List (Nat × ReplayPosition) × ReplayPosition) := do
+  let some prior := history.head? | throw "the initial checkpoint is missing"
+  unless prior.state.config.ruleSet.isTournament && prior.state.result.isNone &&
+      prior.state.phase != .setup do
+    throw "rewinding requires ongoing tournament play"
+  unless target + 1 < index do throw "a rewind must target an earlier checkpoint within play"
+  let mut next := index - 1
+  let mut undone := []
+  for (position, offset) in history.zipIdx do
+    let checkpoint := index - (offset + 1)
+    if checkpoint == next then
+      if checkpoint == target then return (undone.reverse, position)
+      if checkpoint < target then throw "the target checkpoint was abandoned by an earlier rewind"
+      undone := (checkpoint, position) :: undone
+      next := position.rewindParent.getD (checkpoint - 1)
+  throw "rewind checkpoint not found"
+
+private def simpleRewind (history : List ReplayPosition) (target index : Nat) :
+    Except String (List ReplayPosition × ReplayPosition) := do
+  let (undone, position) ← rewindPath history target index
+  unless undone.all (fun (_, step) => decide (step.boundary = .play)) do
+    throw "a rewind must target an earlier checkpoint within play without crossing a ruling or clock call"
+  return (undone.map Prod.snd, position)
+
+private def retainedClock (before target : GameState) (crossedCall : Bool) (deadline : Option Nat) :
+    Except String (Option RoundClock) := do
+  match deadline with
+  | none =>
+    if crossedCall || before.clock != target.clock then
+      throw "a rewind across a time call must record the final scheduled turn"
+    return target.clock
+  | some lastTurn =>
+    let some clock := before.clock | throw "a rewind cannot add a time call"
+    unless lastTurn > 0 && (lastTurn >= target.turn ||
+        (clock.allowsSuddenDeath && clock.lastTurn < before.turn)) do
+      throw "the final scheduled turn precedes the restored turn outside sudden death"
+    return some (match clock with
+      | .swiss _ => .swiss lastTurn
+      | .elimination _ tied => .elimination lastTurn tied)
+
+private def timelineRewind (history : List ReplayPosition) (before : GameState)
+    (rewind : JudgeTimelineRewind) (index : Nat) : Except String ReplayPosition := do
+  let (undone, position) ← rewindPath history rewind.target index
+  if undone.any (fun (_, step) => decide (step.boundary = .setup)) then
+    throw "a rewind cannot reverse setup or a terminal ruling"
+  let rulings := undone.filterMap (fun (checkpoint, step) =>
+    if step.boundary = .ruling then some checkpoint else none)
+  unless rulings == rewind.rulings?.getD [] do
+    throw "the rewind must name each reversed ruling, latest first"
+  let crossedCall := undone.any (fun (_, step) => decide (step.boundary = .clock))
+  let clock ← retainedClock before position.state crossedCall rewind.deadline?
+  let restored ← applyRewindRemedies position (undone.map Prod.snd)
+    (rewindChronology history rewind.target index) (rewind.returns?.getD []) (rewind.shuffles?.getD [])
+    (rewind.unshuffledDecks?.getD [])
+  return { restored with state := { restored.state with clock } }
+
+private def rewindAnswer? (history : List ReplayPosition) (prior : ReplayPosition)
+    (answer : ReplayAnswer) (index : Nat) : Option (Nat × Except String ReplayPosition) :=
+  match answer with
+  | .judgeRewind target => some (target, do
+    let (undone, pos) ← simpleRewind history target index
+    applyRewindRemedies pos undone (rewindChronology history target index) [] [] [])
+  | .judgePrivateRewind rewind => some (rewind.target, do
+    let (undone, pos) ← simpleRewind history rewind.target index
+    let shuffles := rewind.shuffles?.getD []
+    let unshuffled := rewind.unshuffledDecks?.getD []
+    if rewind.returns.isEmpty && shuffles.isEmpty && unshuffled.isEmpty then
+      throw "a private rewind needs a draw return or a recorded shuffle decision"
+    applyRewindRemedies pos undone (rewindChronology history rewind.target index)
+      rewind.returns shuffles unshuffled)
+  | .judgeTimelineRewind rewind =>
+    some (rewind.target, timelineRewind history prior.state rewind index)
+  | _ => none
+
+/-- Advance a live game, verifier or trace from its checkpoint history, newest first. -/
+def GameInputs.advance (input : GameInputs) (history : List ReplayPosition)
+    (answer : ReplayAnswer) (index fuel : Nat) (observeFaces : Bool := false) :
+    Except String (Option Action × ReplayPosition × List Event) := do
+  let some prior := history.head? | throw "the initial checkpoint is missing"
+  let correction := rewindAnswer? history prior answer index
+  if let some (target, result) := correction then
+    let pos ← result.mapError (fun error => s!"answer {index}: {error}")
+    let restored := { pos with
+      boundary := .ruling
+      rewindParent := some target
+      events := []
+      disclosures := []
+      answerExact := true
+      deckObservations := []
+      draws := [] }
+    return (none, restored, [])
+  let (action, (state, events), disclosures, answerExact) ←
+    input.applyAnswerWith prior.state answer index fuel observeFaces
+  let boundary := if prior.state.phase == .setup then .setup else
+    match answer, action with
+    | .judgeShuffle _, _ => .ruling
+    | _, some a =>
+      if a.kind == .timeCalled && a.actor == .clock then .clock
+      else if a.actor == .judge || a.actor == .clock then .setup else .play
+    | _, none => .setup
+  let fields := (action.bind (pickedBattlefield prior.state)).toList ++ prior.fields
+  let obscured := obscuredDeckCards prior.state answer action
+  let deckObservations := observeDeckCards prior.state state events
+  let drawnCards := deckObservations.filterMap (fun
+    | .drawn id card => some (id, card)
+    | _ => none)
+  let (known, draws) := observeDraws drawnCards
+    (prior.knownCards.filter (fun id => !obscured.contains id)) [] events
+  let obscuredDeck := obscuredDeckPhysicalCards prior.state answer action
+  let previous := prior.knownDeckCards.filter (fun known => !obscuredDeck.contains known.2)
+  let observed := deckObservations.foldl DeckObservation.remember previous
+  let knownDeckCards := if observed.isEmpty then [] else
+    let remainingDeck := deckPhysicalCards state
+    observed.filter (fun known => remainingDeck.contains known.2)
+  let position := { state, fields, boundary, events, disclosures, answerExact, draws, deckObservations,
+                    knownCards := trackedInPrivateZones state known, knownDeckCards }
+  return (action, position, events)
+
+/-- A successful replay checkpoint is unchanged when more automatic work is allowed. This
+includes recorded disclosures, the exactness flag, and the verifier's deck observations. -/
+theorem GameInputs.advance_ok_add_fuel {input : GameInputs} {history : List ReplayPosition}
+    {answer : ReplayAnswer} {index fuel : Nat} {observeFaces : Bool}
+    {checkpoint : Option Action × ReplayPosition × List Event}
+    (done : input.advance history answer index fuel observeFaces = .ok checkpoint) (extra : Nat) :
+    input.advance history answer index (fuel + extra) observeFaces = .ok checkpoint := by
+  cases initial : history.head? with
+  | none => simpa only [GameInputs.advance, initial] using done
+  | some prior =>
+    simp only [GameInputs.advance, initial] at done ⊢
+    cases correction : rewindAnswer? history prior answer index with
+    | some redirected =>
+      obtain ⟨target, result⟩ := redirected
+      simpa only [correction] using done
+    | none =>
+      simp only [correction] at done ⊢
+      cases applied : input.applyAnswerWith prior.state answer index fuel observeFaces with
+      | error error =>
+        rw [applied] at done
+        change Except.error error = .ok checkpoint at done
+        cases done
+      | ok output =>
+        rw [GameInputs.applyAnswerWith_ok_add_fuel applied extra]
+        simpa only [applied] using done
+
+/-- A replay answer that could be applied but was not uniquely observed. -/
+structure ReplayUncertainAnswer where
+  /-- The 1-based answer number in the inspected game. -/
+  answer : Nat
+  /-- The explanation supplied by the input, or none when several legal answers fit. -/
+  evidence : Option String
+deriving ToJson
+
+/-- Which part of replaying the next answer failed. -/
+inductive ReplayInspectionFailureKind
+  /-- The answer could not be resolved or applied. -/
+  | answer
+  /-- The resulting checkpoint disagreed with a recorded observation. -/
+  | observation
+deriving ToJson
+
+/-- The first error after the last successfully checked checkpoint. -/
+structure ReplayInspectionFailure where
+  /-- The 1-based answer during which the error was detected. -/
+  answer : Nat
+  /-- Whether the answer or the evidence check failed. -/
+  kind : ReplayInspectionFailureKind
+  /-- The diagnostic also used by strict inspection. -/
+  message : String
+deriving ToJson
+
+/-- The reproducible prefix of the supplied answers, with an optional diagnostic at its end. -/
+structure ReplayInspection where
+  /-- The last successfully applied answer, or 0 for the initial state. -/
+  checkpoint : Nat
+  /-- The source's explanation for the first missing answer, if supplied. -/
+  missing : Option String
+  /-- The failed answer or checkpoint check, when error capture was requested. -/
+  failure : Option ReplayInspectionFailure := none
+  /-- Whether every answer in the inspected prefix and its setup was uniquely observed. -/
+  exact : Bool
+  /-- Earlier games whose setup or inputs were not uniquely observed. These are 1-based. -/
+  inexactEarlierGames : List Nat := []
+  /-- The available evidence for the current game's declared opening order. -/
+  openingOrderEvidence : Option ReplayOpeningOrderEvidence := none
+  /-- Applied answers whose sources were inferred or matched multiple legal choices. -/
+  inexactAnswers : Array ReplayUncertainAnswer := #[]
+  /-- The last state on the reconstructed timeline. -/
+  position : ReplayPosition
+  /-- The first-player choice at the optional Best of 1 setup boundary. -/
+  bo1Initiative : Bool
+  /-- Whether registration edits must be finalized before shuffling. -/
+  bo1Sideboard : Bool
+  /-- The seat entitled to choose who takes the first turn, when known. -/
+  chooser : Option PlayerId
+  /-- The seat required to take the first turn following a draw. -/
+  forcedFirst : Option PlayerId := none
+  /-- The number of observations checked in this game through the last applied answer. -/
+  checkedObservations : Nat
+  /-- The number of observations for later checkpoints in this game. -/
+  pendingObservations : Nat
+
+private def ReplayAnswer.inferenceEvidence : ReplayAnswer → Option String
+  | .inferred _ text | .inferredChance _ text | .inferredCardPick _ text | .inferredStandardMove _ text
+  | .inferredGroupMove _ text | .inferredCardPlay _ text | .inferredAbilityUse _ text
+  | .inferredTriggerUse _ text => some text
+  | _ => none
+
+/-- Attribute prefix uncertainty inherited from fully replayed games to those games. -/
+def ReplayInspection.withEarlierGames (inspection : ReplayInspection) (games : Array RecordedGame) :
+    ReplayInspection :=
+  let inexact := games.toList.zipIdx.filterMap fun (game, index) =>
+    if game.summary.exact then none else some (index + 1)
+  { inspection with exact := inspection.exact && inexact.isEmpty, inexactEarlierGames := inexact }
+
+/-- Run the recorded prefix without inventing a choice for an unknown answer. -/
+def GameInputs.inspect (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (fuel : Nat := 100) (captureFailure : Bool := false) : Except String ReplayInspection := do
+  let initial := ReplayPosition.fromState (← input.initial db config)
+  let schedule ← input.observationSchedule
+  let mut pending ← ReplayObservation.checkAt schedule 0 initial.state []
+  let mut history : List ReplayPosition := [initial]
+  let mut checkpoint := 0
+  let mut missing := none
+  let mut failure := none
+  let mut inexactAnswers := #[]
+  for answer in input.answers do
+    if let .unknown description := answer then
+      missing := some description
+      break
+    let index := checkpoint + 1
+    let step : Except ReplayInspectionFailure (ReplayPosition × List ReplayObservation) := do
+      let (_, next, events) ← (input.advance history answer index fuel
+        (ReplayObservation.wantsDisclosures pending index)).mapError
+          (ReplayInspectionFailure.mk index .answer)
+      let remaining ← (ReplayObservation.checkAt pending index next.state events next.disclosures
+        (history.head?.map ReplayPosition.state)).mapError (ReplayInspectionFailure.mk index .observation)
+      pure (next, remaining)
+    match step with
+    | .error reason =>
+      unless captureFailure do throw reason.message
+      failure := some reason
+      break
+    | .ok (next, remaining) =>
+      pending := remaining
+      history := next :: history
+      checkpoint := index
+      if !next.answerExact then
+        inexactAnswers := inexactAnswers.push ⟨index, answer.inferenceEvidence⟩
+  let position := history.headD initial
+  return {
+    checkpoint, missing, failure, position, chooser := input.chooser, inexactAnswers,
+    exact := input.openingOrderEvidence?.isNone && inexactAnswers.isEmpty,
+    openingOrderEvidence := input.openingOrderEvidence?,
+    checkedObservations := schedule.length - pending.length,
+    pendingObservations := pending.length,
+    bo1Initiative := input.awaitsBo1Initiative position.state,
+    bo1Sideboard := input.awaitsBo1Sideboard position.state }
+
+/-- The setup and game result reached by an inspected prefix. -/
+def ReplayInspection.summary (inspection : ReplayInspection) (decks : ReplayDecks) :
+    ReplayGameResult :=
+  ReplayGameResult.fromState inspection.position.state decks inspection.position.fields.reverse
+    inspection.exact
+
+/-- Reconstruct only the obsolete choices of a permanent actually played by this declaration.
+Schema 1 inserted them immediately after that play, before later effects and Cleanup. -/
+private def legacyPermanentChoices (events : List Event) (a : Action) : List Event := Id.run do
+  let .player p := a.actor | return events
+  let .playCard card _ targets .. := a.kind | return events
+  let some entered := events.findSome? (fun
+    | .moved old new (.player owner .base) => if old == card && owner == p then some new else none
+    | _ => none) | return events
+  let played := Event.played p entered
+  let earlier := events.takeWhile (· != played)
+  match events.drop earlier.length with
+  | [] => return events
+  | event :: later => return earlier ++ [event] ++ targets.map (Event.chosenBySpell p) ++ later
+
+private def checkCheckpoint (expected : Option (Array ReplayCheckpoint))
+    (index : Nat) (actual : ReplayCheckpoint) (legacyPlays : List Action := []) : Except String Unit := do
+  if let some witnesses := expected then
+    let some witness := witnesses[index]? | throw s!"checkpoint {index}: missing evidence"
+    if witness.state != actual.state then throw s!"checkpoint {index}: state fingerprint differs"
+    if witness.events != actual.events &&
+        !legacyPlays.any (fun action => legacyPermanentChoices actual.events action == witness.events) then
+      throw s!"checkpoint {index}: events differ"
+    if witness.chosenChampions?.any (fun registered => actual.chosenChampions? != some registered) then
+      throw s!"checkpoint {index}: Chosen Champion identities differ"
+    if witness.damageMarks?.any (fun marked => actual.damageMarks? != some marked) then
+      throw s!"checkpoint {index}: damage marks differ"
+    if witness.playEnergy?.any (fun paid => actual.playEnergy? != some paid) then
+      throw s!"checkpoint {index}: Spell Energy payments differ"
+    if witness.playPhysical?.any (fun ids => actual.playPhysical? != some ids) then
+      throw s!"checkpoint {index}: finalized card identities differ"
+    if witness.playStamps?.any (fun stamps => actual.playStamps? != some stamps) then
+      throw s!"checkpoint {index}: play finalization timestamps differ"
+    if witness.buffAttributions?.any (fun buffs => actual.buffAttributions? != some buffs) then
+      throw s!"checkpoint {index}: buff responsibilities differ"
+    if witness.stunAttributions?.any (fun stuns => actual.stunAttributions?.getD [] != stuns) then
+      throw s!"checkpoint {index}: stun responsibilities differ"
+    if witness.deathCompany?.any (fun company => actual.deathCompany?.getD [] != company) then
+      throw s!"checkpoint {index}: company at death differs"
+    if witness.deflectSpent?.any (fun spent => actual.deflectSpent?.getD [] != spent) then
+      throw s!"checkpoint {index}: Deflect Power spending differs"
+    if witness.spentBeforeMain?.any (fun spent => actual.spentBeforeMain?.getD [] != spent) then
+      throw s!"checkpoint {index}: Power spending before Main differs"
+
+private structure RecordingProgress where
+  pending : List ReplayObservation
+  history : List ReplayPosition
+  checkpoints : Array ReplayCheckpoint
+  exact : Bool
+
+private def startRecording (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (expected : Option (Array ReplayCheckpoint)) : Except String RecordingProgress := do
   if expected.any (fun witnesses => witnesses.size != input.answers.size + 1) then
     throw "the checkpoint count does not match the input stream"
-  let mut s ← input.decks.initial db config
+  let s ← input.initial db config
+  let schedule ← input.observationSchedule
+  let pending ← ReplayObservation.checkAt schedule 0 s []
   let initial := ReplayCheckpoint.capture s []
   checkCheckpoint expected 0 initial
-  let mut checkpoints := #[initial]
-  let mut fields : List (PlayerId × CardId) := []
-  let mut exact := true
-  for (answer, index) in input.answers.toList.zipIdx do
-    let action ← answer.resolve (index + 1)
-    if let .inferred .. := answer then exact := false
-    let field := pickedBattlefield s action
-    match step fuel s action with
-    | .error error => throw s!"answer {index + 1}: {repr error}"
-    | .ok (next, events) =>
-      if let some entry := field then fields := entry :: fields
-      let witness := ReplayCheckpoint.capture next events
-      checkCheckpoint expected (index + 1) witness
-      checkpoints := checkpoints.push witness
-      s := next
-  return { input, checkpoints, summary := ReplayGameResult.fromState s input.decks fields.reverse exact }
+  return ⟨pending, [ReplayPosition.fromState s], #[initial], input.openingOrderEvidence?.isNone⟩
+
+private def recordAnswer (input : GameInputs) (expected : Option (Array ReplayCheckpoint))
+    (upgradePermanentChoices : Bool) (fuel : Nat) (progress : RecordingProgress)
+    (indexed : ReplayAnswer × Nat) : Except String RecordingProgress := do
+  let (answer, index) := indexed
+  let (action, next, events) ← input.advance progress.history answer (index + 1) fuel
+    (ReplayObservation.wantsDisclosures progress.pending (index + 1))
+  let pending ← ReplayObservation.checkAt progress.pending (index + 1) next.state events next.disclosures
+    (progress.history.head?.map (·.state))
+  let witness := ReplayCheckpoint.capture next.state events
+  let legacyPlays := if upgradePermanentChoices then
+      action.toList ++ ((progress.history.head?.map (·.state.pending)).getD []).filterMap
+        (fun | .resumeCost saved => some saved | _ => none)
+    else []
+  checkCheckpoint expected (index + 1) witness legacyPlays
+  return ⟨pending, next :: progress.history, progress.checkpoints.push witness, progress.exact && next.answerExact⟩
+
+private theorem recordAnswer_ok_add_fuel {input : GameInputs} {expected : Option (Array ReplayCheckpoint)}
+    {upgrade : Bool} {fuel : Nat} {progress : RecordingProgress} {indexed : ReplayAnswer × Nat}
+    {next : RecordingProgress} (done : recordAnswer input expected upgrade fuel progress indexed = .ok next)
+    (extra : Nat) : recordAnswer input expected upgrade (fuel + extra) progress indexed = .ok next := by
+  obtain ⟨answer, index⟩ := indexed
+  unfold recordAnswer at done ⊢
+  dsimp only at done ⊢
+  cases applied : input.advance progress.history answer (index + 1) fuel
+      (ReplayObservation.wantsDisclosures progress.pending (index + 1)) with
+  | error error =>
+    rw [applied] at done
+    change Except.error error = .ok next at done
+    cases done
+  | ok after =>
+    rw [GameInputs.advance_ok_add_fuel applied extra]
+    simpa only [applied] using done
+
+private theorem recordAnswers_ok_add_fuel {input : GameInputs} {expected : Option (Array ReplayCheckpoint)}
+    {upgrade : Bool} {fuel : Nat} {progress next : RecordingProgress} {answers : List (ReplayAnswer × Nat)}
+    (done : answers.foldlM (recordAnswer input expected upgrade fuel) progress = .ok next) (extra : Nat) :
+    answers.foldlM (recordAnswer input expected upgrade (fuel + extra)) progress = .ok next := by
+  induction answers generalizing progress with
+  | nil => exact done
+  | cons first rest ih =>
+    simp only [List.foldlM_cons] at done ⊢
+    cases recorded : recordAnswer input expected upgrade fuel progress first with
+    | error error =>
+      rw [recorded] at done
+      change Except.error error = .ok next at done
+      cases done
+    | ok after =>
+      rw [recordAnswer_ok_add_fuel recorded extra]
+      exact ih (by simpa only [recorded, bind, Except.bind] using done)
+
+private def finishRecording (input : GameInputs) (config : GameConfig) (progress : RecordingProgress) :
+    Except String RecordedGame := do
+  if let some observation := progress.pending.head? then
+    if observation.checkpoint > input.answers.size then
+      throw s!"checkpoint {observation.checkpoint}: observation is beyond the last answer ({input.answers.size})"
+    else
+      throw s!"checkpoint {observation.checkpoint}: observation window had no match before the last answer ({input.answers.size})"
+  let some final := progress.history.head? | throw "the final checkpoint is missing"
+  return {
+    input, eliminationConfig? := replayEliminationConfig config, checkpoints := progress.checkpoints,
+    summary := ReplayGameResult.fromState final.state input.decks final.fields.reverse progress.exact }
+
+private def runGame (input : GameInputs) (db : CardDB) (config : GameConfig)
+    (fuel : Nat) (expected : Option (Array ReplayCheckpoint))
+    (upgradePermanentChoices : Bool := false) : Except String RecordedGame := do
+  let start ← startRecording input db config expected
+  let progress ← input.answers.toList.zipIdx.foldlM
+    (recordAnswer input expected upgradePermanentChoices fuel) start
+  finishRecording input config progress
+
+private theorem runGame_ok_add_fuel {input : GameInputs} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {expected : Option (Array ReplayCheckpoint)} {upgrade : Bool} {game : RecordedGame}
+    (done : runGame input db config fuel expected upgrade = .ok game) (extra : Nat) :
+    runGame input db config (fuel + extra) expected upgrade = .ok game := by
+  unfold runGame at done ⊢
+  cases began : startRecording input db config expected with
+  | error error =>
+    rw [began] at done
+    change Except.error error = .ok game at done
+    cases done
+  | ok start =>
+    simp only [began, bind, Except.bind] at done ⊢
+    cases recorded : input.answers.toList.zipIdx.foldlM (recordAnswer input expected upgrade fuel) start with
+    | error error =>
+      rw [recorded] at done
+      cases done
+    | ok progress =>
+      rw [recordAnswers_ok_add_fuel recorded extra]
+      simpa only [recorded] using done
 
 /-- Play recorded answers with the engine, retaining the exact input, checkpoints and outcome. -/
 def GameInputs.record (input : GameInputs) (db : CardDB) (config : GameConfig)
     (fuel : Nat := 100) : Except String RecordedGame :=
   runGame input db config fuel none
 
+/-- Replaying the same inputs with more fuel returns the identical completed game archive. -/
+theorem GameInputs.record_ok_add_fuel {input : GameInputs} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {game : RecordedGame} (done : input.record db config fuel = .ok game) (extra : Nat) :
+    input.record db config (fuel + extra) = .ok game :=
+  runGame_ok_add_fuel done extra
+
+/-- Replay one game against its saved evidence, recomputing coverage when the card table changes. -/
+def RecordedGame.checkEvidence (saved : RecordedGame) (db : CardDB) (config : GameConfig)
+    (fuel : Nat) (refreshCoverage : Bool := false) (upgradePermanentChoices : Bool := false) :
+    Except String RecordedGame := do
+  if saved.eliminationConfig? != replayEliminationConfig config then
+    throw "the saved single-elimination clock procedure differs"
+  let actual ← runGame saved.input db config fuel (some saved.checkpoints) upgradePermanentChoices
+  let summary := if refreshCoverage then
+    { saved.summary with uncheckedCards := actual.summary.uncheckedCards }
+    else saved.summary
+  if summary != actual.summary then throw "the final game outcome differs"
+  return actual
+
+/-- A successful evidence check returns the same archive with more fuel. -/
+theorem RecordedGame.checkEvidence_ok_add_fuel {saved : RecordedGame} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {refresh upgrade : Bool} {game : RecordedGame}
+    (done : saved.checkEvidence db config fuel refresh upgrade = .ok game) (extra : Nat) :
+    saved.checkEvidence db config (fuel + extra) refresh upgrade = .ok game := by
+  by_cases clock : (saved.eliminationConfig? != replayEliminationConfig config) = true
+  · simp only [RecordedGame.checkEvidence, clock, ↓reduceIte] at done
+    change Except.error _ = .ok game at done
+    cases done
+  · simp only [RecordedGame.checkEvidence, ite_eq_right clock, bind, Except.bind] at done ⊢
+    cases replayed : runGame saved.input db config fuel (some saved.checkpoints) upgrade with
+    | error error =>
+      rw [replayed] at done
+      cases done
+    | ok actual =>
+      rw [runGame_ok_add_fuel replayed extra]
+      simpa only [replayed] using done
+
 /-- Replay one game and report the first recorded checkpoint that disagrees. -/
 def RecordedGame.verify (saved : RecordedGame) (db : CardDB) (config : GameConfig)
-    (fuel : Nat := 100) : Except String ReplayGameResult := do
-  let actual ← runGame saved.input db config fuel (some saved.checkpoints)
-  if saved.summary != actual.summary then throw "the final game outcome differs"
-  return actual.summary
+    (fuel : Nat := 100) : Except String ReplayGameResult :=
+  (saved.checkEvidence db config fuel).map (·.summary)
+
+/-- The verifier returns the identical successful summary at any larger work limit. -/
+theorem RecordedGame.verify_ok_add_fuel {saved : RecordedGame} {db : CardDB} {config : GameConfig}
+    {fuel : Nat} {summary : ReplayGameResult} (done : saved.verify db config fuel = .ok summary) (extra : Nat) :
+    saved.verify db config (fuel + extra) = .ok summary := by
+  unfold RecordedGame.verify at done ⊢
+  cases checked : saved.checkEvidence db config fuel with
+  | error error => simp [checked, Except.map] at done
+  | ok game =>
+    rw [RecordedGame.checkEvidence_ok_add_fuel checked extra]
+    simpa only [checked] using done
+
+/-- The recorded inputs to one free-for-all game under the Core Rules. -/
+structure FreeForAllInputs where
+  /-- Skirmish or War (CR 489-490). -/
+  mode : Mode
+  /-- The registered decks, decisions and any supplied opening order. -/
+  game : GameInputs
+  /-- The per-answer work limit, retained for verification. -/
+  fuel : Nat := 100
+deriving DecidableEq, Repr, ToJson, FromJson
+
+/-- The archive for one completed free-for-all game. -/
+structure RecordedFreeForAll where
+  /-- The pinned replay format, rules editions and card definitions. -/
+  rules : ReplayRules
+  /-- The starting mode to replay. -/
+  mode : Mode
+  /-- The engine's work limit for each answer. -/
+  fuel : Nat
+  /-- The game input, outcome and all checkpoints. -/
+  game : RecordedGame
+deriving DecidableEq, Repr, ToJson, FromJson
+
+private def freeForAllConfig (mode : Mode) : Except String GameConfig := do
+  unless mode.isFreeForAll do throw "free-for-all replay requires Skirmish or War"
+  return { ruleSet := .coreOnly, mode }
+
+private def requireFinishedFreeForAll (summary : ReplayGameResult) : Except String Unit := do
+  unless summary.result.isSome do throw "the free-for-all game has no final result"
+
+/-- Inspect the supplied answers of a Skirmish or War game. -/
+def FreeForAllInputs.inspect (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db)
+    (captureFailure : Bool := false) : Except String ReplayInspection :=
+  (do input.game.inspect db (← freeForAllConfig input.mode) input.fuel captureFailure).mapError
+    (fun error => s!"game 1: {error}")
+
+/-- Play a complete Skirmish or War game and retain its inputs, outcome and checkpoints. -/
+def FreeForAllInputs.record (input : FreeForAllInputs) (db : CardDB := RiftboundCards.db) :
+    Except String RecordedFreeForAll := do
+  let config ← freeForAllConfig input.mode
+  let game ← (do
+    let game ← input.game.record db config input.fuel
+    requireFinishedFreeForAll game.summary
+    pure game).mapError (fun error => s!"game 1: {error}")
+  return { rules := ReplayRules.current db, mode := input.mode, fuel := input.fuel, game }
+
+private def RecordedFreeForAll.checkArchive (saved : RecordedFreeForAll) (db : CardDB)
+    (allowCardUpdate : Bool) : Except String RecordedFreeForAll := do
+  let rules := ReplayRules.current db
+  if allowCardUpdate then saved.rules.checkEditions rules
+  else if saved.rules != rules then throw "the replay format, rules edition or card definitions differ"
+  let game ← (do
+    let game ← saved.game.checkEvidence db (← freeForAllConfig saved.mode) saved.fuel
+      (refreshCoverage := saved.rules.cards != rules.cards)
+      (upgradePermanentChoices := allowCardUpdate && saved.rules.upgradesPermanentChoices rules)
+    requireFinishedFreeForAll game.summary
+    pure game).mapError (fun error => s!"game 1: {error}")
+  return { saved with rules, game }
+
+/-- Check the outcome and each checkpoint of an archived Skirmish or War game. -/
+def RecordedFreeForAll.verify (saved : RecordedFreeForAll) (db : CardDB := RiftboundCards.db) :
+    Except String ReplayGameResult :=
+  (saved.checkArchive db false).map (·.game.summary)
+
+/-- Revalidate every checkpoint of an archived Skirmish or War game against the current cards. -/
+def RecordedFreeForAll.revalidate (saved : RecordedFreeForAll)
+    (db : CardDB := RiftboundCards.db) : Except String RecordedFreeForAll :=
+  saved.checkArchive db true
 
 end RiftboundDriver
 

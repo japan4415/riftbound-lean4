@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.State.Phase
+public import Riftbound.State.GameConfig
 public import Riftbound.Core.Ids
 
 /-!
@@ -348,6 +349,25 @@ def gameOnTime (points0 points1 : Nat) : GameResult :=
   if points1 + 2 ≤ points0 then .won [⟨0⟩]
   else if points0 + 2 ≤ points1 then .won [⟨1⟩]
   else .draw
+
+/-- The game's result by side at the clock deadline. When allowed, tied points require sudden
+death instead of a result (TR 408.2, 408.4.c). -/
+def RoundClock.resultOnTime (clock : RoundClock) (a b : Nat) : Option GameResult :=
+  match clock with
+  | .swiss _ => some (gameOnTime a b)
+  | .elimination _ tiedWins =>
+    if a == b then
+      if tiedWins then none else some .draw
+    else some (.won [⟨if a > b then 0 else 1⟩])
+
+/-- A hard deadline always decides the game. -/
+theorem RoundClock.resultOnTime_ne_none (clock : RoundClock) (a b : Nat)
+    (hard : clock.allowsSuddenDeath = false) : clock.resultOnTime a b ≠ none := by
+  cases clock with
+  | swiss _ => simp [RoundClock.resultOnTime]
+  | elimination _ tied =>
+    cases tied <;> simp [RoundClock.allowsSuddenDeath] at hard
+    by_cases same : a = b <;> simp [RoundClock.resultOnTime, same]
 
 /-- **A game stopped by the time is a draw exactly when neither player is 2 points ahead**
 (TR 408.2). -/

@@ -1,0 +1,308 @@
+module
+
+import RiftboundDriver.TeamMatch
+meta import RiftboundDriver.TeamMatch
+import RiftboundDriver.Run
+meta import RiftboundDriver.Run
+import RiftboundTest.Fixtures
+meta import RiftboundTest.Fixtures
+
+/-! # Tests: four registered decks from shuffles through a recorded match -/
+
+namespace RiftboundTest
+
+open Lean Riftbound RiftboundDriver RiftboundCards
+
+private meta def matchDB : CardDB :=
+  ⟨db.cards ++ [{ legend with id := cid "L2", name := "Second Legend", sets := [testSet] }] ++
+    ([4, 5].map (fun n => { battlefield n with sets := [testSet] }))⟩
+
+private meta def teamRegistrations : List ConstructedDeck :=
+  let b := { goodDeck with legend := cid "L2", battlefields := [cid "B3", cid "B4", cid "B5"] }
+  [⟨goodDeck, []⟩, ⟨b, []⟩, ⟨goodDeck, []⟩, ⟨b, []⟩]
+
+private meta def eventDate : RulesDate := ⟨2026, 11, 23⟩
+
+private meta def teamEnv : LegalityEnv := constructedLegality .twoVTwo (.global eventDate) [testSet]
+
+private meta def collect (turn : Nat) :
+    Nat → Rng → GameState → Array ReplayAnswer → Except String (GameState × Array ReplayAnswer)
+  | 0, _, _, _ => .error "setup did not reach the chosen turn"
+  | n + 1, rng, state, answers => do
+    if state.turn >= turn || state.result.isSome then return (state, answers)
+    let answer : Option (Action × Rng) := match state.pending with
+      | .chanceBattlefield _ :: _ => some (⟨.chance, .pick 0⟩, rng)
+      | _ => playAnswer rng state
+    let some (action, nextRng) := answer | throw "no answer in team setup"
+    let fuel := match state.pending, action.kind with
+      | .showdown _ _ passes :: _, .pass =>
+        if passes + 1 < state.participatingCount then 0 else 100
+      | _, _ => 100
+    let (next, _) ← (step fuel state action).mapError (fun e => reprStr e)
+    collect turn n nextRng next (answers.push (.observed action))
+
+private meta def recordGroupMove (start : GameState) (answers : Array ReplayAnswer) :
+    Except String (GameState × Array ReplayAnswer) := do
+  let player : PlayerId := ⟨0⟩
+  let answer (state : GameState) (tape : Array ReplayAnswer) (kind : ActionKind) := do
+    let action := Action.mk (.player player) kind
+    let recorded ← match kind with
+      | .startGroupMove .. => do
+        let some move := ReplayGroupMove.fromAction? state action
+          | throw "group move has no code-based declaration"
+        let encoded := ReplayAnswer.observedGroupMove move
+        unless (← encoded.resolveAt state (tape.size + 1)) == (action, true) do
+          throw "group move did not resolve uniquely to the observed action"
+        let wrongFee := ReplayAnswer.observedGroupMove { move with fee? := some ⟨1, []⟩ }
+        unless (wrongFee.resolveAt state (tape.size + 1)).isOk == false do
+          throw "group move accepted a different fee"
+        pure encoded
+      | _ => pure (ReplayAnswer.observed action)
+    let (next, _) ← (step 100 state action).mapError reprStr
+    pure (next, tape.push recorded)
+  let mut state := start
+  let mut tape := answers
+  let runes := (state.zone (.player player .base)).filter (fun id => state.hasType id .rune)
+  for rune in runes.take 2 do
+    let next ← answer state tape (.runeAbility rune .exhaust)
+    state := next.1
+    tape := next.2
+  for _ in [:2] do
+    let some play := (legalPlays state player).head? | throw "no Unit available for the group"
+    let next ← answer state tape play.kind
+    state := next.1
+    tape := next.2
+  let (lastSeat, tapeAtFour) ← collect 4 25 (Rng.ofSeed 22) state tape
+  unless lastSeat.active == some ⟨3⟩ && (lastSeat.zone (.player ⟨3⟩ .runeDeck)).length == 9 do
+    throw "the last seat did not get the extra Rune"
+  let (nextTurn, tapeAtFive) ← collect 5 10 (Rng.ofSeed 23) lastSeat tapeAtFour
+  state := nextTurn
+  tape := tapeAtFive
+  let some field := state.battlefields.head? | throw "no destination for the group"
+  let [first, second] := state.groupMoveChoices player (.battlefield field) | throw "expected two ready Units"
+  for kind in [ActionKind.startGroupMove (.battlefield field) Cost.zero, .choose first, .choose second, .decide true] do
+    let next ← answer state tape kind
+    state := next.1
+    tape := next.2
+  unless state.unitsOf player field == [second, first] || state.unitsOf player field == [first, second] do
+    throw "the group was not moved together"
+  return (state, tape)
+
+private meta def exampleMatch : Except String Unit := do
+  let order := Mode.teamTurnOrder true
+  let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
+    | throw "invalid four-seat setup"
+  let (first, earlyAnswers) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  unless first.turnOrder == order && first.active == some ⟨0⟩ && first.battlefields.length == 3 &&
+      (first.zone (.player ⟨0⟩ .outOfGame)).length == 3 &&
+      (first.zone (.player ⟨0⟩ .hand)).length == 4 do throw "incorrect starting seat or Battlefield setup"
+  let invite : Action := ⟨.player ⟨0⟩, .inviteTeammate ⟨1⟩⟩
+  let decline : Action := ⟨.player ⟨1⟩, .pass⟩
+  let (invited, opened) ← (step 0 first invite).mapError reprStr
+  let (resumed, closed) ← (step 0 invited decline).mapError reprStr
+  unless opened.isEmpty && closed.isEmpty &&
+      invited.pending == .teamInvitation ⟨1⟩ :: first.pending && resumed.pending == first.pending do
+    throw "the invitation did not return to the turn player's decision"
+  let earlyAnswers := earlyAnswers.push (.observed invite) |>.push (.observed decline)
+  let (moved, groupAnswers) ← recordGroupMove resumed earlyAnswers
+  let (afterShowdown, answers) ← collect 6 15 (Rng.ofSeed 24) moved groupAnswers
+  let game : TeamGameRecord := {
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
+    battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
+    points := (afterShowdown.pointsOf ⟨0⟩, afterShowdown.pointsOf ⟨2⟩), ending := .draw,
+    answers := answers.push (.observed ⟨.judge, .declareDraw⟩) }
+  let win : TeamGameRecord := { game with
+    chooser := none, ending := .concede ⟨1⟩, answers := answers.push (.observed ⟨.player ⟨1⟩, .concede⟩) }
+  let recorded ← TeamMatchRecord.record {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    winsRequired := 1, games := #[game, win], ending := .finalGame } matchDB
+  let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson recorded).compress)
+  let result ← restored.verify matchDB
+  unless result.wins == (0, 1) && result.result == .won ⟨1⟩ &&
+      restored.games.all (·.summary.exact) do throw "incorrect recorded team winner"
+  let drafted := cid "V0"
+  let coverageDB : CardDB := ⟨matchDB.cards.map (fun c =>
+    { c with status := if c.id == drafted then .drafted else .full })⟩
+  let mixedCoverage ← restored.input.record coverageDB
+  let checkedCoverage ← mixedCoverage.verify coverageDB
+  let expected := List.replicate 4 [(drafted, ImplStatus.drafted)]
+  unless mixedCoverage.games.all (·.summary.exact) &&
+      checkedCoverage.uncheckedCards == #[expected, expected] do
+    throw "exact replays should report drafted cards separately for every seat and game"
+  let refreshed ← mixedCoverage.revalidate matchDB
+  unless (mixedCoverage.verify matchDB).isOk == false && refreshed == restored do
+    throw "revalidation did not update coverage while preserving the recorded games"
+  let changedDB : CardDB := ⟨matchDB.cards.map (fun c =>
+    if c.hasType .unit then
+      { c with abilities := .passive .always [.entersReady .self] :: c.abilities }
+    else c)⟩
+  let firstPlay := game.answers.toList.findIdx (fun
+    | .observed a => match a.kind with | .playCard .. => true | _ => false
+    | _ => false)
+  unless (match restored.revalidate changedDB with
+      | .error e => e.contains s!"team game 1: checkpoint {firstPlay + 1}: state fingerprint differs"
+      | .ok _ => false) do throw "a card change affecting the first permanent play was accepted"
+  let some checkpoint := restored.games[0]?.bind (·.checkpoints[2]?) | throw "missing checkpoint"
+  unless checkpoint.chosenChampions?.any (fun champions => champions.map Prod.fst == [0, 1, 2, 3]) do
+    throw "the archive is missing the four registered Chosen Champions"
+  let mismatchedRegistration := restored.games.modify 0 (fun g =>
+    { g with checkpoints := g.checkpoints.set! 2 { checkpoint with chosenChampions? := some [] } })
+  unless (match { restored with games := mismatchedRegistration }.verify matchDB with
+      | .error e => e.contains "team game 1: checkpoint 2: Chosen Champion identities differ"
+      | .ok _ => false) do throw "a changed Chosen Champion checkpoint was accepted"
+  let changed := restored.games.modify 0 (fun g =>
+    { g with checkpoints := g.checkpoints.set! 2 { checkpoint with state := "0" } })
+  unless (match { restored with games := changed }.verify matchDB with
+      | .error e => e.contains "team game 1: checkpoint 2"
+      | .ok _ => false) do throw "a changed team checkpoint was accepted"
+  let interrupted : TeamGameRecord := { game with ending := .matchEnded, answers }
+  let stopped := { restored.input with games := #[interrupted], ending := .concede ⟨3⟩ }
+  let archive ← stopped.record matchDB
+  let summary ← archive.verify matchDB
+  unless summary.wins == (0, 0) && summary.result == .won ⟨0⟩ &&
+      (archive.games[0]?.any (·.summary.result.isNone)) do throw "an interrupted game was counted"
+  let tied := { interrupted with points := (11, 11) }
+  let tiedCheck ← ({ stopped with games := #[tied] } : TeamMatchRecord).check matchDB
+  unless tiedCheck.result == .won ⟨0⟩ do throw "a tied victory score ended the game"
+  let goAhead := { interrupted with points := (12, 11), ending := .scored }
+  let scored ← ({ stopped with games := #[goAhead], ending := .finalGame } : TeamMatchRecord).check matchDB
+  unless scored.result == .won ⟨0⟩ && scored.wins == (1, 0) do throw "a score above the threshold was rejected"
+  let agreed ← ({ stopped with ending := .agreedDraw } : TeamMatchRecord).check matchDB
+  unless agreed == { summary with result := .draw } do throw "an agreed match draw was rejected"
+  if (({ stopped with ending := .finalGame } : TeamMatchRecord).check matchDB).isOk then
+    throw "an unfinished game was accepted as decisive"
+  if (({ stopped with games := #[interrupted, win] } : TeamMatchRecord).check matchDB).isOk then
+    throw "another game was accepted after an interruption"
+  let completed := { interrupted with answers := win.answers }
+  if (({ stopped with games := #[completed] } : TeamMatchRecord).record matchDB).isOk then
+    throw "a completed game was accepted as interrupted"
+
+#guard exampleMatch.toOption.isSome
+
+private meta def suddenDeathMatch : Except String Unit := do
+  let order := Mode.teamTurnOrder true
+  let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
+      (.tournamentElimination .constructed (.regular true)) | throw "invalid four-seat setup"
+  let (first, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  let clock := Action.mk .clock .timeCalled
+  let (timed, _) ← (step 100 first clock).mapError reprStr
+  let (moved, tape) ← recordGroupMove timed (setup.push (.observed clock))
+  let (finish, answers) ← collect 6 15 (Rng.ofSeed 24) moved tape
+  unless finish.turn == 5 && finish.result == some (.won [⟨0⟩, ⟨1⟩]) do
+    throw "the first scoring side did not win sudden death"
+  let game : TeamGameRecord := {
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
+    battlefields := [(⟨2⟩, cid "B0"), (⟨1⟩, cid "B3"), (⟨3⟩, cid "B3")],
+    points := (1, 0), ending := .suddenDeath ⟨0⟩, timed := true, answers }
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    winsRequired := 2, elimination? := some {}, games := #[game], ending := .finalGame }
+  let archive ← input.record matchDB
+  let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson archive).compress)
+  let result ← restored.verify matchDB
+  unless result.wins == (1, 0) && result.result == .won ⟨0⟩ do
+    throw "the recorded sudden-death point did not decide the match"
+  if ({ input with games := #[{ game with ending := .time }] }.record matchDB).isOk then
+    throw "a sudden-death point was accepted as a deadline result"
+
+#guard suddenDeathMatch.toOption.isSome
+
+private meta def teamBStarts : Except String Unit := do
+  let order : List PlayerId := [⟨1⟩, ⟨3⟩, ⟨0⟩, ⟨2⟩]
+  let some initial := GameState.initialTeamConstructed matchDB teamEnv order teamRegistrations
+    | throw "the B starting seat was refused"
+  let (start, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  unless start.active == some ⟨1⟩ && (start.zone (.player ⟨1⟩ .outOfGame)).length == 3 do
+    throw "the starting B seat contributed a Battlefield or failed to go first"
+  let game : TeamGameRecord := {
+    decks? := some teamRegistrations, chooser := some ⟨0⟩, order,
+    battlefields := [(⟨3⟩, cid "B3"), (⟨0⟩, cid "B0"), (⟨2⟩, cid "B0")],
+    points := (0, 0), ending := .draw, answers := setup.push (.observed ⟨.judge, .declareDraw⟩) }
+  let next := { game with
+    chooser := none, ending := .concede ⟨3⟩, answers := setup.push (.observed ⟨.player ⟨3⟩, .concede⟩) }
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩,
+    tournament? := some ⟨eventDate, .twoVTwo, .global eventDate⟩, legalSets := [testSet],
+    winsRequired := 1, games := #[game, next], ending := .finalGame }
+  let archive ← input.record matchDB
+  let result ← archive.verify matchDB
+  unless result.result == .won ⟨0⟩ do throw "the B-start match did not replay to its observed result"
+  let changed := { next with order := Mode.teamTurnOrder true }
+  let invalid : TeamMatchRecord := { input with games := #[game, changed] }
+  if (invalid.check matchDB).isOk then throw "the starting seat changed after a draw"
+
+#guard teamBStarts.toOption.isSome
+
+private meta def sealedTeamGame (order : List PlayerId) (decks : List LimitedDeck)
+    (fields : List (PlayerId × CardId)) (chooser : PlayerId) :
+    Except String TeamGameRecord := do
+  let some initial := GameState.initialTeamSealed matchDB.withLimitedBlank teamEnv order decks
+    | throw "the Sealed game could not be set up"
+  let (start, setup) ← collect 1 40 (Rng.ofSeed 21) initial #[]
+  let some first := order.head? | throw "no first Sealed player"
+  unless start.active == some first && (start.zone (.player first .hand)).length == 5 &&
+      start.battlefields.length == 3 do
+    throw "the first Sealed seat missed its extra draw or a Battlefield"
+  return {
+    sealedDecks? := some decks, chooser := some chooser, order, battlefields := fields,
+    points := (0, 0), ending := .concede ⟨3⟩,
+    answers := setup.push (.observed ⟨.player ⟨3⟩, .concede⟩) }
+
+private meta def sealedTeamMatch : Except String Unit := do
+  let runes := List.replicate 12 (cid "R1")
+  let blank := limitedBlankBattlefield.id
+  let deck (main : List CardId) (fields : List CardId) : LimitedDeck :=
+    { identity := [.fury, .calm, .order], legend := none, chosenChampion := none,
+      runes, main, battlefields := fields }
+  let main0 := List.replicate 25 (cid "V0")
+  let main1 := List.replicate 25 (cid "V1")
+  let order : List PlayerId := [⟨1⟩, ⟨3⟩, ⟨0⟩, ⟨2⟩]
+  let decks := [deck main0 [cid "B0"], deck main1 [], deck main0 [cid "B1"], deck main1 [blank]]
+  let fields := [(⟨3⟩, blank), (⟨0⟩, cid "B0"), (⟨2⟩, cid "B1")]
+  let first ← sealedTeamGame order decks fields ⟨0⟩
+  let switched := [deck main1 [cid "B2"], deck main0 [], deck main0 [cid "B3"], deck main1 [blank]]
+  let next ← sealedTeamGame order switched [(⟨3⟩, blank), (⟨0⟩, cid "B2"), (⟨2⟩, cid "B3")] ⟨1⟩
+  let draw := { first with
+    ending := .draw
+    answers := first.answers.pop.push (.observed ⟨.judge, .declareDraw⟩) }
+  let repeatGame := { first with chooser := none }
+  let packs (cards : List CardId) : List (List CardId) :=
+    (List.range 8).map fun i => (cards.drop (i * 7)).take 7
+  let input : TeamMatchRecord := {
+    seats := ⟨(⟨0⟩, ⟨1⟩), (⟨2⟩, ⟨3⟩)⟩, legalSets := [testSet], winsRequired := 2,
+    sealed? := some {
+      team0 := packs (main0 ++ main1 ++ [cid "B0", cid "B2"])
+      team1 := packs (main0 ++ main1 ++ [cid "B1", cid "B3"]) },
+    games := #[draw, repeatGame, next], ending := .finalGame }
+  let archive ← input.record matchDB
+  let restored : RecordedTeamMatch ← fromJson? (← Json.parse (toJson archive).compress)
+  let result ← restored.verify matchDB
+  unless result.wins == (2, 0) && restored.games.all (·.summary.exact) do
+    throw "the Sealed match did not reproduce the two game wins"
+  let excessiveDecks := [deck main0 [cid "B2"], deck main0 [], deck main0 [cid "B3"], deck main1 [blank]]
+  let excessive := { next with sealedDecks? := some excessiveDecks }
+  let reused := { first with chooser := some ⟨1⟩ }
+  let changedDecks := [deck main1 [cid "B0"], deck main0 [], deck main0 [cid "B1"], deck main1 [blank]]
+  let afterDraw := { repeatGame with sealedDecks? := some changedDecks }
+  if (({ input with games := #[first, excessive] }).check matchDB).isOk then
+    throw "the same physical cards were allocated to both teammates"
+  if (({ input with games := #[first, reused] }).check matchDB).isOk then
+    throw "the same Battlefield copy was reused after a game win"
+  if (({ input with games := #[draw, afterDraw] }).check matchDB).isOk then
+    throw "the Sealed decks changed after a draw"
+  let bo1 := deck main0 [blank, blank, cid "B0"]
+  let repeatedName := deck main0 [blank, cid "B0", cid "B0"]
+  checkLimitedBattlefieldCount matchDB [bo1] [⟨0⟩] false
+  if (checkLimitedBattlefieldCount matchDB [repeatedName] [⟨0⟩] false).isOk then
+    throw "a named Battlefield was registered twice for Best of 1"
+
+#guard sealedTeamMatch.toOption.isSome
+
+-- The same Legend and the same Battlefield may be registered only on opposing teams.
+#guard
+  let dup := List.replicate 4 (⟨goodDeck, []⟩ : ConstructedDeck)
+  (GameState.initialTeamConstructed matchDB teamEnv (Mode.teamTurnOrder true) dup).isNone
+
+end RiftboundTest

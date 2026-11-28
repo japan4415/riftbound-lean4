@@ -7,9 +7,8 @@ public import Riftbound.Rules.Battlefield
 # Add abilities
 
 An ability that adds Energy or Power to the Rune Pool resolves at once, without the Chain, and
-players can use it whenever they could pay (CR 430, 164.2). Here the abilities that only exhaust
-the object and add: "[Exhaust]: [Add] 1 Energy", "[Exhaust]: [Add] Power of a domain", "[Exhaust]:
-[Add] Power of any domain". They are not activated abilities of the Chain: `activatable` refuses
+players can use it whenever they could pay (CR 430, 164.2). A fixed Add can grant Energy
+and Power together. These abilities resolve immediately: `activatable` refuses
 them and `manaReady` lists them.
 
 The Pool records resources reserved for a kind of card or ability.
@@ -44,10 +43,11 @@ def manaPlan : List AbilityCost → Option ManaCostPlan
     if plan.banish.isSome then none else some { plan with banish := some filters }
   | .pay cost :: cs =>
     (manaPlan cs).map (fun plan => { plan with cost := cost.plus plan.cost })
+  | .fromBattlefield :: cs => manaPlan cs
   | _ :: _ => none
 
-/-- Kill an object at once; a token that dies ceases to exist (CR 183): the step of the Cleanup that
-removes it is done here, since the use of an Add is not followed by a Cleanup. -/
+/-- Kill an object for an immediate Add and remove a token that left the Board (CR 183, 430.2).
+An Add can also be used while another decision is in progress. -/
 def killNow (s : GameState) (id : ObjId) : GameState :=
   let s1 := (killObj s id).1
   match tokenStep s1 with
@@ -81,7 +81,7 @@ def manaReady (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat) : Bool :=
           | some plan =>
             timing && (!plan.exhaust || !o.exhausted) && (manaKind body).isSome &&
               limitOk s src (activationUseIndex idx grant) lim (s.activationCopyStamp src grant) &&
-              guardOk s p src body
+              guardOk s p src costs body grant
           | none => false
         | _ => false
     | _, _ => false
@@ -245,9 +245,9 @@ theorem applyMana_cases {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
                 cases k with
                 | gear n => exact h3.trans (addTurnFx_safe _ _ _)
                 | permanent => exact h3.trans (addTurnFx_safe _ _ _)
-                | energy n | unitEnergy n => exact h3
+                | energy n | unitEnergy n | spellEnergy n => exact h3
                 | power d n => exact h3
-                | any n => exact h3
+                | any n | combined _ _ => exact h3
                 | powerToEnergy => exact h3
                 | energyToPower => exact h3
       | passive _ _ => simp [hd, ha] at h
@@ -479,10 +479,7 @@ def effectAddPowerBudget (s : GameState) (p : PlayerId) : Nat :=
   let maximum := sources.foldl (fun largest src =>
     let slots := ((s.cardDef? src).map (fun d => (s.activationList src d).length)).getD 0
     (List.range slots).foldl (fun found idx =>
-      let added := (s.manaOffer src idx).elim 0 (fun (_, _, kind) => match kind with
-        | .energy n | .unitEnergy n | .power _ n | .any n | .gear n => n
-        | .permanent => 1
-        | .powerToEnergy | .energyToPower => 0)
+      let added := (s.manaOffer src idx).elim 0 (fun (_, _, kind) => (kind.add {} ⟨0, []⟩).total)
       max found (added + s.manaBonus p src)) largest) 0
   (s.poolOf p).total + 2 * runes.length + limit * maximum
 

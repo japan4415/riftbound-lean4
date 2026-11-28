@@ -14,6 +14,7 @@ public import Riftbound.Rules.Actions.Draw
 public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Rules.Battlefield
+public import Riftbound.Rules.PlayerRemoval
 public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Temporary
 public import Riftbound.Tournament.Match
@@ -35,21 +36,43 @@ namespace Riftbound
 def GameState.nextTurnPlayer (s : GameState) : PlayerId :=
   match s.extraTurns with
   | p :: _ => p
-  | [] => s.turnOrder.getD ((s.turn - s.turnShift) % s.playerCount) ⟨0⟩
+  | [] => s.nextRegularTurn.1
 
 /-- The frames of a turn up to the Main Phase, where the turn player has priority (CR 315-316). -/
 def turnFrames (tp : PlayerId) : List Frame :=
   [.phase .awaken, .phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority tp]
 
-/-- How many Runes the Channel Phase channels: two (CR 315.3), and one more for the second player
-on their first turn in a 1v1 game (CR 487.7). The turns are counted without the extra turns. -/
+/-- The teammate to whom the turn player can offer their Neutral Open priority (CR 316.5.b.1). -/
+def GameState.teamInvitee (s : GameState) (p : PlayerId) : Option PlayerId :=
+  if s.active == some p && s.phase == .main then
+    (s.config.mode.sideSeats p).find? (· != p)
+  else none
+
+theorem GameState.teamInvitee_phase {s : GameState} {p guest : PlayerId}
+    (h : s.teamInvitee p = some guest) : s.phase = .main := by
+  unfold teamInvitee at h
+  split at h
+  · rename_i allowed
+    simp only [Bool.and_eq_true, beq_iff_eq] at allowed
+    exact allowed.2
+  · cases h
+
+/-- The last seat in the starting order gets an extra Rune in its first Channel Phase
+in Duel and multiplayer games (CR 315.3, 487.7, 489.7, 490.7, 491.7). -/
 def GameState.channelCount (s : GameState) : Nat :=
-  let normal := if s.playerCount = 2 ∧ s.turn - s.turnShift = 2 then 3 else 2
+  let openingBonus := if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
+    s.turnOrder.getLast?.any (fun last => s.active == some last && s.turnsTaken last == 1)
+  else s.config.mode.hasTwoSides && s.turn - s.turnShift == s.playerCount
+  let normal := if openingBonus then 3 else 2
   s.passiveSources.foldl (fun count src =>
     (s.activeMods src).foldl (fun count mod =>
       match mod with
       | .channelLimit n => min count n
       | _ => count) count) normal
+
+/-- The starting player skips the regular first-turn draw in multiplayer (CR 489.7, 490.7, 491.7). -/
+def GameState.drawCount (s : GameState) : Nat :=
+  if (s.config.mode.isTeamDuel || s.config.mode.isFreeForAll) && s.turn == 1 then 0 else 1
 
 /-- How many cards the player draws more at the start of their first Beginning Phase: in a Limited
 format, 1 for a player whose deck has no Legend or no Chosen Champion, even if it has neither
@@ -65,23 +88,35 @@ def scoreDrawCount (p : PlayerId) (es : List Event) : Nat :=
     | .scoreDraw who _ => who == p
     | _ => false)
 
-/-- The clock has run out: time was called, and the last of the turns that may be played has
-begun (TR 408.2). -/
+/-- The last scheduled turn has begun (TR 408.2, 408.4). -/
 def GameState.clockDue (s : GameState) : Bool :=
   match s.clock with
-  | some lim => decide (lim ≤ s.turn)
+  | some clock => decide (clock.lastTurn ≤ s.turn)
   | none => false
 
-/-- The turn that follows (CR 301); or, when the clock has run out, the end of the game: the player
-2 points ahead wins, any other score is a draw (TR 408.2). -/
+/-- The result due at the next turn boundary. Tied points after the scheduled turns can instead
+start sudden death when game wins are also tied (TR 408.2, 408.4.c). -/
+def GameState.clockConclusion (s : GameState) : Option GameResult := do
+  let clock ← s.clock
+  if s.turn < clock.lastTurn then none else
+    let second : PlayerId := ⟨if s.config.mode.isTeamDuel then 2 else 1⟩
+    let result ← clock.resultOnTime (s.pointsOf ⟨0⟩) (s.pointsOf second)
+    return match result with
+      | .won side =>
+        .won (side.flatMap (fun p => s.config.mode.sideSeats (if p.n == 0 then ⟨0⟩ else second)))
+      | .draw => .draw
+
+/-- Advance to the next turn, or finish at the clock's deadline. -/
 def beginTurnStep (s : GameState) (rest : List Frame) : GameState :=
-  if s.clockDue then
-    { s with result := some (gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩)), pending := [] }
-  else
+  match s.clockConclusion with
+  | some result => { s with result := some result, pending := [] }
+  | none =>
     { s.mapObjects clearScored with
         pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
         active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
         turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+        departures := { s.departures with skippedTurns := s.departures.skippedTurns +
+          (if s.extraTurns.isEmpty then s.nextRegularTurn.2 else 0) },
         extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken }
 
 /-- The turn begins as usual, or the clock ends the game: what `beginTurnStep` does. -/
@@ -91,12 +126,14 @@ theorem beginTurnStep_cases (s : GameState) (rest : List Frame) :
             pending := turnFrames s.nextTurnPlayer ++ rest, turn := s.turn + 1,
             active := some s.nextTurnPlayer, turnFx := [], extraTurns := s.extraTurns.drop 1,
             turnShift := s.turnShift + (if s.extraTurns.isEmpty then 0 else 1),
+            departures := { s.departures with skippedTurns := s.departures.skippedTurns +
+              (if s.extraTurns.isEmpty then s.nextRegularTurn.2 else 0) },
             extraTurnsTaken := s.extraTurns.take 1 ++ s.extraTurnsTaken } ∨
       ∃ r, beginTurnStep s rest = { s with result := some r, pending := [] } := by
   unfold beginTurnStep
-  by_cases hc : s.clockDue = true
-  · exact Or.inr ⟨gameOnTime (s.pointsOf ⟨0⟩) (s.pointsOf ⟨1⟩), by simp [hc]⟩
-  · exact Or.inl (by simp [hc])
+  cases hc : s.clockConclusion with
+  | some result => exact Or.inr ⟨result, by simp⟩
+  | none => exact Or.inl (by simp)
 
 /-- The separate Combat steps after damage and Combat Cleanup (CR 468.2-468.7). -/
 def combatSteps (bf : ObjId) : List Frame :=
@@ -201,8 +238,8 @@ found. `none` if the top frame is not work. -/
 def microStep0 (s : GameState) : Option (GameState × List Event) :=
   match s.pending with
   | .setupHands :: rest =>
-    some ({ s with pending := s.turnOrder.map (fun p => Frame.draw p 4) ++
-                                s.turnOrder.map (fun p => Frame.mulligan p 0) ++
+    some ({ s with pending := s.participatingOrder.map (fun p => Frame.draw p 4) ++
+                                s.participatingOrder.map (fun p => Frame.mulligan p 0) ++
                                 [Frame.beginTurn] ++ rest }, [])
   | .beginTurn :: rest => some (beginTurnStep s rest, [])
   | .phase .awaken :: rest =>
@@ -219,7 +256,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     let p := s.active.getD ⟨0⟩
     let skip := s.hasControlledMod p .skipDrawPhase
     let phase := if skip then s.phase else .draw
-    let pending := if skip then rest else .draw p 1 :: rest
+    let pending := if skip then rest else .draw p s.drawCount :: rest
     some ({ s with phase, pending }, [])
   | .phase .ending :: rest =>
     some ({ s with phase := .ending, pending := .cleanup :: .expireTurn :: rest },
@@ -230,17 +267,10 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
   | .phase .setup :: rest => some ({ s with pending := rest }, [])
   | .phase .beginning :: rest =>
     let p := s.active.getD ⟨0⟩
-    match s.deathGroupChoice (tempUnits s p) with
-    | some (unit, controller, first, other) =>
-      some ({ s with
+    some ({ s with
         phase := .beginning
-        pending := .eitherDo controller unit {} first other .nil :: .phase .beginning :: rest }, [])
-    | none =>
-      let r := beginStep s p
-      some ({ r.1 with
-                phase := .beginning,
-                pending := .cleanup :: .draw p (s.extraDraws p) :: .scoreHolds :: rest },
-        Event.phaseStarted p .beginning :: r.2)
+        pending := .cleanup :: .draw p (s.extraDraws p) :: .scoreHolds :: rest },
+      [Event.phaseStarted p .beginning])
   | .scoreHolds :: rest =>
     let p := s.active.getD ⟨0⟩
     let r := hold s p
@@ -249,8 +279,11 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
               pending := .draw p (scoreDrawCount p r.2) :: .cleanup :: rest },
       r.2)
   | .phase .main :: rest =>
-    some ({ s with phase := .main, pending := .cleanup :: rest, pools := {} },
-      [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
+    some ({ s with
+      phase := .main
+      pending := .cleanup :: rest
+      pools := {}
+      turnFx := s.mainPhasePowerNotes }, [Event.phaseStarted (s.active.getD ⟨0⟩) .main])
   | .draw p 0 startingHand :: rest =>
     some ({ s with pending := rest }, startingHand.toList.map (.drewGroup p))
   | .draw p (n + 1) startingHand :: rest =>
@@ -267,7 +300,7 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ r.1 with pending := r.2.1 ++ rest }, r.2.2)
   | .finishSpell item :: rest =>
     let r := finishItem s item
-    some ({ r.1 with pending := finishedItemFrames s item r ++ rest }, r.2)
+    some ({ r.1 with pending := finishedItemFrames r.1 ++ rest }, r.2)
   | .cleanup :: rest => some (cleanupFrame s rest)
   | .combatDamage bf att :: rest =>
     let combat := (s.observeCombat [.showdown bf att 0]).1
@@ -286,10 +319,12 @@ def microStep0 (s : GameState) : Option (GameState × List Event) :=
     some ({ r.1 with pending := r.2.1 ++ .cleanup :: rest }, r.2.2)
   | .combatFinish bf :: rest =>
     let units := ((s.combat.filter (·.battlefield == bf)).map (·.units)).getD []
-    some ({ s.mapObjects endShowdownObj with combat := none, pending := .cleanup :: rest },
+    let cleared := clearCombatExcess (s.mapObjects endShowdownObj) bf
+    some ({ cleared with combat := none, pending := .cleanup :: rest },
       [Event.combatEnded bf units])
   | .triggers pend :: rest =>
     some ({ (triggersStep s pend rest).1 with pending := (triggersStep s pend rest).2 ++ rest }, [])
+  | .endShowdown bf :: rest => some (showdownEnd s bf rest)
   | _ => none
 
 /-- Advance one work frame by one step (design.md §6.1): the step, and then the triggered abilities
@@ -300,6 +335,30 @@ def microStep (s : GameState) : Option (GameState × List Event) :=
 /-- The player who wins when `p` concedes a 1v1 game (CR 651.1). -/
 def otherPlayer (p : PlayerId) : PlayerId := ⟨1 - p.n⟩
 
+/-- The opposing side wins when a player concedes (CR 651.1, 651.4). -/
+def GameState.concessionWinners (s : GameState) (p : PlayerId) : List PlayerId :=
+  if s.config.mode.isTeamDuel then s.players.filter (fun q => !s.config.mode.sameSide p q)
+  else [otherPlayer p]
+
+/-- A recorded opening order may omit seats that already conceded. Keep those seats at the
+end of the internal order so the registered seat indices remain available (CR 115, 651.3). -/
+def GameState.completeOpeningOrder (s : GameState) (order : List PlayerId) : List PlayerId :=
+  if s.departures.seats.isEmpty then order else
+    order ++ s.players.filter (fun p => !s.participates p && !order.contains p)
+
+/-- An order that already contains every registered seat is preserved verbatim. -/
+theorem GameState.completeOpeningOrder_of_perm (s : GameState) {order : List PlayerId}
+    (complete : order.Perm s.players) : s.completeOpeningOrder order = order := by
+  unfold GameState.completeOpeningOrder
+  split
+  · rfl
+  · have noMissing : s.players.filter (fun p => !s.participates p && !order.contains p) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro p registered
+      have member : p ∈ order := complete.mem_iff.mpr registered
+      simp [member]
+    rw [noMissing, List.append_nil]
+
 /-- Apply an answer to the decision frame on top of the stack, before the triggered abilities it set
 off are found. The answer is assumed to be legal; `none` if it does not fit the frame or a primitive
 cannot be done. -/
@@ -309,29 +368,29 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .phase .ending :: .beginTurn :: rest }, [])
   | .priority p :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .playCard c pay ts flow discard pick =>
-    (applyPlayCard s p c pay ts rest flow pick).map (payPlayDiscard p c discard)
+    applyPlayCard s p c pay ts rest flow pick discard
   | .priority p :: rest, .standardMove u d _ =>
     (applyMove s p u d).map
       (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
   | .showdown bf q n :: rest, .pass =>
-    if n + 1 < s.playerCount then
-      some ({ s with pending := .showdown bf (s.nextPlayer q) (n + 1) :: rest }, [])
+    if n + 1 < s.participatingCount then
+      some ({ s with pending := .showdown bf (s.nextParticipant q) (n + 1) :: rest }, [])
     else some (showdownEnd s bf rest)
   | .assign bf att side acc done :: rest, .assignPick u =>
     some ({ s with pending := .assign bf att side (acc ++ [u]) done :: rest }, [])
   | .assign bf att side acc done :: rest, .assignDone =>
     some (assignDoneStep s bf att side acc done rest)
   | .chainPass p n :: rest, .pass =>
-    if n + 1 < s.playerCount then
-      some ({ s with pending := .chainPass (s.nextPlayer p) (n + 1) :: rest }, [])
+    if n + 1 < s.participatingCount then
+      some ({ s with pending := .chainPass (s.nextParticipant p) (n + 1) :: rest }, [])
     else some ({ s with pending := .resolveChain :: rest }, [])
   | .chainPass p _ :: rest, .playCard c pay ts flow discard pick =>
-    (reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick).map (payPlayDiscard p c discard)
+    reactStep s p c pay ts (.chainPass p 0 :: rest) flow pick discard
   | .chainPass p _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
+    activateStep s p src idx pay.base ts (.chainPass p 0 :: rest) discards targetPlayer costBanisher costObject
   | .chainPass p _ :: _, .runeAbility c ab => applyRune s p c ab
   | .priority p :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s p src idx pay ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher costObject
+    activateStep s p src idx pay.base ts (.chainPass p 0 :: .priority p :: rest) discards targetPlayer costBanisher costObject
   | .triggerOrder _ t more others funding :: rest, .putTrigger i ts payment =>
     let r := finishTrigger s (t :: more) funding i ts payment
     some ({ r.1 with pending := .triggers ((t :: more).eraseIdx i ++ others) :: rest }, r.2)
@@ -343,7 +402,11 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .triggerOrder p t more others (some next) :: rest }, [])
   | .triggerOrder p t more others (some _) :: rest, .decide _ =>
     some ({ s with pending := .triggerOrder p t more others :: rest }, [])
-  | .priority p :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
+  | .priority p :: rest, .manaAbility src idx pay chosen =>
+    -- An Add resolves immediately. Settle any board changes before returning to this priority
+    -- (CR 319.6, 319.7, 430.2).
+    (applyMana s p src idx pay chosen).map
+      (fun r => ({ r.1 with pending := .cleanup :: .priority p :: rest }, r.2))
   | .chainPass p _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
   | .discard p n :: rest, .discardPick c =>
     let r := discardObj s c
@@ -368,7 +431,7 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
         (fun r => ({ r.1 with pending := rest }, [Event.moved id r.2 .battlefieldZone]))
     | none => none
   | .chanceTurnOrder :: rest, .arrangePlayers l =>
-    some ({ s with turnOrder := l, pending := .setupHands :: rest }, [])
+    some ({ s with turnOrder := s.completeOpeningOrder l, pending := .setupHands :: rest }, [])
   | .mulligan p n :: rest, .mulliganPick c =>
     (moveObj s c (.player p .setAside)).map
       (fun r => ({ r.1 with pending := .mulligan p (n + 1) :: rest },
@@ -381,19 +444,19 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     (recycleAll p s l).map (fun s' => ({ s' with pending := rest }, []))
   | .chanceBurnOut p :: rest, .arrange l =>
     (recycleAll p s l).map
-      (fun s' => ({ s' with pending := .chooseBurnOut p :: rest }, [Event.burnedOut p]))
-  | .chooseBurnOut _ :: rest, .burnOutTarget opp =>
+      (fun s' => ({ s' with pending := s.burnOutDecision p ++ rest }, [Event.burnedOut p]))
+  | .chooseBurnOut _ :: rest, .burnOutTarget opp
+  | .chooseBurnOutAmong _ _ _ :: rest, .burnOutTarget opp =>
     some ({ s.gainPoints opp 1 with pending := rest }, [Event.pointsGained opp 1])
   -- in a Showdown, the player with Focus plays a Spell with Action or a card with Reaction, or uses an
   -- ability: it goes on the Chain, and the Showdown goes on when the Chain is empty (CR 347-348)
   | .showdown bf q _ :: rest, .playCard c pay ts flow discard pick =>
-    (reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick).map
-      (payPlayDiscard q c discard)
+    reactStep s q c pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) flow pick discard
   | .showdown bf q _ :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
-    activateStep s q src idx pay ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
+    activateStep s q src idx pay.base ts (.chainPass q 0 :: .showdown bf q 0 :: rest) discards targetPlayer costBanisher costObject
   | .showdown _ q _ :: _, .runeAbility c ab => applyRune s q c ab
   | .showdown _ q _ :: _, .manaAbility src idx pay chosen => applyMana s q src idx pay chosen
-  | _, .timeCalled => some ({ s with clock := some (s.turn + 3) }, [])
+  | _, .timeCalled => some ({ s with clock := some (s.config.ruleSet.callClock s.turn) }, [])
   | _, .declareDraw => some ({ s with result := some .draw, pending := [] }, [])
   | .predict p n c cs top bottom :: rest, .predictPick id recycle =>
     let r := continuePrediction s p n ((c :: cs).erase id)
@@ -402,6 +465,9 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
   | .chancePredict p n top _ :: rest, .arrange bottom =>
     some ({ completePrediction s p n top bottom with pending := rest },
       if bottom.isEmpty then [] else [.recycled p])
+  | .chanceRecycleTrash _ _ _ :: rest, .arrange order =>
+    let r := recycleTrashCards s order
+    some ({ r.1 with pending := rest }, r.2)
   | .nameCard p src env _ _ es :: rest, .nameCard card =>
     some ({ s with pending := .run p src env (.cons (.rememberNamedCard card) es) :: rest }, [])
   | .guessCardType _ p src env unit gear spell es :: rest, .guessCardType guess =>
@@ -412,6 +478,24 @@ def applyFrame0 (s : GameState) (a : Action) : Option (GameState × List Event) 
     some ({ s with pending := .run p src env (.cons branch es) :: rest }, [])
   | .eitherDo p _ _ _ _ _ :: _, .runeAbility c ab => applyRune s p c ab
   | .eitherDo p _ _ _ _ _ :: _, .manaAbility src idx pay chosen => applyMana s p src idx pay chosen
+  | .priority p :: rest, .inviteTeammate guest =>
+    some ({ s with pending := .teamInvitation guest :: .priority p :: rest }, [])
+  | .teamInvitation _ :: rest, .pass => some ({ s with pending := rest }, [])
+  | .teamInvitation guest :: rest, .playCard c pay ts flow discard pick =>
+    reactStep s guest c pay ts (.chainPass guest 0 :: rest) flow pick discard
+  | .teamInvitation guest :: rest, .activate src idx pay ts discards targetPlayer costBanisher costObject =>
+    activateStep s guest src idx pay.base ts (.chainPass guest 0 :: rest) discards targetPlayer costBanisher costObject
+  | .teamInvitation guest :: _, .runeAbility c ab => applyRune s guest c ab
+  | .teamInvitation guest :: _, .manaAbility src idx pay chosen => applyMana s guest src idx pay chosen
+  | .chooseShowdown _ first more :: rest, .choose bf =>
+    ((first :: more).lookup bf).map (fun q => continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest))
+  | .priority p :: rest, .startGroupMove dest pay =>
+    some ({ s with pending := .groupMove p dest pay [] :: .priority p :: rest }, [])
+  | .groupMove p dest pay units :: rest, .choose u =>
+    some ({ s with pending := .groupMove p dest pay (units ++ [u]) :: rest }, [])
+  | .groupMove _ _ _ _ :: rest, .decide false => some ({ s with pending := rest }, [])
+  | .groupMove p dest pay units :: rest, .decide true =>
+    (applyGroupMove s p dest pay units).map (fun r => ({ r.1 with pending := .cleanup :: rest }, r.2))
   | _, _ => none
 
 /-- Apply an answer to the decision frame on top of the stack, and the triggered abilities it set
@@ -422,13 +506,23 @@ def applyFrame (s : GameState) (a : Action) : Option (GameState × List Event) :
     let es := r.2 ++ extraEvents a r.2
     (next.withTriggers (es ++ s.actionTransitionEvents next a), es))
 
-/-- Apply an answer: a concession ends the game at any time (CR 649-651), any other answer goes to
-the decision frame on top of the stack. -/
+/-- Update the card definitions and schedule surviving players' triggers after the removal. -/
+def finishFreeForAllConcession (before : GameState) (r : GameState × List Event) :
+    GameState × List Event :=
+  let next := { r.1 with cards := r.1.cards.withConcessionBattlefield }
+  let events := if next.result.isSome then [] else r.2 ++ before.mightyEvents next
+  (next.withTriggers events, events)
+
+/-- A concession removes a player at any time (CR 649-652). Other answers go to the decision frame. -/
 def applyAction (s : GameState) (a : Action) : Option (GameState × List Event) :=
   match a.kind with
   | .concede =>
     match a.actor with
-    | .player p => some ({ s with result := some (.won [otherPlayer p]), pending := [] }, [])
+    | .player p =>
+      if s.config.mode.isFreeForAll then
+        (applyFreeForAllConcession s p concessionBattlefieldToken.id).map (finishFreeForAllConcession s)
+      else
+        some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, [])
     | _ => none
   | _ => applyFrame s a
 
@@ -440,15 +534,38 @@ theorem applyAction_of_ne {s : GameState} {a : Action} (hk : a.kind ≠ .concede
   · exact absurd ‹a.kind = .concede› hk
   · rfl
 
-/-- A concession by a player ends the game: the other player wins, and nothing is left to answer
-(CR 651.1). -/
+/-- A two-sided concession ends the game with the opposing side as winner (CR 651). -/
 theorem applyAction_concede {s : GameState} {a : Action} {p : PlayerId} (hk : a.kind = .concede)
-    (hp : a.actor = .player p) :
+    (hp : a.actor = .player p) (twoSided : s.config.mode.isFreeForAll = false) :
     applyAction s a =
-      some ({ s with result := some (.won [otherPlayer p]), pending := [] }, []) := by
+      some ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
   unfold applyAction
   rw [hk]
-  simp [hp]
+  simp [hp, twoSided]
+
+/-- A free-for-all concession runs player removal and the resulting triggers (CR 652). -/
+theorem applyAction_concede_ffa {s : GameState} {a : Action} {p : PlayerId} (hk : a.kind = .concede)
+    (hp : a.actor = .player p) (ffa : s.config.mode.isFreeForAll = true) :
+    applyAction s a =
+      (applyFreeForAllConcession s p concessionBattlefieldToken.id).map (finishFreeForAllConcession s) := by
+  unfold applyAction
+  rw [hk]
+  simp [hp, ffa]
+
+/-- A free-for-all concession exposes its removal step and subsequent trigger processing. -/
+theorem applyAction_concede_ffa_cases {s s' : GameState} {a : Action} {p : PlayerId} {es : List Event}
+    (hk : a.kind = .concede) (hp : a.actor = .player p) (ffa : s.config.mode.isFreeForAll = true)
+    (applied : applyAction s a = some (s', es)) :
+    ∃ board events, applyFreeForAllConcession s p concessionBattlefieldToken.id = some (board, events) ∧
+      s' = ({ board with cards := board.cards.withConcessionBattlefield } : GameState).withTriggers es := by
+  rw [applyAction_concede_ffa hk hp ffa] at applied
+  obtain ⟨⟨board, events⟩, removed, resolved⟩ := Option.map_eq_some_iff.mp applied
+  have triggers := congrArg Prod.fst resolved
+  have reported := congrArg Prod.snd resolved
+  exact ⟨board, events, removed, by
+    simp only [finishFreeForAllConcession] at triggers reported
+    rw [← reported]
+    exact triggers.symm⟩
 
 /-- A step of work keeps the game well formed. -/
 theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
@@ -481,14 +598,9 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf.congr rfl rfl rfl rfl
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ((beginStep_safe s _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((hold_safeP s _).wf hwf).congr rfl rfl rfl rfl
@@ -523,14 +635,7 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
       rw [this]
-    subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
-      rw [e]
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact (hr.wf hwf).congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
-    · exact hwf.congr rfl rfl rfl rfl
+    exact hs'.symm ▸ (cleanupFrame_preservesBoard s rest hwf).1
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hwf.congr rfl rfl rfl rfl
@@ -549,6 +654,11 @@ theorem microStep_wf0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact ((triggersStep_spec s _ _).1.wf hwf).congr rfl rfl rfl rfl
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact (showdownEnd_preservesBoard s bf rest hwf).1
   · exact absurd h (by simp)
 
 /-- **I1** (work). A step of work keeps the physical cards. -/
@@ -584,14 +694,9 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact (beginStep_safe s _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (hold_safeP s _).phys hwf
@@ -628,14 +733,7 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hs' : s' = (cleanupFrame s rest).1 := by
       have := Option.some.inj h
       rw [this]
-    subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
-      rw [e]
-    · exact List.Perm.refl _
-    · exact List.Perm.refl _
-    · exact hr.phys hwf
-    · exact List.Perm.refl _
-    · exact List.Perm.refl _
+    exact hs'.symm ▸ (cleanupFrame_preservesBoard s rest hwf).2
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
@@ -654,6 +752,11 @@ theorem microStep_physIds0 {s s' : GameState} {es : List Event} (hwf : s.WF)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact (triggersStep_spec s _ _).1.phys hwf
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact (showdownEnd_preservesBoard s bf rest hwf).2.2
   · exact absurd h (by simp)
 
 /-- What a step of work does: the step, and the triggers it set off. -/

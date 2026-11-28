@@ -2,6 +2,10 @@ module
 
 import RiftboundDriver.Run
 meta import RiftboundDriver.Run
+import RiftboundDriver.Replay
+meta import RiftboundDriver.Replay
+import Riftbound.Invariant.BurnOutWork
+meta import Riftbound.Invariant.BurnOutWork
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -20,7 +24,132 @@ meta def cfg : GameConfig := { ruleSet := .coreOnly, mode := Mode.duel }
 
 meta def start : Option GameState := GameState.initial db cfg [goodDeck, goodDeck]
 
+-- In-play random orders can use a zone or only the objects named by the frame.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let a := cid "V0"
+  let b := cid "V1"
+  let pool := GameState.empty cfg db
+  let trash := Zone.player p .trash
+  let aside := Zone.player p .setAside
+  let add (s : GameState) (code : CardId) (z : Zone) := addObject s (newCard db s p code) z .bottom
+  let (s, first) ← add pool a trash
+  let (s, second) ← add s a trash
+  let (s, other) ← add s b trash
+  let (s, held) ← add s a aside
+  let (s, taken) ← add s b aside
+  let check (frame : Frame) (cards : List CardId) (ids : List ObjId) (exact : Bool) :=
+    let state := { s with pending := [frame] }
+    match (ReplayAnswer.observedChance (.cardOrder cards)).resolveAt state 1 with
+    | .ok (action, unique) =>
+      action == ⟨.chance, .arrange ids⟩ && unique == exact && decide (Legal state action)
+    | .error _ => false
+  return check (.chanceBurnOut p) [b, a, a] [other, first, second] false &&
+    check (.chanceRecycle p) [b, a] [taken, held] true &&
+    check (.chancePredict p 3 [first] [second, other]) [b, a] [other, second] true &&
+    check (.chanceRecycleTrash p first [second, other]) [b, a] [other, second] true
+  : Option Bool).getD false
+
+-- A card code answers only the recorded seat's current choice. Copies remain ambiguous.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let a := cid "V0"
+  let b := cid "V1"
+  let pool := GameState.empty cfg db
+  let hand := Zone.player p .hand
+  let deck := Zone.player p .mainDeck
+  let add (s : GameState) (code : CardId) (z : Zone) := addObject s (newCard db s p code) z .bottom
+  let (s, first) ← add pool a hand
+  let (s, _) ← add s a hand
+  let (s, other) ← add s b hand
+  let (s, peek) ← add s b deck
+  let (s, sameCode) ← add s a deck
+  let state (frame : Frame) := { s with pending := [frame] }
+  let byCode (seat : PlayerId) (kind : ReplayCardPickKind) (card : CardId) : ReplayCardPick :=
+    { seat, kind, card }
+  let check (frame : Frame) (kind : ReplayCardPickKind) (card : CardId)
+      (expected : ActionKind) (exact : Bool) :=
+    match (ReplayAnswer.observedCardPick (byCode p kind card)).resolveAt (state frame) 1 with
+    | .ok (action, unique) =>
+      action == ⟨.player p, expected⟩ && unique == exact && decide (Legal (state frame) action)
+    | .error _ => false
+  let mulligan := state (.mulligan p 0)
+  let choice := byCode p .mulligan b
+  let predict : Frame := .predict p 1 peek [] [] []
+  let offered := state (.pickDo p first {} first [sameCode] .nop .nil)
+  let located := { byCode p .chooseObject a with location? := some (.zone deck) }
+  let wrong := { located with location? := some (.zone (.player q .mainDeck)) }
+  let selectAt (pick : ReplayCardPick) := (ReplayAnswer.observedCardPick pick).resolveAt offered 2
+  return check (.mulligan p 0) .mulligan a (.mulliganPick first) false &&
+    check (.discard p 1) .discard b (.discardPick other) true &&
+    check predict .predictTop b (.predictPick peek false) true &&
+    check predict .predictRecycle b (.predictPick peek true) true &&
+    (selectAt located).toOption == some (⟨.player p, .choose sameCode⟩, true) &&
+    (selectAt (byCode p .chooseObject a)).toOption == some (⟨.player p, .choose first⟩, false) &&
+    !(selectAt wrong).isOk &&
+    ((ReplayAnswer.observedCardPick (byCode q .mulligan b)).resolveAt mulligan 2).isOk == false &&
+    ((ReplayAnswer.observedCardPick choice).resolveAt (state (.mulligan p 2)) 2).isOk == false &&
+    ((ReplayAnswer.observedCardPick (byCode p .predictTop a)).resolveAt (state predict) 2).isOk == false &&
+    ((ReplayAnswer.inferredCardPick choice " ").resolveAt mulligan 2).isOk == false &&
+    match (ReplayAnswer.inferredCardPick choice "later shown").resolveAt mulligan 2 with
+    | .ok (action, exact) => action.kind == .mulliganPick other && !exact
+    | .error _ => false
+  : Option Bool).getD false
+
+-- These public observations retain Chain order and Hidden location without requiring object IDs.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let battle := cid "B0"
+  let spell := cid "SP0"
+  let source := cid "V0"
+  let hidden := cid "V1"
+  let empty := GameState.empty cfg db
+  let add (s : GameState) (seat : PlayerId) (card : CardId) (z : Zone) :=
+    addObject s (newCard db s seat card) z
+  let (s, field) ← add empty q battle .battlefieldZone
+  let (s, facedown) ← add s p hidden (.player p .hidden)
+  let (s, _) ← add s q spell .chain
+  let (s, _) ← addObject s (abilityItem source 0 ⟨900⟩ p []) .chain
+  let state := s.modObj facedown (fun o => { o with hiddenAt := some field })
+  let chain := { state with pending := [.chainPass q 1] }
+  let showdown := { state with pending := [.showdown field p 0] }
+  let neutral := { state with pending := [.priority p] }
+  let ordered : List ReplayChainItem := [.ability p source, .spell q spell]
+  let check (state : GameState) (facts : List ReplayObservationFact) :=
+    (ReplayObservation.checkAt [{ checkpoint := 7, source? := some "broadcast", facts }] 7 state).isOk
+  return check state [.chainOrder ordered, .hiddenAt p q battle 1, .hiddenAt q q battle 0] &&
+    !(check state [.chainOrder ordered.reverse]) && !(check state [.hiddenAt p q battle 0]) &&
+    check chain [.priority (.chain q), .priority (.chain q (some 1))] &&
+    !(check chain [.priority (.chain p)]) && !(check chain [.priority (.chain q (some 2))]) &&
+    check showdown [.priority (.showdown p q battle (some 0))] &&
+    !(check showdown [.priority (.showdown p p battle)]) &&
+    !(check showdown [.priority (.chain p)]) && check neutral [.priority (.neutral p)] &&
+    !(check state [.priority (.neutral p)]) && !(check state [.hiddenAt p p battle 1]) &&
+    !(check (state.modObj facedown (fun o => { o with hiddenAt := none })) [.hiddenAt p q battle 1])
+  : Option Bool).getD false
+
 meta def count (p : PlayerId) (k : ZoneKind) (s : GameState) : Nat := (s.zone (.player p k)).length
+
+-- Repeated copies in a Combat assignment remain ambiguous until only one is legally next.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let s := GameState.empty cfg db
+  let (s, field) ← addObject s (newCard db s p (cid "B0")) .battlefieldZone
+  let add (s : GameState) := addObject s
+    { newCard db s q (cid "V0") with loc := some field } .battlefieldZone .bottom
+  let (s, first) ← add s
+  let (s, second) ← add s
+  let decision (picked : List ObjId) := { s with pending := [.assign field p p picked []] }
+  let answer := ReplayAnswer.observedCardPick { seat := p, kind := .assignDamage, card := cid "V0" }
+  let (a, exactA) ← (answer.resolveAt (decision []) 1).toOption
+  let (b, exactB) ← (answer.resolveAt (decision [first]) 2).toOption
+  return a == ⟨.player p, .assignPick first⟩ && !exactA &&
+    b == ⟨.player p, .assignPick second⟩ && exactB &&
+    ((answer.resolveAt (decision [first, second]) 3).toOption).isNone
+  : Option Bool).getD false
 
 meta def finished (seed : Nat) : Option GameState :=
   match start with
@@ -69,6 +198,31 @@ meta def p1 : PlayerId := ⟨1⟩
     -- the turn order is a permutation of the players
     s.turnOrder.length == 2 && s.turnOrder.contains p0 && s.turnOrder.contains p1
   | none => false
+
+private meta def ffaOpening (mode : Mode) : Option GameState := do
+  let decks := List.replicate mode.players goodDeck
+  let s ← if mode == Mode.ffa4 then
+      GameState.initialFfa4 db [⟨2⟩, p0, ⟨3⟩, p1] decks
+    else GameState.initial db { cfg with mode } decks
+  let ready ← (runAuto 100 100 (Rng.ofSeed 7) s).toOption
+  let first ← ready.turnOrder.head?
+  let last ← ready.turnOrder.getLast?
+  let final ← (runUntilTurn 100 mode.players 100 (Rng.ofSeed 7) ready).toOption
+  let battlefieldCount := (ready.zone .battlefieldZone).length
+  let candidateCount := count first .outOfGame ready
+  if ready.turn == 1 && ready.active == some first && count first .hand ready == 4 &&
+      count first .runeDeck ready == 10 && battlefieldCount == 3 &&
+      candidateCount == (if mode == Mode.ffa4 then 3 else 2) &&
+      final.turn == mode.players && final.active == some last && count last .hand final == 5 &&
+      count last .runeDeck final == 9 &&
+      (final.turnOrder.drop 1).all (fun seat => count seat .outOfGame final == 2) then
+    some final
+  else none
+
+-- CR 489.5, 489.7, 490.5, 490.7: three Battlefields and the multiplayer first-turn rules.
+#guard (ffaOpening .ffa3).isSome
+#guard (ffaOpening .ffa4).any (fun s => s.turnOrder == [⟨2⟩, p0, ⟨3⟩, p1])
+#guard (GameState.initialFfa4 db [p0, p1, p0, ⟨3⟩] (List.replicate 4 goodDeck)).isNone
 
 -- the same seed gives the same game (replay, design.md §6.4)
 #guard finished 5 == finished 5
@@ -154,7 +308,7 @@ meta def atMulligan : Option GameState :=
 
 -- Burn Out (CR 432): a draw from an empty Main Deck recycles the Trash in a random order, an
 -- opponent gains a point, and the draw goes on. Here the whole deck is put in the Trash first.
-meta def burnOutScenario : Option (GameState × GameState) :=
+meta def burnOutScenario (resumeMain : Bool := false) : Option (GameState × GameState) :=
   match finished 4 with
   | none => none
   | some s =>
@@ -162,19 +316,21 @@ meta def burnOutScenario : Option (GameState × GameState) :=
     let s' : GameState :=
       { s with zones := (s.zones.insert (Zone.player p0 .mainDeck).key []).insert
                  (Zone.player p0 .trash).key deck,
-               pending := [.draw p0 1] }
+               pending := .draw p0 1 :: (if resumeMain then [.phase .main, .priority p0] else []) }
     match advance 10 s' [] with
     | .error _ => none
     | .ok (s1, _) =>
       match s1.pending with
       | .chanceBurnOut q :: _ =>
-        match step 100 s1 ⟨.chance, .arrange (s1.zone (.player p0 .trash)).reverse⟩ with
+        let order : Action := ⟨.chance, .arrange (s1.zone (.player p0 .trash)).reverse⟩
+        match step 100 s1 order with
         | .error _ => none
         | .ok (s2, _) =>
           match s2.pending with
           | .chooseBurnOut q' :: _ =>
-            if q == p0 && q' == p0 then
-              match step 100 s2 ⟨.player p0, .burnOutTarget p1⟩ with
+            let target : Action := ⟨.player p0, .burnOutTarget p1⟩
+            if q == p0 && q' == p0 && burnOutAnswerWorkSupported s1 order && burnOutAnswerWorkSupported s2 target then
+              match step 100 s2 target with
               | .ok (s3, _) => some (s', s3)
               | .error _ => none
             else none
@@ -188,6 +344,34 @@ meta def burnOutScenario : Option (GameState × GameState) :=
     count p0 .hand s3 == count p0 .hand s' + 1 && s3.pointsOf p1 == 1 && s3.pointsOf p0 == 0 &&
     s3.pending.isEmpty
   | none => false
+
+#guard match burnOutScenario true with
+  | some (_, final) => final.pending == [.priority p0] && final.phase == .main && final.pointsOf p1 == 1
+  | none => false
+
+-- The replacement draw for a Conquer can burn out before Combat Finish.
+#guard (do
+  let s ← finished 4
+  let field ← s.battlefields.head?
+  let (s, unit) ← addObject s { newCard s.cards s p0 (cid "V0") with loc := some field } .battlefieldZone
+  let main := Zone.player p0 .mainDeck
+  let trash := Zone.player p0 .trash
+  let deck := s.zone main
+  let s := s.gainPoints p0 (s.victoryScore - 1)
+  let scoring := { s with
+    zones := (s.zones.insert main.key []).insert trash.key deck
+    combat := some { battlefield := field, attacker := p0, defender := p1, units := [unit] }
+    pending := [.combatControl field, .combatFinish field, .priority p0] }
+  let (shuffling, scored) ← (advance 100 scoring []).toOption
+  let shuffle : Action := ⟨.chance, .arrange (shuffling.zone trash).reverse⟩
+  let (choosing, burned) ← (step 100 shuffling shuffle).toOption
+  let target : Action := ⟨.player p0, .burnOutTarget p1⟩
+  let (final, finished) ← (step 100 choosing target).toOption
+  return burnOutAnswerWorkSupported shuffling shuffle && burnOutAnswerWorkSupported choosing target &&
+    scored.contains (.scored p0 field true) && burned.contains (.burnedOut p0) &&
+    finished.contains (.pointsGained p1 1) && finished.contains (.combatEnded field [unit]) &&
+    final.combat.isNone && final.pending == [.priority p0] && count p0 .hand final == count p0 .hand s + 1
+  : Option Bool).getD false
 
 -- illegal answers are refused
 #guard match start with

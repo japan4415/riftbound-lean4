@@ -66,7 +66,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let done ← playAt field
   let open_ := { done with active := some q, pending := [.priority q] }.fund q 4 (calm := 2)
   let handPlay : Action := ⟨.player q, .playCard hand ⟨1, []⟩ []⟩
-  let reveal : Action := ⟨.player q, .activate hidden 1 ⟨0, []⟩ []⟩
+  let reveal : Action := ⟨.player q, .activate hidden 1 ⟨0, [], none⟩ []⟩
   let playGear : Action := ⟨.player q, .playCard gear ⟨4, [.calm, .calm]⟩ []⟩
   let (expired, _) ← (advance 100 { open_ with pending := [.expireTurn, .priority q] } []).toOption
   let expired := expired.fund q 4 (calm := 2)

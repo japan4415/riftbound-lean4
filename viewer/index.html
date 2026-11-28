@@ -158,6 +158,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .choices h3 { margin: 0; font-size: .72rem; color: var(--muted); font-weight: 600; }
 .choices .btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .choices button { text-align: left; }
+.choices.match-setup button { min-height: 2.75rem; min-width: 2.75rem; }
+.judge-penalties { flex-basis: 100%; }
+.judge-penalties summary { width: fit-content; cursor: pointer; }
+.judge-penalties .btns { margin-top: .35rem; }
+.judge-penalties button, .judge-penalties label { min-height: 2.75rem; }
+.judge-penalties label { display: inline-flex; align-items: center; gap: .25rem; }
 .choices button.danger { border-color: var(--fury); color: var(--fury); }
 .choices button.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .choices .name-cards { display: grid; gap: 6px; min-width: 0; width: min(100%, 26rem); }
@@ -185,8 +191,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     <div class="row">
       <b>ライブ操作</b>
       <label>seed <input type="number" id="seed" value="1" min="0"></label>
-      <label>操作する席 <select id="seat"><option value="0" selected>P0（P1 は自動）</option>
-        <option value="1">P1（P0 は自動）</option><option value="01">両方</option></select></label>
+      <label>操作する席 <select id="seat"><option value="0" selected>P0（他は自動）</option>
+        <option value="1">P1（他は自動）</option><option value="01">P0 と P1</option>
+        <option value="0123">4席すべて（2v2）</option></select></label>
       <label>ルール <select id="kind"><option value="core" selected>Core Rules（デモ）</option>
         <option value="constructed">大会: Constructed</option><option value="sealed">大会: Sealed（Legend なし）</option>
         <option value="draft">大会: Draft（Legend なし）</option></select></label>
@@ -201,6 +208,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     </div>
     <div class="note" id="matchinfo"></div>
     <input type="file" id="registrationFile" accept=".json,application/json" hidden aria-label="変更後のデッキ登録 JSON">
+    <input type="file" id="sealedTeamFile" accept=".json,application/json" hidden aria-label="変更後の4席の Sealed デッキ JSON">
+    <input type="file" id="judgeShuffleFile" accept=".json,application/json" hidden aria-label="ジャッジが混ぜ直した山札の JSON">
+    <input type="file" id="judgeRewindFile" accept=".json,application/json" hidden aria-label="巻き戻し裁定の JSON">
     <div class="choices" id="choices" aria-live="polite"></div>
   </section>
   <div id="result" class="banner" hidden></div>
@@ -240,7 +250,8 @@ const LANES = [['legendZone', 'Legend'], ['base', 'Base'], ['hand', 'Hand']];
 const DOMAINS = ['fury', 'calm', 'mind', 'body', 'chaos', 'order'];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-let trace, steps, cards, objs, cur = 0, playing = false, timer = null, speed = 1;
+let trace, steps, cards, cur = 0, playing = false, timer = null, speed = 1;
+let objectHistory = new Map(), checkpointByState = new WeakMap();
 let matchTraces = [], traceIndex = 0, liveGameIndex = null;
 let liveRequest = false;
 const els = new Map();        // object id -> card element
@@ -248,7 +259,22 @@ const zoneBox = new Map();    // zone name -> container element
 const poolBox = [], pointsBox = [], seatBox = [];
 const bfGroup = new Map();    // Battlefield id -> its column
 
-function cardCode(id, state) { return state?.copies?.[id] || objs[id]?.card; }
+function indexObjects(step, checkpoint) {
+  checkpointByState.set(step.state, checkpoint);
+  for (const [id, record] of Object.entries(step.state.new)) {
+    if (!objectHistory.has(id)) objectHistory.set(id, []);
+    objectHistory.get(id).push({ checkpoint, record });
+  }
+}
+function indexTraceObjects() {
+  objectHistory = new Map(); checkpointByState = new WeakMap();
+  steps.forEach(indexObjects);
+}
+function objectAt(id, state = steps[cur]?.state) {
+  const checkpoint = checkpointByState.get(state);
+  return objectHistory.get(String(id))?.findLast(version => version.checkpoint <= checkpoint)?.record;
+}
+function cardCode(id, state) { return state?.copies?.[id] || objectAt(id, state)?.card; }
 function cardNameAt(id, state) {
   const code = cardCode(id, state);
   return cards[code]?.name || code || '#' + id;
@@ -262,8 +288,7 @@ function dur() { return reduce ? 0 : 480 / speed; }
 
 function load(t) {
   pause(); cur = 0;
-  trace = t; steps = t.steps; cards = t.cards; objs = {};
-  for (const s of steps) for (const [id, o] of Object.entries(s.state.new)) objs[id] = o;
+  trace = t; steps = t.steps; cards = t.cards; indexTraceObjects();
   buildBoard(); buildLog();
   $('empty').hidden = true; $('layout').hidden = false; $('controls').hidden = false;
   $('scrub').max = steps.length - 1;
@@ -284,17 +309,30 @@ function updateGamePicker() {
   $('gameNumber').value = String(traceIndex);
 }
 
+const teamLabel = (index) => `チーム ${index + 1}`;
+function matchPenaltyText(penalty) {
+  if (penalty?.matchLoss) return `P${penalty.matchLoss.seat.n} にマッチロス`;
+  if (penalty?.disqualification) return `P${penalty.disqualification.seat.n} が失格`;
+  return '';
+}
+
 function loadFile(t) {
-  const games = Array.isArray(t.games) ? t.games.map((game) => ({ ...game, cards: t.cards })) : [t];
+  const teams = Array.isArray(t.teams) ? t.teams : null;
+  const games = Array.isArray(t.games) ? t.games.map((game) => ({ ...game, cards: t.cards, teams })) : [t];
   if (!games.length || !games.every((g) => g.cards && Array.isArray(g.steps) && g.steps.length && g.steps[0].state)) {
-    throw new Error('閲覧用 JSON を選んでください。マッチのアーカイブは riftbound-replay view で変換できます。');
+    throw new Error('閲覧用 JSON を選んでください。マッチのアーカイブは riftbound-replay の view または view-team で変換できます。');
   }
   liveGameIndex = null;
   matchTraces = games;
   $('matchinfo').textContent = '';
   $('livemsg').textContent = '';
-  $('traceinfo').textContent = Array.isArray(t.games)
-    ? `勝ち数 ${t.wins.join('–')} · ${t.winner === null ? '引き分け' : `P${t.winner} の勝ち`}${t.exact ? '' : ' · 推定を含む'}${t.cardsFullyChecked === false ? ' · 動作確認前のカードあり' : ''}` : '';
+  $('traceinfo').textContent = '';
+  if (Array.isArray(t.games)) {
+    const wins = teams ? t.wins.map((count, i) => `${teamLabel(i)} ${count}勝`).join(' · ') : `勝ち数 ${t.wins.join('–')}`;
+    const result = t.winner === null ? '引き分け' : `${teams ? teamLabel(t.winner) : `P${t.winner}`} の勝ち`;
+    $('traceinfo').textContent = [wins, result, matchPenaltyText(t.matchPenalty),
+      t.exact ? '' : '推定を含む', t.cardsFullyChecked === false ? '動作確認前のカードあり' : ''].filter(Boolean).join(' · ');
+  }
   selectGame(0);
   updateGamePicker();
 }
@@ -307,7 +345,8 @@ function buildBoard() {
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const seat = (p) => {
     const s = mk('section', 'seat'); seatBox[p] = s;
-    const head = mk('div', 'seat-head'); head.append(mk('h2', '', 'P' + p));
+    const team = trace.teams?.findIndex((seats) => seats.includes(p)) ?? -1;
+    const head = mk('div', 'seat-head'); head.append(mk('h2', '', team < 0 ? `P${p}` : `P${p} · ${teamLabel(team)}`));
     pointsBox[p] = mk('span', 'pts'); poolBox[p] = mk('div', 'pool'); head.append(pointsBox[p], poolBox[p]);
     const piles = mk('div', 'piles');
     for (const [k, label] of PILES) {
@@ -337,8 +376,31 @@ function buildBoard() {
 }
 
 function describe(i) {
-  const a = steps[i].action;
-  if (!a) return ['ゲーム開始前', '山札・Rune Deck・Battlefield の準備ができた状態'];
+  const step = steps[i];
+  if (step.judgeRewind != null) {
+    const detail = [`${step.judgeRewind} 手目の状態に戻す`];
+    if (step.privateDrawReturns) detail.push(`非公開のドローを ${step.privateDrawReturns} 件戻す`);
+    if (step.rewindShuffles) detail.push(`山札を ${step.rewindShuffles} 件混ぜ直す`);
+    if (step.rewindRulings) detail.push(`前の裁定を ${step.rewindRulings} 件取り消す`);
+    if (step.rewindDeadline != null) detail.push(`最終予定ターン ${step.rewindDeadline}`);
+    return ['ジャッジが巻き戻す', detail.join(' ・ ')];
+  }
+  if (step.judgeShuffle) {
+    const { seat, deck, positions } = step.judgeShuffle;
+    const zone = deck === 'runeDeck' ? 'Rune Deck' : 'Main Deck';
+    return ['ジャッジが山札を混ぜ直す', `P${seat.n} の ${zone} のうち ${positions.length} 枚`];
+  }
+  if (step.gameLoss) return ['ジャッジがゲームロスを適用', step.gameLoss.map(p => 'P' + p).join('、')];
+  if (step.bo1Sideboard) return ['サイドボードを確定', 'Chosen Champion を配置し、デッキをシャッフルする準備をする'];
+  if (step.bo1Initiative) return ['先手を決める', `P${step.action.turnOrder[0]} が先手`];
+  const a = step.action;
+  if (!a) return ['ゲーム開始前', 'セットアップを始める'];
+  if (a.kind === 'concede' && step.state.departed?.length) {
+    const winners = step.state.result?.won;
+    const detail = winners?.length ? winners.map(p => `P${p}`).join('、') + ' の勝ち（CR 651）'
+      : '残ったプレイヤーで対局を続ける（CR 652）';
+    return [`${a.actor.toUpperCase()}: 投了する`, detail];
+  }
   const before = steps[i - 1]?.state;
   return describeA(a, before?.pending, before);
 }
@@ -346,6 +408,8 @@ function describe(i) {
 // 答え a の説明。prev は、答える前に開いていた質問（フレーム）の名前。
 function describeA(a, prev, state = steps[cur]?.state) {
   const cardName = (id) => cardNameAt(id, state);
+  const deflect = a.deflectPayment?.length ? 'Deflect ' +
+    a.deflectPayment.map(source => source === 'flexible' ? '虹' : source).join(' + ') + ' Power' : '';
   const visibleCardLabel = (id, selectableIds) => {
     const name = cardName(id);
     const code = cardCode(id, state);
@@ -359,6 +423,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
   const boardCardLabel = (id) => visibleCardLabel(id, boardIds);
   const paymentChoices = (choice) => {
     const details = [];
+    const xp = typeof choice.card === 'number' ? cards[cardCode(choice.card, state)]?.optionalXP : undefined;
+    if (typeof xp === 'number') {
+      const paid = choice.xpPaid ?? (choice.extraObject != null);
+      details.push(paid ? xp + ' XP を払う' : 'XP を払わない');
+    }
     if (typeof choice.variablePower === 'number') details.push('追加 Power ' + choice.variablePower);
     if (choice.gearDiscounts?.length) {
       details.push(choice.gearDiscounts.map(boardCardLabel).join('、') + ' の割引を使う');
@@ -398,7 +467,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const cost = typeof add.banishCostCard === 'number' ? '（' + banishCostLabel(add.banishCostCard) + '）' : '';
       return cardName(id) + ' の Add' + cost;
     }
-    const runes = (state?.zones['p' + objs[id]?.owner + '.base'] || [])
+    const runes = (state?.zones['p' + objectAt(id, state)?.owner + '.base'] || [])
       .filter(candidate => cardCode(candidate, state) === cardCode(id, state));
     const order = runes.indexOf(id);
     const name = runes.length > 1 && order >= 0 ? cardName(id) + '（' + (order + 1) + '枚目）' : cardName(id);
@@ -423,6 +492,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
   switch (a.kind) {
     case 'arrange': return [who + ': 並び替え', 'シャッフル、または Recycle の順番'];
     case 'arrangePlayers': return [who + ': 手番順を決める', 'ターン順が決まった'];
+    case 'inviteTeammate': return [who + ': P' + a.guest + ' を招待', '招待された席はスペルか起動型能力を使える'];
     case 'pick': return [who + ': Battlefield を選ぶ', '抽選で Battlefield が場に出る'];
     case 'nameCard': return [who + ': ' + logicalCardName(a.cardCode) + ' を指定', ''];
     case 'guessCardType': {
@@ -433,6 +503,12 @@ function describeA(a, prev, state = steps[cur]?.state) {
     case 'discardDone': return [who + ': 捨てるカードがない', '手札が空なので捨てる処理を終える'];
     case 'discardPick': return [who + ': ' + cardName(a.card) + ' を捨てる', cardName(a.card) + ' を手札から Trash へ'];
     case 'decide': {
+      if (a.groupMoveUnits) {
+        if (!a.yes) return [who + ': 同時移動を取り消す', 'ユニットは移動せず、優先権に戻る'];
+        const names = a.groupMoveUnits.map(boardCardLabel).join('、');
+        const destination = a.dest === null ? 'Base' : cardName(a.dest);
+        return [who + ': ' + a.groupMoveUnits.length + '体を ' + destination + ' へ同時に移動', names];
+      }
       if (a.cancelTriggerFunding) return [who + ': 誘発能力の選択に戻る', '選んだ Add を取り消す'];
       if (a.equipPayment) return [who + ': ' + (a.equipPayment === 'resources'
         ? '割引後の Equip コストを支払う' : '味方のユニットを Exhaust して支払う'), ''];
@@ -491,7 +567,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
         if (plan.accelerated || def?.keywords?.some(({ k }) => k === 'accelerate')) {
           parts.push(plan.accelerated ? 'Accelerate を使う' : 'Accelerate を見送る');
         }
-        if (plan.extraObject != null) parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        if (plan.extraObject != null && typeof def?.optionalXP !== 'number') {
+          parts.push(cardName(plan.extraObject) + ' で追加コストを払う');
+        }
         if (plan.discard != null) parts.push(cardName(plan.discard) + ' を捨てる');
         const verb = a.choosePlayPayment ? ' にプレイする方法を選ぶ' : ' にプレイ';
         return [who + ': ' + cardName(plan.card) + ' を ' + dest + verb + '（' + parts.join('、') + '）', prepared];
@@ -500,19 +578,27 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + boardCardLabel(a.deathOrderUnit) + ' の死亡置換を次に適用する', ''];
       }
       if (a.moreDeathOrders) return [who + ': ほかの死亡置換を選ぶ', ''];
-      if (typeof a.deathSacrificeUnit === 'number') {
+      if ('deathSacrificeCost' in a) {
         const unit = boardCardLabel(a.deathSacrificeUnit);
-        if (!('deathSacrificeCost' in a)) return [who + ': ほかの身代わりを選ぶ', unit];
         if (a.deathSacrificeCost === null) return [who + ': ' + unit + ' の死亡置換を見送る', ''];
         return [who + ': ' + boardCardLabel(a.deathSacrificeCost) + ' を身代わりにする',
           unit + ' の死亡を置き換える'];
       }
       if (a.moreDamageReplacements) return [who + ': ほかの置換効果を見る', ''];
-      if (a.banishDeathUnit != null) {
-        if (a.banishingPlayer == null) return [who + ': ほかの置換効果を見る', ''];
+      if (a.deathGearSource != null) {
+        return [who + ': ' + boardCardLabel(a.deathGearSource) + ' を身代わりにする',
+          boardCardLabel(a.deathGearUnit) + ' の死亡を置き換える'];
+      }
+      if ('deathFreeSource' in a) {
+        const source = a.deathFreeSource == null ? 'Tactical Retreat' : boardCardLabel(a.deathFreeSource);
+        return [who + ': ' + source + ' で救う', boardCardLabel(a.deathFreeUnit) + ' の死亡を置き換える'];
+      }
+      if (a.banishingPlayer != null) {
         return [who + ': P' + a.banishingPlayer + ' の効果で ' + cardName(a.banishDeathUnit) + ' を Banish',
           'このユニットの死亡を置き換える'];
       }
+      const deathUnit = deathReplacementUnit(a);
+      if (deathUnit != null) return [who + ': ほかの死亡置換を見る', boardCardLabel(deathUnit)];
       if (a.damageDivision) {
         const names = a.damageDivision.map(({ unit }) => cardName(unit));
         const amounts = a.damageDivision.map(({ unit, amount }, i) => {
@@ -523,6 +609,13 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + amounts.join('、'), ''];
       }
       if (a.moreDamageDivisions) return [who + ': ほかの割り振りを見る', ''];
+      if (a.combatAssignmentPriority) {
+        const tank = a.combatAssignmentPriority === 'tank';
+        const keyword = tank ? 'Tank' : 'Backline';
+        const detail = tank ? '同じ支配者の Tank を持たないユニットより先'
+          : '同じ支配者の Backline を持たないユニットより後';
+        return [who + ': ' + boardCardLabel(a.combatPriorityUnit) + ' に ' + keyword + ' を適用', detail];
+      }
       if (a.damageReplacement) {
         const replacement = a.damageReplacement === 'double' ? '2倍にする' :
           a.damageReplacement === 'shield' ? 'すべて防ぐ' : '最大 ' + a.preventValue + ' 軽減する';
@@ -532,6 +625,24 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (a.damageOrder) {
         const first = a.damageOrder === 'preventFirst' ? 'ダメージの軽減' : 'ダメージの倍増';
         return [who + ': ' + cardName(a.unit) + ' に先に' + first + 'を適用する', ''];
+      }
+      if (a.unitTokenReplacement) {
+        const choice = a.unitTokenReplacement;
+        const source = choice.source == null ? '' : boardCardLabel(choice.source);
+        const token = choice.card == null ? '' : logicalCardName(choice.card);
+        const number = choice.total > 1 ? '（' + choice.number + '体目）' : '';
+        const title = {
+          substituteFirst: '先にトークンを置き換える',
+          duplicateFirst: '先に ' + source + ' の効果を適用する',
+          duplicate: source + ' で ' + token + number + ' をもう1体出す',
+          declineDuplicate: source + ' の効果を見送る',
+          keep: token + ' をそのまま出す',
+          substitute: logicalCardName(choice.original) + ' を ' + token + ' に置き換える',
+          moreOrder: '先に適用できるほかの効果を見る',
+          moreDuplicates: 'ほかのトークンや見送りを選ぶ',
+          moreSubstitutes: 'ほかの置換先を見る'
+        }[choice.kind];
+        if (title) return [who + ': ' + title, (choice.cards || []).map(logicalCardName).join('、')];
       }
       if (a.moreLocations) return [who + ': ' + a.token + ' を Battlefield に出す', '行き先を選ぶ'];
       if (a.moveLocation === 'base') return [who + ': ' + cardName(a.unit) + ' を Base に移動する', ''];
@@ -544,6 +655,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
     }
     case 'choose': {
       const card = cardName(a.obj);
+      if (a.choiceContext === 'groupMove') return [who + ': ' + boardCardLabel(a.obj) + ' を同時移動に加える', ''];
+      if (prev === 'chooseShowdown') return [who + ': ' + card + ' から始める', 'Showdown または Combat を開始'];
       if (a.choiceContext === 'own') return [who + ': 自分の ' + card + ' を選ぶ', '全員の選択が終わると効果の解決を続ける'];
       if (a.choiceContext === 'banishReplay') {
         const banished = zoneEntries.filter(([zone]) => zone.endsWith('.banishment')).flatMap(([, ids]) => ids);
@@ -574,6 +687,11 @@ function describeA(a, prev, state = steps[cur]?.state) {
       return [who + ': ' + cardName(a.unit) + ' に先にダメージを割り当てる', 'Combat Damage: 致死ダメージを与える順に、相手の Unit を選ぶ（Tank が先）'];
     case 'assignDone':
       return [who + ': 割り当てを確定', '選んだ順に致死ダメージを割り当て、残りは最後の Unit へ。両陣営が終えると同時に与える'];
+    case 'startGroupMove': {
+      const destination = a.dest === null ? 'Base' : cardName(a.dest);
+      const payment = a.movePayment ? '（' + costText(a.movePayment) + '）' : '';
+      return [who + ': ' + destination + ' への同時移動を選ぶ' + payment, '移動するユニットを2体以上選ぶ'];
+    }
     case 'standardMove': {
       const destination = a.dest === null ? 'Base' : cardName(a.dest);
       const move = a.movePayment
@@ -583,6 +701,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         destination + (a.dest === null ? ' へ戻る' : ' へ移動する') + '（Unit は Exhaust する）'];
     }
     case 'pass':
+      if (prev === 'teamInvitation') return [who + ': 招待を辞退', '手番プレイヤーに優先権が戻る'];
       if (prev === 'showdown') return [who + ': パス', 'Showdown でパス（全員がパスすると、Unit が 1 人だけなら Control と Conquer、2 人いれば Combat Damage）'];
       if (prev === 'chainPass') return [who + ': パス', 'Chain の項目に応答しない（全員がパスすると、いちばん上の項目が解決する）'];
       return [who + ': パス', 'Main Phase を終えてターンを終える'];
@@ -600,9 +719,10 @@ function describeA(a, prev, state = steps[cur]?.state) {
       if (typeof a.exhaustCostObject === 'number') costs.push(cardName(a.exhaustCostObject) + ' を Exhaust');
       if (a.costBanish) costs.push('P' + a.costBanish.player + ' の効果で ' + cardName(a.costBanish.unit) + ' を Banish');
       else if (typeof a.killCostObject === 'number') costs.push(cardName(a.killCostObject) + ' を Kill');
-      if (typeof a.pay === 'number' && (a.pay > 0 || !costs.length)) {
+      if (typeof a.pay === 'number' && (a.pay > 0 || (!costs.length && !deflect))) {
         costs.push(costText({ energy: a.pay - power.length, power }));
       }
+      if (deflect) costs.push(deflect);
       const action = a.abilityEffect === 'readySelf' ? ' を Ready にする能力を起動' : ' の能力を起動';
       return [who + ': ' + cardName(a.source) + action +
         (costs.length ? '（' + costs.join('、') + '）' : '') +
@@ -622,11 +742,13 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const targets = (a.targets || []).map(cardName);
       if (typeof a.targetPlayer === 'number') targets.unshift('P' + a.targetPlayer);
       const replacements = new Map((a.costBanishes || []).map(({unit, player}) => [unit, player]));
-      const sacrifices = (a.sacrifices || []).map((id) => {
+      const objectCosts = (a.sacrifices || []).map((id) => {
         const card = cardName(id);
+        if (a.discardCost) return card + ' を捨てる';
         return replacements.has(id) ? 'P' + replacements.get(id) + ' の効果で ' + card + ' を Banish' :
           card + ' を Kill';
-      }).join('、');
+      }).concat((a.returnToHandCost || []).map((id) =>
+        cardName(id) + ' をオーナーの手札に戻す')).join('、');
       const energy = a.energy ? '（Energy ' + a.energy + ' を支払う）' : '';
       const exhaust = a.exhaustSource ? '（発生源を Exhaust）' : '';
       const burn = a.burn ? '（Burn ' + a.burn + ' を支払う）' : '';
@@ -634,7 +756,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
       const deflect = a.triggerDeflect ? '（Deflect ' + a.triggerDeflect + ' Power）' : '';
       const targetText = targets.length ? '（対象 ' + targets.join('、') + '）' : '（対象なし）';
       const choices = mode + energy + deflect + exhaust + burn +
-        (sacrifices ? '（コストとして ' + sacrifices + '）' : '') + targetText;
+        (objectCosts ? '（コストとして ' + objectCosts + '）' : '') + targetText;
       if (a.kind === 'prepareTrigger') {
         return [who + ': ' + ability + 'の支払いを選ぶ' + choices, 'Add や Rune を選ぶ'];
       }
@@ -642,7 +764,7 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + ability + 'を確定' + choices, '支払い ' + a.triggerPreparedAdds.map(addLabel).join('、')];
       }
       return [who + ': ' + ability + 'を確定' + choices,
-        sacrifices ? 'コストを払ってから能力を Chain に載せる' :
+        objectCosts ? 'コストを払ってから能力を Chain に載せる' :
           (burn ? '山札の上からカードを Trash に置いてから能力を Chain に載せる' :
             '確定した能力は最後に Chain に載ったものから解決する')];
     }
@@ -656,13 +778,17 @@ function describeA(a, prev, state = steps[cur]?.state) {
         return [who + ': ' + cardName(a.source) + ' の Add（' + cost + '）',
           'Exhaust し、Unit のプレイと起動型能力に使える Energy を ' + a.unitEnergyAdded + ' 得る'];
       }
+      if (a.spellEnergyAdded != null) {
+        return [who + ': ' + addLabel(a),
+          'Exhaust し、Spell のプレイに使える Energy を ' + a.spellEnergyAdded + ' 得る'];
+      }
       return [who + ': ' + cardName(a.source) + ' の Add 能力', 'Chain を使わず、すぐ資源が増える（Exhaust する）'];
     }
     case 'runeAbility':
       if (a.ability === 'exhaust') return [who + ': ' + cardName(a.card) + ' を Exhaust', 'Energy +1'];
-      return [who + ': ' + cardName(a.card) + ' を Recycle', (objs[a.card] && objs[a.card].rune || '') + ' Power +1、Rune Deck の下へ'];
+      return [who + ': ' + cardName(a.card) + ' を Recycle', (objectAt(a.card, state)?.rune || '') + ' Power +1、Rune Deck の下へ'];
     case 'playCard': {
-      const o = objs[a.card], def = o && cards[o.card];
+      const o = objectAt(a.card, state), def = o && cards[o.card];
       const base = a.flowCost;
       const printed = typeof def?.cost === 'number' ? def.cost + (def.costFull?.power?.length || 0) : null;
       const fees = a.battlefieldFees || [];
@@ -691,7 +817,8 @@ function describeA(a, prev, state = steps[cur]?.state) {
         ? (a.accelerated ? '（Accelerate を使う）' : '（Accelerate を見送る）') : '';
       const showOff = showOffLabel(a, a.card);
       const more = cost + (a.power && a.power.length ? ' [Power: ' + a.power.join('+') + ']' : '') +
-        discard + extra + repeat + mode + dest + fee + accelerate + (showOff ? '（' + showOff + '）' : '') +
+        (deflect ? '（' + deflect + '）' : '') + discard + extra + repeat + mode + dest + fee + accelerate +
+        (showOff ? '（' + showOff + '）' : '') +
         (objectCost ? '（' + objectCost + '）' : '') +
         (namedPayment.length ? '（' + namedPayment.join('、') + '）' : '');
       if (def && def.types.includes('spell')) {
@@ -709,7 +836,9 @@ function describeA(a, prev, state = steps[cur]?.state) {
         'コストを払って場に出す（通常、Unit は Exhaust で入る）'];
     }
     case 'concede': return [who + ': 投了する', 'ゲームを投了する。相手の勝ちになる（CR 651）'];
-    case 'timeCalled': return [who + ': 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
+    case 'timeCalled': return [who + ': 時間切れを知らせる', a.singleElimination
+      ? '今のターンと追加の3ターンを行う。終了時の点数とゲーム勝数に従って勝敗を決める（TR 408.4）'
+      : '今のターンを最後まで行い、さらに 3 ターン行う。その後、点差 2 点以上のプレイヤーが勝ち、そうでなければ引き分け（TR 408.2）'];
     case 'declareDraw': return [who + ': 引き分けを宣言する', '選手が合意した（TR 410.1）、または終わらないループ（TR 505.6）。ゲームは、その場で引き分けで終わる'];
     default: return [who + ': ' + a.kind, ''];
   }
@@ -740,7 +869,7 @@ function updateCardTraits(el, id, state) {
   const code = cardCode(id, state) || '?';
   if (el.dataset.card === code) return;
   el.dataset.card = code;
-  const o = objs[id] || {}, def = cards[code] || { name: code, types: [], domains: [] };
+  const o = objectAt(id, state) || {}, def = cards[code] || { name: code, types: [], domains: [] };
   const inn = document.createElement('div'); inn.className = 'card-in';
   const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = def.name;
   inn.append(nm);
@@ -797,7 +926,7 @@ function layoutBattlefields(box, st) {
       cardsBox.append(e); decorate(e, st, id); placed.add(id);
     }
     head.textContent = '';
-    const nm = document.createElement('b'); nm.textContent = cardName(b.id); head.append(nm);
+    const nm = document.createElement('b'); nm.textContent = cardNameAt(b.id, st); head.append(nm);
     head.append(b.control === null ? tag('未支配', '') : tag('P' + b.control + ' が支配', 'ctl' + b.control));
     if (b.contested !== null) head.append(tag('Contested: P' + b.contested, 'hot'));
     g.className = 'bf' + (b.control !== null ? ' mine' + b.control : '') + (b.contested !== null ? ' contested' : '') +
@@ -878,23 +1007,30 @@ function fly(src, from, to) {
 
 function renderStatic(i, st, prev, animate) {
   const cardName = (id) => cardNameAt(id, st);
-  $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}`
-    + (st.active !== null ? ` ・ P${st.active} の番` : '') + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
+  const clockStatus = st.eliminationDeadline == null ? ''
+    : st.turn > st.eliminationDeadline ? ' ・ サドンデス' : ` ・ 時間切れ（ターン ${st.eliminationDeadline} まで）`;
+  const active = st.result ? null : st.active;
+  const turnStatus = st.result ? ' ・ 対局終了' : active !== null ? ` ・ P${active} の番` : '';
+  $('status').textContent = `手 ${i}/${steps.length - 1} ・ ターン ${st.turn} ・ ${PHASE_JA[st.phase] || st.phase}` + clockStatus
+    + turnStatus + (trace.seed === undefined ? '' : ` ・ seed ${trace.seed}`);
   document.querySelectorAll('.phase').forEach((e) => e.classList.toggle('on', e.dataset.phase === st.phase));
-  seatBox.forEach((e, p) => e.classList.toggle('active', st.active === p));
+  seatBox.forEach((e, p) => e.classList.toggle('active', active === p));
   for (let p = 0; p < trace.players; p++) {
-    pointsBox[p].textContent = st.points[p] + ' 点';
+    const xp = st.xp?.[p];
+    pointsBox[p].textContent = st.points[p] + ' 点' + (typeof xp === 'number' ? ' ・ ' + xp + ' XP' : '');
     const pool = st.pools[p], old = prev.pools[p], box = poolBox[p]; box.textContent = '';
-    const add = (key, label) => {
+    const add = (key, label, usage) => {
       if (key !== 'energy' && !pool[key]) return;
       const c = document.createElement('span');
-      c.className = 'chip' + (key === 'energy' || key === 'unitEnergy' ? ' energy' : '');
+      c.className = 'chip' + (key === 'energy' || usage ? ' energy' : '');
       c.textContent = label + ' ' + pool[key];
-      if (key === 'unitEnergy') c.title = 'Unit のプレイと Unit の起動型能力に使える';
+      if (usage) c.title = usage;
       if (animate && pool[key] > (old[key] ?? 0)) c.classList.add('pop');
       box.append(c);
     };
-    add('energy', 'Energy'); add('unitEnergy', 'Unit 用 Energy');
+    add('energy', 'Energy');
+    add('unitEnergy', 'Unit 用 Energy', 'Unit のプレイと Unit の起動型能力に使える');
+    add('spellEnergy', 'Spell 用 Energy', 'Spell のプレイに使える');
     for (const d of DOMAINS) add(d, d[0].toUpperCase() + d.slice(1)); add('any', '任意');
     for (const [k] of PILES) {
       const e = zoneBox.get('p' + p + '.' + k), n = (st.zones['p' + p + '.' + k] || []).length;
@@ -1031,7 +1167,7 @@ function artBox(el, cid) {
 function hideCardInfo() { $('cardinfo').hidden = true; }
 function showCardInfo(id, x, y) {
   const st = steps[cur].state, nid = +id, box = $('cardinfo'); box.textContent = '';
-  const o = objs[id], code = cardCode(id, st), def = o && cards[code]; if (!def) return;
+  const o = objectAt(id, st), code = cardCode(id, st), def = o && cards[code]; if (!def) return;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const close = el('button', 'x', '×'); close.setAttribute('aria-label', '閉じる'); close.addEventListener('click', hideCardInfo);
   box.append(close, el('h2', '', def.name + (o.ability !== undefined ? '（能力 #' + o.ability + '）' : '')));
@@ -1080,8 +1216,10 @@ $('board').addEventListener('scroll', hideCardInfo);
 // ---- ライブ操作: ローカルの橋渡し（scripts/live.py）が、Lean の riftbound-live につなぐ ----
 // 画面にルールは無い。合法手（legalActions）と、答えの結果（step）は Lean が決め、ここは描くだけ。
 let live = false, liveLegal = [], liveMatch = null, liveExt = { clock: false, judge: false }, askChoice = null;
+let liveTeamFormat = null, askTeamChoice = null, teamNextDecks = null;
 let liveOver = false, liveArchive = false, liveSeats = '0';
 let liveSide = null, swapOut = null, swapIn = null;
+let liveBo1 = null, bo1SideSeat = null;
 async function api(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}) });
@@ -1094,7 +1232,7 @@ async function api(path, body) {
 function appendSteps(list) {
   for (const s of list) {
     steps.push(s);
-    for (const [id, o] of Object.entries(s.state.new)) objs[id] = o;
+    indexObjects(s, steps.length - 1);
     const i = steps.length - 1, li = document.createElement('li');
     li.textContent = i + '. ' + describe(i)[0];
     li.addEventListener('click', () => { pause(); show(i, false); }); $('log').append(li);
@@ -1109,15 +1247,16 @@ function setLive(j) {
     let choice;
     if (a.abilityEffect === 'readySelf') choice = [a.source, a.index];
     else if (a.unitEnergyAdded != null) choice = [a.source, a.index, a.energy];
-    else if (a.battlefieldFees?.length) choice = [a.card, a.playDestination, a.battlefieldFees,
-      a.accelerated, a.additionalCostPaid, a.discards, a.showOff];
+    else if (a.battlefieldFees?.length || a.xpPaid === true) choice = [a.card, a.playDestination, a.battlefieldFees,
+      a.accelerated, a.additionalCostPaid, a.xpPaid, a.discards, a.showOff];
     else return true;
     const payment = JSON.stringify([a.actor, a.kind, choice, a.pay, [...a.power].sort()]);
     if (shownPayments.has(payment)) return false;
     shownPayments.add(payment);
     return true;
   });
-  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; askChoice = null;
+  liveMatch = j.match; liveExt = j.external; liveSide = j.sideboard; liveBo1 = j.bo1; askChoice = null;
+  liveTeamFormat = j.teamFormat; askTeamChoice = null;
   liveOver = j.over; liveArchive = j.archiveAvailable;
   swapOut = swapIn = null;
 }
@@ -1127,11 +1266,18 @@ function setLiveRequest(pending) {
 }
 function matchText(m) {
   if (!m) return '';
-  const order = m.order === 'chance' ? '最初のゲーム: 抽選で選ばれた人が先手か後手かを選ぶ（TR 407）'
-    : m.order.startsWith('loser') ? '次のゲーム: 負けた P' + m.order.slice(5) + ' が先手か後手かを選ぶ（TR 407）'
-    : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
-  return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち P0 ' + m.wins[0] + ' - P1 ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
-    + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : 'P' + m.winner + ' の勝ち') : ' ・ ' + order
+  const label = (seat) => liveTeamFormat ? teamLabel(seat) : 'P' + seat;
+  const order = m.order === 'chance'
+    ? (liveTeamFormat ? '最初のゲーム: 抽選で選ばれたチームが手番順を選ぶ（TR 603.7）'
+      : '最初のゲーム: 抽選で選ばれた人が先手か後手かを選ぶ（TR 407）')
+    : m.order.startsWith('loser') ? '次のゲーム: 負けた ' + label(Number(m.order.slice(5)))
+        + (liveTeamFormat ? ' が手番順を選ぶ（TR 603.7）' : ' が先手か後手かを選ぶ（TR 407）')
+    : liveTeamFormat ? '次のゲーム: 引き分けの後は手番順を引き継ぐ'
+      : '次のゲーム: 引き分けの後なので、先手は同じ P' + m.order.slice(4) + '（TR 407）';
+  return 'Best of ' + (m.target * 2 - 1) + ' ・ 勝ち ' + label(0) + ' ' + m.wins[0] + ' - ' + label(1) + ' ' + m.wins[1] + ' ・ ' + m.games + ' ゲーム'
+    + (m.finished ? ' ・ マッチ終了 · ' + (m.winner === null ? '引き分け' : label(m.winner) + ' の勝ち')
+      + (m.matchPenalty ? ' · ' + matchPenaltyText(m.matchPenalty) : '') : ' ・ ' + order
+      + (m.timedTiebreaker ? ' ・ 時間切れのため、次のゲームは初手番と追加5ターン' : '')
       + ' ・ サイドボード: ' + (m.sideboard ? '使える' : '使えない') + (m.sameBattlefields ? ' ・ 同じ Battlefield' : ''));
 }
 // 手とカードの結びつき: カードをクリックして答える。手が 1 つならすぐ、複数ならメニューで選ぶ。
@@ -1199,7 +1345,7 @@ function showMenu(list, title, x, y) {
   const f = m.querySelector('button'); if (f) f.focus();
 }
 function showsPayment(a) {
-  return Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
+  return a.xpPaid === true || Boolean(a.movePayment) || typeof a.extraCostObject === 'number' ||
     typeof a.banishCostCard === 'number' || typeof a.variablePower === 'number' ||
     Boolean(a.gearDiscounts?.length || a.spellExhaustPayers?.length);
 }
@@ -1289,10 +1435,63 @@ function renderNameCards(box, options, btn) {
   update();
 }
 
+function renderJudgePenalties(box, button) {
+  if (!liveExt.penaltySeats?.length) return;
+  const details = document.createElement('details'); details.className = 'judge-penalties';
+  const title = document.createElement('summary'); title.textContent = 'ジャッジの裁定を記録';
+  const seats = document.createElement('div'); seats.className = 'btns'; seats.setAttribute('role', 'group');
+  seats.setAttribute('aria-label', '裁定の対象席');
+  const checkboxes = liveExt.penaltySeats.map(p => {
+    const label = document.createElement('label');
+    const input = document.createElement('input'); input.type = 'checkbox';
+    label.append(input, 'P' + p); seats.append(label);
+    return { p, input };
+  });
+  const selected = () => checkboxes.filter(({ input }) => input.checked).map(({ p }) => p);
+  const operations = document.createElement('div'); operations.className = 'btns';
+  const gameLoss = button(liveOver ? '次のゲームにゲームロスを適用' : 'ゲームロスを記録', '',
+    () => liveExternal('judge-game-loss', { seats: selected() }));
+  const matchLoss = button('マッチロスを記録', '',
+    () => liveExternal('judge-match-loss', { seat: selected()[0] }));
+  const disqualification = button('失格を記録', '',
+    () => liveExternal('judge-disqualification', { seat: selected()[0] }));
+  const update = () => { const n = selected().length; gameLoss.disabled = n === 0;
+    matchLoss.disabled = disqualification.disabled = n !== 1; };
+  seats.addEventListener('change', update); update();
+  operations.append(gameLoss, matchLoss, disqualification);
+  details.append(title, seats, operations);
+  if (liveExt.correction) {
+    const corrections = document.createElement('div'); corrections.className = 'btns';
+    const label = document.createElement('label'); label.textContent = '戻す手';
+    const target = document.createElement('input'); target.type = 'number'; target.min = 0;
+    target.max = steps.length - 2; target.value = target.max; label.append(target);
+    const rewind = button('巻き戻しを記録', 'ゲーム内の手順を指定した手に戻す',
+      () => liveExternal('judge-rewind', { target: target.valueAsNumber }));
+    const updateTarget = () => { rewind.disabled = !target.validity.valid || !Number.isInteger(target.valueAsNumber); };
+    target.addEventListener('input', updateTarget); updateTarget();
+    corrections.append(label, rewind, button('裁定シャッフルを読み込む', '混ぜ直した部分の順序を記録した JSON',
+      () => $('judgeShuffleFile').click()),
+      button('巻き戻し裁定の JSON を読み込む', '時計の最終予定ターン、取り消す裁定、選び直したカードを記録',
+        () => $('judgeRewindFile').click()));
+    details.append(corrections);
+  }
+  if (liveExt.queuedGameLoss.length) {
+    const note = document.createElement('p'); note.className = 'note';
+    note.textContent = '次のゲームに適用予定 ' + liveExt.queuedGameLoss.map(p => 'P' + p).join('、');
+    details.append(note);
+  }
+  box.append(details);
+}
+
+function deathReplacementUnit(a) {
+  return a.deathGearUnit ?? a.deathFreeUnit ?? a.banishDeathUnit ?? a.deathSacrificeUnit;
+}
+
 function renderLegal(i) {
   const box = $('choices'); box.textContent = '';
   clearActMarks();
   const atLiveEnd = live && liveGameIndex === traceIndex && steps && i === steps.length - 1;
+  box.classList.toggle('match-setup', Boolean(atLiveEnd && (liveBo1 || (liveTeamFormat && liveOver))));
   $('undobtn').hidden = !(atLiveEnd && undoCount > 0);
   if (!atLiveEnd) return;
   const last = steps[i].state;
@@ -1305,9 +1504,18 @@ function renderLegal(i) {
     const h = document.createElement('h3'); h.textContent = title;
     const row = document.createElement('div'); row.className = 'btns'; row.append(...buttons); box.append(h, row);
   };
+  const register = (seat) => btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
+    () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); });
+  const sealedTeamImport = () => btn(teamNextDecks ? '次のゲーム用のデッキを選び直す' : '4席の Sealed デッキを読み込む',
+    '4席の LimitedDeck を席順に並べた JSON 配列', () => $('sealedTeamFile').click());
   if (liveOver) {
     if (liveMatch && !liveMatch.finished) {
-      if (askChoice !== null) {
+      if (askTeamChoice) {
+        $('livemsg').textContent = teamLabel(askTeamChoice.team) + ' が次のゲームの手番順を選びます。';
+        group('次のゲームの手番順', askTeamChoice.orders.map(order =>
+          btn(order.map(p => 'P' + p).join(' → '), '', () => liveTeamNext(order))));
+        if (liveTeamFormat === 'sealed' && liveMatch.sideboard) group('Sealed', [sealedTeamImport()]);
+      } else if (askChoice !== null) {
         $('livemsg').textContent = 'P' + askChoice + ' が、次のゲームの先手か後手かを選ぶ（TR 407）';
         group('P' + askChoice + ' の選択', [
           btn('先手にする', '次のゲームで、先に動く', () => liveNext('first')),
@@ -1315,12 +1523,12 @@ function renderLegal(i) {
       } else {
         $('livemsg').textContent = 'このゲームは終わった。マッチは続く。';
         if (liveSide && liveSide.allowed) renderSideboard(group, btn);
-        const actions = [btn('次のゲーム', '', () => liveNext(null))];
-        if (liveExt.betweenGames) actions.push(btn('時間切れ', '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
-        if (liveSide?.allowed) for (const seat of liveSeats) {
-          actions.push(btn(`P${seat} のデッキ変更を読み込む`, 'Chosen Champion とサイドボードを含む登録 JSON',
-            () => { $('registrationFile').dataset.seat = seat; $('registrationFile').click(); }));
-        }
+        const actions = [btn('次のゲーム', '', () => liveTeamFormat ? liveTeamNext() : liveNext(null))];
+        if (liveExt.betweenGames) actions.push(btn('時間切れ', liveMatch?.singleElimination
+          ? 'ゲーム勝数が同じ場合は次のゲームを行う（TR 408.4）'
+          : '次のゲームを始めずにマッチを終了', () => liveExternal('time-between-games')));
+        if (liveSide?.allowed) for (const seat of liveSeats) actions.push(register(seat));
+        if (liveTeamFormat === 'sealed' && liveMatch.sideboard) actions.push(sealedTeamImport());
         group('マッチ', actions);
       }
     } else {
@@ -1328,6 +1536,38 @@ function renderLegal(i) {
         : 'ゲーム終了。「新しいゲーム」で、もう一度始められる。';
       if (liveArchive) group('対局記録', [btn('マッチの記録を保存', '手札やデッキ順を含む JSON', saveReplay)]);
     }
+    renderJudgePenalties(box, btn);
+    return;
+  }
+  if (liveBo1?.chooser != null) {
+    $('livemsg').textContent = `P${liveBo1.chooser} が最初のゲームの先手か後手かを選びます。`;
+    group(`P${liveBo1.chooser} の選択`, [
+      btn('先手にする', '', () => liveExternal('bo1-first', { choice: 'first' })),
+      btn('後手にする', '', () => liveExternal('bo1-first', { choice: 'second' }))]);
+    renderJudgePenalties(box, btn);
+    return;
+  }
+  if (liveBo1?.sideboards.length) {
+    const side = liveBo1.sideboards.find(({ player }) => player === bo1SideSeat) ?? liveBo1.sideboards[0];
+    $('livemsg').textContent = 'サイドボードを編集できます。確定するとシャッフルを始めます。';
+    if (liveBo1.sideboards.length > 1) {
+      group('編集する席', liveBo1.sideboards.map(({ player }) => {
+        const seat = btn(`P${player}`, '', () => {
+          bo1SideSeat = player; swapOut = swapIn = null;
+          renderLegal(i);
+          box.querySelector(`[data-sideboard-seat="${player}"]`)?.focus();
+        }, player === side.player ? 'sel' : null);
+        seat.dataset.sideboardSeat = player;
+        seat.setAttribute('aria-pressed', player === side.player);
+        return seat;
+      }));
+    }
+    group('ゲーム開始前の操作', [
+      register(side.player),
+      btn('サイドボードを確定', 'Chosen Champion を配置してシャッフルする',
+        () => liveExternal('bo1-sideboard'))]);
+    renderSideboard(group, btn, side);
+    renderJudgePenalties(box, btn);
     return;
   }
   markActCards(liveLegal);
@@ -1342,11 +1582,15 @@ function renderLegal(i) {
   }
   const choiceContext = liveLegal.find(({ a }) => a.choiceContext)?.a.choiceContext;
   const damageChoices = liveLegal.filter(({ a }) => a.damageReplacement);
-  const banishChoices = liveLegal.filter(({ a }) => a.banishDeathUnit != null);
+  const combatPriorityChoices = liveLegal.filter(({ a }) => a.combatAssignmentPriority);
+  const tokenReplacement = liveLegal.find(({ a }) => a.unitTokenReplacement)?.a.unitTokenReplacement;
+  const deathChoices = liveLegal.filter(({ a }) => deathReplacementUnit(a) != null);
   const playPayment = liveLegal.find(({ a }) => a.playPaymentCost || a.preparedAdds)?.a;
   const playPrice = playPayment?.playPaymentCost || playPayment?.reducedPlay?.cost;
+  const groupMove = liveLegal.find(({ a }) => a.groupMoveUnits)?.a;
   const prompt = naming.length ? 'P' + naming[0].a.actor.slice(1) + ' がカードの名前を指定する'
     : guessing ? 'P' + guessing.a.actor.slice(1) + ' がカードの種別を予想する'
+    : groupMove ? `同時に移動するユニットを選ぶ。${groupMove.groupMoveUnits.length}体選択中`
     : choiceContext === 'own' ? '自分のカードから選ぶ'
     : choiceContext === 'retain' ? '対象に残すカードを選ぶ'
     : choiceContext === 'equipExhaust' ? 'Equip コストで Exhaust するユニットを選ぶ'
@@ -1364,15 +1608,19 @@ function renderLegal(i) {
     : liveLegal.some(({ a }) => a.queuedSpell != null) ? '呪文の対象と支払いを選ぶ'
     : playPayment ? 'プレイの支払いを選ぶ' + (playPrice ? '（' + costText(playPrice) + '）' : '')
     : liveLegal.some(({ a }) => a.reducedPlay) ? '支払いとプレイ先を選ぶ'
+    : combatPriorityChoices.length
+      ? cardNameAt(combatPriorityChoices[0].a.combatPriorityUnit, last) + ' に適用する戦闘ダメージの優先順を選ぶ'
     : damageChoices[0]?.a.combatDamageOrder ? '割り振り前に戦闘ダメージの置換順を選ぶ'
     : damageChoices.length ? '次に適用するダメージの置換効果を選ぶ'
+    : tokenReplacement?.kind.endsWith('First') ? '先に適用するトークンの置換効果を選ぶ'
+    : tokenReplacement ? 'トークンの置換を選ぶ'
     : liveLegal.some(({ a }) => a.damageDivision) ? 'ダメージの割り振りを選ぶ'
-    : banishChoices.length ? 'Banish に置き換える効果を選ぶ'
+    : deathChoices.length ? cardNameAt(deathReplacementUnit(deathChoices[0].a), last) + ' の死亡置換を選ぶ'
     : liveLegal.some(({a}) => a.damageOrder) ? 'ダメージに適用する効果の順番を選ぶ'
     : choiceContext === 'move' || liveLegal.some(({a}) => a.moveLocation) ? '移動先を選ぶ' : '答えを選ぶ';
   const answerCount = damageChoices.length
     ? liveLegal.filter(({ a }) => a.damageReplacement || a.moreDamageReplacements).length
-    : banishChoices.length || (choiceContext === 'attachmentCopy'
+    : combatPriorityChoices.length || deathChoices.length || (choiceContext === 'attachmentCopy'
       ? liveLegal.filter(({a}) => a.choiceContext === 'attachmentCopy').length : liveLegal.length);
   $('livemsg').textContent = liveLegal.length ? prompt + (naming.length ? '' : '（' + answerCount + ' 個）') +
     (nBound && !showAllMoves ? ': 青い枠のカードをクリック、または下のボタン' : '') : '';
@@ -1386,13 +1634,15 @@ function renderLegal(i) {
   if (nBound) group('表示', [btn(showAllMoves ? 'カードの手を、ボタンから隠す' : 'カードの手も、ボタンで全部出す',
     'カードをクリックしても同じ手を選べる', () => { showAllMoves = !showAllMoves; renderLegal(steps.length - 1); })]);
   const ext = [];
-  if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
+  if (liveExt.clock) ext.push(btn('時計: 時間切れを知らせる', liveMatch?.singleElimination
+    ? '今のターンと追加の3ターンを行う（TR 408.4）'
+    : '今のターンを最後まで行い、さらに 3 ターン行って終わる（TR 408.2）', () => liveExternal('clock')));
   if (liveExt.judge) ext.push(btn('ジャッジ: 引き分けを宣言する', '選手の合意、または終わらないループ（TR 410.1、505.6）', () => liveExternal('judge'), 'danger'));
   if (ext.length) group('大会のルール', ext);
+  renderJudgePenalties(box, btn);
 }
 // サイドボード（TR 403.4）: Main Deck のカードを 1 枚出し、サイドボードのカードを 1 枚入れる。合法かどうかは Lean が決める。
-function renderSideboard(group, btn) {
-  const s = liveSide;
+function renderSideboard(group, btn, s = liveSide) {
   const cardBtns = (list, sel, set) => list.map((c) =>
     btn(c.name + ' ×' + c.n, c.id, () => { set(sel === c.id ? null : c.id); renderLegal(steps.length - 1); },
       sel === c.id ? 'sel' : null));
@@ -1403,22 +1653,20 @@ function renderSideboard(group, btn) {
   const nm = (list, id) => { const c = list.find((x) => x.id === id); return c ? c.name : id; };
   const go = btn(swapOut && swapIn ? '入れ替える: ' + nm(s.main, swapOut) + ' ⇄ ' + nm(s.side, swapIn) : '出すカードと入れるカードを選ぶ',
     '1 対 1 で入れ替える。入れ替えの後のデッキが Constructed で合法かどうかは、Lean が確かめる（TR 403.4.c）',
-    () => liveSwap());
+    () => liveSwap(s.player));
   go.disabled = !(swapOut && swapIn);
   group('入れ替え', [go]);
 }
-async function liveSwap() {
+async function liveSwap(seat) {
   if (liveRequest) return;
-  setLiveRequest(true);
   const out = swapOut, inn = swapIn;
   $('livemsg').textContent = '確かめ中…';
   try {
-    const j = await api('/api/swap', { out, in: inn });
-    undoCount = 0;
-    setLive(j); renderLegal(steps.length - 1);
-    $('livemsg').textContent = '入れ替えた。続けて入れ替えるか、「次のゲーム」へ。';
+    await startWith('/api/swap', { out, in: inn, seat }, false);
+    $('livemsg').textContent = liveBo1
+      ? 'カードを入れ替えました。編集を続けるか、サイドボードを確定してください。'
+      : 'カードを入れ替えました。編集を続けるか、次のゲームへ進んでください。';
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
-  finally { setLiveRequest(false); }
 }
 async function startWith(path, body, fresh) {
   if (liveRequest) return;
@@ -1426,13 +1674,17 @@ async function startWith(path, body, fresh) {
   try {
     const j = await api(path, body);
     if (j.choice !== undefined) { askChoice = j.choice; renderLegal(steps.length - 1); return; }
-    if (fresh) undoCount = 0;
-    else if (path === '/api/act' || path === '/api/clock' || path === '/api/judge') undoCount++;
+    if (j.teamChoice) { askTeamChoice = j.teamChoice; renderLegal(steps.length - 1); return; }
+    const initialEdit = liveBo1?.sideboards.length && (path === '/api/swap' || path === '/api/register');
+    if (fresh) { undoCount = 0; bo1SideSeat = null; teamNextDecks = null; }
+    else if (initialEdit || ['/api/act', '/api/clock', '/api/judge', '/api/judge-game-loss', '/api/judge-rewind',
+      '/api/judge-shuffle', '/api/judge-private-rewind', '/api/judge-timeline-rewind',
+      '/api/bo1-first', '/api/bo1-sideboard'].includes(path)) undoCount++;
     else undoCount = 0;
     setLive(j);
     if (fresh) {
-      if (path !== '/api/next') { matchTraces = []; liveSeats = body.humans; }
-      matchTraces.push({ seed: j.seed, players: j.players, cards: j.cards, steps: j.steps });
+      if (path !== '/api/next' && path !== '/api/team-next') { matchTraces = []; liveSeats = body.humans; }
+      matchTraces.push({ seed: j.seed, players: j.players, teams: j.teams, cards: j.cards, steps: j.steps });
       liveGameIndex = matchTraces.length - 1;
       $('traceinfo').textContent = '';
       selectGame(liveGameIndex);
@@ -1449,6 +1701,10 @@ async function startWith(path, body, fresh) {
   }
 }
 async function liveStart() {
+  if ($('seat').value === '0123') {
+    $('livemsg').textContent = '2v2の設定は「登録デッキで開始」から読み込んでください。';
+    return;
+  }
   $('livemsg').textContent = '準備中…'; $('matchinfo').textContent = '';
   try {
     await startWith('/api/start', { seed: +$('seed').value, humans: $('seat').value,
@@ -1459,7 +1715,8 @@ async function startRegistered(file) {
   $('livemsg').textContent = '登録デッキを確認中…';
   try {
     const setup = JSON.parse(await file.text());
-    await startWith('/api/register-start', { seed: +$('seed').value, humans: $('seat').value, setup }, true);
+    const path = Array.isArray(setup.order) ? '/api/register-team-start' : '/api/register-start';
+    await startWith(path, { seed: +$('seed').value, humans: $('seat').value, setup }, true);
   } catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function saveReplay() {
@@ -1478,17 +1735,25 @@ async function liveAct(k) {
   try { await startWith('/api/act', { k }, false); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
 }
-async function liveExternal(which) {
+async function liveExternal(which, body = {}) {
   if (liveRequest) return;
   $('choices').textContent = ''; $('livemsg').textContent = '計算中…';
-  try { await startWith('/api/' + which, {}, false); }
-  catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+  try { await startWith('/api/' + which, body, false); }
+  catch (e) { renderLegal(cur); $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 async function liveNext(choice) {
   if (liveRequest) return;
   $('choices').textContent = ''; $('livemsg').textContent = '準備中…';
   try { await startWith('/api/next', choice ? { choice } : {}, true); }
   catch (e) { $('livemsg').textContent = 'エラー: ' + e.message; }
+}
+async function liveTeamNext(order) {
+  if (liveRequest) return;
+  const body = {};
+  if (order) body.order = order;
+  if (teamNextDecks) body.decks = teamNextDecks;
+  try { await startWith('/api/team-next', body, true); }
+  catch (e) { renderLegal(cur); $('livemsg').textContent = 'エラー: ' + e.message; }
 }
 // 直前の答えを取り消す: Lean が、答える前のゲームに戻す。画面は、その手までの記録に切り詰める。
 async function liveUndo() {
@@ -1498,7 +1763,7 @@ async function liveUndo() {
   try {
     const j = await api('/api/undo', {});
     pause(); undoCount--;
-    const n = j.truncate; steps.length = n;
+    const n = j.truncate; steps.length = n; indexTraceObjects();
     const lis = $('log').children; while (lis.length > n) lis[lis.length - 1].remove();
     $('scrub').max = n - 1; setLive(j);
     buildBoard(); cur = 0; show(n - 1, false);
@@ -1520,6 +1785,33 @@ $('registrationFile').addEventListener('change', async (e) => {
   const file = e.target.files[0], seat = +e.target.dataset.seat; e.target.value = '';
   if (!file) return;
   try { await startWith('/api/register', { seat, registration: JSON.parse(await file.text()) }, false); }
+  catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
+$('sealedTeamFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const decks = JSON.parse(await file.text());
+    if (!Array.isArray(decks) || decks.length !== 4) throw new Error('4席のデッキを席順に並べてください。');
+    teamNextDecks = decks;
+    renderLegal(cur);
+    $('livemsg').textContent = '4席のデッキを読み込みました。次のゲームの開始時に照合します。';
+  } catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
+$('judgeShuffleFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try { await liveExternal('judge-shuffle', { shuffle: JSON.parse(await file.text()) }); }
+  catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
+});
+$('judgeRewindFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const rewind = JSON.parse(await file.text());
+    const type = ('deadline' in rewind || 'rulings' in rewind) ? 'judge-timeline-rewind' : 'judge-private-rewind';
+    await liveExternal(type, { rewind });
+  }
   catch (error) { $('livemsg').textContent = 'エラー: ' + error.message; }
 });
 async function detectLive() {

@@ -2,6 +2,8 @@ module
 
 public import RiftboundCards.Registry
 public import RiftboundCards.BanList
+public import RiftboundCards.MightObservation
+public import RiftboundCards.MightRead
 
 /-!
 # RiftboundCards

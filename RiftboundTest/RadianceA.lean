@@ -217,7 +217,7 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   return (play s p spell [enemy, ally]).isNone &&
     (done.obj? ally).any (·.buffed) && (done.obj? enemy).any (·.stunned)
 
--- Protector's Shield Quick-Draws, gives one Might and Tank, and can subsequently be reattached.
+-- Protector's Shield Quick-Draws, gives one Might and Tank, and can Equip once detached.
 #guard radianceCase fun s => do
   let p := s.me
   let (s, shield) ← put s p "RAD-123" .hand
@@ -225,9 +225,15 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   let (s, second) ← put s p "VEN-014" .base
   let equipped ← play s p shield [] { pick := (· == [first]) }
   let gear ← equipped.firstOf p .base "RAD-123"
-  let moved ← activate equipped p gear 0 [second] ⟨1, []⟩
+  let pay : RunePool.Payment := ⟨1, []⟩
+  let (left, _) ← moveObj equipped first (.player p .trash)
+  let (detached, _) ← (advance 100 { left with pending := .cleanup :: left.pending } []).toOption
+  let moved ← activate detached p gear 0 [second] pay
   return equipped.hasKw first .tank && equipped.mightNow first == some 3 &&
-    !moved.hasKw first .tank && moved.hasKw second .tank && moved.mightNow second == some 3
+    (activate equipped p gear 0 [second] pay).isNone &&
+    (detached.obj? gear).any (·.attached.isNone) && !detached.hasKw second .tank &&
+    (moved.obj? gear).any (·.attached == some second) &&
+    moved.hasKw second .tank && moved.mightNow second == some 3
 
 -- The Outrider counts each other friendly Unit or Gear at the same Battlefield.
 #guard radianceCase fun s => do
@@ -769,7 +775,7 @@ private meta def bombsAt (s : GameState) (p : PlayerId) (field : ObjId) : List O
   let s := (((s.control p field).control p away).modObj guardian (hide field)).modObj
     facedown (hide away)
   let d ← s.cardDef? guardian
-  let (queued, _) ← (step 100 s ⟨.player p, .activate guardian 2 ⟨0, []⟩ []⟩).toOption
+  let (queued, _) ← (step 100 s ⟨.player p, .activate guardian 2 ⟨0, [], none⟩ []⟩).toOption
   let revealed := settleChain { fromEnd := some 0 } 14 queued
   let declined := settleChain { fromEnd := some 1 } 14 queued
   let entered ← (revealed.unitsAtOf field p).find? (fun id =>

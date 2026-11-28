@@ -71,7 +71,7 @@ inductive Amount where
   | gearsPlayed
   /-- How many Equipment the player has played this turn. -/
   | equipmentPlayed
-  /-- The excess damage the player assigned to enemy Units in this turn's last Combat. -/
+  /-- The excess damage the player assigned to enemy Units in the Combat that led to this Conquer. -/
   | excess
   /-- How many points the player scored this turn by holding (one for each Battlefield held). -/
   | heldPoints
@@ -113,6 +113,8 @@ inductive Filter where
   | named (name : String)
   /-- Has the card name of the source, including its subtitle (CR 132). -/
   | sameNameAsSource
+  /-- In its owner's Chosen Champion registration, including same-name copies (CR 103.3.a.3). -/
+  | chosenChampion
   /-- Has the keyword. -/
   | hasKeyword (k : Keyword)
   /-- Has the domain. -/
@@ -188,6 +190,8 @@ inductive Filter where
   | hidden
   /-- Is among the first `n` cards of the Main Deck or of the Rune Deck of its owner. -/
   | top (n : Nat)
+  /-- Is one of the cards recorded by the current Look. -/
+  | lookedAt
   /-- Is a Battlefield nobody controls: an open Battlefield. -/
   | openBf
   /-- The Battlefield the player of `self` scored this turn. -/
@@ -247,8 +251,8 @@ inductive Filter where
   | isAttached
   /-- Is a token. -/
   | token
-  /-- Is a spell that chooses a unit or a gear of the player the effect belongs to. -/
-  | choosesMine
+  /-- Is a Chain item that chooses a friendly Unit or Gear. -/
+  | choosesFriendly
   /-- Made its last move from a Battlefield. -/
   | fromBattlefield
   /-- Its Might is less than the Might of the object the selector names (`self`, a chosen object or a
@@ -294,6 +298,8 @@ inductive Selector where
   | attachments (s : Selector)
   /-- The Battlefields the objects are at (a Unit in a Base is at none). -/
   | locationOf (s : Selector)
+  /-- The objects recorded by the linked instruction that fired this ability. -/
+  | eventObjects
 deriving DecidableEq, Repr, Hashable
 
 /-- A question about the game. -/
@@ -343,10 +349,12 @@ inductive Condition where
   | marked (e : TurnEffect)
   /-- The object came into play from Hidden. -/
   | fromHidden
-  /-- The player assigned at least `n` excess damage to enemy Units in the last Combat this turn. -/
+  /-- The player assigned at least `n` excess damage to enemy Units in the Combat of this Conquer. -/
   | excessAtLeast (n : Nat)
   /-- The player has the effect noted this turn. -/
   | noted (e : TurnEffect)
+  /-- The player or a teammate has the effect noted this turn (CR 491.8.e). -/
+  | friendlyNoted (e : TurnEffect)
   /-- The player has a passive ability that lets them hide a card for one Energy (Swift Scout). -/
   | hidesWithEnergy
   /-- The player has a card in play, or a Legend, that is the card (Heimerdinger). -/
@@ -358,6 +366,8 @@ inductive Condition where
   | discardedThisTurn
   /-- It is the turn of the player the effect belongs to. -/
   | yourTurn
+  /-- It is the turn of an opponent of the player the effect belongs to (CR 491.8). -/
+  | opponentTurn
   /-- A combat is going on. -/
   | inCombat
   /-- A combat is going on at the place `self` is (or was, if it has died there). -/
@@ -384,6 +394,8 @@ inductive Condition where
   | iControlHere
   /-- The point being scored comes from this source. -/
   | scoreFrom (src : ScoreSource)
+  /-- At least one opponent is within the given number of points of the Victory Score. -/
+  | opponentNearVictory (distance : Nat)
 deriving DecidableEq, Repr, Hashable
 
 end

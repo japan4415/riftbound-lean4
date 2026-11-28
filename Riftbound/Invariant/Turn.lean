@@ -38,10 +38,7 @@ theorem microStep_phase0 {s s' : GameState} {es : List Event} {ph : Phase} {rest
   cases ph with
   | setup => exact absurd rfl hne
   | awaken => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
-  | beginning =>
-    dsimp only at h
-    split at h <;>
-      (simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl)
+  | beginning => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | channel => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | draw => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
   | main => simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; rfl
@@ -54,7 +51,7 @@ theorem microStep_phase {s s' : GameState} {es : List Event} {ph : Phase} {rest 
     s'.phase = if ph == .draw && s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase
       then s.phase else ph := by
   obtain ⟨s2, h0, rfl⟩ := microStep_cases h
-  obtain ⟨q, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
+  obtain ⟨q, result, hq⟩ := withTriggers_pending s2 (es ++ s.workTransitionEvents s2)
   have h2 := microStep_phase0 hp hne h0
   rw [hq]
   exact h2
@@ -64,20 +61,18 @@ theorem step_over {fuel : Nat} {s : GameState} {a : Action} (h : s.result ≠ no
     step fuel s a = .error .illegal :=
   step_illegal (fun hl => h hl.1)
 
-/-- **Concession** (CR 649-651). In a 1v1 game a legal concession by a player ends the game at once:
-the other player wins, and nothing is left to answer. -/
+/-- A two-sided game ends immediately on a legal concession (CR 649-651). -/
 theorem step_concede {fuel : Nat} {s : GameState} {a : Action} {p : PlayerId}
-    (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p) :
-    step fuel s a = .ok ({ s with result := some (.won [otherPlayer p]), pending := [] }, []) := by
-  have hc := hl.of_concede hk
+    (hl : Legal s a) (hk : a.kind = .concede) (hp : a.actor = .player p)
+    (twoSided : s.config.mode.isFreeForAll = false) :
+    step fuel s a = .ok ({ s with result := some (.won (s.concessionWinners p)), pending := [] }, []) := by
   have noCost : s.actionDeathCostChoice a = none := by
     cases h : s.pending with
     | nil => simp [GameState.actionDeathCostChoice, h]
     | cons frame rest =>
       cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, h, hk]
-  simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp]
-  unfold advance
-  cases fuel <;> simp
+  simp only [step, hl, ite_true, applyDeclaredAction, noCost, applyAction_concede hk hp twoSided]
+  cases fuel <;> simp [advance, GameState.preparePriority]
 
 /-- Taking turns in turn order: the turn player at turn `k` (CR 118, 301). -/
 def GameState.turnPlayerAt (s : GameState) (k : Nat) : PlayerId :=
@@ -113,6 +108,34 @@ theorem turnPlayerAt_alternates {s : GameState} (hc : s.playerCount = 2)
   · have h2 : (k + 1) % 2 = 0 := by omega
     rw [h, h2]
     simpa using hne.symm
+
+/-- Seats that each lead all their opponents belong to the same winning side (CR 323.1, 491.6). -/
+theorem win_side_unique {s : GameState} {p q : PlayerId}
+    (pSeat : p ∈ s.participatingSeats) (qSeat : q ∈ s.participatingSeats)
+    (pLeads : ∀ other ∈ s.participatingSeats, s.config.mode.sameSide p other = false →
+      s.pointsOf other < s.pointsOf p)
+    (qLeads : ∀ other ∈ s.participatingSeats, s.config.mode.sameSide q other = false →
+      s.pointsOf other < s.pointsOf q) :
+    s.config.mode.sameSide p q = true := by
+  cases side : s.config.mode.sameSide p q
+  · have reverse : s.config.mode.sameSide q p = false := by
+      cases reverse : s.config.mode.sameSide q p
+      · rfl
+      · have seats : s.config.mode.scoringSeat q = s.config.mode.scoringSeat p :=
+          of_decide_eq_true reverse
+        simp [Mode.sameSide, seats] at side
+    have hp := pLeads q qSeat side
+    have hq := qLeads p pSeat reverse
+    omega
+  · rfl
+
+/-- A seat that leads all its opponents belongs to the side the engine declares the winner. -/
+theorem GameState.winner_sameSide {s : GameState} {p winner : PlayerId}
+    (result : s.winner = some winner) (seat : p ∈ s.participatingSeats)
+    (leads : ∀ other ∈ s.participatingSeats, s.config.mode.sameSide p other = false →
+      s.pointsOf other < s.pointsOf p) : s.config.mode.sameSide p winner = true := by
+  have member : winner ∈ s.participatingSeats := List.mem_of_find?_eq_some result
+  exact win_side_unique seat member leads (winner_spec result).2
 
 end Riftbound
 

@@ -27,20 +27,20 @@
 | I3 | **整形性の保存**: 初期状態は `WF`。`WF s` かつ `step fuel db s a = .ok (s', es)` なら `WF s'`。したがって `Reachable s → WF s`。`WF` は構造の条件だけを含む（[design.md §5.2](design.md#52-ゾーンとオブジェクト)） | L3 | M2（以後、マイルストーンごとに対象の遷移を広げる） |
 | I4 | **内部エラーが起きない**: `WF s` かつ `OwnerOk s`（と、カードを使うようになってからは `CardDB.WF db`）なら、`step` は `RuleError.internal` を返さない。`custom` ハンドラの中身にはよらない（解釈器が全域なので）。M2c で証明（`step_not_internal`、到達可能な状態では `Reachable.not_internal`） | L3 | M2〜 |
 | I5 | **進行性**: ゲームが終わっていなければ、投了以外の合法手があるか、偶然の決定が求められている。分割した決定の途中でも行き止まりにならない。M3 で証明（`Reachable.progress`。`Reachable.exists_legal` が、偶然の決定を含めて合法な答えの存在を述べる） | L3 | M3 |
-| I6 | **`Legal` との一致**: `step` の健全性・完全性と、`legalActions` の列挙の一致（[design.md §6.3](design.md#63-できること全ての担保)）。M2 のフレーム（偶然の決定、マリガン、Burn Out）については、完全性（`legal_of_step_ok`）、健全性（`step_sound`）、列挙の一致（`legalActions_iff`）がすべて証明済み | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
-| I7 | **勝者の一意性**: 1v1 では勝者は高々 1 人で、引き分けなら 0 人（CR 323.1 の「全対戦相手より多い」）。M5a で証明（`win_condition_unique`、`winner_spec`） | L2 | M5 |
+| I6 | **`Legal` との一致**: `legal_of_step_ok` は成功した `step` が合法であること、`step_sound` は整形性と所有者の不変条件の下で合法手が失敗する場合の理由が fuel 切れに限られることを示す。`legalFrameActions_iff` は現在の全フレームを場合分けし、`legalActions_iff` は投了を含むプレイヤーの合法手と列挙が一致することを示す。偶然・時計・ジャッジの答えは `Legal` で判定する（[design.md §6.3](design.md#63-できること全ての担保)） | L3 | M2（マリガンと偶然の決定）から、フレームの種類ごとに |
+| I7 | **勝者の一意性**: 全対戦相手より得点が多い側は高々1つ。Duel と FFA では1人、2v2 では1チームが勝つ（CR 323.1, 491.6）。`win_condition_unique`、`winner_spec`、`win_side_unique` で証明した | L2 | M5 |
 | I8 | **資源の会計**: Rune Pool は負にならない。Channel と Recycle の間で Rune の総数が保存される。M3 後半で証明（`RunePool.total_spend`、`applyRune_adds_one`、`applyRune_recycle_zones`、`channelOne_zones`） | L1 | M3 |
 | I9 | **ターン構造**: フェイズの順序が固定されている（M3 前半で証明: `turnPhases_chain`、`microStep_phase`）。Chain は後入れ先出し（340.1。M6a で証明: `applyActivate_chain`・`applyCast_chain`・`resolveFrames_top`・`finishItem_top_chain`）。Discretionary Action は Priority を持つプレイヤーだけが行える（312.1） | L2 | M3〜M6a |
-| I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる） | L6 | M9 |
-| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。M5a で、1 つの Battlefield について証明（`scoreBf_twice`）。2v2 のチーム単位は M9 | L2 | M5 |
-| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。**調査の結果と単位の分け方は [termination.md](termination.md)。I12a（Cleanup）は証明済み、残りは未** | L2 | M5〜 |
+| I10 | **隠れ情報の非干渉**: プレイヤー p の合法手は `view p s` にだけ依存する（偶然の決定を除く。ObjId の付け替えに対して不変な形で述べる）。[Visibility.lean](../Riftbound/Spec/Visibility.lean) で山札、相手の手札、他のプレイヤーが支配する伏せ札の表面が通常の射影に含まれないことを証明した。効果の解決中にフレームが保持する公開札、山札の閲覧、Predict を `resolutionZoneCardFaces` に反映した。公開・閲覧イベントの発生時に表面を記録し、リプレイから席別の履歴を出力できる。[PlayerView.lean](../Riftbound/Spec/PlayerView.lean) で席別に盤面を射影し、開示されていない山札と他席の手札が枚数だけを表すこと、およびオブジェクトの参照先が公開ゾーンに限られることを証明した。対局全体の席別盤面を JSON に出力できる。別のゾーンに開示がある場合も、対象ゾーンに開示されたカードがなければ見え方は変わらないと証明した。[PrivateChoices.lean](../Riftbound/Invariant/PrivateChoices.lean) で、マリガンと通常の捨て札では、当事者から同じ手札に見え、選択枚数が同じなら、カードごとの選択肢と終了の可否が同じになることを証明した。同じカードが複数ある場合も、選択できる枚数が一致する。Predict では各手が当事者に開示された候補だけを参照し、候補の ID を付け替えても上に戻す手とリサイクルする手が対応することを証明した。 対象プレイヤーが公開した手札から選ぶ効果では、提示された合法手が公開済みのカードを指し、その表面を選択する席が閲覧できることを証明した。カード種別を推測する手とカード名を指定する手は、非公開カードや解決中の内部参照を変えても一致する。 投了が可能な席は公開されている対戦モードと離脱済みの席で決まり、現在の選択と勝敗が一致すれば投了を含む全合法手の一覧も一致する。 戦闘ダメージの割り当てでは、候補と割り当て済みの Unit、各候補の支配者と割り当て優先順位が対応すれば、識別子が異なっても選択肢は対応する。Basic Rune の合法な起動は Base の並びと公開される所有者、Rune の領域、Ready 状態に従い、識別子を付け替えても対応する。 全種類の合法手と ID の付け替えに関する一般証明は残っている | L6 | M9 |
+| I11 | **Score の回数制限**: 1 人のプレイヤー（2v2 ではチーム）は、1 つの Battlefield を 1 ターンに高々 1 回 Score する（472, 491.8.b）。同じ Battlefield に対する連続した `scoreBf` では、同じ席の2回目（`scoreBf_twice`）も味方の2回目（`scoreBf_twice_side`）も得点しないと証明した | L2 | M5 |
+| I12 | **自動処理の停止**: 到達可能な状態では、Cleanup の反復・Expiration のループ・効果の解決が、有限の歩数で次の決定点に達する（ある fuel で `step` が fuel 切れにならない）。言えない部分は、fuel で扱っていることを明記する。Layers の反復は、内側の上限で必ず止まる（[design.md §5.4](design.md#54-特性の導出layers)）。連続する Cleanup の停止は、イベント処理・同時撃破・入れ子の死亡置換を含む実際のエンジン上で証明済み。登録済みカードでは、通常の優先権での合法な Pass から、即時 Add やターン移行を含めて次の決定点か試合終了まで停止を証明済み。初期手札・対局中のドロー・通常の誘発キューの上限も証明済み。繰り返しなどの制御構文と即時 Add が実行するルール処理の有限性も証明済み。Chain の最後の Pass は、対応する Run 命令列、Recycle、Cleanup、後続の保留 Spell の宣言確定を経て次の決定点に着くことを証明済み。直接・相互・振り分けダメージと、その置換選択も Chain の検査に含む。Chain での任意効果・分岐・対象の回答は、回答で生成される命令列を検査し、次の決定点に着くことを証明済み。個別の選択を記録した Repeat では、実行ごとにその時点の盤面を使って対象を再検査する。Showdown の最後の Pass と Combat の割り当て確定は、置換・割り当ての選択か、戦闘後の Cleanup を経て次の決定点に着くことを証明済み。誘発の支払いの準備・確定・取り消しと、対応する死亡置換の回答後の再開も証明済み。カードのプレイと能力起動、対応する死亡置換の回答、Recycle の対象と順番の回答も、対応する継続について次の決定点まで追える。通常移動、グループ移動、Showdown の戦場選択、対応する Cleanup への回答についても次の決定点まで証明した。Rune と即時 Add の合法な起動も、通常の優先権で Add 後に行う Cleanup を含めて証明済み。Predict の途中の入力と最終回答、カード名の指定、カード種別の推測についても、対応する継続が次の決定点に着くことを証明済み。War の対応する投了、Showdown の途中の Pass、2 対 2 の招待・辞退、Combat の割り当てでの Unit 選択も含む。次の決定点までの証明範囲は [termination.md](termination.md) に記載。 | L2 | M5〜 |
 | I13 | **大会のデッキと Core Rules のデッキ**: Constructed で合法なデッキからサイドボードを除いたものは、Battlefield を 3 枚求めるモード（1v1 Duel など）の Core Rules のデッキ構築でも合法である（TR 402.1, 601 と CR 103）。Battlefield の枚数はモードが決めるので（CR 103.5）、モードを限定して述べる | L0 | M1 |
 | I14 | **時間切れ後の終了**: 時計が時間切れを知らせた後、ゲームは有限のターン数で終わる（追加 3 ターンの後に点差で決まる: TR 408.2） 。局所の事実（`three_more_turns`、`beginTurn_ends`、`beginTurn_next`）に、**全体**（`Reachable.clockOk`、`step_keep`、`time_called_bound`）を足して**証明済み** | L2 | M5b |
 | I15 | **fuel の単調性**: `step n db s a = .ok r` かつ `n ≤ m` なら、`step m db s a = .ok r`。fuel 切れ以外のエラーも、fuel によらない | L3 | M2 |
-| I16 | **Priority の受け渡し**: Closed でプレイヤーがパスしたら、次の `priority` フレームは手番順で次のプレイヤーのものになる。全員が続けてパスしたら、最も新しい Finalized の項目が解決される（312.2, 339, 340） | L2 | M4 |
-| I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある到達可能な状態は、`Settled` である（Cleanup が不動点に達している: 322-323）。M5a では局所版だけ証明（`cleanupFrame_pop_settled`、`Settled.no_lethal`）。全体の形は未 | L2 | M5 |
-| I18 | **任意の選択は必ず問われる**: 解釈器は、`may`、任意の追加コスト、Pick を自分では決めない。必ず `choose` フレームを出す（[design.md §3](design.md#3-設計原則) の P4） | L4 | M4 |
-| I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
+| I16 | **Priority の受け渡し**: [Priority.lean](../Riftbound/Invariant/Priority.lean) で、最後のパスまでは `step` が手番順で次のプレイヤーの `chainPass` に停止し、最後のパスで Chain の先頭を解決するフレームに進むと証明した。席順が全席の並べ替えであれば、一巡で全席を重複なく回る（338.2, 339, 340） | L2 | M4 |
+| I17 | **`priority` の時点で `Settled`**: `priority` フレームが先頭にある全ての到達可能な状態で、Cleanup が不動点に達していることを `Reachable.priority_settled` で証明した（CR 322-323）。初期フレームには通常の優先権がなく、最初のターンでは Awaken が通常の優先権より先にセットアップを終える。エンジンは通常の優先権の直前に勝者判定と盤面を確認し、処理が残っていれば Cleanup を先に行う。[SetupPriority.lean](../Riftbound/Invariant/SetupPriority.lean) · [Priority.lean](../Riftbound/Invariant/Priority.lean) | L2 | M5 |
+| I18 | **任意の選択は必ず問われる**: 解決中の選択は決定フレーム、プレイ時の追加コストなどは `Action` で受け取る（[design.md §3](design.md#3-設計原則) の P4）。[Choices.lean](../Riftbound/Invariant/Choices.lean) で、実行可能な `may`、明示的な対象選択、複数の効果の選択、任意の誘発、印刷された Spell の任意追加コストを局所的に証明した。直接プレイを受け付ける全フレームで、任意のディスカードを見送る手と、支払いに使える各手札を選ぶ手が列挙されることを証明した。効果による Spell のプレイでも、同じ対象・モード・価格で任意のディスカードを選べることをプレイ案の列挙について証明した。 Unit トークンの Accelerate では、費用を払えるときに登場前の選択が開くことと、Add の計画中にも支払わずに登場させる選択が残ることを証明した。Unit と Gear の宣言では追加コストを任意の組み合わせで選ぶ候補が作られ、Battlefield の追加費用を選んだ場合も同じ候補が作られる。直接プレイする Spell や起動型能力が Deflect を別に払うとき、支払える領域 Power と虹 Power の配分が列挙されることを証明した。すべての効果・コスト・誘発を通した証明は残っている | L4 | M4 |
+| I19 | **ループの検出の健全性**: 検出器が強制的なループを報告したら、その後も強制的な答えだけで、同値な状態に戻り続ける。[LoopDetect.lean](../Riftbound/Tournament/LoopDetect.lean) で状態が完全に一致する場合を証明した。強制手と遷移を保存する任意の同値関係で、同値な状態に戻るサイクルを繰り返せると証明した。[OrderedReferences.lean](../Riftbound/Tournament/OrderedReferences.lean) では、ゾーン上の識別子の順序を保つ対応を、オブジェクトの追加・削除・移動にあわせて更新できると証明した。 また、識別子の順位は0から始まる連番になり、全ゾーンを順位で表した結果の一致と、ゾーン内の順序も保つ識別子の対応があることは同値だと証明した。 対応する識別子を同じゾーンの位置へ追加・削除・移動すると、操作後も順位で表したゾーンは一致する。有限個の参照は順序どおりに0から連番にでき、順序を保つ付け替えでは各参照が同じ順位になる。 同時死亡の記録を含むターン中の印は、対象とタイムスタンプを付け替えても、同じ種類の印を確認する結果が一致する。Combat の割り当ては対象の支配者と割り当て優先順位が対応すれば、Unit の識別子を付け替えても強制手が対応する。Predict は先頭の候補を残すか Recycle するかを選べるため強制手にならない。 任意の誘発を確定できる場合と、確定前の支払いを取り消せる状態で Add を選べる場合も、強制手にならないことを証明した。 保留中の参照や timestamp を含む盤面全体の付け替えについて、強制手と遷移を保存する一般証明は残っている（[tournament-model.md §5](tournament-model.md#5-ループtr-505)） | L3 | M9 |
 
 I16〜I18 は、`Legal` との一致（I6）が保証しない「問いの正しさ」を補う定理である（[design.md §6.3](design.md#63-できること全ての担保)）。
 
@@ -966,7 +966,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジン**: `Prim.returnChampion`（Champion Zone が空なら、自分の Chosen Champion を、墓地から Champion Zone へ戻す）。
 - **動くようになったカード**: Hallowed Tomb（281。ここを保持したとき、Chosen Champion を墓地から Champion Zone へ戻してもよい）。
 - **動くカード**: 263 → **264 枚**。
-- **近似として残したこと**: カードのデータに、Champion と Signature の区別が無いので、Chosen Champion は「自分の伝説と同じタグを持つ、墓地の最初のユニット」とする（本物の Chosen Champion と、デッキの同名のコピーは、区別しない）。
+- **当時の近似**: Chosen Champion を Legend と同じタグを持つ最初の Unit として選んでいた。現在は [Chosen Champion の実物カードの追跡](#chosen-champion-の実物カードの追跡2026-11-27) で、登録した1枚を識別する。
 - **レビューで分かったこと**: Origins の 12 枚の伝説は、どれも、同じタグを持つユニットが 2 枚ある（例: Kai'Sa は 039 と 112）。墓地の先頭の方が、戻る。また、Champion Zone のカードを、プレイする経路が、エンジンに無い（`legalPlays` は手札だけ）。
 
 ### M7 の実装の記録（2026-11-23）: 征服の効果を、効果で起動する（1 枚）
@@ -1148,7 +1148,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **動くようになったカード**: Albus Ferros（230。バフを持つ自分のユニットごとに、「消費するか」を聞いて、消費したら、疲労した Rune を 1 つ引く）、The Candlelit Sanctum（291。上の 2 枚を、それぞれ、リサイクルしてもよい。残りを戻す順番は、選べない）、Fortified Position（279）。
 - **動くカード**: 222 → **225 枚**。
 - **レビューで直したこと**: Albus は、提示された時点で、そのユニットがバフを持つかを確かめる。Sanctum のテストは、相手が征服したときに、相手のデッキが動くこと（Battlefield の能力は、征服した側のために働く）と、守り切ったとき（Hold）には、動かないことを確かめる。
-- **近似として残したこと**: Fortified Position の Shield 2 は、「この戦闘のあいだ」ではなく、「このターンのあいだ」続く（戦闘の長さの持続が、まだない）。Sanctum は、残すカードの順番を選べない。
+- **当時の近似**: Fortified Position の Shield 2 はターン終了まで続き、Sanctum には残すカードの順番の選択がなかった。現在は [Origins の Battlefields](#origins-の-battlefields-2026-11-27) の実装で解消した。
 
 ### M7 の実装の記録（2026-11-23）: 最高の Might による値引き、2 枚目のプレイ、バフの上乗せ（3 枚）
 
@@ -2110,6 +2110,365 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 
 **証明（L6）**: I10、I19。
 
+### Origins の Battlefields（2026-11-27）
+
+- The Candlelit Sanctum は Conquer した席だけが山札の上2枚を見て、それぞれを残すか Recycle するか選ぶ。残すカードは選んだ順番で山札の上に置き、2枚とも Recycle するときは下に置く順番を抽選する。Predict と同じエンジンの処理を使う。
+- Fortified Position は防御した席が選んだ Unit に Shield 2 を与える。戦闘終了時に Shield が消えることを、同じターンの状態で確認した。
+- Altar to Unity、Aspirant’s Climb、Grove of the God-Willow、Navori Fighting Pit、Obelisk of Power、Startipped Peak、The Arena’s Greatest、Trifarian War Camp、Windswept Hillock も検証した。Origins の `full` は 298 枚中 69 枚、全体では 1,103 枚中 520 枚。[対戦シナリオ](../RiftboundTest/OriginsA.lean)
+
+### Chosen Champion の実物カードの追跡（2026-11-27）
+
+- 構築戦、Limited、Bo1 の登録で Chosen Champion の物理 ID を記録する。ゾーンを移動して ObjId が変わっても、登録したカードかどうかの判定が変わらないことを Lean で証明した。
+- Back-Alley Bar は、いずれの席の Unit でも、効果によって戦場から Base に移動したときに Might が上がることを確認した。2枚を `full` とし、全体で1,103枚中522枚になった。[カード実装状況](coverage.md)
+
+### Battlefield の誘発能力の対象、支払い、解決順（2026-11-27）
+
+- Targon's Peak は Conquer した席を記録する。その席は、そのターンの Ending Phase に予約された能力を Chain に置く際に、任意の席の Rune を0〜2枚対象に取る。解決時にその Rune を Ready にする（CR 355.5.b）。Sigil of the Storm は解決時に自分の Rune 1枚を非対象の選択として Recycle する（CR 355.10.f）。Void Gate の追加ダメージは、その戦場の Unit に与えるダメージに適用する。[Origins の公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)
+- Monastery of Hirana は、Conquer した席が支配する Unit のバフを消費して能力を Chain に置き、解決時に1枚引く（CR 383.3.b、702.2.b.2）。
+- Hallowed Tomb は、登録したカードと同名の Champion Unit を本人の Trash から選ぶ。戻す先の Champion Zone が空いている場合に置ける。登録した実物カードの ID はリプレイで引き続き照合する（CR 103.3.a.3、108.3.c.1）。[公式 Core Rules](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Vendetta の Jayce, Brilliant Inventor など6枚では、対象を1つ選んで能力を確定するか、能力を辞退する。Mask Mother の Energy は確定前に支払い、Might の上昇は解決時に適用する（CR 383.3.a–b）。
+- Bandle Tree、Reaver's Row、Reckoner's Arena、Vilemaw's Lair、Zaun Warrens も対戦シナリオで確認した。Origins の `full` は298枚中80枚、全体では1,103枚中531枚。[カード実装状況](coverage.md)
+
+### Origins の Battlefield の検証完了
+
+- The Dreaming Tree は、Spell が味方 Unit を対象にした時点で、対象を選んだ席と Battlefield ごとにそのターンの初回を記録する。複数の Unit を一度に選んでも誘発は1回で、誘発が解決する前に対象を選び直しても初回の記録が残る。2対2ではチームメイトが支配する Unit も味方として扱う（CR 383.4.b、740.1.a）。[Origins 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)
+- The Grand Plaza を Hold した席がそこに7体以上の Unit を支配していると、その誘発の解決時に勝つ。カードから得た勝利は得点を変えず、残りの処理を打ち切る。通常の Hold の得点はそれまでに処理する。2対2では同じチームの2席が勝者になる（CR 002、383.4.d）。
+- Origins の Battlefield は24枚すべて `full`。Origins は298枚中82枚、全体では1,103枚中533枚が `full`。[カード実装状況](coverage.md)
+
+### Unleashed の Bird をプレイする4枚
+
+- Gutter Palace は手札の破棄と自身の消耗を起動時に支払う。Beginning Step では手札4枚と自身が支配する Battlefield 上の Unit 4体を確認し、勝利能力が解決すると Scoring Step に進む前にゲームが終わる（CR 315.2.a、423.3）。
+- Flurry of Feathers のモードと対象は Spell の宣言時に選ぶ。Walking Roost は相手1席を対象にし、その席が Bird のプレイ先を選ぶ。Carrion Dredger の Deathknell では指定された Base に Bird を出す（CR 184.2、355.2、355.3、355.9）。
+- Unleashed は225枚中57枚、全体では1,103枚中537枚が `full`。[カード実装状況](coverage.md)
+
+### Conquer を生んだ戦闘の余剰ダメージ
+
+- 攻撃側と防御側が敵 Unit に割り当てた致死量を超えるダメージを、それぞれ戦闘中の Battlefield に記録する。戦闘の Control Step で Conquer が起きたとき、誘発能力は割り当てた値を保持する。別の Battlefield の戦闘や無人の Battlefield の Conquer では、その値を参照しない（CR 467.2、468.5、383.4.c）。
+- Piltover Enforcer は対象を選び、自身を消耗させて誘発能力を確定する。Sivir, Ambitious も対象を確定時に選び、解決時に記録された量のダメージを与える。[Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- Trapping Grounds、Yeti Brawler、Piltover Enforcer、Tryndamere, Barbarian、Sivir, Ambitious の5枚を `full` とし、全1,103枚中542枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 装備先で変わるコストと Ready の Sprite
+
+- Hextech Gauntlets は、装備先の現在の Might を使って Equip の Energy を決める。Weaponmaster 経由では同じ Energy 割引に Weaponmaster の Power 割引を加える。装備先が Conquer すると、その戦闘の余剰ダメージが3点以上なら1枚引く（CR 356.4.g、818.1.c.4、821.1.c.2）。
+- Bashful Bloom は、起動時に味方の Temporary Unit の数に応じて Energy を支払う。Bashful Bloom と Sprite Burst の Ready の Sprite は、プレイする席が Base または条件を満たす Battlefield に出す。Sprite Fountain と Sprite Queen は印刷された指定どおり Base に出す（CR 184.1、184.2、355.2）。
+- Unleashed の5枚を `full` にし、全1,103枚中547枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 起動能力と Equip の XP コスト
+
+- XP は、能力を起動する席が支払い、Chain に載った時点で差し引かれている。能力を打ち消しても、支払った XP は戻らない。Shepherd's Heirloom の Equip は XP 1 を支払う。Weaponmaster 経由でも同じ XP を支払う（CR 357.2、730.2、818.1.c.3、821.1.c.2）。
+- Blood Rose の誘発では、Chain に載せるときに Energy 1 を支払うか選ぶ。Blood Rose と Voidreaver の起動では、対象を選んでから XP と Exhaust を支払う。Megatusk は自身と同じ場所にいる、自分が支配する Unit にそのターンの Ganking を与える。
+- Unleashed の6枚を `full` にし、全1,103枚中553枚を実装済みにした。[カード実装状況](coverage.md)
+
+### XP を支払う誘発能力と手札公開
+
+- Kha'Zix, Evolving Hunter は攻撃時に対象を選び、誘発能力を確定する時点で XP 3 を支払う。解決時の Might でダメージを決める。Icevale Archer と Sinister Poro も攻撃時の対象を確定し、Energy 1 を支払ってから相手の応答に進む（CR 383.3.a、383.3.b、405.1）。
+- Insightful Investigator は誘発を確定するときに相手を1人選ぶ。解決時にその相手の手札を公開し、公開を見てから XP 2 を支払うか決める。支払った場合は、選んだ相手が指定のカードを捨て、1枚引く（CR 204.3.a、383.3.b）。
+- Unleashed の4枚を `full` にし、全1,103枚中557枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Elder Dragon のダメージと対象の場所
+
+- ダメージが実際に通った時点で、それを与えた席を記録する。Elder Dragon は自身の支配者が敵 Unit に付けたダメージを致死とする。場に出る前のダメージも参照し、戦闘での致死量にはダメージを割り当てる席を使う（CR 142.3.b、142.4.c、418.6、467.2.c.5）。
+- 登場時の能力では、Base と Battlefield ごとに最大1体を選ぶ。解決時に各対象の場所を照合し、元の場所を離れている対象を除いて同時にダメージを与える（CR 197、359.3.e）。[Unleashed 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- リプレイには、これまでの状態指紋に加えて、盤面に残るダメージを与えた席とその量を記録する。Elder Dragon を `full` とし、全1,103枚中558枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Showdown の開始を参照する Diana
+
+- Diana, Lunari は、自身がいる Battlefield で Showdown が始まるたびに1回誘発する。戦闘に移らない Showdown も含む。Chain を解決して同じ Showdown に戻るときは、開始の処理を繰り返さない（CR 341-348）。
+- Vendetta の訂正に従い、誘発を確定するときに Energy 1 を支払う。解決時に非公開の Predict を行い、その後の山札の一番上を公開する。公開したカードが Spell なら引く（CR 383.3.b）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- Diana, Lunari を `full` とし、全1,103枚中559枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 攻撃と防御で Fury を支払う Draven
+
+- Draven, Vanquisher の攻撃・防御時の誘発は、Vendetta の訂正に従い、Chain を確定するときに Fury 1 を支払う。能力が解決した場合はそのターンの Might が2増える。攻撃側、防御側、支払いを辞退した場合、打ち消された場合を確認した（CR 383.3.b、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- Draven, Vanquisher を `full` とし、全1,103枚中560枚を実装済みにした。[カード実装状況](coverage.md)
+
+### ユニットを手札に戻して誘発を確定する Emperor’s Dais
+
+- Emperor’s Dais で Conquer した席は、能力を確定するときに Energy 1 を支払い、その Battlefield で自分が支配する Unit 1体をオーナーの手札に戻す。能力が解決すると、その Battlefield に Sand Soldier を Exhausted で出す。場所の異なる Unit、支払いの辞退、能力が打ち消された場合を確認した（CR 383.3、405.1）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- リプレイの操作履歴には、支払った Energy と、コストとして手札に戻した Unit が表示される。Emperor’s Dais を `full` とし、全1,103枚中561枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 追加コストを支払って Battlefield に出す
+
+- Battlefield を指定する手では、配置先と追加コストに使うカードを別々に選ぶ。Cruel Patron は必須の Kill を支払い、Skystrike Squadron は Gear の返却を選んだときに減額される。配置先や追加コストのオブジェクトは、呪文による対象選択として記録しない（CR 355、356、357）。
+- Stalking Wolf は、自分の最後の Unit が支払いに使うペットである Battlefield に Ambush できる。Chain への Reaction、Base へのプレイ、効果によるプレイを確認した。Stalking Wolf を `full` とし、全1,103枚中562枚を実装済みにした（CR 822）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/) · [カード実装状況](coverage.md)
+- 旧形式のリプレイは `revalidate` で更新できる。盤面の指紋とイベント列を照合し、実際にプレイした Unit や Gear の配置先・追加コストを呪文の対象として記録していた場合だけ、その注記を取り除く。
+
+### Fizz で唱え直した呪文を山札の底に戻す
+
+- Fizz, Trickster の誘発は確定前に辞退できる。解決時には自身の Trash から Energy の元のコストが3以下の Spell を選び、Energy を免除して Power を支払う（CR 383.3.a、420.3）。[Vendetta 公式訂正](https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/)
+- 確定した Spell が解決や打ち消しで Chain を離れるときは、オーナーの山札の底へ直接 Recycle する。Spell 自身の指示で Chain を離れる場合はその指示を適用する。Fizz, Trickster を `full` とし、全1,103枚中563枚を実装済みにした（CR 391.3.a、417）。[Vendetta 公式ルール更新](https://playriftbound.com/en-us/news/announcements/core-rules-vendetta-patch-notes/) · [カード実装状況](coverage.md)
+
+### Janna がいる場所での回復と移動
+
+- Janna, Savior の誘発を確定するとき、同じ場所から Base に移す敵 Unit を最大1体選ぶ。対象を選ばずに回復でき、選んだ対象が解決時に無効なら、その対象の移動だけを行わない。[Spiritforged 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 解決時に Janna と同じ場所で支配している Unit のダメージをすべて除き、取り除いた量を記録する。Janna, Savior を `full` とし、全1,103枚中564枚を実装済みにした（CR 419）。[カード実装状況](coverage.md)
+
+### Guardian Angel の身代わりと回復順
+
+- Guardian Angel を装備した Unit が死ぬ場合、その Gear が代わりに死ぬ。Unit は回復、消耗、Recall の順に処理される。実際に取り除いたダメージ量を記録し、Recall では Standard Move のイベントを発生させない（CR 373、419、456、825）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Combat では両軍の割り当て済みダメージを記録してから、Combat Cleanup で致死と身代わりを処理する（CR 323.4、467.2.d、468.1）。
+- Soraka などで Base にいる Unit を救った場合は、回復と消耗を記録する。Guardian Angel を `full` とし、全1,103枚中565枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Origins のダメージ呪文の対象確認
+
+- Hextech Ray、Void Seeker、Falling Comet は、解決時に対象が Battlefield にいるか確認する。Void Seeker は、Flash で対象が Base に戻った場合もドローを実行する（CR 359.3.e.5）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Singularity は確定時に異なる Unit を最大2体選ぶ。解決時に残った対象それぞれへ同時に6ダメージを与える。以上4枚を `full` とし、全1,103枚中569枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Falling Star の2回のダメージと Rocket Barrage の Repeat
+
+- Falling Star は2回のダメージそれぞれの対象を確定し、解決時に対象を再確認する。同じ Unit を選び、その Unit が有効な対象であれば、3ダメージを2回与える（CR 359.3.e、758.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Rocket Barrage の Repeat はモードと対象を実行ごとに確定する。同じ Gear が2回選ばれた場合は1回目に死に、2回目は解決時の対象確認で処理を省く（CR 820.2.a）。以上2枚を `full` とし、全1,103枚中571枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Bellows Breath の同じ場所と Piercing Light の2つの対象
+
+- Bellows Breath は1つの Base または Battlefield から異なる Unit を最大3体選べる。対象が複数の場所に分かれた場合は、解決時に元の対象がいる場所を1つ選ぶ（CR 355.11、355.13、359.3.e.8）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Piercing Light の1体目が Battlefield を離れた場合、2体目へのダメージは対象が有効であれば実行する。以上2枚を `full` とし、全1,103枚中573枚を実装済みにした。[カード実装状況](coverage.md)
+
+### Beginning Phase の誘発と Temporary
+
+- Temporary は Beginning Phase に Chain へ載り、得点前に解決する。同じ開始時点に自分がコントロールする誘発は順序を選べ、対戦相手は解決前に Reaction を使える。FFA で複数の席がコントロールする誘発はターン順で載せる（CR 315.2.a、383、816）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Dusk Rose Lab は支配者のターンに誘発し、同じ Battlefield にいる自分の Unit を能力の確定時に Kill する。Frozen Fortress は各ターンに誘発し、支配者がいればその席が能力をコントロールする。Petricite Monument の Deflect は Temporary の解決で Gear が死ぬまで続く（CR 190.6、383.3、740）。以上3枚を `full` とし、全1,103枚中576枚を実装済みにした。[カード実装状況](coverage.md)
+- 新しい誘発から Chain を開始するときと、解決後に次の Chain 項目が残るときは、その項目のコントローラーに優先権を渡す（CR 337.4、340.4）。
+
+### Temporary のコピー、入れ替え、得点時の誘発
+
+- Keeper of Masks の Reflection は Keeper のコピーになり、元のオブジェクトと同じ Beginning Phase に Temporary が誘発する。LeBlanc は自身の支配者が同じ Battlefield でコントロールする Temporary だけを抑止する。
+- Smoke and Mirrors は自分がコントロールする別々の場所の Unit を選ぶ。Temporary を持つ対象がいない場合も1枚引く。Sumpworks Map は Reaction でプレイでき、残っている間は相手の Hold と Conquer で引く。以上4枚を `full` とし、全1,103枚中580枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 移動を誘発した出発地点
+
+- Lillia, Fae Fawn は誘発した移動の出発地点を保持する。最初の能力に Flash を重ねて移動した場合、各能力が自分の出発地点に Sprite を作る。カードを `full` とし、全1,103枚中581枚を実装済みにした。[カード実装状況](coverage.md)
+
+### 単独防衛と誘発元の Spell の支払い
+
+- Forbidding Waste では単独で防衛している Unit の Might が2下がる。同じ Battlefield にチームメイトの Unit がいる場合は下がらない。
+- Revna the Lorekeeper と Forgotten Library の誘発は、解決した Spell の確定時に本人が支払った Energy を調べる。同じターンに別の Spell に支払った Energy は参照しない。以上3枚を `full` とし、全1,103枚中584枚が実装済みとなった。[カード実装状況](coverage.md)
+
+### 味方の Gear を戻すコストと移動誘発
+
+- Legion Quartermaster、Spirit of the Forge、Skystrike Squadron は、2対2でチームメイトがコントロールする Gear も追加コストに使える。Gear はオーナーの手札に戻る。コストに選んだ Gear は対象として扱わない（CR 355.10.c、740.1.a）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Ribbon Dancer、Corrupt Enforcer、Harpoon Squad、Mister Root はカードごとの移動方向で誘発する。Reflection はコピー元を指定する効果と組み合わせ、コピー元のプレイ時の能力を再度誘発させない。今回の6枚を `full` とし、全1,103枚中590枚が実装済みとなった。[カード実装状況](coverage.md)
+
+### 戦場に移動したときの誘発
+
+- Noxian Drummer と Corina Veraza は、移動イベントの行き先が戦場である場合に誘発する。Base に戻る移動では誘発しない。
+- 効果の「ここ」は解決時に参照する。Corina が最初の誘発に対する Flash で Base に戻った場合、Recruit 3体は Base に出る。2枚を `full` とし、全1,103枚中592枚が実装済みになった。[公式総合ルール 359.3.f](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf#page=60)
+
+### 移動先を限定しない誘発
+
+- Apprentice Smith は公開した山札の一番上が Gear なら正式な Draw として手札に加え、それ以外は Recycle する。Traveling Merchant はディスカードを先に選んでから引く。
+- Stellacorn Herder は移動ごとに1枚引き、Treasure Hunter は移動ごとに Exhaust した Gold を出す。Gold の消費と Power の追加も検証した。Nilah, Joyful Ascetic は戦場間の Ganking を含め、移動ごとに1 XPを得る。6枚を `full` とし、全1,103枚中598枚が実装済みになった。
+
+### 2対2で味方の Unit を使う追加コスト
+
+- Ki Burst と Life from Stone はチームメイトの Ready Unit を Exhaust して支払える。Parallel Convergence と Ekko, Ingenious はチームメイトがコントロールする Unit も選べ、支払い時にオーナーの手札へ戻す。Starry-Eyed Songstress の割引でもチームメイトの Ready Unit を使える。呪文の対象は追加コストとは別に記録する。[公式総合ルール 355.10.c、415.4、740.1.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Unit や Gear を手札に戻す追加コストの順序
+
+- Unit や Gear を戻す追加コストは、プレイするカードが盤面に出る前に支払う。カードを効果によってプレイする場合も同じ順序になる。宣言時に確定した支払いを維持し、Ready で出るかは支払い後の盤面で判定する。Firebrand Raider を戻して Ekko, Ingenious をプレイした場合、Ekko は Exhaust して出る（CR 357、359.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### 移動誘発が参照する行き先
+
+- Fae Porter と Irresistible Faefolk は移動先の戦場を誘発に記録する。Flash で元の Unit が Base に戻っても、選んだ Unit は最初の戦場へ移動する。Fae Porter は確定時に Chaos Power を支払い、自分がコントロールする Unit を選ぶ。2枚を `full` とし、全1,103枚中600枚が実装済みとなった。[公式総合ルール 359.3.f.3、383.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Kill・Exhaust・XP の追加コストと登場順
+
+- Unit や Gear をプレイする際の Kill・Exhaust・XP の追加コストを盤面に出る前に支払う。効果によるプレイも同じ順序を使う。Firebrand Raider を Kill して Cruel Patron を出すと Exhaust し、Hourglass が Raider を救った場合は Raider の効果が残るので Ready で出る。置換があっても Kill のコストは支払い済みになる（CR 357.2.a、359.2）。[Riftbound 公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### 味方を選んだときの誘発と防衛への合流
+
+- Spirit Wheel と Blade Dancer は2対2でチームメイトの Unit を選んだときにも誘発する。任意の支払いと Exhaust は確定時に行い、Draw と Ready は解決時に処理する。Loyal Pup の合流も確定時に選ぶ。Ruin Runner と Cleave を含む5枚を `full` とし、全1,103枚中605枚が実装済みとなった。
+
+### Might と移動に関わる Origins のカード
+
+- Wizened Elder、Orb of Regret、Smoke Screen、Stupefy、Arena Bar、Bilgewater Bully、Cithria of Cloudfield、Taric, Protector、Captain Farron の9枚を `full` とした。Buff した Bilgewater Bully が Ready になると戦場から別の戦場へ移動できる。Taric と Captain Farron の効果は2対2で同じ戦場にいるチームメイトにも適用される。全1,103枚中614枚が実装済みとなった。
+
+### Unit・Gear の登場前に行うディスカード
+
+- Unit や Gear を直接または効果でプレイするときに任意のディスカードを選んだ場合、手札を捨ててから盤面に出す。Zed, From the Shadows を手札と Void Rush の両方からプレイし、ディスカード、登場、Shadow Clone の誘発を確認する。Void Rush を `full` とし、全1,103枚中615枚が実装済みとなった。
+
+### Poro Herder の誘発条件と Iron Ballista の登場
+
+- Poro Herder は自分がコントロールする Poro を登場時に確認する。Retreat でその Poro を手札に戻しても、Chain に載った能力は解決する。Iron Ballista は登場時点で Exhaust している。Pit Crew、Ravenbloom Student、Fight or Flight、Bounty Hunter を含む6枚を `full` とし、全1,103枚中621枚が実装済みとなった。[公式総合ルール 383.2.a.1、359.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### 得点と戦場の Unit を参照する誘発
+
+- Poppy, Paragon は登場時に各対戦相手の得点を確認する。War でも手番順の後ろにいる対戦相手が勝利点まで3点以内なら能力が誘発する。Kha'Zix, Mutating Horror は攻撃・防衛の開始時に、戦場の敵 Unit が1体かどうかを確認する。2枚を `full` とし、全1,103枚中623枚が実装済みとなった。[公式総合ルール 383.2.a.1](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Unit・Gear の登場後に行う Cleanup
+
+- 通常の優先権で Unit や Gear をプレイした後、優先権を返す前に Cleanup を行う。Cruel Patron のコストで Lee Sin を Kill すると、Might が下がって致死ダメージに達した味方の Unit もこの時点で撃破される。Lee Sin, Centered の Accelerate と Buff 済みの味方への効果を確認して `full` とし、全1,103枚中624枚が実装済みとなった。[公式総合ルール 322–323](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+- Reaction などで Unit や Gear を出して Chain に応じた場合も、次の応答より前に Cleanup を行う。進行性の証明はこの Cleanup を経て決定点に戻る経路を含む。
+
+### 同じ効果で複数の Unit に与えるダメージ
+
+- Cannon Barrage と Anivia, Primal は対象の敵 Unit すべてにダメージを与え、Cleanup で撃破を処理する。2枚を `full` とし、全1,103枚中626枚が実装済みとなった。
+
+### Origins の Legion と登場時の Ready
+
+- Magma Wurm は2対2でチームメイトの Unit が登場するときにも適用される。カードとトークンの両方で確認した。「あなたの」と書かれた Renata Glasc、Wuju Master の対象は各カードの支配者に限る。Chemtech Enforcer、Sky Splitter、Dangerous Duo、Raging Soul、Scrapyard Champion、Confront と合わせて7枚を `full` とし、全1,103枚中633枚が実装済みとなった。
+- `applyFrame0_permanentPlay_cleanup` により、フレームの処理が Unit・Gear の直接プレイを受理したときに、次の処理が Cleanup になることを証明した。通常の優先権、Chain、Showdown を含む。
+
+### Spiritforged の味方と支配者
+
+- Bushwhack はそのターンに味方がプレイする Unit と Unit トークンの登場に適用する。Production Surge は使った席が支配する Mech で値引きする。Against the Odds、Eager Drakehound、Blast Corps Cadet、Ferrous Forerunner、Vex, Cheerless と合わせて7枚を `full` とし、全1,103枚中640枚が実装済みとなった。
+- I10 のマリガンと通常のディスカードについて、同じ手札の表示と選択枚数から同じ数の合法手が得られることを証明した。
+
+### Spiritforged の装備・配置・戦闘
+
+- Serrated Dirk、Minotaur Reckoner、Perched Grimwyrm、Sudden Storm、Rengar, Pouncing、Lucian, Gunslinger、Skyfall of Areion を確認した。Rengar はすでに項目がある Chain に Reaction として応答し、自分が攻撃している Battlefield に出られる。全1,103枚中647枚を `full` とした。
+- 自動対戦の Driver は、強制手だけで同じ状態に戻ることを検査した場合に、ジャッジの引き分けを送る。識別子を付け替えた状態を検出する処理は残っている。
+
+### Brazen Buccaneer のディスカード
+
+- Brazen Buccaneer は手札を1枚捨てる追加コストを選んだときに2 Energy少なく支払い、その後に登場する。通常のプレイと、効果によってプレイするときの見積もりを確認した。全1,103枚中648枚が実装済みとなった。
+
+### Trash から登場する任意誘発
+
+- Flame Chompers と Immortal Phoenix の支払いは、解決時ではなく誘発を確定するときに行う。Brazen Buccaneer のコストで Flame Chompers を捨てる場合は、Brazen が登場してから Flame Chompers の支払いを選ぶ。2枚を `full` とし、全1,103枚中650枚が実装済みになった。[公式総合ルール 383.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Unleashed のドローと登場条件
+
+- Right of Conquest は自分かチームメイトが支配する Battlefield で枚数を数える。Towering Pairofant は、チームメイトが支配していた Unit が死んだターンにも Ready で登場する。Arena Kingpin、Vault Breaker、Monster Harpoon、Scorchclaw、Jhin, Murderous Artist を合わせて7枚を `full` とし、全1,103枚中657枚を実装済みとした。
+
+### 呪文ごとのエナジー支払い
+
+- 呪文の費用を確定した席と支払ったエナジーをプレイ履歴に記録する。Prepared Neophyte は、その席が同じターンに1つの呪文に4エナジー以上払ったときに強化される。所有者が別の席でも、また同じカードを値引きして再度プレイしても、最初の支払いが残る。全1,103枚中658枚が実装済みになった。
+
+### プレイ履歴と物理カードの識別
+
+- Legion はその席がプレイを確定した別の物理カードを数える。手札に戻った同じカードと、同じ名前の別の1枚を区別する。再照合では、プレイの確定時に保存した物理カードIDも確認できる。[公式総合ルール 812.1.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Unleashed の Repeat と手札の入れ替え
+
+- Upstage Comedy は Repeat の支払いと2回分の対象をプレイ時に選ぶ。Concentrate はプレイした席の XP で費用が決まり、Evershade Stalker と Lunar Boon はカードを捨ててから引く。4枚を `full` とし、全1,103枚中662枚を実装済みとした。
+
+### Origins の得点と戦闘、Hidden、対象の確認
+
+- Draven, Showboat は2v2でチームの得点を参照する。Raging Firebrand の値引きは次の Spell まで残り、Kai'Sa, Survivor は Accelerate を払った場合に Ready で登場し、自身の Battlefield の Conquer で引く。Wielder of Water は単独で攻撃・防御するときに強化される。Sprite Call は Hidden からも Ready の Sprite を Base に出し、Vengeance は両陣営の Unit を対象にできる。6枚を `full` とし、全1,103枚中668枚を実装済みとした。
+
+### Origins のプレイ時効果と誘発条件
+
+- Kadregrin the Infernal はプレイした席が支配する Mighty Unit を数える。Sett, Kingpin は自身が Battlefield にいる場合だけ、同じ Battlefield にいる味方の Buff 付き Unit を数える。Discipline は対象を失っても独立したドローを実行する。Wind Wall、Ahri, Alluring、Thousand-Tailed Watcher、Mobilize、Qiyana, Victorious、Scrapheap、Teemo, Scout を合わせて10枚を `full` とし、全1,103枚中678枚を実装済みとした（CR 359.3.e、491.8.c、491.8.e）。
+
+### 次の Spell を確定した席と時点
+
+- 次の Spell の値引きは、カードのオーナーと別の席が効果でプレイする場合も、実際にプレイを確定した席のものを消費する。プレイの確定時点を履歴に保存し、リプレイでも照合できる。
+
+### Spiritforged の装備、Repeat と誘発
+
+- Blood Rush の2回分は別々の対象を選べ、Assault はターン終了時に切れる。Cloth Armor は Quick-Draw で登場時に装着でき、通常の Equip は外れている間に Mind の Power を使う。Experimental Hexplate の Mech は装備している間だけ有効。Factory Recall は装備中の敵 Gear もオーナーの手札に戻す。Lucian, Merciless、Black Market Broker、Sandshifter を合わせて7枚を `full` とし、全1,103枚中685枚を実装済みとした。[Spiritforged 公式エラッタ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-errata/)
+- Counter Strike は敵 Unit のダメージを一度防いでから自分が引くケースを確認した。公式ギャラリーの取得データは1 Power のドメインを特定できないため、費用を確認するまで `drafted` とする。
+
+### Spiritforged の起動コスト、Reaction と Deathknell
+
+- Poro Snax は能力の宣言で自身をキルしてから Chain に能力を置き、解決時にカードを引く。Premonition は相手の Spell に応答でき、先に解決して自身の席だけが3枚引く。Feral Strength、Frigid Touch、Punch First、Lonely Poro、Honest Broker を合わせて7枚を `full` とし、全1,103枚中692枚を実装済みとした。
+
+### Buff を行った席
+
+- Simian Ancestor は自身を支配する席が Buff したときに誘発する。Mistfall は自身を支配する席が味方の Unit を Buff したとき、Body の Power を払い Gear を Exhaust する選択を誘発の確定時に出す。リプレイでは Buff を行った席も照合できる。2枚を `full` とし、全1,103枚中694枚を実装済みとした。[公式総合ルール 412.4、702.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Spiritforged の装備と Conquer
+
+- Doran's Shield を装備した Unit は最初に戦闘ダメージを割り当てられる。Boots of Swiftness は Battlefield 間の通常移動を許し、移動後に Unit は Exhaust する。Plundering Poro と Cull は装備先や自身の Conquer で Exhaust 済みの Gold を出し、Doran's Ring は捨て札の回答後に引く。5枚を `full` とし、全1,103枚中699枚を実装済みとした。
+- Hexdrinker は付いている間だけ Deflect を与え、敵の Spell の支払いに Power を一つ加える。複数ドメインの Power がある場合、エンジンが消費するドメインを固定順で選ぶ。支払い元を選べるようにするまで `drafted` とする。
+
+### ターン中の伏せ札の閲覧
+
+- Scuttle Crab はプレイ時に引く。Deathknell では選んだ敵の手札を公開し、その敵が支配する伏せ札をターン中に閲覧できる権限を自身の支配者に与え、1 XP を加える。Lean では新たに閲覧できる札が Hidden ゾーンにあり、権限の席・ターン・支配者が一致することを証明した。2v2 の選択肢と、対局リプレイで閲覧権が切れることを確認し、全1,103枚中700枚を `full` とした。[公式総合ルール 128.2.a、129.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Unleashed の戦闘、XP と Repeat
+
+- Yuumi, Magical Cat が攻撃または防御するときは、同じ Battlefield にいる自身の支配者の別の Unit に +3 Might と Tank をターン終了まで与える。Lillia, Protector of Dreams の Tank とトークンのプレイも自身の支配者のものに限る。Master Yi, Unstoppable は到達した最も高い段階の費用軽減を使い、XP 16 で敵から選ばれなくなる。Downstage Dramatics は Reaction で割り込み、Repeat を払うと2枚引く。4枚を確認し、全1,103枚中704枚を `full` とした。
+
+### Stun を行った席
+
+- Eclipse Herald と Vex, Mocking は、自身の支配者が敵の Unit を Stun したときに誘発する。Vex の選択は誘発を確定する時点で行い、Stun された Unit が移動しても、その時点の Battlefield を移動先として使う。リプレイでは Stun を行った席を記録する。2枚を確認し、全1,103枚中706枚を `full` とした。[公式総合ルール 383.3.a、412.4、424](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### 同時に動かす対象と同時に Stun された対象
+
+- Tricksy Tentacles は、同じ敵が支配する合計 Might 8 以下の Unit と一つの移動先を宣言する。解決時に元の対象を再確認し、条件を満たすまで対象を減らす必要がある場合はプレイヤーが残す対象を選ぶ。宣言した Base が支配者の変更で無効になった場合や、War で移動先の Battlefield が塞がった場合は Recall を適用する。[公式総合ルール 355.4、355.11、449.2.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Radiant Dawn は自身の支配者が一度に複数の敵を Stun しても一度誘発し、味方を Buff する。Solari Chief は敵を指名し、解決時に Stun 済みならキルし、そうでなければ Stun する。3枚を確認し、全1,103枚中709枚を `full` とした。[公式総合ルール 355.4、383.3.a、424](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### チーム戦の対象と同時ダメージ
+
+- En Garde は味方を選べ、追加の +1 Might には術者自身がその場で支配する唯一の Unit を選ぶ必要がある。Kinkou Monk は二体までの対象を誘発の確定時にまとめて選ぶ。Clash of Giants は二体の Unit が互いに同時にダメージを与える。The Ruination は全席の Unit を同時にキルし、死亡置換を適用する。Block、Blastcone Fae、Ember Monk、Kog'Maw, Caustic と合わせて8枚を確認し、全1,103枚中717枚を `full` とした。[公式総合ルール 355、370、418.6.b.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- 可変 Power の支払いでは、残高と指定された記号を満たすドメインの組み合わせが、ドメイン順で列挙されることを証明した。通常のグループ移動では、候補、費用の可否、宣言済みグループを確定できるかが対応していれば、オブジェクトの ID を付け替えても提示される回答が対応する。[可変 Power の証明](../Riftbound/Invariant/FlexiblePaymentChoices.lean) [移動の選択の証明](../Riftbound/Invariant/PrivateChoices.lean)
+
+### Chain の対象と同時に死亡した Unit
+
+- Not So Fast は味方の Unit や Gear を選んだ敵の Chain 項目を打ち消す。Drag Under は解決時に対象が Battlefield にいることを再確認する。Moonlight Affliction で Might が0以下になった Unit も、ダメージが付いていれば Cleanup でキルされる。Dune Drake、Warwick, Hunter、Trifarian Gloryseeker、Loyal Poro を合わせて7枚を確認し、全1,103枚中724枚を `full` とした。[公式総合ルール 142.4.b、359.3.e、418.6.b.3](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- 同時に死亡した各 Unit について、死亡の処理を始める直前に同じ場所に味方がいたかを記録する。この記録を、Loyal Poro と Lonely Poro の Deathknell が使う。Battlefield の味方にはチームメイトの Unit も含まれる。
+- 映像の観測には手番号の範囲を指定できる。Basic Rune の操作はコードと Exhaust の有無で照合できる。Power の処理では、指定された一つの残高から引いた量と、他の残高が変わらないことを証明した。[リプレイの入力形式](viewer.md) [Power の証明](../Riftbound/State/Pool.lean)
+
+### 手札を公開する席とトークンの支配者
+
+- Mindsplitter は誘発の対象にした相手の手札を公開し、その手札から選んだ1枚を捨てさせる。Machine Evangel は自分の Base に Recruit を3体出す。Renata Glasc, Industrialist は自分のトークンを Ready で登場させる。Danger Zone は Repeat を選べて、自分が支配する Mech だけを強化する。
+- Bandle Soldier の追加効果は自分の XP で決まり、Scrutinizing Sergeant は自分自身とチームメイトを含む味方の Unit を数える。6枚を確認し、全1,103枚中730枚を `full` とした。
+
+### 敵がいる Battlefield へのプレイ
+
+- 敵の Unit がいる場所への Ambush を Rengar, Trophy Hunter に適用する。通常の配置先と Reaction の両方でこの許可を確認する。Dauntless Vanguard の配置先にも敵の Unit が必要になる。[Unleashed 公式訂正](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/) [公式総合ルール 822.1.d](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Arachnoid Horror は同じ場所に他の味方 Unit がいない敵を探す。チームメイトもこの配置の許可を使える。敵の Unit に付いた Gear があっても、Unit が一人かどうかの判定は変わらない。[公式総合ルール 740.2.a](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### 追加費用、戦闘と開始フェイズ
+
+- Clockwork Keeper は追加の Calm Power を選んで払ったときに引く。Yasuo, Remorseful の誘発は、解決時の自身の Might と所在地、誘発自体の支配者を使う。Lee Sin, Ascetic の Shield は防御中だけ働き、複数の Buff を置ける。[公式総合ルール 359.3.f、814](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Mushroom Pouch は自分が伏せ札を持つ自分の Beginning Phase に引く。Buhru Captain は引く、Buff する、見送るの3通りを選べる。Yordle Explorer は自身の支配者が印刷の Power 費用2以上のカードをプレイすると引く。
+
+### 装備が与えた死亡時の能力
+
+- Sacred Shears の Deathknell は装備された Unit の能力として働く。死亡直前の装備を参照し、同時に Gear が取り除かれた場合も処理する。Gear だけが死亡した場合と、死亡を追放で置き換えた場合は引かない。[公式総合ルール 429.1.a.1.b、808](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Hidden の制約とカードを使った席
+
+- Noxus Saboteur は同じ Battlefield にある敵の伏せ札の公開を防ぐ。Brynhir Thundersong の効果は敵が伏せ札から Unit や Spell をプレイする場合にも適用する。Basic Rune の起動は許される。
+- Katarina, Reckless は自身の支配者が Hide したときに Ready になり、伏せ札からのプレイが解決したときに敵の Unit にダメージを与える。Rumble, Scrapper は自身の支配者の Mech だけを強化し、自分の Hold で Mech を出す。Sacred Shears と合わせて5枚を確認し、全1,103枚中744枚を `full` とした。
+
+### 手札の確認時点と Gear の起動
+
+- Loose Cannon は自分の Beginning Phase に誘発し、解決するときに手札の枚数を確認する。Jinx, Rebel は同じ処理で複数枚を捨てても1回だけ Ready になり、Might が1増える。[Unleashed 公式FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- Leona, Determined は攻撃した場所にいる敵の Unit を対象にする。Royal Entourage は自分や相手の Legend を Ready または Exhaust にできる。Prize of Progress はコストで Gear 自体を破壊する起動も検出する。5枚を確認し、全1,103枚中749枚を `full` とした。
+
+### 同じターンの Power 支払いの集計
+
+- Lean で、Main Phase への移行が任意の席の支払い履歴を過不足なく引き継ぎ、ターン終了が所持資源と支払い履歴を消去することを証明した。[TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
+- Deflect と Accelerate で払った Power は、そのターンの支払いに含める。Main Phase の開始で Rune Pool を空にするときは、それまでに支払った量を席ごとに引き継ぐ。Sivir, Mercenary は同じターンに自身の支配者が払った量を参照する。リプレイでは支払いの合計を照合できる。[公式総合ルール 167、316.3、809](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Viktor, Leader は味方の Unit が同時に死亡すれば1体ずつ数え、自身も同じ処理で死亡した場合は誘発しない。Rhasa the Sunderer は自身のプレイヤーの Trash で値引きを算出する。Darius, Trifarian と Ancient Warmonger はそれぞれ同じ Battlefield の味方と敵を確認する。Yasuo, Windrider、Fiora, Victorious、Gearhead、Fae Dragon を含む9枚を確認し、全1,103枚中758枚を `full` とした。[公式総合ルール 383.2.c.2](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### Deathknell の Recycle と支配者ごとの効果
+
+- Ekko, Recurrent は Deathknell の確定時に自身を Recycle し、解決時に能力の支配者の Rune を Ready にする。確定前に Ekko が Trash を離れた場合、Recycle の費用は払えない。[公式総合ルール 204.1.c、383.3.b、417](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Herald of Scales の値引きと Trusty Ramhound の Might は、そのカードの支配者に対応する。Deflect と Weaponmaster の Ornn, Forge God、Hexdrinker、Unsung Hero、Hand of Noxus を含む7枚を確認し、全1,103枚中765枚を `full` とした。
+
+### Buff と XP のカウンター
+
+- 通常の Unit に2つ目の Buff を加えようとしても、その Unit の状態は変わらず追加の Buff イベントも発生しない。XP の獲得と支払いは対象の席の残高だけを変える。これらを Lean で証明し、印刷された Buff と XP Tracker を `full` とした。[証明](../Riftbound/Invariant/GameCounters.lean) [公式総合ルール 702.3、729、730](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+
+### 山札を見た後の抽選とドロー
+
+- Stacked Deck は見た3枚から1枚を手札に入れ、残り2枚をランダムな順序で山札の下に戻す。Called Shot は見た2枚から1枚をドローしてもう一方を戻し、Repeat を払った場合はその時点の山札から新たに2枚を見る。Buff と XP Tracker と合わせて4枚を確認し、全1,103枚中769枚を `full` とした。[公式総合ルール 417.5、432.1.c](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+
+### ダメージ後の誘発と撃破の帰属
+
+- Imperial Decree は、ダメージを受けた Unit ごとに撃破の能力を Chain に積む。Noxian Guillotine は指定 Unit の最初のダメージで誘発し、Legion ではすぐに撃破する。単発の登録だけが消費されることを Lean で証明した。[公式総合ルール 391–393](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)
+- Imperial Decree で撃破した席に Immortal Phoenix が反応することを確認した。リプレイではダメージ、Chain、撃破の帰属を照合できる。[公式 Vendetta FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Noxian Guillotine の Power は Fury または Order で払う。Find Your Center と Leona, Zealot は FFA で全対戦相手の得点を個別に確認する。Seal of Rage の Reaction Add を含む5枚を確認し、774枚を `full` とした。
+
+### 移動先の宣言と誘発のリプレイ
+
+- Charm と Ride the Wind の移動先を、Spell の確定時に宣言する。Gravity Field の費用は移動を実行する席が解決中に払い、Vilemaw's Lair で移動できなくても Ride the Wind は Unit を Ready にする。[公式総合ルール 355.4](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf) [公式 Vendetta FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+- Defy の対象判定に印刷コストを使うことを確認した。3枚を追加で確認し、777枚を `full` とした。[公式 Spiritforged FAQ](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+- 誘発元、誘発のきっかけ、確定時の対象・費用をカードコードで記録できる。任意の誘発や取り消し可能な Add を強制手と判定しないことを Lean で証明した。
+
+### 解決したカードの数とグループ移動の照合
+
+- Darius, Trifarian は、本人が解決した2枚目のカードで誘発する。打ち消された Spell やカードでないトークンは数えず、Darius 自身を2枚目にプレイした場合も誘発する。解決済み枚数が変わらなければ、この種の誘発が増えないことを Lean で証明した。[公式 Unleashed FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/)
+- グループで移動するときの移動先、共有費用、選んだ Unit をカードコードで照合できる。各場所の Unit の Might も観測に指定できる。
+- Seal 5枚の Reaction Add、Whiteflame Protector の対象と一時的な Might 増加、Void Drone の Trash からの実際の支払いを確認し、Darius と合わせて785枚を `full` とした。
+
 ## M10: 完了判定（original.md の最終目的）
 
 次をすべて満たしたとき、その時点のカードプールについて R5（[design.md §1](design.md#1-要求の整理)）を達成したとみなす。
@@ -2143,6 +2502,46 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 5. 公式 FAQ・エラッタがあれば、それを反映した回帰テストがある。
 
 **キーワードだけのカード**（効果の文が無いもの）は、2 と 4 を免除する。持っているキーワードすべてに意味の補題とテストがあれば、生成だけで `full` にしてよい。
+
+### カードのプレイと起動型能力の速度
+
+- 能力を指す矢印付きの Action と Reaction は、カード本体のキーワードに含めない。Unleashed 以降の該当15枚を再生成した。[Unleashed の公式パッチノート](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-core-rules-unleashed-patch-notes/)
+- Dragonsoul Sage と Energy Conduit は通常の優先権でプレイできる。盤面からの Add は Chain、Showdown、2対2の招待でも即時に解決し、起動した席だけに Energy を追加する。
+- Divining Shells は起動時に消耗と Kill を支払う。対象の Might は解決時に上がり、ターン終了時に戻る。Vision の閲覧と Recycle の選択を含め、以上3枚を `full` とした。[PrintedAbilitySpeed.lean](../RiftboundTest/PrintedAbilitySpeed.lean)
+
+### Honeyfruit の Level 6 と複数の資源を加える Add
+
+- 固定量の Energy や Power を複数加える起動型能力を、ひとつの即時 Add として解決する。途中にドローなどの別の指示がある効果は通常の解決を使う。効果中の支払い候補にも、Add で増える資源の合計を反映する（CR 430.2）。[公式パッチノート](https://playriftbound.com/en-us/news/rules-and-releases/riftbound-core-rules-patch-notes/)
+- Honeyfruit は 6 XP 以上のとき、消耗して Power を1つ加える通常の能力か、消耗して Energy と Power を1つずつ加える Level 6 の能力を選べる。Chain と Showdown での即時 Add、両方の資源を要求する支払い、5 XP での起動拒否を確認し、`full` にした。[UnleashedA.lean](../RiftboundTest/UnleashedA.lean)
+
+### 誘発能力の確定と2v2での味方判定（2026-11-27）
+
+- 誘発の冒頭で選べる消耗コストは、能力を確定して Chain に載せるときに払う（CR 383.3.a, 383.3.b.1, 740.4.a.2）。Altar of Memories、Chemtech Cask、Battle Mistress、Grand Duelist、Relentless Storm、Fresh Beans をこの方式で実装し、各シナリオを検証して `full` にした。
+- 誘発は、イベントに記録された席をもとに陣営を判定する。「味方」は2v2のチームメイトも含み、「敵」は相手チームに限る。「あなた」が行う操作を条件とするカードは本人に限る（CR 491.8.e, 740.1）。Chemtech Cask は本人が対戦相手のターンに呪文をプレイしたときに誘発する。
+- Altar of Memories は消耗を済ませてから、解決時に引いたカードも含めて自分の手札から戻すカードを選ぶ。Battle Mistress は同時に複数の敵 Unit が死んだ場合に1回だけ誘発する。Relentless Storm と Fresh Beans は条件を満たす Unit トークンのプレイも見る。
+
+### Hold・Conquer の誘発（2026-11-27）
+
+- Chem-Baroness と Gloomist は、本人か味方の Hold で誘発する。消耗を払う席と効果を受ける席は、その能力のコントローラー。Blue Sentinel が増やすのは Hold を行った席の誘発で、味方の誘発は増えない（CR 383.3, 491.8）。
+- Hall of Legends、Sunken Temple、Treasure Hoard は、能力を確定するときに Energy を払う（CR 383.3.b.1）。Sunken Temple は Conquer 時の Might を判定し、解決までにその Unit の Might が下がっても引く。
+- The Papertree は2v2でも全席がそれぞれの山札から Rune を1枚ずつ消耗状態で出す。以上6枚を `full` にした。
+
+### Vex, Apathetic の移動制限（2026-11-27）
+
+- Vex が Battlefield にいる間、対戦相手が Unit カードか Unit トークンをプレイすると誘発する。両方を1つの誘発で扱い、Champion Zone からプレイする能力の番号を維持する。対象を Stun し、そのターンはその Unit をプレイした席からの Standard Move と効果による Move を止める（CR 424, 447–449）。
+- コントロールが変わっても制限を受ける席は変わらない。別の席が動かす場合や Recall では、この制限を適用しない。ターンが進むか、カードが Board を離れて別のオブジェクトとして戻ると制限は切れる（CR 448.1, 456）。1v1 と2v2のシナリオを追加し、`full` にした。
+
+### 一斉移動の費用と Mageseeker Investigator（2026-11-27）
+
+- 同じ Battlefield に一斉に移動する2体目以降に、Mageseeker Investigator 1体ごとに Power 1 がかかる。Gravity Field の固定費用は移動先ごとに加算する。2v2の味方にはどちらの費用もかからない（CR 144.3, 204.4, 491.8）。
+- Standard Move は選択したユニット数と支払いが一致した時点で一斉に移動する。効果で動かす場合は実際に到着するユニットを数え、効果を指示された席がその場で Add を使える。支払いを見送ると、選びかけた Add と移動は取り消される（CR 204.4.b.1, 204.4.c, 412）。
+- Standard Move の記録では、必要な Add を行ってから移動先と支払いを宣言する。効果の解決中に移動費用を払う場合は、選んだ Add と支払いの確定を記録する。
+- Azir, Sovereign は自分のトークンを能力の確定時に選び、解決時に Azir がいる Battlefield にまとめて動かす。Amateur Recital は Hold の能力を確定するときに移動対象を選び、Deflect を払う。Mageseeker Investigator と合わせて3枚を `full` にした（CR 355.4–355.12, 403, 809）。[Vendetta 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/vendetta-rules-faq-and-clarifications/)
+
+### 分配ダメージと確定済み対象の追跡（2026-11-27）
+
+- Alpha Strike の対象数は確定時の味方 Unit の Might を上限とする。解決時は、依然として合法な対象のうち、現在の Might で各1点以上を割り振れる最大数を残し、ダメージを同時に与える。発生源は選んだ Unit で、ダメージに連動する XP の能力は、軽減と死亡置換の後で実際に死亡した対象ごとに Chain に乗る（CR 355.14, 388–389, 418.6, 429.5）。[公式総合ルール](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf#page=50)
+- Repulse は Base へ動いた対象も数え、対象が Board を離れて別のオブジェクトになると数えなくなる。Alpha Strike の Master Yi の Signature 指定と Calm／Body の Power コストを印刷に合わせ、Master Yi の4種の Unit に Champion 指定を補った。2枚を `full` にした。[Unleashed 公式 FAQ](https://playriftbound.com/en-us/news/rules-and-releases/unleashed-rules-faq-and-clarifications/) [公式カード画像](https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/154940caa774fd8219625cf051ddcb230ffc7f02-744x1039.png)
 
 ### M8a の実装の記録（2026-11-24）: Spiritforged 27 — 対象の選びを、選ぶ時点で絞る
 
@@ -2346,7 +2745,7 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
 - **エンジンに足したもの（前半）**: Ambush（Battlefield へ、Reaction として遊ぶ）、Backline（最後に割り当てる）、XP を使う（`Prim.spendXP`）、XP を得た印（`TurnEffect.gainedXP`）、Beginning Phase に死んだ印（`diedInBeginning`）、Hide の出来事（`TriggerEvent.hide`）、2 枚の入れ替え（`Prim.swapTop`、Predict 2）、Battlefield の Conquer と Hold を 1 回多く（`triggersExtra .conquer/.hold .here`）、ダメージを倍に（`TurnEffect.doubleDamage`）、死ぬ代わりに追放（`TurnEffect.banishInstead`）、次のユニットにバフ（`nextUnitBuffed`）、疲れて入る Gear（`StaticMod.entersExhausted`）、ほかのユニットに戦闘ダメージを与えさせない（`noCombatDamageFor`）、「選べない」を、ほかのユニットにも（`cant (all ...) .beChosen`）。
 - **エンジンに足したもの（後半）**: Battlefield トークン（`Prim.addBattlefield`、`replaceBattlefield`、`restoreBattlefield`、`Object.replaces`。Baron Pit、Brush）、トークンが別のカードのコピーになる（`Prim.becomeCopy`、Reflection）、トークンをもう 1 つ（`cloneToken`）、動かした場所にトークン（`createAtPrev`）、タグを得る（`gainTag`、`Object.tagsGained`）、ゾーンの札をまとめて動かす（`moveAll`、`banishWith`、`Place.inBanishment`）、Trash から遊ぶ能力（`AbilityCost.fromTrash`）、呪文の Repeat を与える（`StaticMod.grantRepeat`）、Elder Dragon（`anyDamageKills`）、Maduli（`Object.cantReady`）、ユニットに付いた Equipment の、ターン終了の能力（`timedTriggers`）、Arachnoid Horror（`playToBfAll`、`Filter.enemyAlone`）、LeBlanc（`ignoreKeyword .temporary`）、相手が得点する・ホールドする（`opponentScores`、`opponentHolds`）、自分の効果が敵ユニットを動かす（`Event.movedByEffect`）、カードを引いた（`Event.drew`、`drewCard`）、呪文だけを遊べなくする（`opponentsNoSpells`）、次ターンまでユニットの費用を増やす（`unitsCostMore`）、Showdown の条件（`inShowdown`、`showdownNow`）、PlayExtra `killPet`（Stalking Wolf）。
 - **フィルターと条件**: `Filter.mightLtOf`、`choosesOnly`、`myUnitsHere`、`enemyAlone`、`sharesGainedTag`、`Condition.hasHidden`、`spentOnSpell`、`beginningPhase`、`iControlHere`、`drewCards`。条件に Might の合計を書ける（`Amount.evalS0` が、バフと装備と、パッシブの分を足した Might を読む）。Battlefield の能力は、そのユニットの持ち主のために働く（`watchersOf`）。
-- **近似として残したこと**: 呪文の追加の費用（「味方のユニットを殺す」など）は、解決のときに払う（選ぶユニットは、遊ぶときに選ぶ）。Poppy, Defender of the Meek は、XP が 3 以上あれば、自動で 3 払って 3 安くなる（払わない選択が無い）。Atakhan は、追加の費用（ユニットを殺す）と、それによる軽減が無い。Stalking Wolf は、殺したユニットの Battlefield へ遊べない。Conscription は、3 Might 以下を選ぶなら XP は要らず、それより大きいユニットを選んだときだけ、解決のときに 5 XP を払う。Safety Inspector の XP は、解決のときに払う。相手に選ばせる選択（Call to Battle、Shard of Undoing、Safety Inspector、Bone Skewer）は、`eachPlayer` で、そのプレイヤーの側から選ぶ（Bone Skewer は、相手が自分のユニットを選ぶ）。Insightful Investigator は、手札を見せない（選ぶだけ）。Hwei は、捨てる札の種類を、モードとして選ぶ。Alpha Strike は、ダメージを 1 体に与える（分けない）。Dancing Grenade は、最大 3 回まで（相手側から）。Death from Below は、1 回だけ、もう 1 体を、Power 1 で殺す。Undying Loyalty は、費用の軽減が無い。Mageseeker Investigator は、複数のユニットを同時に動かす操作が無いので、何もしない能力。Tactical Retreat は、死んだあとで戻る（Unlicensed Armory と同じ）。Ashe, Focused の返す効果は、Ashe が場にいるあいだだけ。Gardens of Becoming は、Battlefield の能力（ユニットを exhaust して 1 XP）。Lilting Lullaby は、呪文を打ち消されたプレイヤーでなく、使ったプレイヤーの相手が、呪文を遊べなくなる。Vex, Apathetic は、「動かせない」の代わりに、exhaust する。Scorn of the Moon は、Showdown のときだけ使える Add 能力（Energy の使い道の制限ではない）。Hextech Gauntlets と Bashful Bloom の費用の軽減は、軽減ごとの別々の能力。Curtain Call と Square Up の Repeat は、解決のときに払う（Square Up は捨てる）。Star Spring、Zilean は、1 ターンに 1 回（プレイヤーごとでなく）。The List は、全部のタグの中から名前を選ぶ。
+- **近似として残したこと**: 呪文の追加の費用（「味方のユニットを殺す」など）は、解決のときに払う（選ぶユニットは、遊ぶときに選ぶ）。Poppy, Defender of the Meek は、XP が 3 以上あれば、自動で 3 払って 3 安くなる（払わない選択が無い）。Atakhan は、追加の費用（ユニットを殺す）と、それによる軽減が無い。Stalking Wolf は、殺したユニットの Battlefield へ遊べない。Conscription は、3 Might 以下を選ぶなら XP は要らず、それより大きいユニットを選んだときだけ、解決のときに 5 XP を払う。Safety Inspector の XP は、解決のときに払う。相手に選ばせる選択（Call to Battle、Shard of Undoing、Safety Inspector、Bone Skewer）は、`eachPlayer` で、そのプレイヤーの側から選ぶ（Bone Skewer は、相手が自分のユニットを選ぶ）。Insightful Investigator は、手札を見せない（選ぶだけ）。Hwei は、捨てる札の種類を、モードとして選ぶ。Dancing Grenade は、最大 3 回まで（相手側から）。Death from Below は、1 回だけ、もう 1 体を、Power 1 で殺す。Undying Loyalty は、費用の軽減が無い。Tactical Retreat は、死んだあとで戻る（Unlicensed Armory と同じ）。Ashe, Focused の返す効果は、Ashe が場にいるあいだだけ。Gardens of Becoming は、Battlefield の能力（ユニットを exhaust して 1 XP）。Lilting Lullaby は、呪文を打ち消されたプレイヤーでなく、使ったプレイヤーの相手が、呪文を遊べなくなる。Scorn of the Moon は、Showdown のときだけ使える Add 能力（Energy の使い道の制限ではない）。Hextech Gauntlets と Bashful Bloom の費用の軽減は、軽減ごとの別々の能力。Curtain Call と Square Up の Repeat は、解決のときに払う（Square Up は捨てる）。Star Spring、Zilean は、1 ターンに 1 回（プレイヤーごとでなく）。The List は、全部のタグの中から名前を選ぶ。
 
 ### M9 の点検の記録（2026-11-25）: Unleashed の近似と食い違い
 
@@ -2365,8 +2764,8 @@ M2b で残した 3 点のうち、1 と 2 を済ませた。
   1. **追加の費用**（A）: Atakhan、Poppy, Defender、Safety Inspector、Conscription、Heedless Resurrection、Sacrifice。呪文には、追加の費用を遊ぶときに払う仕組み（`PlayExtra`）が無い（`extraOk` が呪文を除いている）。ユニットの「費用が下がる」も、払ったかどうかに連動しない。
   2. **Showdown の中の Action / Reaction**（A）: Shadow は、能力が丸ごと使えない。Action と Reaction の呪文も、Showdown の中では唱えられない（roadmap L1336）。
   3. **死ぬ代わりに**（A）: Tactical Retreat、Altar of Blood は、死んでから戻る（「死んだとき」の誘発と、Deathknell が余分に働き、トークンが消える）。`ReplaceEvent.die` を置換として解釈する必要がある。
-  4. 呪文のプレイを選ぶ・相手の手札から選ぶ（Bone Skewer、Call to Battle ほか）、ダメージの分配（Alpha Strike）、同時の移動（Mageseeker Investigator）、Battlefield を選んで出す（Thrill of the Hunt）、手札へ離れるときの元の Battlefield（Ripper's Bay）。
-  5. 条件が、誘発した呪文を見ない（`spentOnSpell`：Revna、Virtuoso、Forgotten Library）、`excessAtLeast` が、その Conquer を生んだ戦闘に結びつかない（Piltover Enforcer、Hextech Gauntlets、Trapping Grounds）、`Filter.hasKeyword` が、与えられたキーワードを読まない（Petal Pixie、Smoke and Mirrors、Bashful Bloom、Black Flame Altar）、Level の条件つきの能力を `blocksChoice` が読まない（Master Yi, Unstoppable の Level 16）、Honeyfruit の Level 6 の Add が、Chain に載る。
+  4. 呪文のプレイを選ぶ・相手の手札から選ぶ（Bone Skewer、Call to Battle ほか）、Battlefield を選んで出す（Thrill of the Hunt）、手札へ離れるときの元の Battlefield（Ripper's Bay）。
+  5. 条件が、誘発した呪文を見ない（`spentOnSpell`：Revna、Virtuoso、Forgotten Library）、`excessAtLeast` が、その Conquer を生んだ戦闘に結びつかない（Piltover Enforcer、Hextech Gauntlets、Trapping Grounds）、`Filter.hasKeyword` が、与えられたキーワードを読まない（Petal Pixie、Smoke and Mirrors、Bashful Bloom、Black Flame Altar）、Level の条件つきの能力を `blocksChoice` が読まない（Master Yi, Unstoppable の Level 16）。
 - **近似として、残してよいもの（C）**: 解決のときに選ぶ対象（Deflect の支払いが働かない）、手札を見せない、Dancing Grenade、Death from Below、Scorn of the Moon、Star Spring、Zilean、Gardens of Becoming、Curtain Call と Square Up の Repeat、`returnToHand` が「引く」の誘発を起こさない、など。
 
 ### M9 の追加の費用（2026-11-25）: 遊ぶときに払う

@@ -76,6 +76,108 @@ private meta def radianceCase (f : GameState → Option Bool) : Bool :=
   return unpaid.countIn p .hand "RAD-061" == 1 && unpaid.countIn p .base "RAD-061" == 0 &&
     paid.countIn p .base "RAD-061" == 1 && paid.countIn p .hand "RAD-011" == 1
 
+-- Raider's passive stops when it is returned for Ekko, before Ekko enters (CR 357, 359.2).
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 3) p "RAD-019" .base
+  let (s, other) ← put s p "RAD-011" .base
+  let (s, ekko) ← put s p "RAD-061" .hand
+  let action (cost : ObjId) : Action := ⟨.player p, .playCard ekko ⟨3, []⟩ [cost] none none .plain⟩
+  let (paid, events) ← (step 100 s (action raider)).toOption
+  let (kept, _) ← (step 100 s (action other)).toOption
+  let returned ← paid.firstOf p .hand "RAD-019"
+  let entered ← paid.firstOf p .base "RAD-061"
+  let stillReady ← kept.firstOf p .base "RAD-061"
+  let moves := events.filter (fun | .moved .. => true | _ => false)
+  return paid.tired entered == some true && kept.tired stillReady == some false &&
+    moves == [.moved raider returned (.player p .hand), .moved ekko entered (.player p .base)]
+
+-- A limited play also pays the return before checking the entry effects.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 0) p "RAD-019" .base
+  let (s, ekko) ← put s p "RAD-061" .hand
+  let plans := permanentPlayPlans s p ekko { price := .ignoreBase }
+  let plan ← plans.find? (fun plan => plan.battlefield.isNone && plan.extraObject == some raider)
+  let (result, entered, events) ← applyReducedPermanent s p ekko plan
+  let returned ← result.firstOf p .hand "RAD-019"
+  return result.tired entered == some true &&
+    events == [.moved raider returned (.player p .hand), .moved ekko entered (.player p .base), .played p entered]
+
+-- The Kill and any replacement happen before Cruel Patron enters (CR 357, 359.2).
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 4) p "RAD-019" .base
+  let (s, patron) ← put s p "OGN-208" .hand
+  let action : Action := ⟨.player p, .playCard patron ⟨4, []⟩ [raider]⟩
+  let (killed, events) ← (step 100 s action).toOption
+  let victim ← killed.firstOf p .trash "RAD-019"
+  let entered ← killed.firstOf p .base "OGN-208"
+  let (withGear, gear) ← put s p "OGN-077" .base
+  let (saved, replacement) ← (step 100 withGear action).toOption
+  let sacrifice ← saved.firstOf p .trash "OGN-077"
+  let ready ← saved.firstOf p .base "OGN-208"
+  let relevant (es : List Event) := es.filter (fun | .moved .. | .died .. => true | _ => false)
+  return killed.tired entered == some true && saved.tired ready == some false &&
+    saved.tired raider == some true && (saved.obj? ready).any (·.paid) &&
+    relevant events == [.moved raider victim (.player p .trash), .died victim p,
+      .moved patron entered (.player p .base)] &&
+    relevant replacement == [.moved gear sacrifice (.player p .trash), .died sacrifice p,
+      .moved patron ready (.player p .base)]
+
+-- Paying Cruel Patron by killing Lee Sin makes an already damaged Unit lethal before priority.
+#guard match lab with
+  | none => false
+  | some start => ((do
+    let p := start.me
+    let field := start.bf0
+    let (s, lee) ← putAt (start.control p field) p "OGN-151" field
+    let (s, ally) ← putAt s p "OGN-136" field
+    let (s, patron) ← put (s.fund p 4) p "OGN-208" .hand
+    let ready := (dealObj 4 (s.buff ally) ally).1
+    let (after, events) ← (step 100 ready ⟨.player p, .playCard patron ⟨4, []⟩ [lee]⟩).toOption
+    return (cleanupStep ready).isNone && after.pending == [.priority p] &&
+      (cleanupStep after).isNone && after.locate ally == none &&
+      events.any (fun
+        | .moved before _ (.player owner .trash) => before == ally && owner == p
+        | _ => false)) : Option Bool).getD false
+
+-- Give Cruel Patron Reaction in this fixture to exercise the Cleanup while a Spell is on the Chain.
+#guard match lab with
+  | none => false
+  | some start => ((do
+    let p := start.me
+    let field := start.bf0
+    let defs := start.cards.cards.map (fun d =>
+      if d.id.code == "OGN-208" then { d with keywords := d.keywords ++ [{ keyword := .reaction }] }
+      else d)
+    let s := { start.control p field with cards := ⟨defs⟩ }
+    let (s, lee) ← putAt s p "OGN-151" field
+    let (s, ally) ← putAt s p "OGN-136" field
+    let (s, patron) ← put (s.fund p 4) p "OGN-208" .hand
+    let (s, spell) ← onChain s p "OGN-004"
+    let stack := [Frame.chainPass p 0, .priority p]
+    let ready := { (dealObj 4 (s.buff ally) ally).1 with pending := stack }
+    let (after, events) ← (step 100 ready ⟨.player p, .playCard patron ⟨4, []⟩ [lee]⟩).toOption
+    return (cleanupStep ready).isNone && after.pending == stack && after.zone .chain == [spell] &&
+      (cleanupStep after).isNone && after.locate ally == none &&
+      events.any (fun
+        | .moved before _ (.player owner .trash) => before == ally && owner == p
+        | _ => false)) : Option Bool).getD false
+
+-- A limited play pays the same Kill cost before it decides how Cruel Patron enters.
+#guard radianceCase fun s => do
+  let p := s.me
+  let (s, raider) ← put (s.fund p 0) p "RAD-019" .base
+  let (s, patron) ← put s p "OGN-208" .hand
+  let plans := permanentPlayPlans s p patron { price := .ignoreBase }
+  let plan ← plans.find? (fun plan => plan.battlefield.isNone && plan.extraObject == some raider)
+  let (result, entered, events) ← applyReducedPermanent s p patron plan
+  let victim ← result.firstOf p .trash "RAD-019"
+  return result.tired entered == some true && (result.obj? entered).any (·.paid) &&
+    events == [.moved raider victim (.player p .trash), .died victim p,
+      .moved patron entered (.player p .base), .played p entered]
+
 -- Spirit reads the returned Gear's printed Energy, excluding both its Power and Spirit's cost.
 #guard radianceCase fun s => do
   let p := s.me

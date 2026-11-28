@@ -53,18 +53,14 @@ def isControlledBy (s : GameState) (p : PlayerId) (u : ObjId) : Bool :=
 def unitsOf (s : GameState) (p : PlayerId) (bf : ObjId) : List ObjId :=
   (s.unitsAt bf).filter (fun u => s.isControlledBy p u)
 
+/-- Combat requires exactly two opposing players at a Battlefield (CR 316.7.a, 464). -/
+def combatantsAt (s : GameState) (bf : ObjId) : Option (PlayerId × PlayerId) :=
+  match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
+  | [a, b] => if s.config.mode.sameSide a b then none else some (a, b)
+  | _ => none
+
 /-- The player who controls a Battlefield, if any (CR 190.6). -/
 def controlOf (s : GameState) (bf : ObjId) : Option PlayerId := (s.obj? bf).bind (·.control)
-
-/-- An object of another player than `q` in play has the passive ability that any amount of its
-damage is enough to kill the units of `q` (Elder Dragon). -/
-def anyDamageKills (s : GameState) (q : PlayerId) : Bool :=
-  s.inPlay.any (fun g =>
-    (s.obj? g).any (fun o => o.controller != q) &&
-      (s.cardDef? g).any (fun d => d.fullAbilities.any (fun ab =>
-        match ab with
-        | Ability.passive .always mods => mods.contains .anyDamageKills
-        | _ => false)))
 
 /-- Whether a Unit has lethal damage: damage that is not 0 and reaches its Might (CR 142.4.b).
 The owner must be a player of the game, which holds for every object of a game that can be played.
@@ -73,8 +69,7 @@ Trash, always has a Trash to send it to, and so always stops (I12a). -/
 def lethal (s : GameState) (id : ObjId) : Bool :=
   match s.obj? id with
   | some o =>
-    decide (o.owner.n < s.playerCount) && decide (0 < o.damage) &&
-      ((s.mightNow id).any (fun m => decide (Might.eff m ≤ o.damage)) || s.anyDamageKills o.controller)
+    decide (o.owner.n < s.playerCount) && decide (0 < o.damage) && s.damageWillBeLethal id 0 none
   | none => false
 
 end GameState
@@ -89,7 +84,7 @@ def moveOk (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) : Bool :=
   | none => false
   | some o =>
     decide (p.n < s.playerCount) && decide (s.phase = .main) && s.isUnit u &&
-      decide (o.controller = p) && (!o.exhausted && !s.moveBlocked u) &&
+      decide (o.controller = p) && (!o.exhausted && !s.moveBlockedFor p u) &&
       match d with
       | .base =>
         decide (u ∈ s.zone .battlefieldZone) && o.loc.isSome &&
@@ -132,6 +127,22 @@ def applyMove (s : GameState) (p : PlayerId) (u : ObjId) (d : MoveDest) :
         (contestBy p bf (r.1.modObj r.2 (moveUnitOf s.turn (some bf))),
           [Event.standardMoved r.2 (some bf)]))
 
+/-- Relocate all the declared Units in a single transition. Cleanup and triggers run only after
+the group is in place (CR 144.3). -/
+def applyGroupMoves (p : PlayerId) (d : MoveDest) : List ObjId → GameState →
+    Option (GameState × List Event)
+  | [], s => some (s, [])
+  | u :: us, s => do
+    let (next, events) ← applyMove s p u d
+    let (final, laterEvents) ← applyGroupMoves p d us next
+    pure (final, events ++ laterEvents)
+
+/-- Commit the whole move and pay the quoted destination fees (CR 144.3.c, 203). -/
+def applyGroupMove (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : Option (GameState × List Event) :=
+  (if pay == Cost.zero then some s else (s.spendSymbols p pay false).map (s.setPool p)).bind
+    (applyGroupMoves p d units)
+
 /-- The Units a player might move: those on their Base and those at Battlefields. -/
 def GameState.movable (s : GameState) (p : PlayerId) : List ObjId :=
   s.zone (.player p .base) ++ s.zone .battlefieldZone
@@ -139,6 +150,69 @@ def GameState.movable (s : GameState) (p : PlayerId) : List ObjId :=
 /-- The destinations a Unit might be moved to: the Base and each Battlefield. -/
 def GameState.destinations (s : GameState) : List MoveDest :=
   .base :: s.battlefields.map MoveDest.battlefield
+
+/-- Eligible Units for a shared Standard Move destination. Origins may differ (CR 144.3.b). -/
+def GameState.groupMoveChoices (s : GameState) (p : PlayerId) (d : MoveDest) : List ObjId :=
+  ((s.movable p).filter (fun u => moveOk s p u d)).eraseDups
+
+theorem GameState.groupMoveChoices_main {s : GameState} {p : PlayerId} {d : MoveDest}
+    (h : 2 ≤ (s.groupMoveChoices p d).length) : s.phase = .main := by
+  cases hc : s.groupMoveChoices p d with
+  | nil => simp [hc] at h
+  | cons u us =>
+    have hu : u ∈ s.groupMoveChoices p d := by simp [hc]
+    have ok := (List.mem_filter.mp (List.mem_eraseDups.mp hu)).2
+    unfold moveOk at ok
+    split at ok
+    · contradiction
+    · simp only [Bool.and_eq_true, decide_eq_true_eq] at ok
+      exact ok.1.1.1.1.2
+
+/-- Payments that can fund a group of eligible Units at the chosen destination. -/
+def GameState.groupMovePayments (s : GameState) (p : PlayerId) (d : MoveDest) : List Cost :=
+  s.standardMoveQuotes p d 2 (s.groupMoveChoices p d).length
+
+/-- Eligible Units that can be added without making the chosen payment impossible. -/
+def GameState.groupMoveRemaining (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : List ObjId :=
+  let choices := s.groupMoveChoices p d
+  if (s.standardMoveQuotes p d (max 2 (units.length + 1)) choices.length).contains pay then
+    choices.filter (fun u => !units.contains u)
+  else []
+
+theorem mem_groupMoveRemaining {s : GameState} {p : PlayerId} {d : MoveDest} {pay : Cost}
+    {units : List ObjId} {u : ObjId} :
+    u ∈ s.groupMoveRemaining p d pay units ↔
+      u ∈ s.groupMoveChoices p d ∧ u ∉ units ∧
+      pay ∈ s.standardMoveQuotes p d (max 2 (units.length + 1)) (s.groupMoveChoices p d).length := by
+  by_cases covered :
+      pay ∈ s.standardMoveQuotes p d (max 2 (units.length + 1)) (s.groupMoveChoices p d).length
+  · simp [GameState.groupMoveRemaining, covered]
+  · simp [GameState.groupMoveRemaining, covered]
+
+/-- A proposed group can make the Standard Move. Check the whole group before paying the fee or
+running any effects (CR 144.3). -/
+def GameState.groupMoveReady (s : GameState) (p : PlayerId) (d : MoveDest) (pay : Cost)
+    (units : List ObjId) : Bool :=
+  decide (2 ≤ units.length ∧ units.Nodup ∧
+    pay ∈ s.standardMoveQuotes p d units.length units.length) &&
+    units.all (fun u => moveOk s p u d) && (applyGroupMove s p d pay units).isSome
+
+/-- A Standard Move can be declared with a common destination and fee, without enumerating every
+subset of eligible Units. -/
+def legalGroupMoveStarts (s : GameState) (p : PlayerId) : List Action :=
+  ((s.destinations).filter (fun d => 2 ≤ (s.groupMoveChoices p d).length)).flatMap (fun d =>
+    (s.groupMovePayments p d).map (fun pay => ⟨.player p, .startGroupMove d pay⟩))
+
+theorem mem_legalGroupMoveStarts {s : GameState} {p : PlayerId} {a : Action} :
+    a ∈ legalGroupMoveStarts s p ↔ ∃ d pay, a = ⟨.player p, .startGroupMove d pay⟩ ∧
+      d ∈ s.destinations ∧ 2 ≤ (s.groupMoveChoices p d).length ∧ pay ∈ s.groupMovePayments p d := by
+  simp only [legalGroupMoveStarts, List.mem_flatMap, List.mem_filter, List.mem_map, decide_eq_true_eq]
+  constructor
+  · rintro ⟨d, ⟨hd, hn⟩, pay, hp, rfl⟩
+    exact ⟨d, pay, rfl, hd, hn, hp⟩
+  · rintro ⟨d, pay, rfl, hd, hn, hp⟩
+    exact ⟨d, ⟨hd, hn⟩, pay, hp, rfl⟩
 
 /-- The Standard Moves a player can make. -/
 def legalMoves (s : GameState) (p : PlayerId) : List Action :=
@@ -219,19 +293,39 @@ theorem mem_legalMoves {s : GameState} {p : PlayerId} {a : Action} :
 
 /-! ### Scoring -/
 
-/-- Score the Battlefield `bf` for `r` (CR 471). Nothing happens if `r` has scored it this turn
-(CR 472). A Conquer when `r` is one point short of the Victory Score or closer gives the last point
-only if `r` has scored every Battlefield this turn, and a card drawn instead (CR 473.1.b). -/
+/-- Whether the Battlefield has been scored by the player's side this turn (CR 472, 491.8.b). -/
+def Object.scoredFor (o : Object) (mode : Mode) (p : PlayerId) : Bool :=
+  o.scored.any (mode.sameSide p)
+
+/-- A teammate's control at the scoring step disqualifies the Battlefield for this side. -/
+def GameState.teamScoreBlocked (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  s.config.mode.isTeamDuel && s.turnFx.any (fun note =>
+    note.turn == s.turn && note.target == some bf && note.kind == .teamHeldAtScoring &&
+      s.config.mode.sameSide p note.who)
+
+/-- Whether this side's score on a Battlefield is already spent or is disqualified. -/
+def GameState.scoringUnavailable (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  s.teamScoreBlocked p bf || (s.obj? bf).any (·.scoredFor s.config.mode p)
+
+/-- An ally's occupation at the scoring step satisfies the Final Point requirement during a
+turn of that side (CR 491.8.g.1). Other Battlefields must have been scored by this player. -/
+def GameState.battlefieldCountsForFinalPoint (s : GameState) (p : PlayerId) (bf : ObjId) : Bool :=
+  (s.obj? bf).any (·.scored.contains p) ||
+    (s.config.mode.isTeamDuel && s.active.any (s.config.mode.sameSide p) && s.turnFx.any (fun note =>
+      note.turn == s.turn && note.target == some bf && note.kind == .teamOccupiedAtScoring &&
+        s.config.mode.sameSide p note.who && p != note.who))
+
+/-- Score the Battlefield for a player whose side has yet to score it this turn (CR 471-472).
+Conquering for the final point checks which Battlefields the side scored (CR 473.1.b, 491.8.g). -/
 def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
     GameState × List Frame × List Event :=
   match s.obj? bf with
   | none => (s, [], [])
-  | some o =>
-    if o.scored.contains r then (s, [], [])
+  | some _ =>
+    if s.scoringUnavailable r bf then (s, [], [])
     else
       let s1 := s.modObj bf (fun o => { o with scored := r :: o.scored })
-      let all := s1.battlefields.all
-        (fun b => ((s1.obj? b).map (·.scored.contains r)) == some true)
+      let all := s1.battlefields.all (s1.battlefieldCountsForFinalPoint r)
       -- a card can say the player can't score points here: the Battlefield is scored all the same
       -- (the abilities still fire), but no point comes of it
       if s.cantScoreHere r bf then (s1, [], [Event.scored r bf conquer])
@@ -244,7 +338,28 @@ def scoreBf (s : GameState) (r : PlayerId) (bf : ObjId) (conquer : Bool) :
 /-- The Battlefields the turn player holds and has not scored this turn (CR 315.2.b). -/
 def GameState.holds (s : GameState) (tp : PlayerId) : List ObjId :=
   s.battlefields.filter (fun b =>
-    decide (s.controlOf b = some tp) && !((s.obj? b).map (·.scored.contains tp)).getD false)
+    decide (s.controlOf b = some tp) && !s.scoringUnavailable tp b)
+
+/-- Remember control and occupation at the scoring step for the rest of the turn. -/
+def GameState.rememberTeamScoring (s : GameState) (tp : PlayerId) : GameState :=
+  if s.config.mode.isTeamDuel then
+    let notes := s.battlefields.flatMap (fun bf =>
+      let note (who : PlayerId) (kind : TurnEffect) : TurnFx :=
+        { who, kind, target := some bf, turn := s.turn, stamp := s.nextTimestamp }
+      let held := (s.controlOf bf).toList.filter (fun p => p != tp && s.config.mode.sameSide tp p)
+      let occupied := (s.config.mode.sideSeats tp).filter (fun p => !(s.unitsOf p bf).isEmpty)
+      held.map (fun p => note p .teamHeldAtScoring) ++ occupied.map (fun p => note p .teamOccupiedAtScoring))
+    { s with turnFx := s.turnFx ++ notes }
+  else s
+
+/-- Remembering scoring-step circumstances changes neither the board nor the current decision. -/
+theorem GameState.rememberTeamScoring_safe (s : GameState) (tp : PlayerId) :
+    Safe s (s.rememberTeamScoring tp) := by
+  unfold rememberTeamScoring
+  split
+  · exact ⟨fun hwf => hwf.congr rfl rfl rfl rfl, fun _ => List.Perm.refl _,
+      fun _ hown => hown.congr rfl rfl, rfl⟩
+  · exact Safe.refl s
 
 /-- Remember that `tp` has scored a Battlefield this turn, and held it if a point came of it. -/
 def markScored (tp : PlayerId) (pt : Bool) (o : Object) : Object :=
@@ -260,7 +375,7 @@ def hold (s : GameState) (tp : PlayerId) : GameState × List Event :=
   let bs := s.holds tp
   let replace := s.drawForBattlefieldPoint tp
   let s1 := bs.foldl (fun s' b =>
-    s'.modObj b (markScored tp (!replace && !s.cantScoreHere tp b))) s
+    s'.modObj b (markScored tp (!replace && !s.cantScoreHere tp b))) (s.rememberTeamScoring tp)
   let awarded := bs.filter (fun b => !s.cantScoreHere tp b)
   let scored := bs.map (fun b => Event.scored tp b false)
   if replace then (s1, scored ++ awarded.map (Event.scoreDraw tp))
@@ -296,9 +411,10 @@ def endShowdown (s : GameState) (bf : ObjId) (expire : Bool := true) :
 /-- A winner (CR 323.1): the player who has the Victory Score and more points than every
 opponent. -/
 def GameState.winner (s : GameState) : Option PlayerId :=
-  s.players.find? (fun p =>
+  let seats := s.participatingSeats
+  seats.find? (fun p =>
     decide (s.victoryScore ≤ s.pointsOf p) &&
-      s.players.all (fun q => decide (q = p) || decide (s.pointsOf q < s.pointsOf p)))
+      seats.all (fun q => s.config.mode.sameSide p q || decide (s.pointsOf q < s.pointsOf p)))
 
 /-! ### Cleanup -/
 
@@ -308,7 +424,9 @@ namespace GameState
 determines what happens to the Battlefield (CR 190.3.b, 190.4.b). -/
 def fightingAt (s : GameState) (bf : ObjId) : Bool :=
   s.combat.any (·.battlefield == bf) ||
-    s.pending.any (fun | .showdown there .. => there == bf | _ => false)
+    s.pending.any (fun
+      | .showdown there .. | .endShowdown there => there == bf
+      | _ => false)
 
 /-- Whether the Battlefield is controlled by a player with no Unit there (CR 323.5). -/
 def lostControl (s : GameState) (bf : ObjId) : Bool :=
@@ -335,7 +453,7 @@ end GameState
 
 /-- What the Cleanup does to a unit with lethal damage: an Equipment or Soraka saves it, or it is
 killed (CR 323.4). -/
-def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
+def cleanupKillCore (s : GameState) (u : ObjId) : GameState × List Event :=
   -- a unit with an Equipment that dies instead (Guardian Angel) is saved, as it is by damage
   match s.deathSaver u with
   | some (some g) =>
@@ -352,14 +470,21 @@ def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
     else if !decide (u ∈ s.zone Zone.battlefieldZone) &&
         (s.obj? u).any (fun (o : Object) => decide (0 < o.damage)) then
       let healed := s.modObj u (fun o => { o with damage := 0, exhausted := true })
-      ((closeDeathSacrifice healed u).addTurnFxOn
-        (match s.obj? u with | some o => o.controller | none => ⟨0⟩) u .saveUsed, [])
+      let p := ((s.obj? u).map (·.controller)).getD ⟨0⟩
+      let events := (healAllOn s u).2 ++ (setExhausted true s u).2
+      (finishDeathSave healed u p (s.deathSaveMark u false none), events)
     else killObj s u
   | none => killObj s u
 
+/-- Resolve a lethal death and credit any linked damage instruction. -/
+def cleanupKill (s : GameState) (u : ObjId) : GameState × List Event :=
+  let r := cleanupKillCore s u
+  (r.1, creditLinkedCleanupDeath s u r.2)
+
 /-- What the Cleanup does to a unit with lethal damage is a safe change. -/
 theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).1 := by
-  unfold cleanupKill
+  change Safe s (cleanupKillCore s u).1
+  unfold cleanupKillCore
   split
   · rename_i g hg
     split
@@ -370,7 +495,7 @@ theorem cleanupKill_safe (s : GameState) (u : ObjId) : Safe s (cleanupKill s u).
     · split
       · exact (Safe.modObj s u (f := fun o => { o with damage := 0, exhausted := true })
         (fun _ => rfl) (fun _ => rfl)).trans
-          ((closeDeathSacrifice_safe _ u).trans (addTurnFxOn_safe _ _ _ _))
+          (finishDeathSave_safe _ u _ _ true)
       · exact killObj_safe s u
   · exact killObj_safe s u
 
@@ -452,14 +577,21 @@ def cleanupStep (s : GameState) : Option (GameState × List Event) :=
     | some r => some r
     | none => (returnReservedLegendStep s).orElse (fun _ => cleanupStep0 s)
 
-/-- The Showdown to start at a Neutral Open (CR 323.11): the first Contested Battlefield and the
-player who made it Contested, who has Focus first (CR 345). A Neutral Open is the turn player having
-priority with nothing else going on, so the frame below is the `priority` frame. -/
-def GameState.startShowdown (s : GameState) (rest : List Frame) : Option (ObjId × PlayerId) :=
+/-- Staged Showdowns in a Neutral Open state, with the player who made each Battlefield Contested.
+In team play, non-combat Showdowns are chosen and opened before Combat (CR 323.11, 323.12). -/
+def GameState.stagedShowdowns (s : GameState) (rest : List Frame) : List (ObjId × PlayerId) :=
   match rest with
   | .priority _ :: _ =>
-    s.battlefields.findSome? (fun b => ((s.obj? b).bind (·.contested)).map (b, ·))
-  | _ => none
+    let candidates := s.battlefields.filterMap (fun b => ((s.obj? b).bind (·.contested)).map (b, ·))
+    if s.config.mode.isTeamDuel then
+      let openFields := candidates.filter (fun (b, _) => (s.combatantsAt b).isNone)
+      if openFields.isEmpty then candidates else openFields
+    else candidates
+  | _ => []
+
+/-- The first staged Showdown, when there is one. -/
+def GameState.startShowdown (s : GameState) (rest : List Frame) : Option (ObjId × PlayerId) :=
+  (s.stagedShowdowns rest).head?
 
 /-- A state is settled when the Cleanup has nothing left to do (CR 322): there is no winner to
 declare and no step applies. -/
@@ -472,7 +604,7 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
   match s.combat with
   | some c =>
     if pending.any (fun
-        | .showdown bf .. | .combatResolve bf _ | .combatResult bf |
+        | .showdown bf .. | .endShowdown bf | .combatResolve bf _ | .combatResult bf |
           .combatControl bf | .combatFinish bf => bf == c.battlefield
         | _ => false) then
       let present := s.unitsOf c.attacker c.battlefield ++ s.unitsOf c.defender c.battlefield
@@ -485,8 +617,8 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
         | .showdown bf focus _ => some (bf, focus)
         | _ => none) with
     | some (bf, focus) =>
-      match s.players.filter (fun p => !(s.unitsOf p bf).isEmpty) with
-      | [a, b] =>
+      match s.combatantsAt bf with
+      | some (a, b) =>
         let contested := ((s.obj? bf).bind (·.contested)).getD focus
         let (att, def_) := if contested == b then (b, a) else (a, b)
         (some
@@ -495,30 +627,51 @@ def GameState.observeCombat (s : GameState) (pending : List Frame) :
             defender := def_
             units := s.unitsOf att bf ++ s.unitsOf def_ bf },
           [Event.combatStarted bf att])
-      | _ => (none, [])
+      | none => (none, [])
     | none => (none, [])
 
-/-- Leave a settled Cleanup and update whether Combat has started or gained participants. -/
+/-- Units that watch a Showdown open must be at its location when it starts. -/
+def GameState.watchesShowdownOpening (s : GameState) (bf : ObjId) : Bool :=
+  (s.unitsAt bf).any fun unit =>
+    let text := ((s.cardDef? unit).toList.map CardDef.fullAbilities).flatten ++
+      ((s.attachmentTextDefs unit false).map fun (card, _) => card.textAbilities).flatten
+    text.any fun
+      | .triggered trigger _ _ => trigger.event == .showdownStart && trigger.subject == .self
+      | _ => false
+
+/-- Observe a watched Showdown once, even if the same stack later returns from a Chain. -/
+def GameState.showdownOpeningEvents (s : GameState) (pending : List Frame) : List Event :=
+  match pending with
+  | .showdown bf .. :: _ =>
+    if !s.pending.any (fun | .showdown field .. => field == bf | _ => false) &&
+        s.watchesShowdownOpening bf then [.showdownOpened bf] else []
+  | _ => []
+
+/-- Leave a settled Cleanup and update the Showdown and Combat observations. -/
 def continueAfterCleanup (s : GameState) (pending : List Frame) : GameState × List Event :=
   let r := s.observeCombat pending
-  ({ s with pending := pending, combat := r.1 }, r.2)
+  ({ s with pending := pending, combat := r.1 }, s.showdownOpeningEvents pending ++ r.2)
 
 /-- Collect simultaneous lethal deaths after higher-priority Cleanup matters (CR 323). -/
 def cleanupDeathGroup (s : GameState) : List ObjId :=
   if s.offBoardToken.isSome || s.looseGear.isSome || s.expiredReservedLegend.isSome then [] else
     s.inPlay.filter (fun u => s.isUnit u && s.lethal u)
 
-/-- Offer decisions associated with the simultaneous deaths (CR 372-373). -/
-def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
-  s.deathGroupChoice (cleanupDeathGroup s)
-
 /-- A survival replacement can itself alter the death that pays for it. -/
 def hasNestedDeath (s : GameState) (victim : ObjId) : Bool :=
-  (s.deathSaver victim).join.any (fun cost => (s.deathSaveFor cost []).isSome)
+  (s.deathSaveFor victim []).any fun save =>
+    save.cost.any fun cost =>
+      let used := [save.useKey victim]
+      let ready := prepareNestedDeath s victim cost used
+      (s.nestedDeathDecision victim cost used).isSome || (ready.deathSaveFor cost used).isSome ||
+        ready.banishOnDeathBy cost != s.banishOnDeathBy cost
 
 /-- The individual death when resolving a Cleanup group. -/
 def cleanupResolveDeath (s : GameState) (victim : ObjId) : GameState × List Event :=
-  if hasNestedDeath s victim then killOrSave s victim else cleanupKill s victim
+  if hasNestedDeath s victim then
+    let r := killOrSave s victim
+    (r.1, creditLinkedCleanupDeath s victim r.2)
+  else cleanupKill s victim
 
 theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
     Safe s (cleanupResolveDeath s victim).1 := by
@@ -526,6 +679,10 @@ theorem cleanupResolveDeath_safe (s : GameState) (victim : ObjId) :
   split
   · exact killOrSave_safe s victim
   · exact cleanupKill_safe s victim
+
+/-- Offer decisions against the same projected resolutions that Cleanup will perform (CR 372-373). -/
+def cleanupDeathBanishChoice (s : GameState) : Option (ObjId × PlayerId × Effect × Effect) :=
+  s.deathGroupChoiceWith (cleanupDeathGroup s) true cleanupResolveDeath
 
 /-- The automatic Cleanup handles a single death. A simultaneous group or a nested replacement
 must complete all of its decisions together. -/
@@ -548,7 +705,9 @@ theorem cleanupResolveDeathGroup_safe {s : GameState} {r : GameState × List Eve
 Showdown, or finish. -/
 def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :=
   match s.winner with
-  | some w => ({ s with result := some (.won [w]), pending := [] }, [Event.won w])
+  | some w =>
+    let seats := s.config.mode.sideSeats w
+    ({ s with result := some (.won seats), pending := [] }, seats.map Event.won)
   | none =>
     match cleanupDeathBanishChoice s with
     | some (u, controller, first, other) =>
@@ -560,10 +719,12 @@ def cleanupFrame (s : GameState) (rest : List Frame) : GameState × List Event :
         match cleanupStep s with
         | some r => ({ r.1 with pending := .cleanup :: rest }, r.2)
         | none =>
-          match s.startShowdown rest with
-          | some (bf, q) =>
-            continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
-          | none => continueAfterCleanup s rest
+          match s.stagedShowdowns rest with
+          | (bf, q) :: more =>
+            if s.config.mode.isTeamDuel && !more.isEmpty then
+              ({ s with pending := .chooseShowdown (s.active.getD q) (bf, q) more :: rest }, [])
+            else continueAfterCleanup s (.showdown bf q 0 :: .cleanup :: rest)
+          | [] => continueAfterCleanup s rest
 
 /-! ### The changes are safe -/
 
@@ -679,6 +840,31 @@ theorem applyMove_safe {s s' : GameState} {p : PlayerId} {u : ObjId} {d : MoveDe
         Safe.modObj s1 id' (fun _ => rfl) (fun _ => rfl)
       exact (h1.trans h2).trans (contestBy_safe p bf _)
 
+theorem applyGroupMoves_safe (p : PlayerId) (d : MoveDest) :
+    ∀ (units : List ObjId) {s s' : GameState} {events : List Event},
+      applyGroupMoves p d units s = some (s', events) → Safe s s'
+  | [], _, _, _, h => by
+    cases h
+    exact Safe.refl _
+  | u :: us, s, s', events, h => by
+    simp only [applyGroupMoves, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+    obtain ⟨⟨mid, first⟩, moved, ⟨final, last⟩, remaining, result⟩ := h
+    cases result
+    exact (applyMove_safe moved).trans (applyGroupMoves_safe p d us remaining)
+
+theorem applyGroupMove_safe {s s' : GameState} {p : PlayerId} {d : MoveDest}
+    {pay : Cost} {units : List ObjId} {events : List Event}
+    (h : applyGroupMove s p d pay units = some (s', events)) : Safe s s' := by
+  simp only [applyGroupMove, Option.bind_eq_some_iff] at h
+  obtain ⟨paid, hp, hd⟩ := h
+  have paidSafe : Safe s paid := by
+    split at hp
+    · cases hp
+      exact Safe.refl s
+    · obtain ⟨pool, -, rfl⟩ := Option.map_eq_some_iff.mp hp
+      exact setPool_safe s p pool
+  exact paidSafe.trans (applyGroupMoves_safe p d units hd)
+
 /-- When no step applies, the steps of `cleanupStep0` do not apply either. -/
 theorem cleanupStep0_of_none {s : GameState} (h : cleanupStep s = none) :
     cleanupStep0 s = none := by
@@ -789,9 +975,9 @@ theorem scoreBf_safeP (s : GameState) (r : PlayerId) (bf : ObjId) (c : Bool) :
 theorem hold_safeP (s : GameState) (tp : PlayerId) : SafeP s (hold s tp).1 := by
   unfold hold
   dsimp only
-  have h := foldl_modObj_safe'
+  have h := (GameState.rememberTeamScoring_safe s tp).trans (foldl_modObj_safe'
     (g := fun b => markScored tp (!s.drawForBattlefieldPoint tp && !s.cantScoreHere tp b))
-    (fun _ _ => rfl) (fun _ _ => rfl) (s.holds tp) s
+    (fun _ _ => rfl) (fun _ _ => rfl) (s.holds tp) (s.rememberTeamScoring tp))
   split
   · exact SafeP.of_safe h
   · exact ⟨_, h, Or.inr ⟨tp, _, rfl⟩⟩
@@ -875,7 +1061,8 @@ theorem endShowdown_frames (s : GameState) (bf : ObjId) (expire : Bool := true) 
 
 /-- What the `cleanup` frame does, in the cases the invariants look at. -/
 theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
-    (∃ w, (cleanupFrame s rest).1 = { s with result := some (.won [w]), pending := [] }) ∨
+    (∃ w, (cleanupFrame s rest).1 =
+      { s with result := some (.won (s.config.mode.sideSeats w)), pending := [] }) ∨
     (∃ u p a b, (cleanupFrame s rest).1 =
       { s with pending := .eitherDo p u {} a b .nil :: .cleanup :: rest }) ∨
     (∃ r, Safe s r ∧ (cleanupFrame s rest).1 = { r with pending := .cleanup :: rest }) ∨
@@ -883,6 +1070,7 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
       { s with
         pending := .showdown bf q 0 :: .cleanup :: rest,
         combat := (s.observeCombat (.showdown bf q 0 :: .cleanup :: rest)).1 }) ∨
+    (∃ p first more, (cleanupFrame s rest).1 = { s with pending := .chooseShowdown p first more :: rest }) ∨
     (cleanupFrame s rest).1 = { s with pending := rest, combat := (s.observeCombat rest).1 } := by
   unfold cleanupFrame
   split
@@ -897,20 +1085,30 @@ theorem cleanupFrame_cases (s : GameState) (rest : List Frame) :
         · rename_i r hr
           exact Or.inr (Or.inr (Or.inl ⟨r.1, cleanupStep_safe (s' := r.1) (es := r.2) hr, rfl⟩))
         · split
-          · rename_i bf q hq
-            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨bf, q, rfl⟩)))
-          · exact Or.inr (Or.inr (Or.inr (Or.inr rfl)))
+          · split
+            · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))))
+            · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨_, _, rfl⟩)))
+          · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))
 
-/-- What the winner has: the Victory Score and more points than every other player. -/
+/-- The Cleanup frame preserves well-formedness and the collection of physical cards. -/
+theorem cleanupFrame_preservesBoard (s : GameState) (rest : List Frame) (hwf : s.WF) :
+    (cleanupFrame s rest).1.WF ∧ (cleanupFrame s rest).1.physIds.Perm s.physIds := by
+  rcases cleanupFrame_cases s rest with
+    ⟨_, e⟩ | ⟨_, _, _, _, e⟩ | ⟨_, hr, e⟩ | ⟨_, _, e⟩ | ⟨_, _, _, e⟩ | e <;> rw [e]
+  all_goals first
+    | exact ⟨hwf.congr rfl rfl rfl rfl, List.Perm.refl _⟩
+    | exact ⟨(hr.wf hwf).congr rfl rfl rfl rfl, hr.phys hwf⟩
+
+/-- A winning seat reaches the Victory Score and leads every opposing seat. -/
 theorem winner_spec {s : GameState} {w : PlayerId} (h : s.winner = some w) :
     s.victoryScore ≤ s.pointsOf w ∧
-      ∀ q ∈ s.players, q ≠ w → s.pointsOf q < s.pointsOf w := by
+      ∀ q ∈ s.participatingSeats, s.config.mode.sameSide w q = false → s.pointsOf q < s.pointsOf w := by
   unfold GameState.winner at h
   have := List.find?_some h
   simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true] at this
   refine ⟨this.1, fun q hq hne => ?_⟩
   rcases this.2 q hq with h1 | h1
-  · exact absurd (by simpa using h1) hne
+  · simp [hne] at h1
   · simpa using h1
 
 /-- **I7** (roadmap.md). At most one player satisfies the condition for winning: two players cannot
@@ -927,47 +1125,57 @@ theorem win_condition_unique {s : GameState} {p q : PlayerId}
 
 /-! ### What the rules guarantee -/
 
-/-- Scoring a Battlefield a player has already scored this turn does nothing (CR 472). -/
+/-- Scoring a Battlefield unavailable to a player's side does nothing (CR 472, 491.8.b). -/
 theorem scoreBf_of_scored {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool}
-    (h : ((s.obj? bf).map (·.scored.contains r)) = some true) :
+    (h : s.scoringUnavailable r bf = true) :
     scoreBf s r bf c = (s, [], []) := by
   unfold scoreBf
   cases ho : s.obj? bf with
-  | none => simp [ho] at h
-  | some o =>
-    rw [ho] at h
-    have h' : o.scored.contains r = true := by simpa using h
-    simp only [h', ↓reduceIte]
+  | none => rfl
+  | some _ => simp only [h, ↓reduceIte]
 
-/-- Scoring a Battlefield marks it as scored by the player (CR 472). -/
+/-- Attempting to score a Battlefield leaves it unavailable to the player's side (CR 472). -/
 theorem scoreBf_marks {s : GameState} {r : PlayerId} {bf : ObjId} {c : Bool} {o : Object}
     (h : s.obj? bf = some o) :
-    (((scoreBf s r bf c).1.obj? bf).map (·.scored.contains r)) = some true := by
+    (scoreBf s r bf c).1.scoringUnavailable r bf = true := by
+  have marked : (s.modObj bf (fun o => { o with scored := r :: o.scored })).scoringUnavailable r bf = true := by
+    unfold GameState.scoringUnavailable
+    rw [GameState.obj?_modObj]
+    simp [h, Object.scoredFor, GameState.modObj]
   unfold scoreBf
   simp only [h]
   split
   · rename_i hc
-    show ((s.obj? bf).map _) = some true
-    rw [h]
-    have hm : r ∈ o.scored := by simpa using hc
-    simp [hm]
+    exact hc
   · split
-    · rw [GameState.obj?_modObj]
-      simp [h]
+    · exact marked
     · split
-      · rw [GameState.obj?_modObj]
-        simp [h]
-      · split <;>
-          (show (((s.modObj bf _).obj? bf).map _) = some true
-           rw [GameState.obj?_modObj]
-           simp [h])
+      · exact marked
+      · split <;> exact marked
 
-/-- **I11** (roadmap.md). A player scores a Battlefield at most once in a turn: scoring it a second
-time changes nothing, whichever way it is scored (CR 472, 473). -/
+/-- **I11** (roadmap.md). A side scores a Battlefield at most once in a turn (CR 472, 491.8.b). -/
+theorem scoreBf_twice_side {s : GameState} {r q : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
+    (h : s.obj? bf = some o) (side : s.config.mode.sameSide r q = true) :
+    scoreBf (scoreBf s r bf c).1 q bf c' = ((scoreBf s r bf c).1, [], []) := by
+  let next := (scoreBf s r bf c).1
+  have hk : next.config.mode.scoringSeat r = next.config.mode.scoringSeat q := by
+    rw [(scoreBf_safeP s r bf c).config]
+    exact of_decide_eq_true side
+  have hs : next.config.mode.sameSide r = next.config.mode.sameSide q := by
+    funext p
+    unfold Mode.sameSide
+    rw [hk]
+  apply scoreBf_of_scored
+  change next.scoringUnavailable q bf = true
+  unfold GameState.scoringUnavailable GameState.teamScoreBlocked Object.scoredFor
+  rw [← hs]
+  exact scoreBf_marks h
+
+/-- Scoring the same Battlefield twice by a player is the single-seat case of I11. -/
 theorem scoreBf_twice {s : GameState} {r : PlayerId} {bf : ObjId} {c c' : Bool} {o : Object}
     (h : s.obj? bf = some o) :
     scoreBf (scoreBf s r bf c).1 r bf c' = ((scoreBf s r bf c).1, [], []) :=
-  scoreBf_of_scored (scoreBf_marks h)
+  scoreBf_twice_side h (Mode.sameSide_self _ _)
 
 /-- A settled state has no Unit with lethal damage in play: the Cleanup has killed them
 (CR 323.4). -/
@@ -1021,7 +1229,11 @@ theorem cleanupFrame_pop_settled {s : GameState} {rest : List Frame}
   have noGroup : cleanupDeathGroup s = [] := by
     have hfilter := List.filter_eq_nil_iff.mpr (List.find?_eq_none.mp noneLethal)
     simp [cleanupDeathGroup, hfilter]
-  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, hn]
+  have noShowdowns : s.stagedShowdowns rest = [] := by
+    cases staged : s.stagedShowdowns rest with
+    | nil => rfl
+    | cons first more => simp [GameState.startShowdown, staged] at hn
+  simp [cleanupFrame, hw, cleanupDeathBanishChoice, cleanupResolveDeathGroup, noGroup, hs, noShowdowns]
 
 end Riftbound
 

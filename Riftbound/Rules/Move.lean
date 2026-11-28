@@ -121,6 +121,7 @@ def moveObj (s : GameState) (id : ObjId) (dst : Zone) (pos : Pos := .top) :
                  timestamp := ⟨s.nextTimestamp⟩ }
       some ({ (s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id' (s.zone dst))
               with objects := (s.objects.erase id.n).insert id'.n o',
+                   damageMarks := s.damageMarks.erase id.n,
                    nextId := s.nextId + 1, nextTimestamp := s.nextTimestamp + 1 }, id')
     else
       some ((s.setZone src ((s.zone src).erase id)).setZone dst (pos.insert id (s.zone dst)), id)
@@ -271,7 +272,8 @@ def SameMeta (s s' : GameState) : Prop :=
   { s' with objects := s.objects, zones := s.zones,
             nextId := s.nextId, nextTimestamp := s.nextTimestamp, points := s.points,
             turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-            turnShift := s.turnShift, drawLog := s.drawLog } = s
+            turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience,
+            damageMarks := s.damageMarks } = s
 
 namespace SameMeta
 
@@ -286,16 +288,29 @@ theorem trans {s s' s'' : GameState} (h1 : SameMeta s s') (h2 : SameMeta s' s'')
     ({ x with objects := s.objects, zones := s.zones, nextId := s.nextId,
               nextTimestamp := s.nextTimestamp, points := s.points,
               turnFx := s.turnFx, pools := s.pools, extraTurns := s.extraTurns,
-              turnShift := s.turnShift, drawLog := s.drawLog } : GameState)) h2
+              turnShift := s.turnShift, drawLog := s.drawLog, experience := s.experience,
+              damageMarks := s.damageMarks } : GameState)) h2
   simp only at this
   rw [← h1]
   exact this
+
+/-- The card definitions are as they were. -/
+theorem cards {s s' : GameState} (h : SameMeta s s') : s'.cards = s.cards := by
+  unfold SameMeta at h
+  have cardsEq := congrArg GameState.cards h
+  exact cardsEq
 
 /-- The rules are as they were. -/
 theorem config {s s' : GameState} (h : SameMeta s s') : s'.config = s.config := by
   unfold SameMeta at h
   have h2 := congrArg GameState.config h
   exact h2
+
+/-- A change that keeps the game metadata also keeps its list of departed seats. -/
+theorem departures {s s' : GameState} (h : SameMeta s s') : s'.departures = s.departures := by
+  unfold SameMeta at h
+  have projected := congrArg GameState.departures h
+  exact projected
 
 /-- The stack is as it was. -/
 theorem pending {s s' : GameState} (h : SameMeta s s') : s'.pending = s.pending := by
@@ -557,6 +572,28 @@ theorem locate_eq {s : GameState} (hwf : s.WF) {z : Zone} {id : ObjId}
 
 end GameState
 
+/-- A card remains in its original zone and the Rune Pools are unchanged. -/
+structure RetainsCard (before after : GameState) (z : Zone) (card : ObjId) : Prop where
+  /-- The same identifier is still in the zone. -/
+  member : card ∈ after.zone z
+  /-- The card's object record stayed the same. -/
+  object : after.obj? card = before.obj? card
+  /-- The card's controller can still pay the declared resources. -/
+  pools : after.pools = before.pools
+
+namespace RetainsCard
+
+/-- A state retains its own cards. -/
+theorem refl {s : GameState} {z : Zone} {c : ObjId} (hc : c ∈ s.zone z) :
+    RetainsCard s s z c := ⟨hc, rfl, rfl⟩
+
+/-- Consecutive changes that retain the same card and Pools can be composed. -/
+theorem trans {s t u : GameState} {z : Zone} {c : ObjId}
+    (first : RetainsCard s t z c) (next : RetainsCard t u z c) : RetainsCard s u z c :=
+  ⟨next.member, next.object.trans first.object, next.pools.trans first.pools⟩
+
+end RetainsCard
+
 namespace MoveSpec
 
 variable {s s' : GameState} {id id' : ObjId} {pos : Pos} {src dst : Zone}
@@ -585,6 +622,32 @@ theorem zone_other (hs : MoveSpec s s' id id' pos src dst) {z : Zone} (h1 : z �
       (pos.insert id' (s.zone dst))).zone z := by simp [GameState.zone, hs.zones]
   rw [this, GameState.zone_move hs.ne]
   simp [h1, h2]
+
+/-- Moving one object retains any other card, even if it shares the source or destination zone. -/
+theorem retainsOther (hs : MoveSpec s s' id id' pos src dst) (hwf : s.WF)
+    {z : Zone} {c : ObjId} (hz : z ∈ allZones s.playerCount) (hc : c ∈ s.zone z) (hne : c ≠ id) :
+    RetainsCard s s' z c ∧ c ≠ id' := by
+  have fresh : c ≠ id' := by
+    rcases hs.fresh with same | fresh
+    · exact same ▸ hne
+    · have bound := hwf.lt_nextId c (GameState.mem_zoneIds hz hc)
+      intro eq
+      rw [eq, fresh] at bound
+      exact Nat.lt_irrefl _ bound
+  refine ⟨⟨?_, hs.objects_other c.n ?_ ?_, hs.pools⟩, fresh⟩
+  · by_cases source : z = src
+    · subst z
+      rw [hs.zone_src]
+      exact (List.mem_erase_of_ne hne).mpr hc
+    · by_cases into : z = dst
+      · subst z
+        rw [hs.zone_dst]
+        exact (Pos.insert_perm _ _ _).mem_iff.mpr (List.mem_cons_of_mem _ hc)
+      · exact (hs.zone_other source into).symm ▸ hc
+  · intro eq
+    exact hne (by cases c; cases id; simp_all)
+  · intro eq
+    exact fresh (by cases c; cases id'; simp_all)
 
 end MoveSpec
 

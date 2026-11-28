@@ -675,16 +675,10 @@ theorem lethal_owner {s : GameState} {u : ObjId} (h : s.lethal u = true) :
   exact h.1.1
 
 /-- Noting that a unit died alone leaves the objects in play as they are. -/
-theorem noteAlone_inPlay (s : GameState) (o : Object) (moved : Option ObjId) (alone : Bool) :
-    (noteAlone s o moved alone).inPlay = s.inPlay := by
-  unfold noteAlone
-  cases moved with
-  | none => rfl
-  | some n =>
-    unfold noteIf
-    by_cases h : alone = true
-    · simp only [h, ite_true]; rfl
-    · simp [h]
+theorem noteDeathContext_inPlay (s : GameState) (o : Object) (moved : Option ObjId)
+    (recorded alone : Bool) (grants : List (CardId × Nat)) :
+    (noteDeathContext s o moved recorded alone grants).inPlay = s.inPlay := by
+  cases moved <;> rfl
 
 /-- Noting a death leaves the objects in play as they are. -/
 theorem noteDeath_inPlay (s : GameState) (o : Object) (isUnit marked mighty : Bool)
@@ -761,7 +755,7 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    · exact (noteDeathContext_inPlay _ _ _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   have hkillz : ∀ z, (killObj s u).1.zone z = s'.zone z := by
     intro z
     unfold killObj sendObj
@@ -773,7 +767,7 @@ theorem killObj_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_zone _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
+    · exact (noteDeathContext_zone _ _ _ _ _ _ _).trans (noteDeath_zone _ _ _ _ _ _ _ _)
   have hkillLegends : (killObj s u).1.legendCount = s'.legendCount :=
     legendCount_eq ((killObj_safe s u).same.config.trans hs.config.symm) (fun p => hkillz _)
   have hmoveLegends : s'.legendCount = s.legendCount := by
@@ -866,7 +860,7 @@ theorem killObj_mem_inPlay_ne {s : GameState} (hwf : s.WF) {u x : ObjId} (hne : 
       ((if s.banishedOnDeath u then .banishment else .trash) != dk) = events
     split
     · rfl
-    · exact (noteAlone_inPlay _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
+    · exact (noteDeathContext_inPlay _ _ _ _ _ _).trans (noteDeath_inPlay _ _ _ _ _ _ _)
   rw [hkill, GameState.inPlay_eq_flatMap]
   have hdnot : d ∉ s.inPlayZones := by
     have : o2 = o := Option.some.inj (ho2.symm.trans ho)
@@ -1041,9 +1035,9 @@ theorem saveUnitCore_pot_lt {s : GameState} (hwf : s.WF) {u g : ObjId} (hug : u 
   have hwf2 : ((killObj s g).1.modObj u (fun o => { o with damage := 0 })).WF :=
     GameState.wf_modObj hwf1 _ _
   have h3 := sendHome_pot_le hwf2 hu2
-  unfold saveUnitCore recallFx
-  dsimp only
-  simp only [if_true, setExhausted_pot]
+  change (setExhausted true
+    (sendHome ((killObj s g).1.modObj u (fun o => { o with damage := 0 })) u).1 u).1.pot < s.pot
+  rw [setExhausted_pot]
   omega
 
 /-- Saving a unit with no Equipment to die instead (Soraka), healing, exhausting and recalling it
@@ -1064,9 +1058,8 @@ theorem saveUnitCore_none_pot_lt {s : GameState} (hwf : s.WF) {u : ObjId}
       cases ho
       exact hc o' h1
   have h3 := sendHome_pot_lt hwf2 hb2 hc2
-  unfold saveUnitCore recallFx
-  dsimp only
-  simp only [if_true, setExhausted_pot]
+  change (setExhausted true (sendHome (s.modObj u healObj) u).1 u).1.pot < s.pot
+  rw [setExhausted_pot]
   rw [pot_modObj] at h3
   exact h3
 
@@ -1111,7 +1104,7 @@ theorem offBoardToken_zone {s : GameState} {id : ObjId} (h : s.offBoardToken = s
 
 /-- Removing an object does not change what the others are. -/
 theorem obj?_removed {s : GameState} {id y : ObjId} (h : y.n ≠ id.n) (z : Zone) (l : List ObjId) :
-    ({ s.setZone z l with objects := s.objects.erase id.n } : GameState).obj? y = s.obj? y := by
+    ({ s.setZone z l with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).obj? y = s.obj? y := by
   unfold GameState.obj?
   have : ¬ compare id.n y.n = .eq := fun e => h (Nat.compare_eq_eq.mp e).symm
   simp [Std.ExtTreeMap.getElem?_erase, this]
@@ -1137,10 +1130,10 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       exact Option.some.inj (h2.symm.trans h1)
     subst hzz
     -- the Board is untouched
-    have hin : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hin : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).inPlay = s.inPlay := by
       rw [GameState.inPlay_eq_flatMap, GameState.inPlay_eq_flatMap]
-      have hpc : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+      have hpc : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
           GameState).inPlayZones = s.inPlayZones := rfl
       rw [hpc]
       apply flatMap_congr_mem
@@ -1152,11 +1145,11 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
         simp only [List.mem_append, List.mem_map, List.mem_singleton] at hx
         rcases hx with ⟨p, -, rfl⟩ | rfl <;> simp [Zone.isBoard, ZoneKind.isBoard] at hnb
       exact GameState.zone_setZone_ne s hxz _
-    have hlt : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hlt : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).tokC < s.tokC := by
       obtain ⟨s1, hs1⟩ : ∃ s1 : GameState, s1 =
           { s.setZone z' ((s.zone z').erase id) with
-            objects := s.objects.erase id.n } := ⟨_, rfl⟩
+            objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } := ⟨_, rfl⟩
       rw [← hs1]
       have hisTok : ∀ y : ObjId, y ≠ id → s1.isTok y = s.isTok y := by
         intro y hy
@@ -1200,11 +1193,11 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       intro e
       rw [← e] at hnb
       simp [Zone.isBoard] at hnb
-    have hbf : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hbf : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).zone Zone.battlefieldZone = s.zone Zone.battlefieldZone :=
       GameState.zone_setZone_ne s hbz _
     -- the objects in play are as they were: the token that goes is not one of them
-    have hdm : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hdm : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).dmgC = s.dmgC := by
       unfold GameState.dmgC
       rw [hin]
@@ -1220,14 +1213,14 @@ theorem tokenStep_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
       have hxid : x ≠ id := ne_of_mem_other_zone hwf hidz' hxz hne
       have hn : x.n ≠ id.n := fun e => hxid (objId_eq_of_n e)
       rw [obj?_removed hn]
-    have hlt2 : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n } :
+    have hlt2 : ({ s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } :
         GameState).tokC + ({ s.setZone z' ((s.zone z').erase id) with
-          objects := s.objects.erase id.n } : GameState).dmgC < s.tokC + s.dmgC := by
+          objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).dmgC < s.tokC + s.dmgC := by
       rw [hdm]; omega
     have hl : ({ s.setZone z' ((s.zone z').erase id) with
-        objects := s.objects.erase id.n } : GameState).legendCount = s.legendCount := by
+        objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n } : GameState).legendCount = s.legendCount := by
       refine legendCount_eq (s := s)
-        (t := { s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n }) rfl ?_
+        (t := { s.setZone z' ((s.zone z').erase id) with objects := s.objects.erase id.n, damageMarks := s.damageMarks.erase id.n }) rfl ?_
       intro p
       apply GameState.zone_setZone_ne
       intro e
@@ -1248,6 +1241,42 @@ theorem findSome_newContest {s : GameState} {b : ObjId} {q : PlayerId}
     obtain ⟨rfl, rfl⟩ := hf
     exact ⟨ha, hn⟩
 
+/-- A single Cleanup death reduces the measure while its target is still on the Board.
+The owner condition also applies to deaths selected earlier in a simultaneous group. -/
+theorem cleanupKill_lt {s : GameState} {u : ObjId} (hwf : s.WF) (hmem : u ∈ s.inPlay)
+    (ownerValid : ∀ o, s.obj? u = some o → o.owner.n < s.playerCount) :
+    MeasLt (cleanupKill s u).1.cleanupMeasure s.cleanupMeasure := by
+  change MeasLt (cleanupKillCore s u).1.cleanupMeasure s.cleanupMeasure
+  unfold cleanupKillCore
+  split
+  · rename_i g hg
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Option.any_eq_true, decide_eq_true_eq] at hc
+      obtain ⟨hne, o, ho, hlt⟩ := hc
+      exact MeasLt.at1 (saveUnit_pot_lt hwf (Ne.symm hne) hmem (deathSaver_mem hg)
+        (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+    · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+  · split
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq, Option.any_eq_true] at hc
+      obtain ⟨hb, o, ho, hlt⟩ := hc
+      exact MeasLt.at1 (saveUnit_none_pot_lt hwf hb
+        (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
+    · split
+      · -- healed where it is (a Base): the damage that was on it is gone
+        rename_i hc
+        simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq, Option.any_eq_true] at hc
+        obtain ⟨-, o, ho, hpos⟩ := hc
+        refine MeasLt.at2 (pot_modObj s u (fun o => { o with damage := 0, exhausted := true })) ?_
+        have h1 : (s.modObj u (fun o => { o with damage := 0, exhausted := true })).tokC = s.tokC :=
+          tokC_modObj s u _ (fun _ => rfl)
+        have h2 := dmgC_heal s u (fun o => { o with damage := 0, exhausted := true })
+          (fun _ => rfl) hmem (by rw [ho]; simpa using hpos)
+        exact Nat.add_lt_add_of_le_of_lt (Nat.le_of_eq h1) h2
+      · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+  · exact MeasLt.at1 (killObj_pot_lt hwf ownerValid hmem)
+
 /-- Every step of the Cleanup makes the measure go down (I12a). -/
 theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     (h : cleanupStep0 s = some (s', es)) : MeasLt s'.cleanupMeasure s.cleanupMeasure := by
@@ -1258,35 +1287,7 @@ theorem cleanupStep0_lt {s s' : GameState} {es : List Event} (hwf : s.WF)
     have hl := List.find?_some hu
     simp only [Bool.and_eq_true] at hl
     have hmem := List.mem_of_find?_eq_some hu
-    unfold cleanupKill
-    split
-    · rename_i g hg
-      split
-      · rename_i hc
-        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Option.any_eq_true, decide_eq_true_eq] at hc
-        obtain ⟨hne, o, ho, hlt⟩ := hc
-        exact MeasLt.at1 (saveUnit_pot_lt hwf (Ne.symm hne) hmem (deathSaver_mem hg)
-          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
-      · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
-    · split
-      · rename_i hc
-        simp only [Bool.and_eq_true, decide_eq_true_eq, Option.any_eq_true] at hc
-        obtain ⟨hb, o, ho, hlt⟩ := hc
-        exact MeasLt.at1 (saveUnit_none_pot_lt hwf hb
-          (fun o' ho' => by rw [ho] at ho'; cases ho'; exact hlt))
-      · split
-        · -- healed where it is (a Base): the damage that was on it is gone
-          rename_i hc
-          simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq, Option.any_eq_true] at hc
-          obtain ⟨-, o, ho, hpos⟩ := hc
-          refine MeasLt.at2 (pot_modObj s u (fun o => { o with damage := 0, exhausted := true })) ?_
-          have h1 : (s.modObj u (fun o => { o with damage := 0, exhausted := true })).tokC = s.tokC :=
-            tokC_modObj s u _ (fun _ => rfl)
-          have h2 := dmgC_heal s u (fun o => { o with damage := 0, exhausted := true })
-            (fun _ => rfl) hmem (by rw [ho]; simpa using hpos)
-          exact Nat.add_lt_add_of_le_of_lt (Nat.le_of_eq h1) h2
-        · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
-    · exact MeasLt.at1 (killObj_pot_lt hwf (lethal_owner hl.2) hmem)
+    exact cleanupKill_lt hwf hmem (lethal_owner hl.2)
   · split at h
     · rename_i b hb
       obtain rfl : s' = s.modObj b (fun o => { o with control := none }) :=

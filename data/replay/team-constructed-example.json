@@ -1,0 +1,113 @@
+{
+  "winsRequired": 2,
+  "tournament": {"format": "twoVTwo", "date": {"year": 2026, "month": 11, "day": 23}, "banPeriod": {"global": {"date": {"year": 2026, "month": 11, "day": 23}}}},
+  "legalSets": [{"code": "OGN"}, {"code": "OGS"}, {"code": "SFD"}, {"code": "UNL"}, {"code": "VEN"}, {"code": "RAD"}],
+  "firstChooser": {"n": 0},
+  "order": [{"n": 1}, {"n": 3}, {"n": 0}, {"n": 2}],
+  "decks": {"constructed": {"decks": [
+    {
+      "sideboard": [{"code": "RAD-126"}],
+      "deck": {
+        "reserveLegends": [],
+        "legend": {"code": "RAD-143"},
+        "chosenChampion": {"code": "RAD-137"},
+        "battlefields": [{"code": "RAD-157"}, {"code": "RAD-158"}, {"code": "RAD-159"}],
+        "main": [
+          {"code": "RAD-137"}, {"code": "RAD-001"}, {"code": "RAD-001"}, {"code": "RAD-001"},
+          {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-005"},
+          {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+          {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+          {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+          {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+          {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+          {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-119"},
+          {"code": "RAD-119"}, {"code": "RAD-119"}, {"code": "RAD-120"}, {"code": "RAD-120"},
+          {"code": "RAD-120"}, {"code": "RAD-122"}, {"code": "RAD-122"}, {"code": "RAD-122"}
+        ],
+        "runes": [
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-214"}, {"code": "OGN-214"},
+          {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}
+        ]
+      }
+    },
+    {
+      "sideboard": [{"code": "RAD-112"}, {"code": "RAD-097"}],
+      "deck": {
+        "reserveLegends": [],
+        "legend": {"code": "RAD-141"},
+        "chosenChampion": {"code": "RAD-023"},
+        "battlefields": [{"code": "RAD-160"}, {"code": "RAD-161"}, {"code": "RAD-162"}],
+        "main": [
+          {"code": "RAD-023"}, {"code": "RAD-001"}, {"code": "RAD-001"}, {"code": "RAD-001"},
+          {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-005"},
+          {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+          {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+          {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+          {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+          {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+          {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-093"},
+          {"code": "RAD-093"}, {"code": "RAD-093"}, {"code": "RAD-094"}, {"code": "RAD-094"},
+          {"code": "RAD-094"}, {"code": "RAD-095"}, {"code": "RAD-095"}, {"code": "RAD-095"}
+        ],
+        "runes": [
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-166"}, {"code": "OGN-166"},
+          {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}
+        ]
+      }
+    },
+    {
+      "sideboard": [{"code": "RAD-126"}],
+      "deck": {
+        "reserveLegends": [],
+        "legend": {"code": "RAD-143"},
+        "chosenChampion": {"code": "RAD-137"},
+        "battlefields": [{"code": "RAD-157"}, {"code": "RAD-158"}, {"code": "RAD-159"}],
+        "main": [
+          {"code": "RAD-137"}, {"code": "RAD-001"}, {"code": "RAD-001"}, {"code": "RAD-001"},
+          {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-005"},
+          {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+          {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+          {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+          {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+          {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+          {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-119"},
+          {"code": "RAD-119"}, {"code": "RAD-119"}, {"code": "RAD-120"}, {"code": "RAD-120"},
+          {"code": "RAD-120"}, {"code": "RAD-122"}, {"code": "RAD-122"}, {"code": "RAD-122"}
+        ],
+        "runes": [
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-214"}, {"code": "OGN-214"},
+          {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}, {"code": "OGN-214"}
+        ]
+      }
+    },
+    {
+      "sideboard": [{"code": "RAD-112"}, {"code": "RAD-097"}],
+      "deck": {
+        "reserveLegends": [],
+        "legend": {"code": "RAD-141"},
+        "chosenChampion": {"code": "RAD-023"},
+        "battlefields": [{"code": "RAD-160"}, {"code": "RAD-161"}, {"code": "RAD-162"}],
+        "main": [
+          {"code": "RAD-023"}, {"code": "RAD-001"}, {"code": "RAD-001"}, {"code": "RAD-001"},
+          {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-003"}, {"code": "RAD-005"},
+          {"code": "RAD-005"}, {"code": "RAD-005"}, {"code": "RAD-008"}, {"code": "RAD-008"},
+          {"code": "RAD-008"}, {"code": "RAD-009"}, {"code": "RAD-009"}, {"code": "RAD-009"},
+          {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-011"}, {"code": "RAD-014"},
+          {"code": "RAD-014"}, {"code": "RAD-014"}, {"code": "RAD-016"}, {"code": "RAD-016"},
+          {"code": "RAD-016"}, {"code": "RAD-018"}, {"code": "RAD-018"}, {"code": "RAD-018"},
+          {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-019"}, {"code": "RAD-093"},
+          {"code": "RAD-093"}, {"code": "RAD-093"}, {"code": "RAD-094"}, {"code": "RAD-094"},
+          {"code": "RAD-094"}, {"code": "RAD-095"}, {"code": "RAD-095"}, {"code": "RAD-095"}
+        ],
+        "runes": [
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-007"},
+          {"code": "OGN-007"}, {"code": "OGN-007"}, {"code": "OGN-166"}, {"code": "OGN-166"},
+          {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}, {"code": "OGN-166"}
+        ]
+      }
+    }
+  ]}}
+}

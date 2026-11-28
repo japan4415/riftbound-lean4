@@ -100,22 +100,340 @@ meta def stepOk (s : GameState) (a : Action) : Option GameState :=
 -- pay but the exhaustion; not by the other player, not on its own Unit, not outside the Main Phase
 #guard match scene with
   | some (s, p, q, a, e, _) =>
-    activatable s p a 0 ⟨0, []⟩ [e] true &&
-    (legalActions s).contains ⟨.player p, .activate a 0 ⟨0, []⟩ [e]⟩ &&
-    !activatable s q a 0 ⟨0, []⟩ [e] true && !activatable s p a 0 ⟨0, []⟩ [a] true &&
-    !activatable s p a 0 ⟨0, []⟩ [] true && !activatable s p a 1 ⟨0, []⟩ [e] true &&
-    !activatable { s with phase := .draw } p a 0 ⟨0, []⟩ [e] true &&
-    !activatable s p a 0 ⟨1, []⟩ [e] true
+    activatable s p a 0 ⟨0, [], none⟩ [e] true &&
+    (legalActions s).contains ⟨.player p, .activate a 0 ⟨0, [], none⟩ [e]⟩ &&
+    !activatable s q a 0 ⟨0, [], none⟩ [e] true && !activatable s p a 0 ⟨0, [], none⟩ [a] true &&
+    !activatable s p a 0 ⟨0, [], none⟩ [] true && !activatable s p a 1 ⟨0, [], none⟩ [e] true &&
+    !activatable { s with phase := .draw } p a 0 ⟨0, [], none⟩ [e] true &&
+    !activatable s p a 0 ⟨1, [], none⟩ [e] true
   | none => false
 
 /-- The Pinger's ability used on the Vanilla Unit, and what it caused. -/
 meta def afterUse : Option (GameState × List Event) :=
   match scene with
   | some (s, p, _, a, e, _) =>
-    match step 100 s ⟨.player p, .activate a 0 ⟨0, []⟩ [e]⟩ with
+    match step 100 s ⟨.player p, .activate a 0 ⟨0, [], none⟩ [e]⟩ with
     | .ok r => some r
     | .error _ => none
   | none => none
+
+-- A resolution pick may stop the Chain, or resume its bound instruction immediately.
+#guard (do
+  let (_, p, q, source, target, other) ← scene
+  let (queued, _) ← afterUse
+  let item ← (queued.zone .chain).head?
+  let selector := Selector.one .enemy .atBase [.ofType .unit]
+  let program := EffectList.ofList [
+    .prim (.ready (.slot 0)), .prim (.exhaust (.slot 0)), .prim (.buff (.slot 0)), .prim (.stun selector)]
+  let work := Frame.run p source { slots := [.obj source] } program
+  let stack := [work, Frame.finishSpell item, Frame.priority p]
+  let started := { queued with pending := stack }
+  let ((waiting, before), seen) ← (advanceWithDisclosures 20 started [] []).toOption
+  let .pickDo owner _ _ first rest _ _ :: _ := waiting.pending | none
+  let choose : Action := ⟨.player p, .choose target⟩
+  let ((answered, after), laterSeen) ← (stepWithDisclosures 20 waiting choose).toOption
+  let (one, _) ← moveObj started other (.player q .trash)
+  let ((automatic, withoutChoice), autoSeen) ← (advanceWithDisclosures 20 one [] []).toOption
+  return runFrameSupported work && chainAnswerWorkSupported waiting choose && owner == p &&
+    (first :: rest).length == 2 && (first :: rest).contains target && (first :: rest).contains other &&
+    before.contains (Event.readied source) && before.contains (Event.exhausted source) &&
+    before.contains (Event.buffedBy source p) && !(waiting.obj? target).any (·.stunned) &&
+    (answered.obj? target).any (·.stunned) && !(answered.obj? other).any (·.stunned) &&
+    after.contains (Event.stunnedBy target p) && answered.pending == [Frame.priority p] &&
+    (automatic.obj? target).any (·.stunned) && withoutChoice.contains (Event.stunnedBy target p) &&
+    automatic.pending == [Frame.priority p] && seen.isEmpty && laterSeen.isEmpty && autoSeen.isEmpty
+  : Option Bool).getD false
+
+-- Owner-zone changes preserve the physical cards and record their order and actors.
+#guard (do
+  let start ← mainC 5
+  let p ← start.active
+  let q := otherQ p
+  let base := Zone.player q .base
+  let deck := Zone.player q .mainDeck
+  let hand := Zone.player q .hand
+  let banishment := Zone.player q .banishment
+  let (s, toHand) ← addObject start (newCard start.cards start q (cid "V0")) base
+  let (s, toBanish) ← addObject s (newCard s.cards s q (cid "V1")) base
+  let (s, toDeck) ← addObject s (newCard s.cards s q (cid "V0")) base
+  let program := EffectList.ofList [
+    .prim (.returnToHand (.slot 0)), .prim (.banish (.slot 1)), .prim (.topdeck (.slot 2))]
+  let frame := Frame.run p toHand { slots := [.obj toHand, .obj toBanish, .obj toDeck] } program
+  let started := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 12 started [] []).toOption
+  let [Event.moved h h' hZone, Event.moved b b' bZone, Event.banished actor owner banished,
+      Event.moved d d' dZone] := events | none
+  let samePhysical (old new : ObjId) :=
+    (s.obj? old).bind (·.kind.phys?) == (finished.obj? new).bind (·.kind.phys?)
+  return runFrameSupported frame && finished.pending == [Frame.priority p] && seen.isEmpty &&
+    h == toHand && hZone == hand && (finished.zone hand).contains h' && samePhysical h h' &&
+    b == toBanish && bZone == banishment && (finished.zone banishment).contains b' &&
+    actor == p && owner == q && banished == b' && samePhysical b b' &&
+    d == toDeck && dZone == deck && (finished.zone deck).head? == some d' && samePhysical d d'
+  : Option Bool).getD false
+
+-- Status changes and hiding run through the observer without disclosing the hidden card.
+#guard (do
+  let (s, p, q, unit, _, _) ← scene
+  let field ← s.battlefields.head?
+  let card ← (s.zone (.player p .hand)).head?
+  let original ← s.obj? card
+  let hiddenZone := Zone.player p .hidden
+  let env := ({ slots := [.obj unit, .obj field] } : Env).bindPick card false
+  let program := EffectList.ofList [
+    .prim (.empower (.slot 0)), .prim (.empower (.slot 0)), .prim (.disempower (.slot 0)),
+    .prim (.buff (.slot 0)), .prim (.spendBuff (.slot 0)), .prim (.turnEffect .hiddenPlayed),
+    .prim (.hideAt (.var pickVar) (.slot 1))]
+  let frame := Frame.run p unit env program
+  let started := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 12 started [] []).toOption
+  let hidden ← (finished.zone hiddenZone).head?
+  return runFrameSupported frame && finished.pending == [Frame.priority p] && seen.isEmpty &&
+    (finished.obj? unit).any (fun o => o.empowerCount == 0 && !o.buffed) &&
+    finished.turnFx.any (fun note => note.who == p && note.kind == TurnEffect.hiddenPlayed) &&
+    (finished.obj? hidden).any (fun o =>
+      o.kind.phys? == original.kind.phys? && o.hiddenAt == some field && o.hiddenTurn == some s.turn) &&
+    finished.zoneCardFaces q hiddenZone == some [none] &&
+    finished.zoneCardFaces p hiddenZone == some [original.kind.cardId?] &&
+    events == [Event.empowered p unit, Event.buffedBy unit p, Event.buffSpent p,
+      Event.hiddenPlayed p, Event.moved card hidden hiddenZone]
+  : Option Bool).getD false
+
+-- A cost paid through a resolution choice runs its follow-up only if it changed the state.
+#guard (do
+  let (s, p, _, source, ready, tired) ← scene
+  let s := s.modObj tired (fun o => { o with exhausted := true })
+  let sel := Selector.one .enemy .atBase [.ofType .unit]
+  let effect := Effect.doThen (.prim (.exhaust sel)) (.prim (.gainXP .you (.const 2)))
+  let frame := Frame.run p source {} (.cons effect .nil)
+  let started := { s with pending := [frame, .priority p] }
+  let (waiting, earlier) ← (advance 10 started []).toOption
+  let .pickDo _ _ _ _ _ _ _ :: _ := waiting.pending | none
+  let pay : Action := ⟨.player p, .choose ready⟩
+  let fail : Action := ⟨.player p, .choose tired⟩
+  let ((paid, events), seen) ← (stepWithDisclosures 10 waiting pay).toOption
+  let ((unpaid, skipped), otherSeen) ← (stepWithDisclosures 10 waiting fail).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported waiting pay &&
+    decisionRunAnswerWorkSupported waiting fail && earlier.isEmpty &&
+    (paid.obj? ready).any (·.exhausted) && paid.xpOf p == s.xpOf p + 2 &&
+    !(unpaid.obj? ready).any (·.exhausted) && unpaid.xpOf p == s.xpOf p &&
+    paid.pending == [Frame.priority p] && unpaid.pending == [Frame.priority p] &&
+    events == [Event.exhausted ready] && skipped.isEmpty && seen.isEmpty && otherSeen.isEmpty
+  : Option Bool).getD false
+
+-- With two available payments, the observer stops before spending either resource.
+#guard (do
+  let (s, p, _, source, _, _) ← scene
+  let cost : Cost := ⟨0, [.domain .fury]⟩
+  let effect := Effect.payThen cost (.prim (.gainXP .you (.const 2))) false
+  let frame := Frame.run p source {} (.cons effect .nil)
+  let started := { s with pending := [frame, .priority p] }
+  let rich := started.setPool p { fury := 1, any := 1 }
+  let (waiting, _) ← (advance 10 rich []).toOption
+  let .eitherDo _ _ _ (.paySelected chosen _ _) _ _ :: _ := waiting.pending | none
+  let expected ← spendResolutionPayment waiting p source chosen false
+  let answer : Action := ⟨.player p, .decide true⟩
+  let ((paid, events), seen) ← (stepWithDisclosures 10 waiting answer).toOption
+  let (unique, _) ← (advance 10 (started.setPool p { fury := 1 }) []).toOption
+  let (unable, _) ← (advance 10 (started.setPool p {}) []).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported waiting answer &&
+    waiting.poolOf p == rich.poolOf p && waiting.xpOf p == s.xpOf p &&
+    paid.poolOf p == expected && paid.xpOf p == s.xpOf p + 2 && paid.pending == [Frame.priority p] &&
+    unique.xpOf p == s.xpOf p + 2 && (unique.poolOf p).totalPower == 0 &&
+    unable.xpOf p == s.xpOf p && unable.pending == [Frame.priority p] && events.isEmpty && seen.isEmpty
+  : Option Bool).getD false
+
+-- A Base-only play uses its generated plan. A directly scheduled plan binds the new identifier.
+#guard (do
+  let (s, p, _, source, _, _) ← scene
+  let (s, card) ← addObject s (newCard s.cards s p (cid "V1")) (.player p .trash)
+  let original ← s.obj? card
+  let frame := Frame.run p source { slots := [.obj card] } (.cons (.prim (.playAtBase (.slot 0))) .nil)
+  let terms : EffectPlayTerms := { price := .ignoreBase, requirements := [[none]] }
+  let plan := Frame.run p source {} (.ofList [.planPermanentPlay card terms, .prim (.buff (.var pickVar))])
+  let run (work : Frame) := advanceWithDisclosures 40 { s with pending := [work, .priority p] } [] []
+  let ((atBase, baseEvents), baseSeen) ← (run frame).toOption
+  let ((finished, events), seen) ← (run plan).toOption
+  let newId (board : GameState) := (board.zone (.player p .base)).find? (fun id =>
+    (board.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let played ← newId atBase
+  let arrived ← newId finished
+  return runFrameSupported frame && runFrameSupported plan && atBase.pending == [Frame.priority p] &&
+    baseEvents.contains (Event.played p played) && baseSeen.isEmpty &&
+    finished.pending == [Frame.priority p] && (finished.obj? arrived).any (·.buffed) &&
+    events.contains (Event.played p arrived) && events.contains (Event.buffedBy arrived p) && seen.isEmpty
+  : Option Bool).getD false
+
+-- The actual Champion Zone ability uses a checked permanent Play when its Chain item resolves.
+#guard (do
+  let start ← mainC 11
+  let p ← start.active
+  let q := otherQ p
+  let champion ← (start.zone (.player p .championZone)).head?
+  let original ← start.obj? champion
+  let funded := start.setPool p { energy := 10, fury := 3, calm := 3, any := 3 }
+  let ability ← (legalActions funded).find? (fun a =>
+    match a.kind with | .activate source .. => source == champion | _ => false)
+  let (queued, _) ← (step 40 funded ability).toOption
+  let item ← (queued.zone .chain).head?
+  let (passed, _) ← (step 40 queued ⟨.player p, .pass⟩).toOption
+  let last : Action := ⟨.player q, .pass⟩
+  let (scheduled, earlier) ← applyDeclaredAction passed last
+  let (running, resolving) ← workStep scheduled
+  let ((finished, events), seen) ← (advanceWithDisclosures 40 running (earlier ++ resolving) []).toOption
+  let ((normal, fromPass), passSeen) ← (stepWithDisclosures 40 passed last).toOption
+  let arrived ← (finished.zone (.player p .base)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let (spellState, spell) ← addObject start (newCard start.cards start p (cid "SP0")) (.player p .hand)
+  let inlineSpell := { spellState with pending := [.run p spell {} (.cons (.prim (.play .self)) .nil), .priority p] }
+  return permanentPlayRunSupported running && !permanentPlayRunSupported inlineSpell &&
+    running.pending.tail == [Frame.finishSpell item, Frame.priority p] &&
+    finished.zone (.player p .championZone) == [] && finished.zone .chain == [] &&
+    finished.pending == [Frame.priority p] && normal.pending == finished.pending &&
+    normal.zone (.player p .base) == finished.zone (.player p .base) &&
+    events == fromPass && events.contains (Event.played p arrived) && seen.isEmpty && passSeen.isEmpty
+  : Option Bool).getD false
+
+-- A real Chain ability plays a choice-free Spell, bins it, and resumes the caller.
+#guard (do
+  let start ← mainC 13
+  let p ← start.active
+  let q := otherQ p
+  let play := EffectDef.of [Choice.targetOf .one .friendly .inTrash [.ofType .spell]]
+    (.prim (.play (.slot 0)))
+  let launcher : CardDef := { pinger with id := cid "T-INLINE", abilities :=
+    [.activated [.exhaustSelf] .normal play .unlimited] }
+  let cards := { start.cards with cards := launcher :: start.cards.cards }
+  let (s, source) ← putTok { start with cards := cards } p "T-INLINE" .base
+  let (s, spell) ← addObject s (newCard cards s p (cid "SP0")) (.player p .trash)
+  let original ← s.obj? spell
+  let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ [spell]⟩
+  let passed ← stepOk queued ⟨.player p, .pass⟩
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let (staged, firstEvents) ← applyDeclaredAction passed finalPass
+  let (running, atRun) ← workStep staged
+  let ((finished, events), seen) ← (advanceWithDisclosures 40 running (firstEvents ++ atRun) []).toOption
+  let ((normal, normalEvents), normalSeen) ← (stepWithDisclosures 40 passed finalPass).toOption
+  let discarded ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let activeSpell ← events.findSome? (fun
+    | .moved from_ to .chain => if from_ == spell then some to else none
+    | _ => none)
+  let cast ← events.idxOf? (.played p activeSpell)
+  let draw ← events.idxOf? (.drew p)
+  let finish ← events.idxOf? (.spellResolved p discarded)
+  let .run player src env (.cons play rest) :: tail := running.pending | none
+  let continued := EffectList.cons play (rest.append (.cons (.prim (.gainXP .you (.const 2))) .nil))
+  let extended := { running with pending := Frame.run player src env continued :: tail }
+  let (resumed, extraEvents) ← (advance 40 extended (firstEvents ++ atRun)).toOption
+  return effectPlayRunSupported running && inlineSpellPlayRunSupported extended &&
+    finished.pending == [Frame.priority p] && finished.zone .chain == [] &&
+    (finished.zone (.player p .hand)).length == (s.zone (.player p .hand)).length + 1 &&
+    cast < draw && draw < finish &&
+    resumed.xpOf p == finished.xpOf p + 2 && extraEvents == events &&
+    normal.zone (.player p .hand) == finished.zone (.player p .hand) &&
+    normal.zone (.player p .trash) == finished.zone (.player p .trash) &&
+    normalEvents == events && seen.isEmpty && normalSeen.isEmpty
+  : Option Bool).getD false
+
+-- A separate Spell cost waits for the parent Chain item, then waits for its own input.
+#guard (do
+  let start ← mainC 14
+  let p ← start.active
+  let q := otherQ p
+  let play := EffectDef.of [Choice.targetOf .one .friendly .inTrash [.ofType .spell]]
+    (.prim (.play (.slot 0)))
+  let launcher : CardDef := { pinger with id := cid "T-QUEUE", abilities :=
+    [.activated [.exhaustSelf] .normal play .unlimited] }
+  let costed := { drawSpell with id := cid "T-REQUIRES-EXHAUST", playExtra := some (.exhaustUnit, true) }
+  let cards := { start.cards with cards := launcher :: costed :: start.cards.cards }
+  let (s, source) ← putTok { start with cards := cards } p "T-QUEUE" .base
+  let (s, first) ← putTok s p "V0" .base
+  let (s, second) ← putTok s p "V1" .base
+  let (s, spell) ← addObject s (newCard cards s p costed.id) (.player p .trash)
+  let original ← s.obj? spell
+  let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ [spell]⟩
+  let parent ← (queued.zone .chain).head?
+  let passed ← stepOk queued ⟨.player p, .pass⟩
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let (staged, _) ← applyDeclaredAction passed finalPass
+  let (running, _) ← workStep staged
+  let ((waiting, queuedEvents), queuedSeen) ← (stepWithDisclosures 40 passed finalPass).toOption
+  let .eitherDo chooser _ _ (.finishLimitedSpell item selected []) (.finishLimitedSpell _ alternative []) _ :: _ :=
+    waiting.pending | none
+  let elected ← selected.pick.extraObject
+  let unused ← alternative.pick.extraObject
+  let ((cast, paidEvents), paidSeen) ← (stepWithDisclosures 40 waiting ⟨.player p, .decide true⟩).toOption
+  let passedSpell ← stepOk cast ⟨.player p, .pass⟩
+  let ((finished, resolvedEvents), _) ← (stepWithDisclosures 40 passedSpell ⟨.player q, .pass⟩).toOption
+  let discarded ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  return effectPlayRunSupported running && !inlineSpellPlayRunSupported running &&
+    (waiting.obj? parent).isNone && (waiting.pendingSpell item).isSome && chooser == p &&
+    [first, second].contains elected && [first, second].contains unused && elected != unused &&
+    !(waiting.obj? elected).any (·.exhausted) && !(queuedEvents.contains (Event.played p item)) &&
+    (cast.obj? elected).any (·.exhausted) && !(cast.obj? unused).any (·.exhausted) &&
+    paidEvents.contains (Event.played p item) && queuedSeen.isEmpty && paidSeen.isEmpty &&
+    finished.zone .chain == [] && (finished.zone (.player p .hand)).length == (s.zone (.player p .hand)).length + 1 &&
+    resolvedEvents.contains (Event.spellResolved p discarded)
+  : Option Bool).getD false
+
+-- A Play selection can skip, bind its sole candidate, or wait for a legal answer.
+#guard (do
+  let start ← mainC 15
+  let p ← start.active
+  let q := otherQ p
+  let play := Effect.prim (.play (Selector.one .friendly .inTrash [.ofType .spell]))
+  let body := Effect.seq (EffectList.ofList [play, .prim (.gainXP .you (.const 2))])
+  let launcher : CardDef := { pinger with id := cid "T-PICK-PLAY", abilities :=
+    [.activated [.exhaustSelf] .normal (.of [] body) .unlimited] }
+  let cards := { start.cards with cards := launcher :: start.cards.cards }
+  let (start, source) ← putTok { start with cards := cards } p "T-PICK-PLAY" .base
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let resolve := fun s => do
+    let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ []⟩
+    let item ← (queued.zone .chain).head?
+    let passed ← stepOk queued ⟨.player p, .pass⟩
+    let (staged, _) ← applyDeclaredAction passed finalPass
+    let (atSequence, _) ← workStep staged
+    let (running, _) ← workStep atSequence
+    let ((settled, events), seen) ← (stepWithDisclosures 40 passed finalPass).toOption
+    some (item, running, settled, events, seen)
+  let (skippedItem, empty, skipped, skippedEvents, skippedSeen) ← resolve start
+  let (one, first) ← addObject start (newCard cards start p (cid "SP0")) (.player p .trash)
+  let (singleItem, singleton, cast, castEvents, castSeen) ← resolve one
+  let chosen ← castEvents.idxOf? (.chosenByAbility p first)
+  let moved ← castEvents.findSome? (fun
+    | .moved from_ to .chain => if from_ == first then some to else none
+    | _ => none)
+  let played ← castEvents.idxOf? (.played p moved)
+  let (both, second) ← addObject one (newCard cards one p (cid "SP0")) (.player p .trash)
+  let selectedCard ← both.obj? second
+  let (waitingItem, multiple, waiting, before, beforeSeen) ← resolve both
+  let .pickDo owner _ _ head others _ _ :: _ := waiting.pending | none
+  let answer : Action := ⟨.player p, .choose second⟩
+  let ((finished, after), afterSeen) ← (stepWithDisclosures 40 waiting answer).toOption
+  let selectedSpell ← after.findSome? (fun
+    | .moved from_ to .chain => if from_ == second then some to else none
+    | _ => none)
+  let inTrash ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == selectedCard.kind.phys?))
+  let resolvedAt ← after.idxOf? (.spellResolved p inTrash)
+  let selectedAt ← after.idxOf? (.chosenByAbility p second)
+  let playedAt ← after.idxOf? (.played p selectedSpell)
+  return effectPlayRunSupported empty && effectPlayRunSupported singleton && effectPlayRunSupported multiple &&
+    skippedEvents.contains (.skipped source) && (skipped.obj? skippedItem).isNone && skipped.xpOf p == start.xpOf p + 2 &&
+    skipped.pending == [Frame.priority p] && !(skippedEvents.contains (.drew p)) &&
+    cast.xpOf p == start.xpOf p + 2 && chosen < played && castEvents.contains (.drew p) &&
+    (cast.obj? singleItem).isNone && waiting.xpOf p == start.xpOf p && (waiting.obj? waitingItem).isSome &&
+    owner == p && (head :: others).length == 2 && (head :: others).contains first && (head :: others).contains second &&
+    !(before.contains (.chosenByAbility p first)) && !(before.contains (.chosenByAbility p second)) &&
+    chainPlayPickAnswerSupported waiting answer && (legalActions waiting).contains answer &&
+    selectedAt < playedAt && playedAt < resolvedAt && !(after.contains (.chosenByAbility p first)) && after.contains (.drew p) &&
+    (finished.zone (.player p .trash)).contains first && (finished.obj? waitingItem).isNone &&
+    finished.pending == [Frame.priority p] && finished.xpOf p == start.xpOf p + 2 &&
+    skippedSeen.isEmpty && castSeen.isEmpty && beforeSeen.isEmpty && afterSeen.isEmpty
+  : Option Bool).getD false
 
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
@@ -137,7 +455,7 @@ meta def afterUse : Option (GameState × List Event) :=
 -- physical card: the physical cards are as they were (I1)
 #guard match scene, afterUse with
   | some (s, p, _, a, e, _), some (s1, _) =>
-    !activatable s1 p a 0 ⟨0, []⟩ [e] false && s1.physIds.length == s.physIds.length &&
+    !activatable s1 p a 0 ⟨0, [], none⟩ [e] false && s1.physIds.length == s.physIds.length &&
     s1.zoneIds.length == s.zoneIds.length + 1
   | _, _ => false
 
@@ -167,7 +485,7 @@ meta def afterResolve : Option GameState :=
       && !(legalFrameActions s1).any
         (fun x => match x.kind with | .standardMove .. => true | _ => false) &&
     (match stepOk s1 ⟨.player p, .pass⟩ with
-      | some s2 => (legalFrameActions s2).contains ⟨.player q, .activate r 0 ⟨0, []⟩ [a]⟩
+      | some s2 => (legalFrameActions s2).contains ⟨.player q, .activate r 0 ⟨0, [], none⟩ [a]⟩
       | none => false)
   | _, _ => false
 
@@ -177,12 +495,26 @@ meta def afterReact : Option (GameState × GameState × GameState) :=
   match scene, afterUse with
   | some (_, p, q, a, _, r), some (s1, _) =>
     (stepOk s1 ⟨.player p, .pass⟩).bind fun s2 =>
-    (stepOk s2 ⟨.player q, .activate r 0 ⟨0, []⟩ [a]⟩).bind fun s3 =>
+    (stepOk s2 ⟨.player q, .activate r 0 ⟨0, [], none⟩ [a]⟩).bind fun s3 =>
     (stepOk s3 ⟨.player q, .pass⟩).bind fun s4 =>
     (stepOk s4 ⟨.player p, .pass⟩).bind fun s5 =>
     (stepOk s5 ⟨.player p, .pass⟩).bind fun s6 =>
     (stepOk s6 ⟨.player q, .pass⟩).map fun s7 => (s3, s5, s7)
   | _, _ => none
+
+-- When the turn player's Reaction resolves, priority goes to the opponent whose item is next.
+#guard ((do
+  let (s, p, q, attacker, target, rival) ← scene
+  let (s, reply) ← putTok s p "T-REACT" .base
+  let first ← stepOk s ⟨.player p, .activate attacker 0 ⟨0, [], none⟩ [target]⟩
+  let response ← stepOk first ⟨.player p, .pass⟩
+  let middle ← stepOk response ⟨.player q, .activate rival 0 ⟨0, [], none⟩ [attacker]⟩
+  let answer ← stepOk middle ⟨.player q, .pass⟩
+  let newest ← stepOk answer ⟨.player p, .activate reply 0 ⟨0, [], none⟩ [target]⟩
+  let passing ← stepOk newest ⟨.player p, .pass⟩
+  let resumed ← stepOk passing ⟨.player q, .pass⟩
+  let item ← (resumed.zone .chain).head?.bind resumed.obj?
+  return item.controller == q && resumed.pending.head? == some (.chainPass q 0)) : Option Bool).getD false
 
 -- two items are on the Chain, the Reactor's on top; when it has resolved, the Pinger's is still
 -- there and the turn player has priority again; when both have resolved the Chain is empty (CR 340)
@@ -270,18 +602,18 @@ meta def afterSpell : Option (GameState × GameState) :=
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
         let s3 := s2.setPool p { energy := 2 }
-        activatable s3 p a 0 ⟨1, []⟩ [e] true && !activatable s3 p a 0 ⟨1, []⟩ [e] false &&
-        !activatable s3 p a 0 ⟨0, []⟩ [e] true &&
-        !activatable s3 p a 0 ⟨2, []⟩ [e] true &&
-        !activatable (s2.setPool p {}) p a 0 ⟨1, []⟩ [e] true &&
-        (match stepOk s3 ⟨.player p, .activate a 0 ⟨1, []⟩ [e]⟩ with
+        activatable s3 p a 0 ⟨1, [], none⟩ [e] true && !activatable s3 p a 0 ⟨1, [], none⟩ [e] false &&
+        !activatable s3 p a 0 ⟨0, [], none⟩ [e] true &&
+        !activatable s3 p a 0 ⟨2, [], none⟩ [e] true &&
+        !activatable (s2.setPool p {}) p a 0 ⟨1, [], none⟩ [e] true &&
+        (match stepOk s3 ⟨.player p, .activate a 0 ⟨1, [], none⟩ [e]⟩ with
           | some s4 =>
             (s4.poolOf p).energy == 1 && !(s4.obj? a).any (·.exhausted) &&
             (s4.obj? a).any (·.used == [0]) &&
             -- the second use needs the first to have resolved, and is not allowed this turn
             (match (stepOk s4 ⟨.player p, .pass⟩).bind
                 (fun s5 => stepOk s5 ⟨.player (otherQ p), .pass⟩) with
-              | some s6 => !activatable s6 p a 0 ⟨1, []⟩ [e] true &&
+              | some s6 => !activatable s6 p a 0 ⟨1, [], none⟩ [e] true &&
                   (s6.obj? a).any (fun o => (clearScored o).used == [])
               | none => false)
           | none => false)
@@ -298,7 +630,7 @@ meta def afterSpell : Option (GameState × GameState) :=
       match putTok s1 (otherQ p) "V0" .base with
       | some (s2, e) =>
         costPlan [.discard 1] == some (false, none) &&
-      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, []⟩ [e] true &&
+      costPlan [.discard 1, .discard 2] == none && !activatable s2 p a 0 ⟨0, [], none⟩ [e] true &&
         costPlan [.exhaustSelf, .pay ⟨1, []⟩] == some (true, some ⟨1, []⟩) &&
         costPlan [.exhaustSelf, .exhaustSelf] == none
       | none => false

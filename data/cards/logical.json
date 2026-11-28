@@ -1053,6 +1053,9 @@
     "VEN"
    ],
    "subtitle": "Destructive",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Vi",
     "Piltover"
@@ -2262,7 +2265,7 @@
    "tags": [],
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
-    "The next time a friendly unit would die, kill this instead. Recall that unit exhausted. (Send it to base. This isn't a move.)"
+    "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it. (Send it to base. This isn't a move.)"
    ],
    "textVariants": 1,
    "types": [
@@ -4424,6 +4427,9 @@
     "OGN"
    ],
    "subtitle": "Centered",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Lee Sin",
     "Ionia"
@@ -6985,6 +6991,9 @@
     "VEN"
    ],
    "subtitle": "Determined",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Leona",
     "Mount Targon"
@@ -7479,6 +7488,7 @@
    "mightBonus": null,
    "name": "Noxian Guillotine",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "OGN-254/298"
    ],
@@ -7486,6 +7496,9 @@
     "OGN"
    ],
    "subtitle": "Darius",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Darius"
    ],
@@ -8459,7 +8472,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "When you conquer here, recycle one of your runes."
+    "When you conquer here, you must recycle one of your runes. (This doesn't choose anything.)"
    ],
    "textVariants": 1,
    "types": [
@@ -8513,7 +8526,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "When you conquer here, ready 2 runes at the end of this turn."
+    "When you conquer here, ready up to 2 runes at the end of this turn."
    ],
    "textVariants": 1,
    "types": [
@@ -8702,7 +8715,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "Spells and abilities affecting units here each deal 1 Bonus Damage. (Each instance of damage the spell deals is increased by 1.)"
+    "Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.)"
    ],
    "textVariants": 1,
    "types": [
@@ -8866,6 +8879,9 @@
     "OGS"
    ],
    "subtitle": "Meditative",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -9015,6 +9031,9 @@
     "OGS"
    ],
    "subtitle": "Honed",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -9277,6 +9296,7 @@
    "mightBonus": null,
    "name": "Tibbers",
    "power": 2,
+   "powerOwn": true,
    "printings": [
     "OGS-018/024"
    ],
@@ -9284,6 +9304,9 @@
     "OGS"
    ],
    "subtitle": "Annie",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Annie"
    ],
@@ -9344,6 +9367,9 @@
     "OGS"
    ],
    "subtitle": "Yi",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Master Yi"
    ],
@@ -9405,6 +9431,9 @@
     "OGS"
    ],
    "subtitle": "Lux",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Lux"
    ],
@@ -9459,6 +9488,7 @@
    "mightBonus": null,
    "name": "Decisive Strike",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "OGS-024/024"
    ],
@@ -9466,6 +9496,9 @@
     "OGS"
    ],
    "subtitle": "Garen",
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Garen"
    ],
@@ -10059,7 +10092,7 @@
    ],
    "text": [
     "When I win a combat, play a Gold gear token exhausted.",
-    "When I attack or defend, you may pay :rb_rune_fury:. If you do, give me +2 :rb_might: this turn."
+    "When I attack or defend, you may pay :rb_rune_fury: to give me +2 :rb_might: this turn."
    ],
    "textVariants": 1,
    "types": [
@@ -11057,7 +11090,7 @@
    ],
    "text": [
     "[Reaction] (Play any time, even before spells and abilities resolve, including to a battlefield you control.)",
-    "When you play me, heal your units here, then move an enemy unit from here to its base."
+    "When you play me, heal your units here, then move up to one enemy unit from here to its base."
    ],
    "textVariants": 1,
    "types": [
@@ -13693,7 +13726,7 @@
     "Bilgewater"
    ],
    "text": [
-    "When you play me, you may play a spell from your trash with Energy cost no more than :rb_energy_3:, ignoring its Energy cost. Recycle that spell after you play it. (You must still pay its Power cost.)"
+    "When you play me, you may play a spell from your trash with Energy cost no more than :rb_energy_3:, ignoring its Energy cost. Then recycle it. (You must still pay its Power cost.)"
    ],
    "textVariants": 1,
    "types": [
@@ -13866,6 +13899,9 @@
     "SFD"
    ],
    "subtitle": "Cheerless",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Yordle",
     "Vex",
@@ -14376,7 +14412,8 @@
    "tags": [],
    "text": [
     "[Reaction] (Play any time, even before spells and abilities resolve.)",
-    "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1."
+    "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.",
+    "Draw 1."
    ],
    "textVariants": 1,
    "types": [
@@ -15735,7 +15772,7 @@
    "subtitle": null,
    "tags": [],
    "text": [
-    "When you conquer here, you may pay :rb_energy_1: and return a unit you control here to its owner's hand. If you do, play a 2 :rb_might: Sand Soldier unit token here."
+    "When you conquer here, you may pay :rb_energy_1: and return a unit you control here to its owner's hand to play a 2 :rb_might: Sand Soldier unit token here."
    ],
    "textVariants": 1,
    "types": [
@@ -17034,6 +17071,9 @@
     "UNL"
    ],
    "subtitle": "Hotheaded",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Vi",
     "Zaun"
@@ -17777,6 +17817,9 @@
     "UNL"
    ],
    "subtitle": "Mocking",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Yordle",
     "Vex",
@@ -17907,6 +17950,9 @@
     "UNL"
    ],
    "subtitle": "Unstoppable",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -18496,7 +18542,7 @@
     "Mount Targon"
    ],
    "text": [
-    "When a showdown begins here, you may pay :rb_energy_1:. If you do, [Predict], then reveal the top card of your Main Deck. If it's a spell, draw it. (To Predict, look at the top card of your Main Deck. You may recycle it.)"
+    "When a showdown begins here, you may pay :rb_energy_1: to [Predict], then reveal the top card of your Main Deck. If it's a spell, draw it. (To Predict, look at the top card of your Main Deck. You may recycle it.)"
    ],
    "textVariants": 1,
    "types": [
@@ -18557,7 +18603,7 @@
    "text": [
     "[Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.)",
     "[Temporary] (Kill me at the start of my controller's Beginning Phase, before scoring.)",
-    "When you play me, play two Reflection unit tokens here. They become copies of me."
+    "When you play me, play two Reflection unit tokens here. Then do this: They become copies of me."
    ],
    "textVariants": 1,
    "types": [
@@ -18703,6 +18749,9 @@
     "UNL"
    ],
    "subtitle": "Time Mage",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Icathia",
     "Zilean"
@@ -18826,6 +18875,9 @@
     "UNL"
    ],
    "subtitle": "Everywhere at Once",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Noxus",
     "LeBlanc"
@@ -19495,6 +19547,9 @@
     "UNL"
    ],
    "subtitle": "Tempered",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Master Yi",
     "Ionia"
@@ -20615,6 +20670,9 @@
     "UNL"
    ],
    "subtitle": "Apathetic",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Yordle",
     "Vex",
@@ -21094,7 +21152,7 @@
    ],
    "text": [
     "[Ambush] (You may play me as a [Reaction] to a battlefield where you have units.)",
-    "As an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may play me to its battlefield (even if you don't have other units there)."
+    "As an additional cost to play me, kill a Bird, Cat, Dog, or Poro you control. You may [Ambush] me to its battlefield, even if you don't have other units there."
    ],
    "textVariants": 1,
    "types": [
@@ -21272,6 +21330,9 @@
     "UNL"
    ],
    "subtitle": "Fragmented",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Noxus",
     "LeBlanc"
@@ -21388,6 +21449,9 @@
     "UNL"
    ],
    "subtitle": "Peacekeeper",
+   "supertypes": [
+    "champion"
+   ],
    "tags": [
     "Vi",
     "Piltover"
@@ -21766,6 +21830,9 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Vi",
     "Equipment"
@@ -21886,6 +21953,7 @@
    "mightBonus": null,
    "name": "Alpha Strike",
    "power": 1,
+   "powerOwn": true,
    "printings": [
     "UNL-192/219"
    ],
@@ -21893,6 +21961,9 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Master Yi"
    ],
@@ -21956,6 +22027,9 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "Vex",
     "Shadow Isles"
@@ -22122,7 +22196,7 @@
     "LeBlanc"
    ],
    "text": [
-    "When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit token there. It becomes a copy of another unit there. Give it [Temporary]."
+    "When you conquer or hold, you may discard 1 and exhaust me to play a ready Reflection unit token there. Then do this: It becomes a copy of another unit there. Give it [Temporary]."
    ],
    "textVariants": 1,
    "types": [
@@ -22141,6 +22215,7 @@
    "mightBonus": null,
    "name": "Mirror Image",
    "power": 2,
+   "powerOwn": true,
    "printings": [
     "UNL-200/219"
    ],
@@ -22148,11 +22223,14 @@
     "UNL"
    ],
    "subtitle": null,
+   "supertypes": [
+    "signature"
+   ],
    "tags": [
     "LeBlanc"
    ],
    "text": [
-    "Choose a unit. Play a ready Reflection unit token to your base. It becomes a copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)"
+    "Choose a unit. Play a ready Reflection unit token to your base. Then do this: It becomes a copy of that unit. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.)"
    ],
    "textVariants": 1,
    "types": [

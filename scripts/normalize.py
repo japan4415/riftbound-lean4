@@ -23,9 +23,62 @@ ROOT = Path(__file__).resolve().parent.parent
 SET_ORDER = ["OGN", "OGS", "SFD", "UNL", "VEN", "RAD", "LGC"]
 TYPE_IDS = {"unit", "spell", "gear", "legend", "battlefield", "rune"}
 
+# https://playriftbound.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/
+# https://playriftbound.com/en-us/news/rules-and-releases/riftbound-spiritforged-errata/
+# https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/vendetta-errata-updates/
 # https://playriftbound.com/en-us/news/announcements/radiance-errata-updates/
 TEXT_ERRATA = {
+    "OGN-077": {
+        "The next time a friendly unit would die, kill this instead. Recall that unit exhausted.":
+            "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it.",
+    },
+    "OGN-287": {
+        "When you conquer here, recycle one of your runes.":
+            "When you conquer here, you must recycle one of your runes. (This doesn't choose anything.)",
+    },
+    "OGN-289": {"ready 2 runes at the end of this turn": "ready up to 2 runes at the end of this turn"},
+    "OGN-296": {
+        "Spells and abilities affecting units here each deal 1 Bonus Damage. (Each instance of damage the spell deals is increased by 1.)":
+            "Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.)",
+    },
+    "SFD-020": {
+        "When I attack or defend, you may pay :rb_rune_fury:. If you do, give me":
+            "When I attack or defend, you may pay :rb_rune_fury: to give me",
+    },
+    "SFD-053": {
+        "then move an enemy unit from here to its base.":
+            "then move up to one enemy unit from here to its base.",
+    },
+    "SFD-140": {
+        "ignoring its Energy cost. Recycle that spell after you play it.":
+            "ignoring its Energy cost. Then recycle it.",
+    },
+    "SFD-163": {
+        "Kill a friendly unit to give +:rb_might: equal to its Might to another friendly unit this turn. Draw 1.":
+            "Kill a friendly unit. If you do, give +:rb_might: equal to its Might to another friendly unit this turn.\nDraw 1.",
+    },
+    "SFD-207": {
+        "to its owner's hand. If you do, play a 2": "to its owner's hand to play a 2",
+    },
+    "UNL-079": {
+        "When a showdown begins here, you may pay :rb_energy_1:. If you do, [Predict]":
+            "When a showdown begins here, you may pay :rb_energy_1: to [Predict]",
+    },
+    "UNL-081": {
+        "tokens here. They become copies of me.":
+            "tokens here. Then do this: They become copies of me.",
+    },
+    "UNL-166": {
+        "You may play me to its battlefield (even if you don't have other units there).":
+            "You may [Ambush] me to its battlefield, even if you don't have other units there.",
+    },
+    "UNL-199": {
+        "token there. It becomes a copy": "token there. Then do this: It becomes a copy",
+    },
+    "UNL-200": {
+        "to your base. It becomes a copy": "to your base. Then do this: It becomes a copy",
+    },
     "VEN-034": {
         "[Reaction] (Play on your turn or in showdowns.)":
             "[Reaction] (Play any time, even before spells and abilities resolve.)",
@@ -56,7 +109,50 @@ TEXT_ERRATA = {
     },
 }
 
+# The gallery omits some printed supertypes and split-domain Power symbols.
+# https://playriftbound.com/en-us/news/announcements/from-garen-to-annie-rq-houstons-top-decks/
+# https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/57f646b0393b58b657cfabf66357d9fc4a34e046-744x1039.png
+ORIGINS_PRINT_METADATA = {
+    "OGN-151": {"supertypes": ["champion"]},
+    "OGN-238": {"supertypes": ["champion"]},
+    "OGN-254": {"supertypes": ["signature"], "powerOwn": True},
+}
+
+# Signature marks and split-domain Power symbols on Riot's Proving Grounds card images.
+PROVING_GROUNDS_PRINT_METADATA = {
+    "OGS-004": {"supertypes": ["champion"]},
+    "OGS-009": {"supertypes": ["champion"]},
+    "OGS-018": {"supertypes": ["signature"], "powerOwn": True},
+    "OGS-020": {"supertypes": ["signature"]},
+    "OGS-022": {"supertypes": ["signature"]},
+    "OGS-024": {"supertypes": ["signature"], "powerOwn": True},
+}
+
 # The gallery omits or mislabels these fields. Checked against its card images.
+UNLEASHED_PRINT_METADATA = {
+    "UNL-059": {"supertypes": ["champion"]},
+    "UNL-086": {"supertypes": ["champion"]},
+    "UNL-090": {"supertypes": ["champion"]},
+    "UNL-113": {"supertypes": ["champion"]},
+    "UNL-172": {"supertypes": ["champion"]},
+    "UNL-192": {"supertypes": ["signature"], "powerOwn": True},
+    "UNL-200": {"supertypes": ["signature"], "powerOwn": True},
+}
+
+# Riot lists the six chosen Champion options for the Vi and Vex decks.
+# https://playriftbound.com/en-us/news/announcements/vi--vex-champion-decks/
+# The printed Shadow and Hextech Gauntlets in the official gallery carry Signature.
+CHAMPION_DECK_PRINT_METADATA = {
+    "OGN-036": {"supertypes": ["champion"]},
+    "SFD-146": {"supertypes": ["champion"]},
+    "UNL-030": {"supertypes": ["champion"]},
+    "UNL-055": {"supertypes": ["champion"]},
+    "UNL-150": {"supertypes": ["champion"]},
+    "UNL-176": {"supertypes": ["champion"]},
+    "UNL-188": {"supertypes": ["signature"]},
+    "UNL-194": {"supertypes": ["signature"]},
+}
+
 RADIANCE_PRINT_METADATA = {
     "RAD-001": {"domains": ["fury"], "tags": ["Bandle City", "Yordle"]},
     "RAD-002": {"tags": []},
@@ -241,7 +337,7 @@ def normalize(snap: dict) -> dict:
         ident = card_id(first["code"])
         text = plain(first["text"])
         for printed, corrected in TEXT_ERRATA.get(ident, {}).items():
-            text = [line.replace(printed, corrected) for line in text]
+            text = [paragraph for line in text for paragraph in line.replace(printed, corrected).splitlines()]
         if ident == "RAD-071":
             text = [line.replace("Equip :rb_energy_1:", "[Equip] :rb_energy_1:", 1) for line in text]
         effect_text = plain(first["effect"])
@@ -262,6 +358,10 @@ def normalize(snap: dict) -> dict:
             "textVariants": max(len(variants), 1),
             "sets": sorted({p["set"] for p in ps}, key=SET_ORDER.index),
             "printings": [p["code"] for p in ps],
+            **ORIGINS_PRINT_METADATA.get(ident, {}),
+            **PROVING_GROUNDS_PRINT_METADATA.get(ident, {}),
+            **UNLEASHED_PRINT_METADATA.get(ident, {}),
+            **CHAMPION_DECK_PRINT_METADATA.get(ident, {}),
             **RADIANCE_PRINT_METADATA.get(ident, {}),
         })
     cards.sort(key=lambda c: (SET_ORDER.index(c["sets"][0]), c["cardId"]))

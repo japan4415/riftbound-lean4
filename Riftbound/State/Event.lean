@@ -32,6 +32,10 @@ inductive Event where
     (might : Nat)
   /-- An instruction discarded a card with the type required by the linked reflexive ability. -/
   | discardedTypeFor (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (discarded : ObjId)
+  /-- The linked damage instruction killed the Unit. -/
+  | killedByLinkedDamage (p : PlayerId) (source : ObjId) (card : CardId) (idx : Nat) (unit : ObjId)
+  /-- Internal expiration boundary for the Cleanup following linked damage. -/
+  | linkedDamageCleanupDone
   /-- An instruction of an effect could not be done and was skipped (design.md §7.1). The object
   is the card whose effect it was. -/
   | skipped (source : ObjId)
@@ -72,8 +76,12 @@ inductive Event where
   | phaseStarted (p : PlayerId) (ph : Phase)
   /-- An object was stunned (CR 424). -/
   | stunned (target : ObjId)
+  /-- This player stunned the object (CR 412.4, 424). -/
+  | stunnedBy (target : ObjId) (player : PlayerId)
   /-- An object got a buff (CR 701). -/
   | buffed (target : ObjId)
+  /-- This player buffed the object (CR 412.4, 702.2.a). -/
+  | buffedBy (target : ObjId) (player : PlayerId)
   /-- A Unit became Mighty: its Might was below 5 and is 5 or more now. -/
   | becameMighty (u : ObjId)
   /-- A Unit crossed a specified Might threshold from below (CR 383). -/
@@ -122,6 +130,8 @@ inductive Event where
   | buffSpent (p : PlayerId)
   /-- A Combat began at a Battlefield, with the Attacker (CR 466). -/
   | combatStarted (bf : ObjId) (attacker : PlayerId)
+  /-- A watched Showdown opened at this Battlefield (CR 341-348). -/
+  | showdownOpened (bf : ObjId)
   /-- Units entered a Combat for the first time after it began (CR 462.1). -/
   | combatJoined (bf : ObjId) (attacker : PlayerId) (units : List ObjId)
   /-- The Combat ended (CR 468.7). The list names the Unit objects that participated. -/
@@ -129,6 +139,9 @@ inductive Event where
   /-- A Combat at a Battlefield ended and only the units of the player were left there: they won
   it (CR 468). -/
   | combatWon (bf : ObjId) (winner : PlayerId)
+  /-- A linked Unit token instruction played these specific objects (CR 375, 388-389). -/
+  | unitTokensFor (p : PlayerId) (source : ObjId) (card : CardId) (index : Nat)
+      (target : Option ObjId) (tokens : List ObjId) (destination : Option ObjId)
 deriving DecidableEq, Repr
 
 end Riftbound

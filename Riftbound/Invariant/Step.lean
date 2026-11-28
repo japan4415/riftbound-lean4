@@ -26,10 +26,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
-  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact (payPlayDiscard_safe _ _ _ _).wf (applyPlayCard_wf hwf hr)
+  · exact applyPlayCard_wf hwf h
   · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -66,11 +63,7 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact GameState.WF.congr hwf rfl rfl rfl rfl)
-  · rename_i p rest c pay ts flow hp hk
-    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
+  · exact reactStep_wf hwf h
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
   · rename_i p n rest c ab hp hk
@@ -94,7 +87,10 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rename_i p tail src idx pay hp hk
-    exact applyMana_wf hwf h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    exact (applyMana_wf hwf applied).congr rfl rfl rfl rfl
   · rename_i p n tail src idx pay hp hk
     exact applyMana_wf hwf h
   · rename_i p n rest c hp hk
@@ -165,11 +161,11 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
-  · rename_i bf q rest c pay ts flow hp hk
-    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact (payPlayDiscard_safe _ _ _ _).wf (reactStep_wf hwf hr)
+  · rename_i p first more rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact GameState.WF.congr (GameState.wf_gainPoints hwf opp 1) rfl rfl rfl rfl
+  · exact reactStep_wf hwf h
   · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_wf hwf h
   · rename_i q c ab hp hk
@@ -190,12 +186,39 @@ theorem applyFrame_wf0 {s s' : GameState} {a : Action} {es : List Event}
     exact ((completePrediction_safe _ _ _ _ _).wf hwf).congr rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact ((recycleTrashCards_safe _ _).wf hwf).congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact GameState.WF.congr hwf rfl rfl rfl rfl
   · exact applyRune_wf hwf h
   · exact applyMana_wf hwf h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hwf.congr rfl rfl rfl rfl
+  · exact reactStep_wf hwf h
+  · exact activateStep_wf hwf h
+  · exact applyRune_wf hwf h
+  · exact applyMana_wf hwf h
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · cases h
+    exact hwf.congr rfl rfl rfl rfl
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact ((applyGroupMove_safe hm).wf hwf).congr rfl rfl rfl rfl
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the game well formed. -/
@@ -209,10 +232,14 @@ theorem applyAction_wf {s s' : GameState} {a : Action} {es : List Event}
     (hwf : s.WF) (hl : Legal s a) (h : applyAction s a = some (s', es)) : s'.WF := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact GameState.WF.congr hwf rfl rfl rfl rfl
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨_, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      exact withTriggers_wf _ ((applyFreeForAllConcession_preservesBoard hwf removed).1.congr rfl rfl rfl rfl)
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact GameState.WF.congr hwf rfl rfl rfl rfl
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_wf hwf (hl.frame hk) h
 
@@ -232,37 +259,17 @@ theorem workStep_wf {s s' : GameState} {es : List Event} (hwf : s.WF)
       (hwf.congr rfl rfl rfl rfl) legal applied
   · exact GameState.WF.congr hwf rfl rfl rfl rfl
 
+/-- Preparing a priority frame preserves the structural invariants. -/
+theorem GameState.WF.preparePriority {s : GameState} (known : s.WF) : s.preparePriority.WF := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    exact known.congr rfl rfl rfl rfl
+
 /-- The automatic work keeps the game well formed. -/
-theorem advance_wf :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
-      advance n s es = .ok (s', es') → s'.WF
-  | 0, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hwf
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf
-  | n + 1, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_wf n (workStep_wf hwf hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hwf
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hwf
+theorem advance_wf (n : Nat) {s s' : GameState} {es es' : List Event} (known : s.WF)
+    (done : advance n s es = .ok (s', es')) : s'.WF :=
+  advance_preserves GameState.WF (fun _ known => known.preparePriority) workStep_wf known done
 
 /-- **I3** (engine). A step keeps the game well formed. -/
 theorem step_wf {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
@@ -300,6 +307,7 @@ theorem advance_mono :
     | zero => exact h
     | succ k =>
       unfold advance at h ⊢
+      dsimp only at h ⊢
       split at h
       · split at h
         · exact absurd h (by simp)
@@ -309,6 +317,7 @@ theorem advance_mono :
   | n + 1, m, s, es, r, h, hnm => by
     obtain ⟨k, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
     unfold advance at h ⊢
+    dsimp only at h ⊢
     split at h
     · split at h
       · rename_i hf
@@ -342,11 +351,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
-  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact ((payPlayDiscard_safe _ _ _ _).phys (applyPlayCard_wf hwf hr)).trans
-      (applyPlayCard_physIds hwf hr)
+  · exact applyPlayCard_physIds hwf h
   · rename_i p rest u d _ hp hk
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
@@ -383,11 +388,7 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact List.Perm.refl _)
-  · rename_i p n rest c pay ts flow hp hk
-    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
+  · exact reactStep_physIds hwf h
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
   · rename_i p n tail c ab hp hk
@@ -411,7 +412,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · rename_i p tail src idx pay hp hk
-    exact applyMana_physIds hwf h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have preserved := applyMana_physIds hwf applied
+    exact preserved
   · rename_i p n tail src idx pay hp hk
     exact applyMana_physIds hwf h
   · rename_i p n rest c hp hk
@@ -486,11 +491,11 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
-  · rename_i bf q rest c pay ts flow hp hk
-    obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact ((payPlayDiscard_safe _ _ _ _).phys (reactStep_wf hwf hr)).trans (reactStep_physIds hwf hr)
+  · rename_i p first more rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · exact reactStep_physIds hwf h
   · rename_i bf q rest src idx pay ts discards targetPlayer _costBanisher hp hk
     exact activateStep_physIds hwf h
   · rename_i q c ab hp hk
@@ -511,12 +516,39 @@ theorem applyFrame_physIds0 {s s' : GameState} {a : Action} {es : List Event}
     exact (completePrediction_safe _ _ _ _ _).phys hwf
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
+    exact (recycleTrashCards_safe _ _).phys hwf
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact List.Perm.refl _
   · exact applyRune_physIds hwf h
   · exact applyMana_physIds hwf h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact List.Perm.refl _
+  · exact reactStep_physIds hwf h
+  · exact activateStep_physIds hwf h
+  · exact applyRune_physIds hwf h
+  · exact applyMana_physIds hwf h
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · cases h
+    exact List.Perm.refl _
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact (applyGroupMove_safe hm).phys hwf
   · exact absurd h (by simp)
 
 /-- Applying a legal answer keeps the physical cards. -/
@@ -533,10 +565,15 @@ theorem applyAction_physIds {s s' : GameState} {a : Action} {es : List Event}
     s'.physIds.Perm s.physIds := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact List.Perm.refl _
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨_, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      rw [withTriggers_physIds]
+      exact (applyFreeForAllConcession_preservesBoard hwf removed).2.2
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact List.Perm.refl _
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_physIds hwf (hl.frame hk) h
 
@@ -557,35 +594,22 @@ theorem workStep_physIds {s s' : GameState} {es : List Event} (hwf : s.WF)
       (hwf.congr rfl rfl rfl rfl) legal applied
   · exact List.Perm.refl _
 
+/-- Preparing Cleanup does not change the physical cards in the game's zones. -/
+theorem GameState.preparePriority_physIds (s : GameState) :
+    s.preparePriority.physIds = s.physIds := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · exact congrArg GameState.physIds unchanged
+  · rw [staged]
+    rfl
+
 /-- The automatic work keeps the physical cards. -/
-theorem advance_physIds :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF →
-      advance n s es = .ok (s', es') → s'.physIds.Perm s.physIds
-  | 0, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact List.Perm.refl _
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
-  | n + 1, s, s', es, es', hwf, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact (advance_physIds n (workStep_wf hwf hm) h).trans (workStep_physIds hwf hm)
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact List.Perm.refl _
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact List.Perm.refl _
+theorem advance_physIds (n : Nat) {s s' : GameState} {es es' : List Event} (known : s.WF)
+    (done : advance n s es = .ok (s', es')) : s'.physIds.Perm s.physIds := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.physIds.Perm s.physIds)
+    (fun t next => ⟨next.1.preparePriority, t.preparePriority_physIds.symm ▸ next.2⟩)
+    (fun next worked => ⟨workStep_wf next.1 worked, (workStep_physIds next.1 worked).trans next.2⟩)
+    ⟨known, List.Perm.refl _⟩ done
+  exact kept.2
 
 /-- **I1** (engine). A step keeps the physical cards: the list of physical cards in the zones is
 rearranged, nothing is lost or made. -/
@@ -620,7 +644,8 @@ theorem legalFrameActions_iff (s : GameState) (a : Action) :
       cases kind <;> cases actor <;>
         simp [legalRunes, Actor.isPlayer, mem_legalPlays, mem_legalMoves, mem_legalAssigns,
           mem_legalActivates, mem_legalReactions, mem_legalManas,
-          mem_legalShowdownPlays, mem_legalShowdownActivates]
+          mem_legalShowdownPlays, mem_legalShowdownActivates, mem_legalInvitedSpells,
+          mem_legalGroupMoveStarts, mem_groupMoveRemaining, List.mem_filter]
     all_goals try grind
     all_goals (rename_i _ _ ab _; cases ab <;> grind)
 
@@ -629,9 +654,8 @@ theorem concedeActions_iff (s : GameState) (a : Action) :
     a ∈ concedeActions s ↔ LegalConcede s a ∧ a.actor.isPlayer = true := by
   obtain ⟨actor, kind⟩ := a
   unfold concedeActions LegalConcede
-  cases kind <;> cases actor <;> by_cases h : s.playerCount = 2 <;>
-    simp [Actor.isPlayer, h, allPlayers]
-  all_goals grind
+  cases kind <;> cases actor <;> simp [Actor.isPlayer]
+  exact fun eligible => GameState.canConcede_registered eligible
 
 /-- **I6** (enumeration). The answers of the players that `legalActions` lists are exactly the legal
 answers by a player: nothing legal is missing and nothing illegal is listed (design.md §6.3).

@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Invariant.Progress
+public import Riftbound.Rules.PlayerRemoval
 
 /-!
 # The set-up game
@@ -79,6 +80,14 @@ theorem addCards_grows {db : CardDB} (owner : PlayerId) (z : Zone) :
       simp
       omega
 
+/-- Registering a Chosen Champion grows the initial board like the underlying placement. -/
+theorem addChosenChampion_grows {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (placed : addChosenChampion db p s chosen = some s') :
+    Grows s s' := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  have placement := addCards_grows _ _ _ added
+  exact ⟨placement.1.config, placement.1.zone⟩
+
 /-- Adding a deck grows the state, and the player's Battlefields go out of the game. -/
 theorem GameState.addDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') :
@@ -88,7 +97,7 @@ theorem GameState.addDeck_grows {db : CardDB} {s s' : GameState} {p : PlayerId} 
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
-  obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
+  have g2 := addChosenChampion_grows h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
@@ -130,7 +139,7 @@ theorem GameState.addLimitedDeck_grows {db : CardDB} {s s' : GameState} {p : Pla
   obtain ⟨s0, h0, s1, h1, s2, h2, s3, h3, s4, h4, h5⟩ := h
   obtain ⟨g0, -⟩ := addCards_grows _ _ _ h0
   obtain ⟨g1, -⟩ := addCards_grows _ _ _ h1
-  obtain ⟨g2, -⟩ := addCards_grows _ _ _ h2
+  have g2 := addChosenChampion_grows h2
   obtain ⟨g3, -⟩ := addCards_grows _ _ _ h3
   obtain ⟨g4, -⟩ := addCards_grows _ _ _ h4
   obtain ⟨g5, l5⟩ := addCards_grows _ _ _ h5
@@ -293,51 +302,117 @@ theorem startFrames_nodup (n : Nat) : (startFrames n).Nodup := by
     · rcases hx with rfl | rfl <;> cases hy
     · cases hx; cases hy
 
-/-- What follows a frame in the suffix of the setup is the suffix after it. -/
-theorem drop_succ_of_cons {l rest : List Frame} {f : Frame} {k : Nat}
-    (h : l.drop k = f :: rest) : l.drop (k + 1) = rest := by
-  rw [← List.drop_drop, h]
-  rfl
-
 /-- The turn order is the last frame of the setup. -/
-theorem startFrames_turnOrder_last {n k : Nat} {rest : List Frame}
-    (h : (startFrames n).drop k = Frame.chanceTurnOrder :: rest) : rest = [] := by
+theorem startFrames_turnOrder_last {n : Nat} {rest : List Frame}
+    (h : (Frame.chanceTurnOrder :: rest).Sublist (startFrames n)) : rest = [] := by
   have hnd := startFrames_nodup n
-  have hsub : (Frame.chanceTurnOrder :: rest).Nodup := by
-    rw [← h]; exact hnd.sublist (List.drop_sublist _ _)
-  have hlast : (startFrames n).getLast? = some Frame.chanceTurnOrder := by
-    simp [startFrames, List.getLast?_append]
-  have hl : ((startFrames n).drop k).getLast? = some Frame.chanceTurnOrder := by
-    rw [List.getLast?_drop]
-    have hne : ¬ (startFrames n).length ≤ k := by
-      intro hle
-      rw [List.drop_eq_nil_of_le hle] at h
-      exact absurd h (by simp)
-    simp [hne, hlast]
-  rw [h] at hl
-  cases rest with
-  | nil => rfl
-  | cons x xs =>
-    exfalso
-    have hmem : Frame.chanceTurnOrder ∈ x :: xs := by
-      have := List.mem_of_getLast? (by simpa [List.getLast?_cons_cons] using hl)
-      exact this
-    exact (List.nodup_cons.mp hsub).1 hmem
+  unfold startFrames at hnd h
+  obtain ⟨_, _, disjoint⟩ := List.nodup_append.mp hnd
+  obtain ⟨before, after, heq, hbefore, hafter⟩ := List.sublist_append_iff.mp h
+  cases before with
+  | nil =>
+    have hlen := hafter.length_le
+    have heq' : Frame.chanceTurnOrder :: rest = after := by simpa only [List.nil_append] using heq
+    rw [← heq'] at hlen
+    exact List.length_eq_zero_iff.mp (by simpa using hlen)
+  | cons first remaining =>
+    have hfirst : first = Frame.chanceTurnOrder := by simpa using congrArg List.head? heq.symm
+    subst first
+    exact (disjoint _ (hbefore.subset List.mem_cons_self) _ (by simp) rfl).elim
 
-/-- **The setup invariant.** There are at least two players, and either the stack is still a suffix
-of the frames of the setup, in which case every Battlefield that is still to be picked has a card
-to pick from, or no frame of the setup is left. -/
+/-- **The setup invariant.** There are at least two registered seats. The pending setup frames
+follow their original order and each unanswered Battlefield pick has at least one card, or no
+setup frame remains. -/
 def SetupInv (s : GameState) : Prop :=
   2 ≤ s.playerCount ∧
-    ((∃ k, s.pending = (startFrames s.playerCount).drop k ∧
+    ((s.pending.Sublist (startFrames s.playerCount) ∧
         ∀ p, Frame.chanceBattlefield p ∈ s.pending →
           0 < (s.zone (.player p .outOfGame)).length) ∨
       ∀ f ∈ s.pending, f.isSetup = false)
 
-/-- While the stack is a suffix of the setup, its top frame is a frame of the setup. -/
-theorem startFrames_drop_isSetup {n k : Nat} {f : Frame} {rest : List Frame}
-    (h : (startFrames n).drop k = f :: rest) : f.isSetup = true :=
-  startFrames_isSetup n f ((List.drop_sublist _ _).subset (by rw [h]; exact List.mem_cons_self))
+/-- Removing pending frames preserves setup as long as the remaining Battlefield picks
+still have a card to pick. -/
+theorem SetupInv.of_sublist {s s2 : GameState} (hinv : SetupInv s)
+    (hc : s2.playerCount = s.playerCount) (hp : s2.pending.Sublist s.pending)
+    (hbf : ∀ p, Frame.chanceBattlefield p ∈ s2.pending →
+      0 < (s.zone (.player p .outOfGame)).length →
+      0 < (s2.zone (.player p .outOfGame)).length) : SetupInv s2 := by
+  refine ⟨hc ▸ hinv.1, ?_⟩
+  rcases hinv.2 with ⟨setup, picks⟩ | noSetup
+  · exact Or.inl ⟨hc ▸ hp.trans setup, fun p mem => hbf p mem (picks p (hp.subset mem))⟩
+  · exact Or.inr fun f mem => noSetup f (hp.subset mem)
+
+/-- Removing a player leaves the remaining setup questions in their original order, with
+their Battlefield options still available. -/
+theorem SetupInv.of_freeForAllConcession {s s2 : GameState} {departing : PlayerId}
+    {blank : CardId} {events : List Event}
+    (hinv : SetupInv s) (hwf : s.WF) (howner : s.OwnerOk)
+    (applied : applyFreeForAllConcession s departing blank = some (s2, events)) : SetupInv s2 := by
+  have sameCount : s2.playerCount = s.playerCount := by
+    simp only [GameState.playerCount, (applyFreeForAllConcession_meta applied).1]
+  have preserved (p : PlayerId) (otherSeat : p ≠ departing) :
+      s2.zone (.player p .outOfGame) = s.zone (.player p .outOfGame) :=
+    applyFreeForAllConcession_privateZone applied p .outOfGame otherSeat (Or.inr rfl) hwf howner
+  unfold applyFreeForAllConcession at applied
+  split at applied
+  · simp at applied
+  · dsimp only at applied
+    split at applied
+    · simp at applied
+    · simp only [Option.some.injEq, Prod.mk.injEq] at applied
+      obtain ⟨rfl, _⟩ := applied
+      exact ⟨sameCount ▸ hinv.1, Or.inr (fun _ absent => nomatch absent)⟩
+    · obtain ⟨⟨board, removalEvents⟩, _, completed⟩ := Option.bind_eq_some_iff.mp applied
+      obtain ⟨rfl, _⟩ := completed
+      let rewrite := fun f : Frame => f.afterPlayerRemoval s board departing
+      have original (f : Frame) (member : f ∈ s.pending.flatMap rewrite) (setup : f.isSetup = true) :
+          f ∈ s.pending := by
+        obtain ⟨old, before, after⟩ := List.mem_flatMap.mp member
+        exact (Frame.afterPlayerRemoval_setup after setup).symm ▸ before
+      have retainedPick (p : PlayerId) (member : Frame.chanceBattlefield p ∈ s.pending.flatMap rewrite) :
+          p ≠ departing := by
+        intro same
+        subst p
+        obtain ⟨old, _, after⟩ := List.mem_flatMap.mp member
+        have same := Frame.afterPlayerRemoval_setup after rfl
+        subst old
+        simp [rewrite, Frame.afterPlayerRemoval] at after
+      have sublist : ∀ frames : List Frame, (∀ f ∈ frames, f.isSetup = true) →
+          (frames.flatMap rewrite).Sublist frames := by
+        intro frames
+        induction frames with
+        | nil => intros; exact List.Sublist.refl _
+        | cons f tail ih =>
+          intro setup
+          exact (Frame.afterPlayerRemoval_setup_sublist f s board departing
+            (setup f List.mem_cons_self)).append (ih (fun g hg => setup g (List.mem_cons_of_mem _ hg)))
+      unfold GameState.pendingAfterConcession
+      dsimp only
+      split
+      · rcases hinv.2 with ⟨ordered, _⟩ | noSetup
+        · refine hinv.of_sublist (s2 := { board with pending := s.pending.flatMap rewrite })
+            sameCount ?_ ?_
+          · exact sublist s.pending (fun f member =>
+              startFrames_isSetup s.playerCount f (ordered.subset member))
+          · intro p member available
+            have same : board.zone (.player p .outOfGame) = s.zone (.player p .outOfGame) :=
+              preserved p (retainedPick p member)
+            change 0 < (board.zone (.player p .outOfGame)).length
+            rwa [same]
+        · refine ⟨sameCount ▸ hinv.1, Or.inr (fun f member => ?_)⟩
+          cases flag : f.isSetup
+          · rfl
+          · have impossible := (noSetup f (original f member flag)).symm.trans flag
+            cases impossible
+      · rename_i noSetupOrPhase
+        refine ⟨sameCount ▸ hinv.1, Or.inr (fun f member => ?_)⟩
+        rcases List.mem_cons.mp member with rfl | member
+        · rfl
+        · cases flag : f.isSetup
+          · rfl
+          · have hasSetup : s.pending.any Frame.isSetup = true :=
+              List.any_eq_true.mpr ⟨f, original f member flag, flag⟩
+            simp [hasSetup] at noSetupOrPhase
 
 /-- A step that takes a frame which is not a setup frame, and puts frames that are not setup frames
 in its place, keeps the setup invariant. -/
@@ -350,9 +425,9 @@ theorem SetupInv.of_nonsetup {s s2 : GameState} {f : Frame} {rest new : List Fra
   rw [hq] at hg
   rcases List.mem_append.mp hg with h | h
   · exact hnew g h
-  · rcases hcase with ⟨k, hk, -⟩ | hn
-    · rw [hk] at hp
-      rw [startFrames_drop_isSetup hp] at hf
+  · rcases hcase with ⟨hk, -⟩ | hn
+    · rw [hp] at hk
+      rw [startFrames_isSetup _ _ (hk.subset List.mem_cons_self)] at hf
       exact absurd hf (by simp)
     · exact hn g (by rw [hp]; exact List.mem_cons_of_mem _ h)
 
@@ -361,17 +436,9 @@ theorem SetupInv.of_shuffle {s : GameState} {z : Zone} {rest : List Frame} {l : 
     (hinv : SetupInv s) (hp : s.pending = Frame.chanceShuffle z :: rest)
     (hl : l.Perm (s.zone z)) :
     SetupInv { s.reorder z l with pending := rest } := by
-  obtain ⟨h2, hcase⟩ := hinv
-  refine ⟨h2, ?_⟩
-  rcases hcase with ⟨k, hk, hz⟩ | hn
-  · refine Or.inl ⟨k + 1, ?_, fun p hpm => ?_⟩
-    · show rest = (startFrames s.playerCount).drop (k + 1)
-      exact (drop_succ_of_cons (hk ▸ hp)).symm
-    · have := hz p (by rw [hp]; exact List.mem_cons_of_mem _ hpm)
-      show 0 < ((s.reorder z l).zone (.player p .outOfGame)).length
-      rw [GameState.length_reorder hl]
-      exact this
-  · exact absurd (hn _ (by rw [hp]; exact List.mem_cons_self)) (by simp [Frame.isSetup])
+  refine hinv.of_sublist rfl (hp ▸ List.sublist_cons_self _ _) (fun p _ hlen => ?_)
+  show 0 < ((s.reorder z l).zone (.player p .outOfGame)).length
+  rwa [GameState.length_reorder hl]
 
 /-- Answering the turn order on top of the stack keeps the setup invariant: it is the last frame of
 the setup, and the opening hands take its place. -/
@@ -380,8 +447,8 @@ theorem SetupInv.of_turnOrder {s : GameState} {rest : List Frame} {l : List Play
     SetupInv { s with turnOrder := l, pending := Frame.setupHands :: rest } := by
   obtain ⟨h2, hcase⟩ := hinv
   refine ⟨h2, Or.inr (fun f hf => ?_)⟩
-  rcases hcase with ⟨k, hk, -⟩ | hn
-  · have hr : rest = [] := startFrames_turnOrder_last (hk ▸ hp)
+  rcases hcase with ⟨hk, -⟩ | hn
+  · have hr : rest = [] := startFrames_turnOrder_last (hp ▸ hk)
     change f ∈ Frame.setupHands :: rest at hf
     rw [hr] at hf
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hf
@@ -401,15 +468,14 @@ theorem SetupInv.of_battlefield {s s2 : GameState} {p : PlayerId} {rest : List F
   obtain ⟨h2, hcase⟩ := hinv
   have hcount : s2.playerCount = s.playerCount := by simp [GameState.playerCount, hs.config]
   refine ⟨by show 2 ≤ s2.playerCount; rw [hcount]; exact h2, ?_⟩
-  rcases hcase with ⟨k, hk, hz⟩ | hn
-  · refine Or.inl ⟨k + 1, ?_, fun q hq => ?_⟩
-    · show rest = (startFrames s2.playerCount).drop (k + 1)
+  rcases hcase with ⟨hk, hz⟩ | hn
+  · refine Or.inl ⟨?_, fun q hq => ?_⟩
+    · show rest.Sublist (startFrames s2.playerCount)
       rw [hcount]
-      exact (drop_succ_of_cons (hk ▸ hp)).symm
+      exact (List.sublist_cons_self _ _).trans (hp ▸ hk)
     · have hq' : Frame.chanceBattlefield q ∈ s.pending := by
         rw [hp]; exact List.mem_cons_of_mem _ hq
-      have hnd : s.pending.Nodup := by
-        rw [hk]; exact (startFrames_nodup _).sublist (List.drop_sublist _ _)
+      have hnd : s.pending.Nodup := (startFrames_nodup _).sublist hk
       have hne : q ≠ p := by
         intro e
         subst e
@@ -440,10 +506,10 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
   · rename_i p rest c pay ts flow discard pick hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_discard_meta h
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := applyPlayCard_meta h
     rcases hpend with e | e
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
-        (new := [Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
+        (new := [Frame.cleanup, Frame.priority p]) (by rw [e, hp]; rfl) (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
         (new := [Frame.chainPass p 0, Frame.priority p]) (by rw [e]; rfl)
         (by simp [Frame.isSetup])
@@ -460,7 +526,7 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.showdown bf (s.nextPlayer q) (n + 1)]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.showdown bf (s.nextParticipant q) (n + 1)]) rfl (by simp [Frame.isSetup])
     · have hs' : s' = (showdownEnd s bf rest).1 := by
         rw [Option.some.inj h]
       subst hs'
@@ -485,8 +551,14 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     rcases assignDoneStep_cases s bf att side acc done rest with
         ⟨b, a, q, d, e⟩ | ⟨damage, e⟩ | ⟨r, hr, e⟩ <;>
       rw [e]
-    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.assign b a q [] d]) rfl (by simp [Frame.isSetup])
+    · refine hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+        (new := combatAssignmentChoices s b q ++ [Frame.assign b a q [] d])
+        (by simp only [List.append_assoc, List.singleton_append]) (fun f hf => ?_)
+      rcases List.mem_append.mp hf with h | h
+      · have play := combatAssignmentChoices_play h
+        cases f <;> simp_all [Frame.isPlay, Frame.isSetup]
+      · obtain rfl := List.mem_singleton.mp h
+        rfl
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.run att bf {} damage, .cleanup, .combatResolve bf att]) rfl (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
@@ -497,19 +569,27 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.chainPass (s.nextPlayer p) (n + 1)]) rfl (by simp [Frame.isSetup])
+        (new := [Frame.chainPass (s.nextParticipant p) (n + 1)]) rfl (by simp [Frame.isSetup])
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h
       exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := [Frame.resolveChain]) rfl
         (by simp [Frame.isSetup])
   · rename_i p n rest c pay ts flow discard pick hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass p 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass p 0]) step (by simp [Frame.isSetup])
   · rename_i p n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s p src idx ts ++ [Frame.chainPass p 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp_all [Frame.isSetup])
   · rename_i p n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -517,7 +597,13 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
   · rename_i p rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass p 0, Frame.priority p]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s p src idx ts ++ [Frame.chainPass p 0, Frame.priority p])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hframe
+          rcases hframe with rfl | rfl <;> rfl)
   · rename_i p t more others funding rest i ts payment hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -537,9 +623,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp rfl rfl (new := [_]) rfl (by simp [Frame.isSetup])
   · rename_i p tail src idx pay _chosen hp hk
-    have hmeta := applyMana_meta h
+    obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have hmeta := applyMana_meta applied
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
-      (new := [Frame.priority p]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+      (new := [Frame.cleanup, Frame.priority p]) rfl (by simp [Frame.isSetup])
   · rename_i p n tail src idx pay _chosen hp hk
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -626,19 +715,33 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := hr
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (recycleAll_meta p _ hm).config])
-      (new := [Frame.chooseBurnOut p]) rfl (by simp [Frame.isSetup])
+      (new := s.burnOutDecision p) rfl (by
+        rcases s.burnOutDecision_cases p with h | h | ⟨first, more, h⟩ <;> simp [h, Frame.isSetup])
   · rename_i p rest opp hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
+  · rename_i p first more rest opp hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i bf q n rest c pay ts flow discard pick hp hk
-    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_discard_meta h
-    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass q 0, Frame.showdown bf q 0]) step (by simp [Frame.isSetup])
   · rename_i bf q n rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
     obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hcfg])
-      (new := [Frame.chainPass q 0, Frame.showdown bf q 0]) hpend (by simp [Frame.isSetup])
+      (new := activationRecycleFrames s q src idx ts ++ [Frame.chainPass q 0, Frame.showdown bf q 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hframe
+          rcases hframe with rfl | rfl <;> rfl)
   · rename_i bf q n tail c ab hp hk
     have hmeta := applyRune_meta h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) (by simp [GameState.playerCount, hmeta.1])
@@ -668,6 +771,12 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hsafe := completePrediction_safe s p n top bottom
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
       (new := []) rfl (by simp)
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hsafe := recycleTrashCards_safe s order
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hsafe.same.config])
+      (new := []) rfl (by simp)
   · rename_i p src env first more es rest card hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -687,13 +796,72 @@ theorem applyFrame_setup0 {s s' : GameState} {a : Action} {es : List Event}
     have hmeta := applyMana_meta h
     exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
       (new := [Frame.eitherDo p source env first other es]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i inviter rest guest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl
+      (new := [Frame.teamInvitation guest, Frame.priority inviter]) rfl (by simp [Frame.isSetup])
+  · rename_i guest rest hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
+  · rename_i guest rest c pay ts flow discard pick hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := reactStep_meta h
+    rcases hpend with step | step
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.chainPass guest 0]) step (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+        (new := [Frame.cleanup, Frame.chainPass guest 0]) step (by simp [Frame.isSetup])
+  · rename_i guest rest src idx pay ts discards targetPlayer _costBanisher _costObject hp hk
+    obtain ⟨hcfg, -, -, -, -, hpend⟩ := activateStep_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hcfg])
+      (new := activationRecycleFrames s guest src idx ts ++ [Frame.chainPass guest 0])
+      (by simpa only [List.append_assoc, List.cons_append, List.nil_append] using hpend) (by
+        intro g hg
+        rcases List.mem_append.mp hg with hprefix | hframe
+        · exact activationRecycleFrames_nonsetup hprefix
+        · simp_all [Frame.isSetup])
+  · rename_i guest rest c ab hp hk
+    have hmeta := applyRune_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.teamInvitation guest]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i guest rest src idx pay _chosen hp hk
+    have hmeta := applyMana_meta h
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.1])
+      (new := [Frame.teamInvitation guest]) (by rw [hmeta.2.2.2.2, hp]; rfl) (by simp [Frame.isSetup])
+  · rename_i p first more rest bf hp hk
+    obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p rest dest pay hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.groupMove p dest pay [], Frame.priority p]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p dest pay units rest u hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := [Frame.groupMove p dest pay (units ++ [u])]) rfl
+      (by simp [Frame.isSetup])
+  · rename_i p dest pay units rest hp hk
+    cases h
+    exact hinv.of_nonsetup hp rfl rfl (new := []) rfl (by simp)
+  · rename_i p dest pay units rest hp hk
+    obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    have hmeta := (applyGroupMove_safe hm).same
+    exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, hmeta.config])
+      (new := [Frame.cleanup]) rfl (by simp [Frame.isSetup])
   · exact absurd h (by simp)
 
 /-- Finding the triggers a step set off keeps the setup invariant: nothing is put on the stack while
 a frame of the setup is on it. -/
 theorem SetupInv.withTriggers {s : GameState} (hinv : SetupInv s) (es : List Event) :
     SetupInv (s.withTriggers es) := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -, hs⟩
+  rcases withTriggers_cases s es with ⟨p, h, -⟩ | h | ⟨pend, h, -, hs⟩
+  · rw [h]
+    exact ⟨hinv.1, Or.inr (by simp)⟩
   · rw [h]; exact hinv
   · rw [h]
     refine ⟨hinv.1, Or.inr (fun f hf => ?_)⟩
@@ -712,16 +880,21 @@ theorem applyFrame_setup {s s' : GameState} {a : Action} {es : List Event}
     rcases h3 with rfl | ⟨q, pool, rfl⟩ <;> exact h5
   exact h4.withTriggers _
 
-/-- Applying an answer keeps the setup invariant. A concession leaves no frame at all. -/
+/-- Applying an answer keeps the setup invariant. -/
 theorem applyAction_setup {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (hl : Legal s a) (h : applyAction s a = some (s', es)) :
     SetupInv s' := by
   by_cases hk : a.kind = .concede
   · obtain ⟨p, hp, -⟩ := (hl.of_concede hk).actor
-    rw [applyAction_concede hk hp] at h
-    simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
+    by_cases ffa : s.config.mode.isFreeForAll = true
+    · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk hp ffa h
+      have kept := hinv.of_freeForAllConcession hwf hown removed
+      exact (show SetupInv { board with cards := board.cards.withConcessionBattlefield } from kept).withTriggers _
+    · have ffa : s.config.mode.isFreeForAll = false := by simpa using ffa
+      rw [applyAction_concede hk hp ffa] at h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact ⟨hinv.1, Or.inr (fun f hf => absurd hf (by simp))⟩
   · rw [applyAction_of_ne hk] at h
     exact applyFrame_setup hwf hinv (hl.frame hk) h
 
@@ -734,8 +907,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-      (new := s.turnOrder.map (fun p => Frame.draw p 4) ++
-        s.turnOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn]) rfl
+      (new := s.participatingOrder.map (fun p => Frame.draw p 4) ++
+        s.participatingOrder.map (fun p => Frame.mulligan p 0) ++ [Frame.beginTurn]) rfl
       (fun g hg => by
         simp only [List.mem_append, List.mem_map, List.mem_singleton] at hg
         rcases hg with (⟨x, -, rfl⟩ | ⟨x, -, rfl⟩) | rfl <;> rfl)
@@ -767,7 +940,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     by_cases hs : s.hasControlledMod (s.active.getD ⟨0⟩) .skipDrawPhase = true
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) (by simp [hs]) (by simp)
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
-        (new := [Frame.draw (s.active.getD ⟨0⟩) 1]) (by simp [hs]) (by simp [Frame.isSetup])
+        (new := [Frame.draw (s.active.getD ⟨0⟩) s.drawCount]) (by simp [hs]) (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -784,18 +957,11 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i rest hp
-    dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      refine hinv.of_nonsetup hp rfl rfl (new := [_, .phase .beginning]) rfl ?_
-      simp [Frame.isSetup]
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
-        (by simp [GameState.playerCount, (beginStep_safe s (s.active.getD ⟨0⟩)).same.config])
-        (new := [Frame.cleanup, Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
-          Frame.scoreHolds]) rfl (by simp [Frame.isSetup])
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
+      (new := [Frame.cleanup, Frame.draw (s.active.getD ⟨0⟩) (s.extraDraws (s.active.getD ⟨0⟩)),
+        Frame.scoreHolds]) rfl (by simp [Frame.isSetup])
   · rename_i rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -853,7 +1019,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     obtain ⟨rfl, -⟩ := h
     exact hinv.of_nonsetup hp (by simp [Frame.isSetup])
       (by simp [GameState.playerCount, (finishItem_sameMeta s item).config])
-      (new := finishedItemFrames s item (finishItem s item)) rfl (fun g hg => by
+      (new := finishedItemFrames (finishItem s item).1) rfl (fun g hg => by
         have hplay := finishedItemFrames_mem hg
         cases g <;> simp_all [Frame.isPlay, Frame.isSetup])
   · rename_i rest hp
@@ -861,7 +1027,7 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
       have := Option.some.inj h
       rw [this]
     subst hs'
-    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;>
+    rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨u, p, a, b, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨p, first, more, e⟩ | e <;>
       rw [e]
     · exact ⟨hinv.1, Or.inr (fun g hg => by cases hg)⟩
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
@@ -871,6 +1037,8 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
         (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl
         (new := [Frame.showdown bf q 0, Frame.cleanup]) rfl (by simp [Frame.isSetup])
+    · exact hinv.of_nonsetup hp rfl rfl (new := [Frame.chooseShowdown p first more]) rfl
+        (by simp [Frame.isSetup])
     · exact hinv.of_nonsetup hp (by simp [Frame.isSetup]) rfl (new := []) rfl (by simp)
   · rename_i bf att rest hp
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -916,6 +1084,18 @@ theorem microStep_setup0 {s s' : GameState} {es : List Event} (hinv : SetupInv s
     exact hinv.of_nonsetup hp rfl
       (by simp [GameState.playerCount, (triggersStep_spec s pend rest).1.same.config])
       (new := (triggersStep s pend rest).2) rfl (fun g hg => (triggersStep_frames hg).2)
+  · rename_i bf rest hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    rcases showdownEnd_cases s bf rest with ⟨attacker, closed⟩ | closed <;> rw [closed]
+    · exact hinv.of_nonsetup hp rfl rfl (new := [Frame.combatDamage bf attacker])
+        rfl (by simp [Frame.isSetup])
+    · have safe := endShowdown_safeP s bf
+      exact hinv.of_nonsetup hp rfl (by simp [GameState.playerCount, safe.config])
+        (new := (endShowdown s bf).2.1) rfl (fun f member => by
+          obtain ⟨remaining, rfl⟩ := endShowdown_frames s bf true f member
+          rfl)
   · exact absurd h (by simp)
 
 /-- A step of work keeps the setup invariant. -/
@@ -926,10 +1106,10 @@ theorem microStep_setup {s s' : GameState} {es : List Event} (hinv : SetupInv s)
 
 /-- A declared cost can only add non-setup frames to an ordinary play decision. -/
 theorem applyDeclaredAction_setup {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (hl : Legal s a)
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (hl : Legal s a)
     (h : applyDeclaredAction s a = some (s', es)) : SetupInv s' := by
   rcases applyDeclaredAction_cases h with ordinary | ⟨unit, controller, first, other, choice, rfl, _⟩
-  · exact applyAction_setup hwf hinv hl ordinary
+  · exact applyAction_setup hwf hown hinv hl ordinary
   · obtain ⟨_, frame, rest, pending, hf⟩ := GameState.actionDeathCostChoice_context choice
     refine hinv.of_nonsetup
       (new := [.eitherDo controller unit {} first other .nil, .resumeCost a, frame])
@@ -944,7 +1124,7 @@ theorem applyDeclaredAction_setup {s s' : GameState} {a : Action} {es : List Eve
         exact hf
 
 /-- Resolving a locked payment leaves the setup invariant intact. -/
-theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hinv : SetupInv s)
+theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s)
     (h : workStep s = some (s', es)) : SetupInv s' := by
   rcases workStep_cases h with ordinary | ⟨a, rest, pending, resumed⟩
   · exact microStep_setup hinv ordinary
@@ -952,48 +1132,42 @@ theorem workStep_setup {s s' : GameState} {es : List Event} (hwf : s.WF) (hinv :
       hinv.of_nonsetup (new := []) pending rfl rfl rfl (fun _ absent => nomatch absent)
     rcases resumed with ⟨_, legal, applied⟩ | ⟨rfl, _⟩
     · exact applyDeclaredAction_setup (s := { s with pending := rest })
-        (hwf.congr rfl rfl rfl rfl) before legal applied
+        (hwf.congr rfl rfl rfl rfl) (hown.congr rfl rfl) before legal applied
     · exact before
 
+/-- Preparing a priority decision leaves the stack free of setup work. -/
+theorem SetupInv.preparePriority {s : GameState} (known : SetupInv s) :
+    SetupInv s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨p, rest, neutral, _, staged⟩
+  · simpa only [unchanged] using known
+  · rw [staged]
+    refine known.of_nonsetup (new := [.cleanup, .priority p]) neutral rfl rfl ?_ ?_
+    · simp [neutral]
+    · intro frame present
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at present
+      rcases present with rfl | rfl <;> rfl
+
 /-- The automatic work keeps the setup invariant. -/
-theorem advance_setup :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event}, s.WF → SetupInv s →
-      advance n s es = .ok (s', es') → SetupInv s'
-  | 0, s, s', es, es', _, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
-  | n + 1, s, s', es, es', hwf, hinv, h => by
-    unfold advance at h
-    split at h
-    · split at h
-      · split at h
-        · rename_i s1 es1 hm
-          exact advance_setup n (workStep_wf hwf hm) (workStep_setup hwf hinv hm) h
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact hinv
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact hinv
+theorem advance_setup (n : Nat) {s s' : GameState} {es es' : List Event}
+    (wf : s.WF) (owners : s.OwnerOk) (setup : SetupInv s)
+    (done : advance n s es = .ok (s', es')) : SetupInv s' := by
+  have kept := advance_preserves (fun t => t.WF ∧ t.OwnerOk ∧ SetupInv t)
+    (fun _ known => ⟨known.1.preparePriority, known.2.1.preparePriority, known.2.2.preparePriority⟩)
+    (fun known worked => ⟨workStep_wf known.1 worked, workStep_ownerOk known.1 known.2.1 worked,
+      workStep_setup known.1 known.2.1 known.2.2 worked⟩)
+    ⟨wf, owners, setup⟩ done
+  exact kept.2.2
 
 /-- A step keeps the setup invariant. -/
 theorem step_setup {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
-    (hwf : s.WF) (hinv : SetupInv s) (h : step fuel s a = .ok (s', es)) : SetupInv s' := by
+    (hwf : s.WF) (hown : s.OwnerOk) (hinv : SetupInv s) (h : step fuel s a = .ok (s', es)) : SetupInv s' := by
   unfold step at h
   split at h
   · rename_i hl
     split at h
     · rename_i s1 es1 ha
-      exact advance_setup fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_setup hwf hinv hl ha) h
+      exact advance_setup fuel (applyDeclaredAction_wf hwf hl ha) (applyDeclaredAction_ownerOk hwf hown hl ha)
+        (applyDeclaredAction_setup hwf hown hinv hl ha) h
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -1015,7 +1189,7 @@ theorem GameState.initial_setupInv {db : CardDB} {config : GameConfig} {decks : 
     {s : GameState} (h : GameState.initial db config decks = some s) : SetupInv s := by
   obtain ⟨h2, hb⟩ := GameState.initial_setup h
   have hpend := GameState.initial_pending h
-  refine ⟨h2, Or.inl ⟨0, by rw [List.drop_zero]; exact hpend, fun p hp => ?_⟩⟩
+  refine ⟨h2, Or.inl ⟨hpend ▸ List.Sublist.refl _, fun p hp => ?_⟩⟩
   apply hb p
   rw [hpend] at hp
   simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
@@ -1084,7 +1258,7 @@ theorem GameState.initialLimited_setupInv {db : CardDB} {env : LegalityEnv} {con
     (h : GameState.initialLimited db env config decks = some s) : SetupInv s := by
   obtain ⟨h2, hb⟩ := GameState.initialLimited_setup h
   have hpend := GameState.initialLimited_pending h
-  refine ⟨h2, Or.inl ⟨0, by rw [List.drop_zero]; exact hpend, fun p hp => ?_⟩⟩
+  refine ⟨h2, Or.inl ⟨hpend ▸ List.Sublist.refl _, fun p hp => ?_⟩⟩
   apply hb p
   rw [hpend] at hp
   simp only [startFrames, List.mem_append, List.mem_flatMap, List.mem_range, List.mem_cons,
@@ -1103,7 +1277,7 @@ theorem Reachable.setup {s : GameState} (h : Reachable s) : SetupInv s := by
     cases h with
     | core h => exact GameState.initial_setupInv h
     | limited h => exact GameState.initialLimited_setupInv h
-  | next hs h ih => exact step_setup (Reachable.inv hs).1 ih h
+  | next hs h ih => exact step_setup (Reachable.inv hs).1 (Reachable.inv hs).2 ih h
 
 /-- **I5, progress.** In a reachable game that is not over, either there is an answer other than a
 concession in `legalActions`, or the top frame asks for a chance decision. -/
@@ -1116,17 +1290,18 @@ theorem Reachable.progress {s : GameState} (h : Reachable s) (hres : s.result = 
 theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {rest : List Frame}
     (hp : s.pending = f :: rest) (hc : f.isChance = true) : f.chanceReady s := by
   obtain ⟨-, hcase⟩ := h.setup
-  rcases hcase with ⟨k, hk, hz⟩ | hn
+  rcases hcase with ⟨hk, hz⟩ | hn
   · cases f with
     | chanceShuffle z =>
       have hmem : Frame.chanceShuffle z ∈ startFrames s.playerCount := by
-        exact (List.drop_sublist _ _).subset (by rw [← hk, hp]; exact List.mem_cons_self)
+        exact hk.subset (by rw [hp]; exact List.mem_cons_self)
       exact startFrames_valid hmem
     | chanceBattlefield p => exact hz p (by rw [hp]; exact List.mem_cons_self)
     | chanceTurnOrder => trivial
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
     | chancePredict p n top bottom => trivial
+    | chanceRecycleTrash controller source cards => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
   · have := hn f (by rw [hp]; exact List.mem_cons_self)
     cases f with
@@ -1136,6 +1311,7 @@ theorem Reachable.chanceReady {s : GameState} (h : Reachable s) {f : Frame} {res
     | chanceRecycle p => trivial
     | chanceBurnOut p => trivial
     | chancePredict p n top bottom => trivial
+    | chanceRecycleTrash controller source cards => trivial
     | _ => exact absurd hc (by simp [Frame.isChance])
 
 /-- **I5, in full.** A reachable game that is not over always has a legal answer other than a

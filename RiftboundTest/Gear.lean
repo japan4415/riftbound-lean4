@@ -71,7 +71,7 @@ meta def gearScene : Option (GameState × PlayerId × ObjId × ObjId × ObjId) :
 meta def equipped : Option GameState :=
   match gearScene with
   | some (s, p, g, u, _) =>
-    (stepG s ⟨.player p, .activate g 0 ⟨1, []⟩ [u]⟩).bind fun s1 =>
+    (stepG s ⟨.player p, .activate g 0 ⟨1, [], none⟩ [u]⟩).bind fun s1 =>
     (stepG s1 ⟨.player p, .pass⟩).bind fun s2 => stepG s2 ⟨.player (otherG p), .pass⟩
   | none => none
 
@@ -80,8 +80,8 @@ meta def equipped : Option GameState :=
 #guard match gearScene with
   | some (s, p, g, u, e) =>
     blade.keywordAbilities.length == 1 &&
-    (legalActions s).contains ⟨.player p, .activate g 0 ⟨1, []⟩ [u]⟩ &&
-    !(legalActions s).contains ⟨.player p, .activate g 0 ⟨1, []⟩ [e]⟩
+    (legalActions s).contains ⟨.player p, .activate g 0 ⟨1, [], none⟩ [u]⟩ &&
+    !(legalActions s).contains ⟨.player p, .activate g 0 ⟨1, [], none⟩ [e]⟩
   | none => false
 
 -- the Unit has the Equipment attached, its Might bonus, and what it gives: Tank, Shield 2; the
@@ -116,20 +116,16 @@ meta def equipped : Option GameState :=
     | none => false
   | _, _ => false
 
--- attached to another Unit, the Equipment is not attached to the first one any more
+-- An effect can attach equipped Gear to another Unit. Its own Equip cannot (CR 435, 718.2).
 #guard match gearScene, equipped with
   | some (_, p, g, u, _), some s1 =>
     match putG s1 p "V2" .base with
     | some (s2, w) =>
       let s3 := s2.setPool p { energy := 1 }
-      match (stepG s3 ⟨.player p, .activate g 0 ⟨1, []⟩ [w]⟩).bind
-          (fun s4 => stepG s4 ⟨.player p, .pass⟩) with
-      | some s5 =>
-        match stepG s5 ⟨.player (otherG p), .pass⟩ with
-        | some s6 => (s6.obj? g).any (·.attached == some w) && s6.mightNow u == some 2 &&
-            s6.mightNow w == some 4
-        | none => false
-      | none => false
+      let moved := (attachTo w s3 g).1
+      (stepG s3 ⟨.player p, .activate g 0 ⟨1, [], none⟩ [w]⟩).isNone &&
+        (moved.obj? g).any (·.attached == some w) && moved.mightNow u == some 2 &&
+        moved.mightNow w == some 4
     | none => false
   | _, _ => false
 

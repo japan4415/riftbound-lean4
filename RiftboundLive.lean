@@ -2,10 +2,10 @@ import RiftboundDriver.Live
 
 open Lean RiftboundDriver Riftbound
 
-/-- The players named by `01`, `0` or `1`. -/
+/-- Seat numbers named by the digits of the supplied string. -/
 def parseHumans (s : String) : List PlayerId :=
-  s.toList.filterMap (fun c =>
-    if c == '0' then some ⟨0⟩ else if c == '1' then some ⟨1⟩ else none)
+  s.toList.filterMap (fun
+    | '0' => some ⟨0⟩ | '1' => some ⟨1⟩ | '2' => some ⟨2⟩ | '3' => some ⟨3⟩ | _ => none)
 
 /-- The match named by `single`, `bo1` or `bo3`: the wins that end it. -/
 def parseMatch : String → Option (Option Nat)
@@ -26,7 +26,12 @@ judge declares a draw), `swap OUT IN` (exchange a card of the Main Deck for a ca
 sideboard), `next [first|second]` (the next game of a match; a person who chooses
 who goes first says it), `undo` (take back the last answer, `act`, `clock` or `judge`, as many times
 as there are answers in this game), `quit`. For recorded matches: `start-json SEED HUMANS SETUP`,
-`register SEAT DECK`, `time-between-games`, `concede-match SEAT`, `agree-match-draw`, `replay`. -/
+`register SEAT DECK`, `bo1-first first|second`, `bo1-sideboard`, `swap OUT IN [SEAT]`,
+`time-between-games`, `concede-match SEAT`, `agree-match-draw`, `judge-game-loss SEATS`,
+`judge-match-loss SEAT`, `judge-disqualification SEAT`, `judge-rewind CHECKPOINT`,
+`judge-private-rewind REWIND_JSON`, `judge-timeline-rewind REWIND_JSON`,
+`judge-shuffle SHUFFLE_JSON`, `replay`. For team matches:
+`start-team-json SEED HUMANS SETUP`, `team-next [ORDER|- [SEALED_DECKS]]`. -/
 def main : IO UInt32 := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout
@@ -45,9 +50,15 @@ def main : IO UInt32 := do
     match r with
     | .error e => fail e
     | .ok (g, j) => do game.set (some g); hist.modify (old :: ·); say j
+  let goRegistration (g : LiveGame) (r : Except String (LiveGame × String)) : IO Unit :=
+    if g.bo1SideboardOpen then goAnswer g r else go r
+  let swap (out inn : String) (seat : Option PlayerId) : IO Unit := do
+    match ← game.get with
+    | some g => goRegistration g (liveSwap g out inn seat)
+    | none => fail "no game has been started"
   let start (seed humans kind mt : String) : IO Unit :=
     match seed.toNat?, LiveKind.ofString kind, parseMatch mt with
-    | some n, some k, some t => go (liveStart n (parseHumans humans) k t)
+    | some n, some k, some t => go (liveStart n ((parseHumans humans).filter (·.n < 2)) k t)
     | _, _, _ => fail "bad start"
   let endMatch (ending : ReplayMatchEnd) : IO Unit := do
     match ← game.get with
@@ -65,6 +76,10 @@ def main : IO UInt32 := do
       match seed.toNat? with
       | some n => go ((decodeLine setup).bind (liveStartConfigured n (parseHumans humans)))
       | none => fail "bad seed"
+    | "start-team-json" :: seed :: humans :: setup =>
+      match seed.toNat? with
+      | some n => go ((decodeLine setup).bind (liveStartTeam n (parseHumans humans)))
+      | none => fail "bad seed"
     | ["act", k] =>
       match k.toNat?, (← game.get) with
       | some n, some g => goAnswer g (liveAct g n)
@@ -78,15 +93,55 @@ def main : IO UInt32 := do
       match (← game.get) with
       | some g => goAnswer g (liveExternal g ⟨.judge, .declareDraw⟩)
       | none => fail "no game has been started"
-    | ["swap", out, inn] =>
-      match (← game.get) with
-      | some g => go (liveSwap g out inn)
+    | ["judge-game-loss", digits] =>
+      let seats := parseHumans digits
+      if seats.length != digits.length then fail "bad penalty seats" else
+        match ← game.get with
+        | some g => goAnswer g (liveJudgeGameLoss g seats)
+        | none => fail "no game has been started"
+    | ["judge-rewind", target] =>
+      match target.toNat?, (← game.get) with
+      | some n, some g => goAnswer g (liveJudgeCorrection g (.judgeRewind n))
+      | none, _ => fail "bad rewind checkpoint"
+      | _, none => fail "no game has been started"
+    | "judge-shuffle" :: shuffle =>
+      match ← game.get with
+      | some g => goAnswer g ((decodeLine shuffle).bind (fun data => liveJudgeCorrection g (.judgeShuffle data)))
       | none => fail "no game has been started"
+    | "judge-private-rewind" :: rewind =>
+      match ← game.get with
+      | some g => goAnswer g ((decodeLine rewind).bind (fun data => liveJudgeCorrection g (.judgePrivateRewind data)))
+      | none => fail "no game has been started"
+    | "judge-timeline-rewind" :: rewind =>
+      match ← game.get with
+      | some g => goAnswer g ((decodeLine rewind).bind (fun data => liveJudgeCorrection g (.judgeTimelineRewind data)))
+      | none => fail "no game has been started"
+    | ["judge-match-loss", seat] | ["judge-disqualification", seat] =>
+      match seat.toNat? with
+      | none => fail "bad penalty seat"
+      | some n =>
+        if line.trimAscii.toString.startsWith "judge-match-loss" then endMatch (.matchLoss ⟨n⟩)
+        else endMatch (.disqualification ⟨n⟩)
+    | ["swap", out, inn] => swap out inn none
+    | ["swap", out, inn, p] =>
+      match p.toNat? with
+      | some n => swap out inn (some ⟨n⟩)
+      | none => fail "bad seat"
     | "register" :: seat :: registration =>
       match seat.toNat?, (← game.get) with
-      | some p, some g => go ((decodeLine registration).bind (liveRegister g ⟨p⟩))
+      | some p, some g => goRegistration g ((decodeLine registration).bind (liveRegister g ⟨p⟩))
       | none, _ => fail "bad seat"
       | _, none => fail "no game has been started"
+    | ["bo1-first", choice] =>
+      match choice, (← game.get) with
+      | "first", some g => goAnswer g (liveBo1First g true)
+      | "second", some g => goAnswer g (liveBo1First g false)
+      | _, none => fail "no game has been started"
+      | _, _ => fail "bad initiative choice"
+    | ["bo1-sideboard"] =>
+      match (← game.get) with
+      | some g => goAnswer g (liveBo1Sideboard g)
+      | none => fail "no game has been started"
     | ["time-between-games"] => endMatch .timeBetweenGames
     | ["agree-match-draw"] => endMatch .agreedDraw
     | ["concede-match", p] =>
@@ -97,8 +152,21 @@ def main : IO UInt32 := do
       match ← game.get with
       | none => fail "no game has been started"
       | some g =>
-        match g.archive with
-        | .ok archive => say (toJson archive).compress
+        let archive := if g.teamSetup.isSome then g.teamArchive.map toJson else g.archive.map toJson
+        match archive with
+        | .ok json => say json.compress
+        | .error e => fail e
+    | "team-next" :: rest =>
+      match ← game.get with
+      | none => fail "no game has been started"
+      | some g =>
+        let order := rest.head?.filter (· != "-") |>.map parseHumans
+        let next := if rest.drop 1 == [] then liveTeamNext g order
+          else (decodeLine (rest.drop 1)).bind (fun decks => liveTeamNext g order (some decks))
+        match next with
+        | .ok (state, json) =>
+          if state.completed.size == g.completed.size then say json
+          else go (.ok (state, json))
         | .error e => fail e
     | "next" :: rest =>
       let choice : Option (Option Bool) := match rest with

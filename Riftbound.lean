@@ -22,6 +22,7 @@ public import Riftbound.State.Zone
 public import Riftbound.State.Object
 public import Riftbound.State.GameConfig
 public import Riftbound.State.GameState
+public import Riftbound.Spec.Visibility
 public import Riftbound.Rules.Deck
 public import Riftbound.State.Event
 public import Riftbound.State.Decision
@@ -32,6 +33,7 @@ public import Riftbound.Rules.Owner
 public import Riftbound.Rules.Objects
 public import Riftbound.Rules.Select
 public import Riftbound.Rules.Passive
+public import Riftbound.Spec.PlayerView
 public import Riftbound.Rules.Resources
 public import Riftbound.Rules.Pay
 public import Riftbound.Rules.Play
@@ -41,6 +43,7 @@ public import Riftbound.Rules.Chain
 public import Riftbound.Rules.Trigger
 public import Riftbound.Rules.Understood
 public import Riftbound.Rules.Battlefield
+public import Riftbound.Rules.PlayerRemoval
 public import Riftbound.Rules.Combat
 public import Riftbound.Rules.Add
 public import Riftbound.Rules.Reorder
@@ -52,17 +55,52 @@ public import Riftbound.Rules.Actions.Recycle
 public import Riftbound.Rules.Actions.Channel
 public import Riftbound.Rules.Actions.BurnOut
 public import Riftbound.Spec.Legal
+public import Riftbound.Rules.TeamSetup
 public import Riftbound.Engine.Step
+public import Riftbound.Engine.Observe
+public import Riftbound.Invariant.Choices
+public import Riftbound.Invariant.FlexiblePaymentChoices
+public import Riftbound.Invariant.GameCounters
+public import Riftbound.Invariant.ChosenChampion
+public import Riftbound.Invariant.PrivateChoices
 public import Riftbound.Invariant.Step
 public import Riftbound.Invariant.Sound
 public import Riftbound.Invariant.Hands
 public import Riftbound.Invariant.Turn
+public import Riftbound.Invariant.Priority
+public import Riftbound.Invariant.SetupPriority
+public import Riftbound.Invariant.ChainWork
+public import Riftbound.Invariant.DisclosureWork
+public import Riftbound.Invariant.ChainAnswerWork
+public import Riftbound.Invariant.DecisionHandoffs
+public import Riftbound.Invariant.TriggerAnswerWork
+public import Riftbound.Invariant.PlayDeclarationWork
+public import Riftbound.Invariant.MovementWork
+public import Riftbound.Invariant.ConcessionWork
+public import Riftbound.Invariant.ResourceDecisionWork
+public import Riftbound.Invariant.RepeatedSpellWork
+public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.Progress
 public import Riftbound.Invariant.Setup
 public import Riftbound.Invariant.Resources
 public import Riftbound.Invariant.Clock
 public import Riftbound.Invariant.ClockRun
 public import Riftbound.Invariant.Cleanup
+public import Riftbound.Invariant.CleanupDeath
+public import Riftbound.Invariant.CleanupDeathDamage
+public import Riftbound.Invariant.CleanupWork
+public import Riftbound.Invariant.BeginTurnWork
+public import Riftbound.Invariant.AwakenWork
+public import Riftbound.Invariant.ExpirationWork
+public import Riftbound.Invariant.SetupDrawBound
+public import Riftbound.Invariant.DrawWork
+public import Riftbound.Invariant.TurnDrawWork
+public import Riftbound.Invariant.BurnOutWork
+public import Riftbound.Invariant.TurnPhaseWork
+public import Riftbound.Invariant.TriggerWork
+public import Riftbound.Invariant.ObservedAddWork
+public import Riftbound.Invariant.MightObservation
+public import Riftbound.Invariant.MightRead
 public import Riftbound.Invariant.Draw
 public import Riftbound.Invariant.LimitedDraw
 public import Riftbound.Tournament.Format
@@ -70,6 +108,9 @@ public import Riftbound.Tournament.DeckLegality
 public import Riftbound.Tournament.Match
 public import Riftbound.Tournament.Sideboard
 public import Riftbound.Tournament.FirstPlayer
+public import Riftbound.Tournament.LoopDetect
+public import Riftbound.Tournament.OrderedReferences
+public import Riftbound.Tournament.PlayHistoryReferences
 
 /-!
 # Riftbound

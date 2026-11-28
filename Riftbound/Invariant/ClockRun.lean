@@ -6,12 +6,10 @@ public import Riftbound.Invariant.Clock
 /-!
 # The clock in every run (I14)
 
-The local facts of the clock are in `Clock.lean`: what calling time does, and what the beginning of
-a turn does when the clock has or has not run out. This file adds the rest of I14: **no other step
-changes the turn counter or the clock**, so in every game that can be played the turn counter stays
-within the clock (`Reachable.clockOk`), a clock that is set never moves, and, once time is called
-in the turn `t`, no later state has a turn past `t + 3` (`time_called_bound`). With
-`beginTurn_ends`, the game is over after finitely many turns.
+The local clock facts are in `Clock.lean`. A called clock stays fixed throughout a game. When it
+has a hard deadline, the turn counter stays within that deadline (`Reachable.clockOk`). A hard
+deadline called in turn `t` permits at most the current turn and three further turns
+(`time_called_bound`).
 
 The proof walks the arms of `applyFrame0` and `microStep0` the way the other invariants do, with the
 existing `SameMeta` and `Safe` facts of the helpers. The turn counter and the clock are written in
@@ -85,18 +83,19 @@ theorem tc_applyCast {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePo
   exact h1.trans ⟨rfl, rfl⟩
 
 theorem tc_applyPlayCard {s s' : GameState} {p : PlayerId} {c : ObjId}
-    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {targets : List ObjId} {rest : List Frame} {es : List Event}
-    (h : applyPlayCard s p c pay targets rest flow pick = some (s', es)) : TC s s' := by
+    {pay : RunePool.Payment} {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {targets : List ObjId} {rest : List Frame} {es : List Event}
+    (h : applyPlayCard s p c pay targets rest flow pick discard = some (s', es)) : TC s s' := by
   unfold applyPlayCard at h
   split at h
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
     obtain ⟨rfl, -⟩ := hr
-    exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c targets (s2, es2)).same)).trans
+    exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s p c targets discard (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
-  · obtain ⟨r, hr, h2⟩ := Option.bind_eq_some_iff.mp h
-    exact (tc_applyPlay hr).trans (TC.of_sameMeta (payExtra_safe h2).same)
+  · obtain ⟨⟨board, events⟩, applied, eq⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨rfl, _⟩ := Prod.mk.inj eq
+    exact (TC.of_safe (playPermanent_safe applied)).trans ⟨rfl, rfl⟩
 
 theorem tc_applyActivate {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : Nat}
     {pay : RunePool.Payment} {ts discards : List ObjId} {targetPlayer : Option PlayerId} {es : List Event}
@@ -110,23 +109,23 @@ theorem tc_activateStep {s s' : GameState} {p : PlayerId} {src : ObjId} {idx : N
     {costObject : Option ObjId}
     (h : activateStep s p src idx pay ts new discards targetPlayer banisher costObject = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := activateStep_cases h
-  exact ((TC.of_safe (noteActivationBanisher_safe s (ts ++ costObject.toList) banisher)).trans
+  exact ((TC.of_safe (noteActivationBanisher_safe s (activationKillVictim s src idx ts costObject).toList banisher)).trans
     (tc_applyActivate hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_castStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : castStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : castStep s p c pay ts new flow pick discard = some (s', es)) : TC s s' := by
   obtain ⟨s2, es2, hm, rfl⟩ := castStep_cases h
-  exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
+  exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s p c ts discard (s2, es2)).same)).trans
     ⟨rfl, rfl⟩
 
 theorem tc_reactStep {s s' : GameState} {p : PlayerId} {c : ObjId} {pay : RunePool.Payment}
-    {flow : Option Cost} {pick : SpellPick} {ts : List ObjId} {new : List Frame} {es : List Event}
-    (h : reactStep s p c pay ts new flow pick = some (s', es)) : TC s s' := by
-  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s1, es1, s2, es2, hm, hx, rfl⟩
-  · exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s c ts (s2, es2)).same)).trans
+    {flow : Option Cost} {pick : SpellPick} {discard : Option ObjId} {ts : List ObjId} {new : List Frame} {es : List Event}
+    (h : reactStep s p c pay ts new flow pick discard = some (s', es)) : TC s s' := by
+  rcases reactStep_cases h with ⟨s2, es2, hm, rfl⟩ | ⟨s2, es2, hm, rfl⟩
+  · exact ((tc_applyCast hm).trans (TC.of_sameMeta (castPay_safe s p c ts discard (s2, es2)).same)).trans
       ⟨rfl, rfl⟩
-  · exact ((tc_applyPlay hm).trans (TC.of_sameMeta (payExtra_safe hx).same)).trans ⟨rfl, rfl⟩
+  · exact (TC.of_safe (playPermanent_safe hm)).trans ⟨rfl, rfl⟩
 
 theorem tc_showdownEnd (s : GameState) (bf : ObjId) (rest : List Frame) :
     TC s (showdownEnd s bf rest).1 := by
@@ -144,9 +143,9 @@ theorem tc_assignDoneStep (s : GameState) (bf : ObjId) (att side : PlayerId) (ac
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
 
 theorem tc_withTriggers (s : GameState) (es : List Event) : TC s (s.withTriggers es) := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -, -⟩ <;> rw [h]
-  · exact TC.refl s
-  · exact ⟨rfl, rfl⟩
+  obtain ⟨pending, result, h⟩ := withTriggers_pending s es
+  rw [h]
+  exact ⟨rfl, rfl⟩
 
 theorem tc_paySurcharge (s : GameState) (a : Action) (s2 : GameState) :
     TC s2 (s.paySurcharge a s2) := by
@@ -156,16 +155,17 @@ theorem tc_paySurcharge (s : GameState) (a : Action) (s2 : GameState) :
 
 theorem tc_cleanupFrame (s : GameState) (rest : List Frame) :
     TC s (cleanupFrame s rest).1 := by
-  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | e <;> rw [e]
+  rcases cleanupFrame_cases s rest with ⟨w, e⟩ | ⟨_, _, _, _, e⟩ | ⟨r, hr, e⟩ | ⟨bf, q, e⟩ | ⟨_, _, _, e⟩ | e <;> rw [e]
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact (TC.of_safe hr).trans ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
+  · exact ⟨rfl, rfl⟩
 
-/-- **The clock is kept** (I14): when time has been called, the turn counter is not past the turn
-the clock named. -/
-def ClockOk (s : GameState) : Prop := ∀ lim, s.clock = some lim → s.turn ≤ lim
+/-- **The clock is kept** (I14): a clock with a hard deadline cannot be played past that turn. -/
+def ClockOk (s : GameState) : Prop :=
+  ∀ clock, s.clock = some clock → clock.allowsSuddenDeath = false → s.turn ≤ clock.lastTurn
 
 theorem ClockOk.of_tc {s s' : GameState} (hc : ClockOk s) (h : TC s s') : ClockOk s' := by
   intro lim hl
@@ -177,17 +177,14 @@ theorem ClockOk.of_tc {s s' : GameState} (hc : ClockOk s) (h : TC s s') : ClockO
 sets the clock to 3 turns past the turn that is going on. -/
 theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     (h : applyFrame0 s a = some (s', es)) :
-    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.turn + 3)) := by
+    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   unfold applyFrame0 at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyRune h)
-  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact Or.inl ((tc_applyPlayCard hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
+  · exact Or.inl (tc_applyPlayCard h)
   · simp only [Option.map_eq_some_iff] at h
     obtain ⟨⟨s2, es2⟩, hm, hr⟩ := h
     simp only [Prod.mk.injEq] at hr
@@ -215,10 +212,7 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
       (simp only [Option.some.injEq, Prod.mk.injEq] at h
        obtain ⟨rfl, -⟩ := h
        exact Or.inl ⟨rfl, rfl⟩)
-  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact Or.inl ((tc_reactStep hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
+  · exact Or.inl (tc_reactStep h)
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_activateStep h)
@@ -239,7 +233,11 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
-  · exact Or.inl (tc_applyMana h)
+  · obtain ⟨⟨next, events⟩, applied, mapped⟩ := Option.map_eq_some_iff.mp h
+    simp only [Prod.mk.injEq] at mapped
+    obtain ⟨rfl, -⟩ := mapped
+    have hclock := tc_applyMana applied
+    exact Or.inl (hclock.trans ⟨rfl, rfl⟩)
   · exact Or.inl (tc_applyMana h)
   · rename_i p n rest c hp hk
     simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -299,10 +297,10 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
-  · obtain ⟨r, hr, he⟩ := Option.map_eq_some_iff.mp h
-    have hout : _ = s' := congrArg Prod.fst he
-    rw [← hout]
-    exact Or.inl ((tc_reactStep hr).trans (TC.of_safe (payPlayDiscard_safe _ _ _ _)))
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · exact Or.inl (tc_reactStep h)
   · exact Or.inl (tc_activateStep h)
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
@@ -324,6 +322,11 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     obtain ⟨rfl, -⟩ := h
     have tc := TC.of_safe (completePrediction_safe s p n top bottom)
     exact Or.inl (tc.trans ⟨rfl, rfl⟩)
+  · rename_i p src cards rest order hp hk
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have tc := TC.of_safe (recycleTrashCards_safe s order)
+    exact Or.inl (tc.trans ⟨rfl, rfl⟩)
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Or.inl ⟨rfl, rfl⟩
@@ -332,12 +335,36 @@ theorem applyFrame0_tc {s s' : GameState} {a : Action} {es : List Event}
     exact Or.inl ⟨rfl, rfl⟩
   · exact Or.inl (tc_applyRune h)
   · exact Or.inl (tc_applyMana h)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Or.inl ⟨rfl, rfl⟩
+  · exact Or.inl (tc_reactStep h)
+  · exact Or.inl (tc_activateStep h)
+  · exact Or.inl (tc_applyRune h)
+  · exact Or.inl (tc_applyMana h)
+  · obtain ⟨q, -, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · cases h
+    exact Or.inl ⟨rfl, rfl⟩
+  · obtain ⟨r, hm, he⟩ := Option.map_eq_some_iff.mp h
+    have hout : _ = s' := congrArg Prod.fst he
+    rw [← hout]
+    exact Or.inl ((TC.of_safe (applyGroupMove_safe hm)).trans ⟨rfl, rfl⟩)
   · exact absurd h (by simp)
 
 /-- A step of work leaves the clock, and leaves the turn counter, or begins the next turn when the
 clock has not run out. -/
 def Tick (s s' : GameState) : Prop :=
-  s'.clock = s.clock ∧ (s'.turn = s.turn ∨ (s'.turn = s.turn + 1 ∧ s.clockDue = false))
+  s'.clock = s.clock ∧ (s'.turn = s.turn ∨ (s'.turn = s.turn + 1 ∧ s.clockConclusion = none))
 
 theorem Tick.of_tc {s s' : GameState} (h : TC s s') : Tick s s' := ⟨h.2, Or.inl h.1⟩
 
@@ -347,7 +374,7 @@ theorem beginTurnStep_tick (s : GameState) (rest : List Frame) : Tick s (beginTu
   split
   · exact Tick.of_tc ⟨rfl, rfl⟩
   · rename_i hd
-    exact ⟨rfl, Or.inr ⟨rfl, by simpa using hd⟩⟩
+    exact ⟨rfl, Or.inr ⟨rfl, hd⟩⟩
 
 /-- A step of work: only the beginning of a turn changes the turn counter, and only when the clock
 has not run out. -/
@@ -383,15 +410,9 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     exact Tick.of_tc ⟨rfl, rfl⟩
-  · dsimp only at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact Tick.of_tc ⟨rfl, rfl⟩
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      have h1 : TC s (beginStep s (s.active.getD ⟨0⟩)).1 := TC.of_safe (beginStep_safe s _)
-      exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact Tick.of_tc ⟨rfl, rfl⟩
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
     have h1 : TC s (hold s (s.active.getD ⟨0⟩)).1 := TC.of_safeP (hold_safeP s _)
@@ -459,6 +480,11 @@ theorem microStep0_tick {s s' : GameState} {es : List Event}
     have h1 : TC s (triggersStep s pend rest).1 :=
       TC.of_safe (triggersStep_spec s pend rest).1
     exact Tick.of_tc (h1.trans ⟨rfl, rfl⟩)
+  · rename_i bf rest _hp
+    have next : s' = (showdownEnd s bf rest).1 :=
+      (congrArg Prod.fst (Option.some.inj h)).symm
+    subst s'
+    exact Tick.of_tc (tc_showdownEnd s bf rest)
   · exact absurd h (by simp)
 
 
@@ -476,12 +502,19 @@ theorem tc_addCards {db : CardDB} (owner : PlayerId) (z : Zone) :
       have h' : addCards db owner z r.1 cs = some s' := by simpa [addCards, hr] using h
       exact (TC.of_sameMeta (addObject_sameMeta hr)).trans (tc_addCards owner z cs h')
 
+theorem tc_addChosenChampion {db : CardDB} {p : PlayerId} {s s' : GameState}
+    {chosen : Option CardId} (placed : addChosenChampion db p s chosen = some s') :
+    TC s s' := by
+  obtain ⟨board, added, rfl⟩ := Option.map_eq_some_iff.mp placed
+  have unchanged := tc_addCards _ _ _ added
+  exact unchanged
+
 theorem tc_addDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : Deck}
     (h : s.addDeck db p d = some s') : TC s s' := by
   unfold GameState.addDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
-  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
+  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addChosenChampion h3).trans
     ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addDecks {db : CardDB} :
@@ -502,7 +535,7 @@ theorem tc_addLimitedDeck {db : CardDB} {s s' : GameState} {p : PlayerId} {d : L
   unfold GameState.addLimitedDeck at h
   simp only [Option.bind_eq_bind, Option.bind_eq_some_iff] at h
   obtain ⟨s1, h1, s2, h2, s3, h3, s4, h4, s5, h5, h6⟩ := h
-  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addCards _ _ _ h3).trans
+  exact (tc_addCards _ _ _ h1).trans ((tc_addCards _ _ _ h2).trans ((tc_addChosenChampion h3).trans
     ((tc_addCards _ _ _ h4).trans ((tc_addCards _ _ _ h5).trans (tc_addCards _ _ _ h6)))))
 
 theorem tc_addLimitedDecks {db : CardDB} :
@@ -520,13 +553,13 @@ theorem tc_addLimitedDecks {db : CardDB} :
         simpa [GameState.addLimitedDecks, hr] using h
       exact (tc_addLimitedDeck hr).trans (tc_addLimitedDecks ds h')
 
-/-- A game that has just been set up has not called time, and no turn has begun. -/
+/-- No turn has begun at setup, including when the clock is set for a tiebreaker. -/
 theorem Start.clockOk {s : GameState} (h : Start s) : ClockOk s := by
   have key : ∀ (c : GameConfig) (db : CardDB) (s1 : GameState),
       TC (GameState.empty c db) s1 → ClockOk s1 := by
-    intro c db s1 ht lim hl
-    rw [ht.2] at hl
-    exact absurd hl (by simp [GameState.empty])
+    intro c db s1 ht clock _ _
+    rw [ht.1]
+    exact Nat.zero_le _
   cases h with
   | core h =>
     unfold GameState.initial at h
@@ -546,18 +579,17 @@ theorem Start.clockOk {s : GameState} (h : Start s) : ClockOk s := by
 
 theorem Tick.keep {s s' : GameState} (hc : ClockOk s) (ht : Tick s s') :
     ClockOk s' ∧ s'.clock = s.clock := by
-  refine ⟨fun lim hl => ?_, ht.1⟩
+  refine ⟨fun clock hl hard => ?_, ht.1⟩
   rw [ht.1] at hl
   rcases ht.2 with h | ⟨h, hd⟩
-  · rw [h]; exact hc lim hl
+  · rw [h]; exact hc clock hl hard
   · rw [h]
-    simp only [GameState.clockDue, hl, decide_eq_false_iff_not, Nat.not_le] at hd
-    omega
+    exact Nat.succ_le_of_lt (clockConclusion_none_lt hl hard hd)
 
 /-- Calling time, through `paySurcharge`, `withTriggers` and the rest of `applyFrame`. -/
 theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
     (hk : a.kind = .timeCalled) (h : applyFrame s a = some (s', es)) :
-    s'.turn = s.turn ∧ s'.clock = some (s.turn + 3) := by
+    s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn) := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
   have h2 : TC s2 s3 := by
     rcases h3 with rfl | ⟨q, pool, rfl⟩
@@ -575,7 +607,7 @@ theorem applyFrame_called {s s' : GameState} {a : Action} {es : List Event}
 
 theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
     (h : applyFrame s a = some (s', es)) :
-    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.turn + 3)) := by
+    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   obtain ⟨s2, es2, s3, h0, h3, rfl, -⟩ := applyFrame_cases h
   have h2 : TC s2 s3 := by
     rcases h3 with rfl | ⟨q, pool, rfl⟩
@@ -591,21 +623,27 @@ theorem tc_applyFrame {s s' : GameState} {a : Action} {es : List Event}
 to 3 turns past the turn that is going on. -/
 theorem tc_applyAction {s s' : GameState} {a : Action} {es : List Event}
     (h : applyAction s a = some (s', es)) :
-    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.turn + 3)) := by
+    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   by_cases hk : a.kind = .concede
-  · unfold applyAction at h
-    simp only [hk] at h
-    split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact Or.inl ⟨rfl, rfl⟩
-    · exact absurd h (by simp)
+  · cases actor : a.actor
+    case player p =>
+      by_cases ffa : s.config.mode.isFreeForAll = true
+      · obtain ⟨board, _, removed, rfl⟩ := applyAction_concede_ffa_cases hk actor ffa h
+        have unchanged := applyFreeForAllConcession_meta removed
+        apply Or.inl
+        exact (show TC s { board with cards := board.cards.withConcessionBattlefield } from
+          ⟨unchanged.2.2.2.1, unchanged.2.2.2.2.1⟩).trans (tc_withTriggers _ _)
+      · rw [applyAction_concede hk actor (by simpa using ffa)] at h
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        exact Or.inl ⟨rfl, rfl⟩
+    all_goals simp [applyAction, hk, actor] at h
   · rw [applyAction_of_ne hk] at h
     exact tc_applyFrame h
 
 theorem applyAction_called {s s' : GameState} {a : Action} {es : List Event}
     (hk : a.kind = .timeCalled) (h : applyAction s a = some (s', es)) :
-    s'.turn = s.turn ∧ s'.clock = some (s.turn + 3) := by
+    s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn) := by
   have hne : a.kind ≠ .concede := by rw [hk]; decide
   rw [applyAction_of_ne hne] at h
   exact applyFrame_called hk h
@@ -623,7 +661,7 @@ theorem microStep_tick {s s' : GameState} {es : List Event}
 /-- A replacement question does not affect the clock. -/
 theorem tc_applyDeclaredAction {s s' : GameState} {a : Action} {es : List Event}
     (h : applyDeclaredAction s a = some (s', es)) :
-    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.turn + 3)) := by
+    TC s s' ∨ (a.kind = .timeCalled ∧ s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, _, rfl, _⟩
   · exact tc_applyAction ordinary
   · exact Or.inl ⟨rfl, rfl⟩
@@ -631,7 +669,7 @@ theorem tc_applyDeclaredAction {s s' : GameState} {a : Action} {es : List Event}
 /-- Calling time sets the clock without a choice of payment. -/
 theorem applyDeclaredAction_called {s s' : GameState} {a : Action} {es : List Event}
     (hk : a.kind = .timeCalled) (h : applyDeclaredAction s a = some (s', es)) :
-    s'.turn = s.turn ∧ s'.clock = some (s.turn + 3) := by
+    s'.turn = s.turn ∧ s'.clock = some (s.config.ruleSet.callClock s.turn) := by
   rcases applyDeclaredAction_cases h with ordinary | ⟨_, _, _, _, choice, _, _⟩
   · exact applyAction_called hk ordinary
   · cases hp : s.pending with
@@ -649,47 +687,32 @@ theorem workStep_tick {s s' : GameState} {es : List Event}
     · exact absurd called notClock
   · exact Tick.of_tc ⟨rfl, rfl⟩
 
-/-- The work after an answer keeps the clock and does not take the turn counter past it. -/
-theorem advance_keep :
-    ∀ (n : Nat) {s s' : GameState} {es es' : List Event},
-      ClockOk s → advance n s es = .ok (s', es') → ClockOk s' ∧ s'.clock = s.clock
-  | 0, s, s', es, es', hc, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact ⟨hc, rfl⟩
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ⟨hc, rfl⟩
-  | n + 1, s, s', es, es', hc, h => by
-    unfold advance at h
-    split at h
-    · rename_i f rest hp
-      split at h
-      · split at h
-        · rename_i s1 es1 hm
-          obtain ⟨hc1, hcl1⟩ := (workStep_tick hm).keep hc
-          obtain ⟨hc2, hcl2⟩ := advance_keep n hc1 h
-          exact ⟨hc2, hcl2.trans hcl1⟩
-        · exact absurd h (by simp)
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h
-        exact ⟨hc, rfl⟩
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      exact ⟨hc, rfl⟩
+/-- Preparing a neutral priority decision does not advance time. -/
+theorem GameState.preparePriority_clock (s : GameState) : TC s s.preparePriority := by
+  rcases s.preparePriority_cases with unchanged | ⟨_, _, _, _, staged⟩
+  · rw [unchanged]
+    exact ⟨rfl, rfl⟩
+  · rw [staged]
+    exact ⟨rfl, rfl⟩
 
-/-- **I14, one step.** A step keeps the turn counter within the clock. A clock that is set stays
-as it is, because the only answer that sets it, the call of time, is legal once (TR 408.2). The
-call sets the clock to 3 turns past the turn that is going on. -/
+/-- The work after an answer keeps the clock and does not take the turn counter past it. -/
+theorem advance_keep (n : Nat) {s s' : GameState} {es es' : List Event} (known : ClockOk s)
+    (done : advance n s es = .ok (s', es')) : ClockOk s' ∧ s'.clock = s.clock :=
+  advance_preserves (fun t => ClockOk t ∧ t.clock = s.clock)
+    (fun t previous =>
+      let kept := (Tick.of_tc t.preparePriority_clock).keep previous.1
+      ⟨kept.1, kept.2.trans previous.2⟩)
+    (fun previous worked =>
+      let kept := (workStep_tick worked).keep previous.1
+      ⟨kept.1, kept.2.trans previous.2⟩)
+    ⟨known, rfl⟩ done
+
+/-- **I14, one step.** A step keeps the turn counter within a hard deadline. A clock that is set
+stays fixed. The call of time sets it to three turns after the current turn (TR 408.2, 408.4.c). -/
 theorem step_keep {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
     (hc : ClockOk s) (h : step fuel s a = .ok (s', es)) :
     ClockOk s' ∧ (s.clock ≠ none → s'.clock = s.clock) ∧
-      (a.kind = .timeCalled → s'.clock = some (s.turn + 3)) := by
+      (a.kind = .timeCalled → s'.clock = some (s.config.ruleSet.callClock s.turn)) := by
   unfold step at h
   split at h
   · rename_i hl
@@ -698,10 +721,9 @@ theorem step_keep {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
       have hc1 : ClockOk s1 := by
         rcases tc_applyDeclaredAction hm with ht | ⟨-, ht, hcl⟩
         · exact hc.of_tc ht
-        · intro lim hl'
+        · intro clock hl' _
           rw [hcl] at hl'
-          rw [ht]
-          have := Option.some.inj hl'
+          rw [ht, ← Option.some.inj hl', RuleSet.callClock_lastTurn]
           omega
       obtain ⟨hc2, hcl2⟩ := advance_keep fuel hc1 h
       refine ⟨hc2, fun hne => ?_, fun hk => ?_⟩
@@ -714,8 +736,7 @@ theorem step_keep {fuel : Nat} {s s' : GameState} {a : Action} {es : List Event}
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- **I14.** In every game that can be played, once time has been called, the turn counter never
-goes past the turn the clock named. -/
+/-- **I14.** In every game that can be played, the turn counter stays within a hard deadline. -/
 theorem Reachable.clockOk {s : GameState} (h : Reachable s) : ClockOk s := by
   induction h with
   | init h => exact h.clockOk
@@ -731,8 +752,8 @@ inductive Steps : GameState → GameState → Prop where
 
 /-- However the play goes on, a clock that is set stays as it is, and the turn counter stays within
 it. -/
-theorem Steps.keep {s s2 : GameState} (h : Steps s s2) {lim : Nat} (hc : ClockOk s)
-    (hl : s.clock = some lim) : ClockOk s2 ∧ s2.clock = some lim := by
+theorem Steps.keep {s s2 : GameState} (h : Steps s s2) {clock : RoundClock} (hc : ClockOk s)
+    (hl : s.clock = some clock) : ClockOk s2 ∧ s2.clock = some clock := by
   induction h with
   | refl => exact ⟨hc, hl⟩
   | next h hs ih =>
@@ -740,15 +761,15 @@ theorem Steps.keep {s s2 : GameState} (h : Steps s s2) {lim : Nat} (hc : ClockOk
     obtain ⟨hc2, hst, -⟩ := step_keep hc1 hs
     exact ⟨hc2, (hst (by rw [hl1]; simp)).trans hl1⟩
 
-/-- **I14.** After time is called, the game ends in finitely many turns (TR 408.2). When time is
-called in the turn `t`, the turn counter is never past `t + 3` in any later state of the game:
-the turn that is going on and 3 turns more are played, and the beginning of the next turn ends the
-game (`beginTurn_ends`). -/
+/-- **I14.** After time is called with no sudden death, a game lasts for the current turn and at
+most three further turns (TR 408.2, 408.4). -/
 theorem time_called_bound {s s1 s2 : GameState} {fuel : Nat} {a : Action} {es : List Event}
     (hs : Reachable s) (hk : a.kind = .timeCalled) (h : step fuel s a = .ok (s1, es))
+    (hard : (s.config.ruleSet.callClock s.turn).allowsSuddenDeath = false)
     (hr : Steps s1 s2) : s2.turn ≤ s.turn + 3 := by
   obtain ⟨hc1, -, hcl⟩ := step_keep hs.clockOk h
-  exact (hr.keep hc1 (hcl hk)).1 (s.turn + 3) (hr.keep hc1 (hcl hk)).2
+  obtain ⟨hc2, clock⟩ := hr.keep hc1 (hcl hk)
+  simpa only [RuleSet.callClock_lastTurn] using hc2 _ clock hard
 
 end Riftbound
 

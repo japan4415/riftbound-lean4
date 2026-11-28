@@ -1,6 +1,7 @@
 module
 
 public import Riftbound.Rules.Chain
+public import Riftbound.Rules.Temporary
 
 /-!
 # Triggered abilities
@@ -34,7 +35,9 @@ def playedOf (p : PlayerId) (c : ObjId) (es : List Event) : List Event :=
 /-- The events a step has besides those of the rules it ran: playing a card (CR 349). -/
 def extraEvents (a : Action) (es : List Event) : List Event :=
   match a.kind, a.actor with
-  | .playCard c _ ts _ _ _, .player p => playedOf p c es ++ ts.map (Event.chosenBySpell p)
+  | .playCard c _ ts _ _ _, .player p =>
+    let cast := es.any (fun | .moved old _ .chain => old == c | _ => false)
+    playedOf p c es ++ (if cast then ts.map (Event.chosenBySpell p) else [])
   -- the objects an ability chooses are chosen too (Irelia: "when you choose or ready me")
   | .activate src _ _ ts _ _ _ _, .player p =>
     if es.any (fun | .moved old _ .chain => old == src | _ => false) then []
@@ -57,10 +60,11 @@ def condOk (s : GameState) (src : ObjId) (who : PlayerId) : Condition → Bool :
 
 /-- The ability can fire on the event: it is about the object itself, every time, and its condition
 holds. -/
-def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef) :
+def trigOk (s : GameState) (src : ObjId) (who : PlayerId) (t : Trigger) (_body : EffectDef)
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
     Bool :=
   let shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none
-  let env : Env := { passMight := s.mightTable, shownOff }
+  let env : Env := { passMight := s.mightTable, shownOff, eventBattlefields, eventAmount }
   t.subject == .self && condOkEnv s src who env t.condition && t.occurrence == .every
 
 /-- The ability can be used again this turn (CR 371, 386). -/
@@ -73,13 +77,17 @@ def limitOk (s : GameState) (src : ObjId) (idx : Nat) (limit : Limit)
 object `src` controlled by `p`, that fire on the event. -/
 def triggersAmongMatching (s : GameState) (src : ObjId) (p : PlayerId)
     (eventMatches : TriggerEvent → Bool) (d : CardDef)
-    (lo hi : Nat) (copy : Option Timestamp := none) : List PendTrigger :=
+    (lo hi : Nat) (copy : Option Timestamp := none)
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
+    List PendTrigger :=
   (List.range (hi - lo)).filterMap (fun (j : Nat) =>
     match d.allAbilities[lo + j]? with
     | some (Ability.triggered t body lim) =>
-      if eventMatches t.event && trigOk s src p t body && limitOk s src (lo + j) lim copy then
+      if eventMatches t.event && trigOk s src p t body eventBattlefields eventAmount &&
+          limitOk s src (lo + j) lim copy then
         some {
-          source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy
+          source := src, card := d.id, idx := lo + j, controller := p, copyStamp := copy,
+          eventBattlefields, eventAmount,
           shownOff := if t.event == .play then (s.obj? src).bind (·.shownOff) else none }
       else none
     | _ => none)
@@ -91,26 +99,37 @@ def triggersAmong (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEven
 
 /-- The object's abilities whose event matches, including abilities it gains (CR 137, 479.3). -/
 def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
-    (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none) :
+    (eventMatches : TriggerEvent → Bool) (lastCopy : Option AttachmentCopy := none)
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
     List PendTrigger :=
   let definition := (lastCopy.bind (fun copy => s.cards.find? copy.card)) <|> s.cardDef? src
   let stamp := (lastCopy.map (·.stamp)) <|> s.copyStamp? src
   let last := eventMatches .leave || eventMatches .die || eventMatches .deathknell
   (match definition with
     | some d => triggersAmongMatching s src p eventMatches d 0 d.fullAbilities.length stamp
+        eventBattlefields eventAmount
     | none => []) ++
   s.inPlay.flatMap (fun g =>
     match s.obj? g, s.cardDef? g with
     | some o, some d =>
       if o.attached == some src then
         triggersAmongMatching s src p eventMatches d d.fullAbilities.length d.allAbilities.length
+          (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
       else []
     | _, _ => []) ++
   (s.attachmentTextDefs src last).flatMap (fun (d, stamp) =>
-    triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)) ++
+    triggersAmongMatching s src p eventMatches d 0 d.textAbilities.length (some stamp)
+      eventBattlefields eventAmount) ++
   -- an ability that an effect of this turn gave the object
   s.turnFx.flatMap (fun f =>
     match f.kind, f.target with
+    | .deathEquipmentGrant card index, some dead =>
+      if last && dead == src && f.turn == s.turn then
+        match s.cards.find? card with
+        | some definition => triggersAmongMatching s src p eventMatches definition index (index + 1)
+            (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
+        | none => []
+      else []
     | .grantsAbility c i, some u =>
       -- the object, or the card it became when it died (its new identifier in the Trash)
       if (u == src || (s.obj? src).any (fun o => o.leftBoard && o.formerId == some u)) &&
@@ -118,13 +137,25 @@ def triggersOfMatching (s : GameState) (src : ObjId) (p : PlayerId)
         match s.cards.find? ⟨c⟩ with
         | some d =>
           triggersAmongMatching s src (if u == src then p else f.who) eventMatches d i (i + 1)
+            (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
         | none => []
       else []
     | _, _ => [])
 
 /-- The triggered abilities of the object that fire on exactly this event. -/
-def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent) : List PendTrigger :=
-  triggersOfMatching s src p (· == ev)
+def triggersOf (s : GameState) (src : ObjId) (p : PlayerId) (ev : TriggerEvent)
+    (eventBattlefields : Option (List ObjId) := none) (eventAmount : Option Nat := none) :
+    List PendTrigger :=
+  triggersOfMatching s src p (· == ev) (eventBattlefields := eventBattlefields) (eventAmount := eventAmount)
+
+/-- Excess damage belongs to the Combat whose Control step produced this Conquer. -/
+def GameState.conquestExcess (s : GameState) (p : PlayerId) (bf : ObjId) : Option Nat :=
+  if s.combat.any (·.battlefield == bf) &&
+      s.pending.any (fun | .combatFinish field => field == bf | _ => false) then
+    s.turnFx.findSome? (fun fx => match fx.kind with
+      | .excessDamage n => if fx.who == p && fx.turn == s.turn && fx.target == some bf then some n else none
+      | _ => none)
+  else none
 
 /-- The definition of a queued trigger, including a keyword assembled from several sources. -/
 def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
@@ -133,18 +164,24 @@ def triggerAbility (s : GameState) (t : PendTrigger) : Option Ability :=
 /-- Whether the object `subj`, which the player `who` plays, loses or moves, is what the subject of
 a trigger of `src` (controlled by `c`) describes. The place of the subject is not asked: the object
 may have left the game, as a Spell on its way to the Chain has. A subject at a place (here, at a
-base) is not understood yet: it never holds. -/
+base) is not understood yet: it never holds. Friendly and enemy use the side of the event's player
+(CR 491.8.e, 740.1). -/
 def subjectHolds (s : GameState) (src : ObjId) (c : PlayerId) (subj : ObjId) (who : PlayerId) :
     Selector → Bool
   | .pick .all side .anywhere fs =>
-    (match side with | .friendly => who == c | .enemy => who != c | .any => true) &&
+    (match side with
+      | .friendly => s.config.mode.sameSide c who
+      | .enemy => !s.config.mode.sameSide c who
+      | .you => who == c
+      | .any => true) &&
       (fs.holds s src (Env.empty.withMight s.mightTable) subj == some true)
   | _ => false
 
 /-- The abilities of one source that watch an event. A watcher in a group of deaths uses the
 controller and text it had on the Board. -/
 def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEvent)
-    (occurrence : Occurrence) (src : ObjId) (deadController : Option PlayerId := none) :
+    (occurrence : Occurrence) (src : ObjId) (deadController : Option PlayerId := none)
+    (eventAmount : Option Nat := none) :
     List PendTrigger :=
   match s.obj? src with
   | some o =>
@@ -162,9 +199,12 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
         (List.range count).filterMap (fun j =>
           match cd.allAbilities[j]? with
           | some (Ability.triggered t _ lim) =>
-            if t.event == ev && t.subject != .self &&
+            let matchesEvent := t.event == ev ||
+              (t.event == .playIncludingTokens && (ev == .play || ev == .playToken))
+            if matchesEvent && t.subject != .self &&
                 subjectHolds board src c subj who t.subject &&
-                condOkEnv board src c { slots := [.obj subj], passMight := board.mightTable } t.condition &&
+                condOkEnv board src c
+                  { slots := [.obj subj], passMight := board.mightTable, eventAmount } t.condition &&
                 t.occurrence == occurrence && limitOk s src j lim stamp then
               some { source := src, card := cd.id, idx := j, controller := c,
                      subject := some subj, copyStamp := stamp }
@@ -173,10 +213,33 @@ def watchersAt (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEven
     | none => []
   | none => []
 
+/-- The Energy the player spent on this Spell at finalization, even after it leaves the Chain. -/
+def GameState.watchedSpellEnergy (s : GameState) (who : PlayerId) (spell : ObjId) : Option Nat := do
+  let object ← s.obj? spell
+  if (s.cardDef? spell).any (·.hasType .spell) && s.playLog.any (fun play =>
+      play.who == who && play.moment == .finalized && play.turn == s.turn &&
+        (play.object == spell || some play.object == object.formerId)) then
+    some object.energyPaid
+  else none
+
 /-- The abilities in play that fire for one subject of an event. -/
 def watchersOf (s : GameState) (subj : ObjId) (who : PlayerId) (ev : TriggerEvent) :
     List PendTrigger :=
-  s.passiveSources.flatMap (fun src => watchersAt s subj who ev .every src)
+  let eventAmount := if ev == .play then s.watchedSpellEnergy who subj else none
+  s.passiveSources.flatMap (fun src => watchersAt s subj who ev .every src (eventAmount := eventAmount))
+
+/-- General "when you choose a friendly unit" watchers see teammate targets as well. A Unit's
+own "when you choose me" still requires the Unit's controller to make the choice. -/
+def GameState.chosenAnyTriggers (s : GameState) (p : PlayerId) (target : ObjId) : List PendTrigger :=
+  if (s.obj? target).any (fun o => s.config.mode.sameSide p o.controller) then
+    (if (s.obj? target).any (·.controller == p) then triggersOf s target p .chosenAny else []) ++
+      watchersOf s target p .chosenAny
+  else []
+
+/-- Whether two notices are for the same instance of one watching ability. -/
+def PendTrigger.sameWatchingAbility (a b : PendTrigger) : Bool :=
+  a.source == b.source && a.card == b.card && a.idx == b.idx &&
+    a.copyStamp == b.copyStamp && a.controller == b.controller
 
 /-- A grouped death fires once per watching ability. Its source may be one of the dead objects. -/
 def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTrigger :=
@@ -187,9 +250,19 @@ def GameState.deathGroupWatchers (s : GameState) (es : List Event) : List PendTr
     (s.passiveSources.flatMap (fun src => watchersAt s object controller .die .deathGroup src)) ++
       (deaths.flatMap (fun (src, owner) =>
         watchersAt s object controller .die .deathGroup src (some owner))))
-  found.eraseDupsBy (fun a b =>
-    a.source == b.source && a.card == b.card && a.idx == b.idx &&
-      a.copyStamp == b.copyStamp && a.controller == b.controller)
+  found.eraseDupsBy PendTrigger.sameWatchingAbility
+
+/-- One Stun instruction can emit one notice per Unit. A watching ability that says
+"one or more" fires only once for the responsible seat in that event batch (CR 370, 412.4). -/
+def GameState.stunGroupWatchers (s : GameState) (events : List Event) : List PendTrigger :=
+  let stuns := events.filterMap (fun
+    | .stunnedBy unit actor => some (unit, actor)
+    | _ => none)
+  let found := stuns.flatMap (fun (unit, actor) =>
+    (s.obj? unit).toList.flatMap (fun obj =>
+      (s.passiveSources.flatMap (watchersAt s unit obj.controller .stunByYou .stunGroup ·)).filter
+        (·.controller == actor)))
+  found.eraseDupsBy PendTrigger.sameWatchingAbility
 
 /-- This dead Unit is the first recorded for its controller here this turn. -/
 def GameState.firstUnitDeathHere (s : GameState) (id : ObjId) (p : PlayerId) : Bool :=
@@ -249,6 +322,20 @@ def GameState.timedTriggers (s : GameState) (p : PlayerId) (tm : Timing) : List 
           | _, _ => [])
       else []
     | _, _ => [])
+
+/-- Beginning triggers that use the Battlefield's current controller. For an open Battlefield,
+the turn player handles the ability (CR 190.6). -/
+def GameState.battlefieldBeginningTriggers (s : GameState) (turnPlayer : PlayerId) : List PendTrigger :=
+  s.battlefields.flatMap fun src =>
+    (s.cardDef? src).toList.flatMap fun d =>
+      triggersAmong s src ((s.controlOf src).getD turnPlayer) .battlefieldBeginning d 0 d.fullAbilities.length
+
+/-- Collect one Temporary trigger per permanent from its effective keywords, before scoring (CR 816). -/
+def GameState.temporaryBeginningTriggers (s : GameState) (p : PlayerId) : List PendTrigger :=
+  (tempUnits s p).filterMap fun src =>
+    (s.cardDef? src).map fun d =>
+      { source := src, card := d.id, idx := d.allAbilities.length, controller := p,
+        triggerKeyword := some .temporary }
 
 /-- The abilities that an effect of this turn sets off at the end of the turn (`endTrigger`): the
 ability of the card fires with the object as its source. -/
@@ -367,7 +454,7 @@ def GameState.mightReductionEvents (s s' : GameState) (actor : Option PlayerId) 
       let oldBoard := s.inPlay
       s'.inPlay.filterMap (fun id =>
         if !oldBoard.contains id || !(s'.cardDef? id).any (·.hasType .unit) ||
-            !(s'.obj? id).any (·.controller != p) then none
+            !(s'.obj? id).any (fun o => !s'.config.mode.sameSide p o.controller) then none
         else
           match s.mightNow id, s'.mightNow id with
           | some before, some after =>
@@ -389,15 +476,26 @@ def GameState.workTransitionEvents (s s' : GameState) : List Event :=
   let who := match s.pending with
     | .run p .. :: _ => some p
     | _ => none
-  s.exhaustionEvents s' who ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
+  let damageLinks := match s.pending, s'.pending with
+    | .cleanup :: _, .cleanup :: _
+    | .cleanup :: _, .eitherDo .. :: .cleanup :: _ => []
+    | .cleanup :: _, _ =>
+      if s.turnFx.any (fun f => match f.kind with | .linkedDamageDeath .. => true | _ => false)
+      then [.linkedDamageCleanupDone] else []
+    | _, _ => []
+  s.exhaustionEvents s' who ++ s.mightyEvents s' ++ s.mightReductionEvents s' who ++ damageLinks
 
 /-- State changes during an answer. Passing Chain priority cannot change Board objects. -/
 def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Event :=
-  match s.pending, a.kind with
-  | .chainPass .. :: _, .pass => []
-  | _, kind =>
+  match a.kind, s.pending with
+  -- Clearing the stack for a judge's draw does not generate gameplay observations.
+  | .declareDraw, _ => []
+  | .pass, .chainPass .. :: _ => []
+  | kind, _ =>
     let who := match a.actor with | .player p => some p | _ => none
-    let beforeMove := match kind with | .standardMove .. => true | _ => false
+    let beforeMove := match s.pending, kind with
+      | _, .standardMove .. | .groupMove .. :: _, .decide true => true
+      | _, _ => false
     s.exhaustionEvents s' who beforeMove ++ s.mightyEvents s' ++ s.mightReductionEvents s' who
 
 /-- The marked Unit's death sets off the effects that were created by a spell or ability.
@@ -412,17 +510,25 @@ def GameState.delayedDeathTriggers (s : GameState) (dead : ObjId) : List PendTri
       else []
     | _ => [])
 
-/-- The abilities that watch the first card the player successfully played this turn
-(CR 420.4.a). -/
-def GameState.firstCardTriggers (s before : GameState) : List PendTrigger :=
+/-- The abilities that watch the first or second card the player successfully played this turn.
+Count resolutions by the acting seat, including repeated plays of the same physical card (CR 420.4.a). -/
+def GameState.cardResolutionTriggers (s before : GameState) : List PendTrigger :=
   if s.playLog == before.playLog then []
   else
-    let completed (state : GameState) (p : PlayerId) :=
-      state.playLog.any (fun play =>
+    let completed (state : GameState) (p : PlayerId) : Nat :=
+      state.playLog.countP (fun play =>
         play.turn == s.turn && play.who == p && play.moment == .resolved)
-    let players := s.players.filter (fun p => !completed before p && completed s p)
-    players.flatMap (fun p => s.inPlay.flatMap (fun src =>
-      if (s.obj? src).any (·.controller == p) then triggersOf s src p .firstCardResolved else []))
+    s.players.flatMap (fun p =>
+      let previous := completed before p
+      let current := completed s p
+      if previous >= 2 || previous >= current then [] else
+        s.inPlay.flatMap (fun src =>
+          if (s.obj? src).any (·.controller == p) then
+            triggersOfMatching s src p (fun
+              | .firstCardResolved => previous == 0 && current > 0
+              | .secondCardResolved => previous < 2 && current >= 2
+              | _ => false)
+          else []))
 
 /-- The player's watchers of a qualifying Unit, Gear, or activated ability (CR 206-206.1). -/
 def GameState.baseEnergyPlayTriggers (s : GameState) (p : PlayerId) (energy : Nat) : List PendTrigger :=
@@ -520,6 +626,15 @@ def GameState.firstPermanentHereTriggers (s : GameState) (p : PlayerId) (id : Ob
     else []
   | none => []
 
+/-- A Board Gear may already have left the Board while paying its activation cost. -/
+def GameState.activatedBoardGear (s : GameState) (source : ObjId) : Bool :=
+  match s.obj? source with
+  | some _ => source ∈ s.inPlay && (s.cardDef? source).any (·.hasType .gear)
+  | none => s.objects.toList.any (fun (id, object) =>
+      object.leftBoard && object.formerId == some source &&
+        ((object.lastAttachmentCopy.map (·.card)).bind s.cards.find? <|> s.cardDef? ⟨id⟩).any
+          (·.hasType .gear))
+
 /-- The abilities that fire because of one event (CR 389). -/
 def detectOne (s : GameState) : Event → List PendTrigger
   | .exhaustBatch who objects beforeMove => s.exhaustionTriggers who objects beforeMove
@@ -547,6 +662,18 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.cards.find? card with
     | some d => triggersAmong s src p .linkedDiscardType d idx (idx + 1)
     | none => []
+  | .killedByLinkedDamage p src card idx _ =>
+    match s.cards.find? card with
+    | some d => triggersAmong s src p .linkedDamageKill d idx (idx + 1)
+    | none => []
+  | .unitTokensFor p src card idx target tokens destination =>
+    match s.cards.find? card with
+    | some d => (triggersAmong s src p (.linkedUnitTokens target.isSome) d idx (idx + 1)).map
+      (fun t => { t with
+        subject := target
+        eventObjects := tokens
+        eventBattlefields := some destination.toList })
+    | none => []
   | .died obj p =>
     let lastCopy := (s.obj? obj).bind (·.lastAttachmentCopy)
     let own := triggersOfMatching s obj p (fun ev => ev == .die || ev == .deathknell) lastCopy
@@ -564,13 +691,18 @@ def detectOne (s : GameState) : Event → List PendTrigger
       watchersOf s obj p .die ++
       (if s.firstUnitDeathHere obj p then watchersOf s obj p .firstUnitDeathHere else []) ++
       s.delayedDeathTriggers obj
-  | .standardMoved u _ =>
+  | .standardMoved u destination =>
     match s.obj? u with
     | some o =>
       let fields := some (o.prevLoc.toList ++ o.loc.toList)
       (triggersOf s u o.controller .move).map (fun t => { t with eventBattlefields := fields }) ++
+        triggersOf s u o.controller .moveFrom (some o.prevLoc.toList) ++
+        (destination.elim [] (fun field =>
+          triggersOf s u o.controller .moveToBattlefield (some [field]))) ++
         watchersOf s u o.controller .move
     | none => []
+  | .phaseStarted p .beginning =>
+    s.timedTriggers p .beginning ++ s.battlefieldBeginningTriggers p ++ s.temporaryBeginningTriggers p
   | .phaseStarted p ph =>
     match ph.timing? with
     | some tm => s.timedTriggers p tm ++ s.fxTriggers tm
@@ -581,21 +713,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | none => []
   | .lookedAt p c => triggersOf s c p .seenOnTop
   | .chosenBySpell p t =>
-    -- a Battlefield waits for its player's chosen unit at it
-    (s.zone .battlefieldZone).flatMap (fun bf =>
-      if (s.cardDef? t).any (·.hasType .unit) &&
-          (s.obj? t).any (fun o => o.controller == p && o.loc == some bf) then
-        triggersOf s bf p .chosenHere
-      else []) ++
-    -- a unit of the player that is chosen by their spell, and what watches the units they choose
     (if (s.obj? t).any (·.controller == p) then
-      triggersOf s t p .chosen ++ watchersOf s t p .chosen ++
-        triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
-    else [])
-  | .chosenByAbility p t =>
-    if (s.obj? t).any (·.controller == p) then
-      triggersOf s t p .chosenAny ++ watchersOf s t p .chosenAny
-    else []
+      triggersOf s t p .chosen ++ watchersOf s t p .chosen
+    else []) ++ s.chosenAnyTriggers p t
+  | .chosenByAbility p t => s.chosenAnyTriggers p t
   | .killedBySpell p =>
     (s.zone (.player p .trash)).flatMap (fun u => triggersOf s u p .killBySpell)
   | .recycled p =>
@@ -658,6 +779,14 @@ def detectOne (s : GameState) : Event → List PendTrigger
     | some o =>
       triggersOf s u o.controller .buff ++ watchersOf s u o.controller .buff
     | none => []
+  | .buffedBy u giver =>
+    match s.obj? u with
+    | some o =>
+      triggersOfMatching s u o.controller (fun event =>
+        event == .buff || (event == .buffByYou && giver == o.controller)) ++
+      watchersOf s u o.controller .buff ++
+      (watchersOf s u o.controller .buffByYou).filter (·.controller == giver)
+    | none => []
   | .readied u =>
     match s.obj? u with
     | some o => triggersOf s u o.controller .ready ++ watchersOf s u o.controller .ready
@@ -666,26 +795,40 @@ def detectOne (s : GameState) : Event → List PendTrigger
     match s.obj? u with
     | some o => triggersOf s u o.controller .stun ++ watchersOf s u o.controller .stun
     | none => []
+  | .stunnedBy u actor =>
+    match s.obj? u with
+    | some o =>
+      let fields := some o.loc.toList
+      let self := if actor == o.controller then triggersOf s u o.controller .stunByYou fields else []
+      let watched := (watchersOf s u o.controller .stunByYou).filter (·.controller == actor)
+      triggersOf s u o.controller .stun ++ watchersOf s u o.controller .stun ++
+        self ++ watched.map (fun trigger => { trigger with eventBattlefields := fields })
+    | none => []
   | .discarded p obj last =>
     triggersOf s obj p .discard ++ (if last then watchersOf s obj p .discard else [])
   | .scored p bf conquer =>
+    let excess := if conquer then s.conquestExcess p bf else none
+    let atField (src : ObjId) (event : TriggerEvent) := triggersOf s src p event (some [bf]) excess
+    let event := if conquer then TriggerEvent.conquer else .hold
+    let watched := (watchersOf s bf p event).map (fun t => { t with eventBattlefields := some [bf] })
+    let (own, others) := watched.partition (fun t => t.controller == p)
     let eff :=
       (s.trigUnitsAt bf p).flatMap
-        (fun u => triggersOf s u p (if conquer then .conquer else .hold) ++
-          triggersOf s u p .scored ++
+        (fun u => atField u event ++
+          atField u .scored ++
           -- Skyfall of Areion: the hold effects of the unit are conquer effects too, and back
-          (if s.holdIsConquer u then triggersOf s u p (if conquer then .hold else .conquer)
+          (if s.holdIsConquer u then atField u (if conquer then .hold else .conquer)
            else [])) ++
       (s.zone (.player p .legendZone)).flatMap
-        (fun l => triggersOf s l p (if conquer then .youConquer else .youHold)) ++
-      triggersOf s bf p (if conquer then .youConquer else .youHold)
-    -- the effects fire one more time if a unit there says so
-    eff ++ (if s.scoreExtra p bf conquer then eff else []) ++
+        (fun l => atField l (if conquer then .youConquer else .youHold)) ++
+      atField bf (if conquer then .youConquer else .youHold) ++ own
+    -- Extra effects from scoring here belong to the scorer, even if a teammate also triggers.
+    eff ++ (if s.scoreExtra p bf conquer then eff else []) ++ others ++
     -- what the opponents of the player who scores wait for
     s.passiveSources.flatMap (fun u =>
       match s.obj? u with
       | some o =>
-        if o.controller != p then
+        if !s.config.mode.sameSide p o.controller then
           triggersOf s u o.controller .opponentScores ++
             (if conquer then [] else
               triggersOf s u o.controller .opponentHolds ++
@@ -716,7 +859,7 @@ def detectOne (s : GameState) : Event → List PendTrigger
       if (s.obj? u).any (·.controller == p) then triggersOf s u p .spendBuff else [])
   | .activated p src _ baseEnergy =>
     -- an ability of a gear on the Board (not Hide, not the play of a hidden gear)
-    let gearUse := if (s.cardDef? src).any (·.hasType .gear) && src ∈ s.inPlay then
+    let gearUse := if s.activatedBoardGear src then
         s.inPlay.flatMap (fun u =>
           if (s.obj? u).any (·.controller == p) then triggersOf s u p .useGearAbility else [])
       else []
@@ -729,6 +872,9 @@ def detectOne (s : GameState) : Event → List PendTrigger
       if s.inPlay.contains u then
         (s.obj? u).toList.flatMap (fun o => triggersOf s u o.controller .combatEnd)
       else [])
+  | .showdownOpened bf =>
+    (s.trigAllUnitsAt bf).flatMap fun unit =>
+      (s.obj? unit).toList.flatMap fun o => triggersOf s unit o.controller .showdownStart
   | .combatStarted bf att =>
     let controller := ((s.obj? bf).bind (·.control)).getD (s.active.getD att)
     triggersOf s bf controller .combatStart ++
@@ -737,10 +883,10 @@ def detectOne (s : GameState) : Event → List PendTrigger
     -- the abilities of the Battlefield: for the players who attack and defend there
     (s.players.filter (fun q => !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       triggersOf s bf q (if q == att then TriggerEvent.attack else .defend)) ++
-    -- the units of a defending player that are elsewhere: "when you defend at a battlefield"
+    -- the defending player’s Units, including ones already at this Battlefield
     (s.players.filter (fun q => q != att && !(s.trigUnitsAt bf q).isEmpty)).flatMap (fun q =>
       s.inPlay.flatMap (fun u =>
-        if (s.obj? u).any (fun o => o.controller == q && o.loc != some bf) &&
+        if (s.obj? u).any (fun o => o.controller == q) &&
             (s.cardDef? u).any (·.hasType .unit) then
           (triggersOf s u q .youDefend).map (fun t => { t with subject := some bf })
         else []))
@@ -761,13 +907,51 @@ def GameState.trimLimits (s : GameState) (l : List PendTrigger) : List PendTrigg
       if o.abilityUses t.idx t.copyStamp + taken < n then kept ++ [t] else kept
     | _, _ => kept ++ [t]) []
 
-/-- The abilities that fire because of the events of a step, the turn player's first (CR 383.3). -/
-def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := []) :
+/-- The order for abilities that fire together. Combat opens with the attacker and ends with
+the defender, with any other team-game seats in turn order between them (CR 383.3.d.1, 466.2.d.1). -/
+def GameState.triggerSeatOrder (s : GameState) (es : List Event) : List PlayerId :=
+  let opening := s.combat.filter (fun c => es.contains (.combatStarted c.battlefield c.attacker))
+  match opening with
+  | some c =>
+    let order := ({ s with active := some c.attacker } : GameState).pickOrder
+    [c.attacker] ++ order.filter (fun p => p != c.attacker && p != c.defender) ++ [c.defender]
+  | none => s.pickOrder
+
+/-- The Battlefield of a friendly Unit targeted by this player's Spell (CR 383.4.b, 740.1.a). -/
+def GameState.friendlySpellField (s : GameState) (p : PlayerId) (id : ObjId) : Option ObjId := do
+  let unit ← s.obj? id
+  let field ← unit.loc
+  if (s.zone .battlefieldZone).contains id && (s.cardDef? id).any (·.hasType .unit) &&
+      s.config.mode.sameSide p unit.controller then some field else none
+
+/-- Whether the when-and-where of this fact was already recorded. -/
+def recordedTurnFact (notes : List TurnFx) (turn : Nat) (p : PlayerId) (kind : TurnEffect)
+    (target : Option ObjId) : Bool :=
+  notes.any (fun f => f.turn == turn && f.who == p && f.kind == kind && f.target == target)
+
+/-- Targeting several Units at the same Battlefield completes the first choice there once. -/
+def GameState.firstSpellFieldTriggers (s : GameState) (notes : List TurnFx) (es : List Event) :
     List PendTrigger :=
-  let all := s.trimLimits (es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++ extra)
+  let fields := es.filterMap (fun
+    | .chosenBySpell p id => (s.friendlySpellField p id).map (p, ·)
+    | _ => none)
+  fields.eraseDups.flatMap (fun (p, field) =>
+    if recordedTurnFact notes s.turn p .chosenHere (some field) then []
+    else triggersOf s field p .chosenHere)
+
+/-- The continuing players' abilities that fire because of the events of a step (CR 651.3).
+First-choice triggers compare against the facts from before the event batch. -/
+def GameState.detect (s : GameState) (es : List Event) (extra : List PendTrigger := [])
+    (beforeFacts : Option (List TurnFx) := none) :
+    List PendTrigger :=
+  let choices := s.firstSpellFieldTriggers (beforeFacts.getD s.turnFx) es
+  let all := s.trimLimits ((es.flatMap (detectOne s) ++ s.deathGroupWatchers es ++
+    s.stunGroupWatchers es ++ choices ++ extra).filter (fun t => !s.departures.seats.contains t.controller))
   let active := s.active.getD ⟨0⟩
   let seatOrder (group : List PendTrigger) :=
-    group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
+    if s.config.mode.isTeamDuel || s.config.mode.isFreeForAll then
+      (s.triggerSeatOrder es).flatMap (fun p => group.filter (fun t => t.controller == p))
+    else group.filter (fun t => t.controller == active) ++ group.filter (fun t => t.controller != active)
   let (beforeMove, later) := all.partition (·.beforeStandardMove)
   seatOrder beforeMove ++ seatOrder later
 
@@ -779,10 +963,14 @@ def Frame.isResolution : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .resolveChain => true
+  | .endShowdown _ => true
   | .combatDamage .. => true
   | .combatResolve .. => true
-  | .pickDo _ _ _ _ _ (.recordBanishReplay ..) _ => true
-  | .predict .. | .chancePredict .. => true
+  | .pickDo _ _ _ _ _ (.recordBanishReplay ..) _
+  | .pickDo _ _ _ _ _ (.recordRuneRecycle ..) _
+  | .pickDo _ _ _ _ _ (.recordTrashRecycle ..) _ => true
+  | .eitherDo _ _ _ (.chooseTrashRecycle ..) _ _ => true
+  | .predict .. | .chancePredict .. | .chanceRecycleTrash .. => true
   | .eitherDo _ _ _ (.fundPermanentFromEffect ..) _ _ => true
   | .eitherDo _ _ _ (.finishFundedPermanent ..) _ _ => true
   | .eitherDo _ _ _ (.fundLimitedSpell ..) _ _ => true
@@ -790,6 +978,8 @@ def Frame.isResolution : Frame → Bool
   | .eitherDo _ _ _ (.chooseDamageReplacement ..) _ _ => true
   | .eitherDo _ _ _ (.orderCombatDamage ..) _ _ => true
   | .eitherDo _ _ _ (.applySplitDamage _) _ _ => true
+  | .eitherDo _ _ _ (.applyUnitSplitDamage ..) _ _ => true
+  | .pickDo _ _ _ _ _ (.retainTargetSet _) _ => true
   | .eitherDo _ _ _ (.prim (.attachPaying ..)) _ _ => true
   | .eitherDo _ _ _ (.chooseDeathBanisher ..) _ _ => true
   | .eitherDo _ _ _ (.recordDeathSacrifice ..) _ _
@@ -881,8 +1071,9 @@ theorem insertTriggers_contrib (pend : List PendTrigger) (q : PlayerId) (contrib
 
 /-- Add a play to the current turn's history, with the types and player fixed at that moment. -/
 def addCardPlay (turn : Nat) (plays : List CardPlay) (p : PlayerId) (obj : ObjId)
-    (d : CardDef) (moment : PlayMoment) : List CardPlay :=
-  ⟨p, obj, d.types, turn, moment⟩ ::
+    (d : CardDef) (moment : PlayMoment) (energyPaid : Nat := 0)
+    (physical : Option PhysId := none) (stamp : Option Nat := none) : List CardPlay :=
+  { who := p, object := obj, types := d.types, turn, moment, energyPaid, physical, stamp } ::
     (if plays.head?.map (·.turn) == some turn then plays else [])
 
 /-- Whether the hidden card is already recorded as finalized in its original zone. -/
@@ -902,6 +1093,8 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
         let noted := if (o.fromHidden || o.hiddenAt.isSome) &&
             hiddenFinalized plays s.turn p original then plays
           else addCardPlay s.turn plays p id d .finalized
+            (if d.hasType .spell then o.energyPaid else 0) o.kind.phys?
+            (some (o.playedStamp.getD o.timestamp.n))
         if d.hasType .spell then noted else addCardPlay s.turn noted p id d .resolved
       else plays
     | _, _ => plays
@@ -915,7 +1108,9 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
       match d.fullAbilities[idx]? with
       | some (.activated costs _ _ _) =>
         if o.kind.phys?.isSome && costs.contains .fromHidden &&
-            !hiddenFinalized plays s.turn p id then addCardPlay s.turn plays p id d .finalized
+            !hiddenFinalized plays s.turn p id then
+          addCardPlay s.turn plays p id d .finalized (physical := o.kind.phys?)
+            (stamp := some s.nextTimestamp)
         else plays
       | _ => plays
     | _, _ => plays
@@ -924,9 +1119,16 @@ def GameState.recordPlayEvent (s : GameState) (plays : List CardPlay) : Event �
 /-- Save the first fact of a kind this turn for a player and optional object. -/
 def GameState.recordTurnFact (s : GameState) (notes : List TurnFx)
     (p : PlayerId) (kind : TurnEffect) (target : Option ObjId) (stamp : Nat) : List TurnFx :=
-  if notes.any (fun f => f.turn == s.turn && f.who == p && f.kind == kind && f.target == target)
-  then notes
+  if recordedTurnFact notes s.turn p kind target then notes
   else { who := p, turn := s.turn, stamp, kind, target } :: notes
+
+/-- An enemy Unit was targeted by this player's Spell or ability. -/
+def GameState.recordEnemyChoice (s : GameState) (notes : List TurnFx) (p : PlayerId)
+    (id : ObjId) : List TurnFx :=
+  if s.inPlay.contains id && (s.obj? id).any (fun o => !s.config.mode.sameSide p o.controller) &&
+      (s.cardDef? id).any (·.hasType .unit) then
+    s.recordTurnFact notes p .choseEnemyUnit none s.nextTimestamp
+  else notes
 
 /-- Register only successful plays by the instructed player, including Unit and Gear tokens. -/
 def GameState.matchesDelayedPlay (s : GameState) (who : PlayerId) (kind : CardType) : Event → Bool
@@ -945,6 +1147,36 @@ def GameState.delayedPlayTriggers (s : GameState) (es : List Event) : List PendT
           (s.cards.find? card).toList.flatMap
             (fun d => triggersAmong s src note.who .delayedPlay d idx (idx + 1)))
     | _, _ => [])
+
+/-- The Unit that took positive damage. The damaged object can already have left the Board. -/
+def GameState.damageTriggerSubject (s : GameState) : Event → Option ObjId
+  | .damaged id amount =>
+    if amount > 0 && (s.cardDef? id).all (·.hasType .unit) then some id else none
+  | _ => none
+
+/-- Registered damage abilities retain the original controller and include the hit Unit as their
+subject. A registration on a particular Unit is consumed by its first qualifying hit (CR 391-393). -/
+def GameState.delayedDamageTriggers (s : GameState) (es : List Event) : List PendTrigger :=
+  let damaged := es.filterMap s.damageTriggerSubject
+  if damaged.isEmpty then [] else
+  s.turnFx.flatMap (fun note =>
+    match note.kind with
+    | .triggerOnDamage src card idx =>
+      if note.turn != s.turn then [] else
+        let subjects := match note.target with
+          | none => damaged
+          | some id => (damaged.find? (· == id)).toList
+        let declared := (s.cards.find? card).toList.flatMap (fun d =>
+          triggersAmong s src note.who .delayedDamage d idx (idx + 1))
+        subjects.flatMap (fun id => declared.map (fun t => { t with subject := some id }))
+    | _ => [])
+
+/-- Events that dealt no positive damage cannot start a registered damage ability. -/
+theorem GameState.delayedDamageTriggers_noDamage (s : GameState) (events : List Event)
+    (noDamage : ∀ event ∈ events, s.damageTriggerSubject event = none) :
+    s.delayedDamageTriggers events = [] := by
+  have empty := List.filterMap_eq_nil_iff.mpr noDamage
+  simp [delayedDamageTriggers, empty]
 
 /-- Remember facts about choices, plays and deaths for the rest of the turn. -/
 def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → List TurnFx
@@ -971,11 +1203,13 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
     match s.battlefieldPlay id with
     | some (field, stamp) => s.recordTurnFact waiting p .playedToBattlefield (some field) stamp
     | none => waiting
-  | .chosenBySpell p id | .chosenByAbility p id =>
-    if s.inPlay.contains id && (s.obj? id).any (·.controller != p) &&
-        (s.cardDef? id).any (·.hasType .unit) then
-      s.recordTurnFact notes p .choseEnemyUnit none s.nextTimestamp
-    else notes
+  | .chosenBySpell p id =>
+    match s.friendlySpellField p id with
+    | some field =>
+      if (triggersOf s field p .chosenHere).isEmpty then notes
+      else s.recordTurnFact notes p .chosenHere (some field) s.nextTimestamp
+    | none => s.recordEnemyChoice notes p id
+  | .chosenByAbility p id => s.recordEnemyChoice notes p id
   | .died id p =>
     if (s.cardDef? id).any (fun d => d.hasType .unit || d.hasType .gear) then
       let known := s.recordTurnFact notes p .permanentDied none s.nextTimestamp
@@ -985,6 +1219,15 @@ def GameState.recordTurnEvent (s : GameState) (notes : List TurnFx) : Event → 
           s.recordTurnFact known p .firstUnitDeathHere (some field) dead.timestamp.n)
       | _, _ => known
     else notes
+  | .linkedDamageCleanupDone => notes.filter (fun f => match f.kind with
+      | .linkedDamageDeath .. => false
+      | _ => true)
+  | event@(.damaged ..) =>
+    match s.damageTriggerSubject event with
+    | none => notes
+    | some id => notes.filter (fun f => match f.kind with
+        | .triggerOnDamage .. => !(f.turn == s.turn && f.target == some id)
+        | _ => true)
   | _ => notes
 
 /-- Update the play and choice history before evaluating triggers. Ignore events during setup. -/
@@ -998,7 +1241,7 @@ mutual
 
 /-- Resource-only effects the engine can resolve without a further player decision. -/
 def Effect.isTriggerAdd : Effect → Bool
-  | .prim (.addEnergy .you _ none) | .prim (.addUnitEnergy .you _)
+  | .prim (.addEnergy .you _ none) | .prim (.addUnitEnergy .you _) | .prim (.addSpellEnergy .you _)
   | .prim (.addPower .you _ _ none) => true
   | .seq (.cons first more) => first.isTriggerAdd && more.areTriggerAdds
   | .ifThen _ body .nop => body.isTriggerAdd
@@ -1077,14 +1320,49 @@ theorem insertDetectedTriggers_getLast (s : GameState) (pend : List PendTrigger)
   · simp [hg]
   · simp [insertTriggers_getLast _ _ hg hr ht]
 
-/-- After a step, queue the abilities that fired outside setup. -/
+/-- During sudden death, the first actual point ends the game (TR 408.4.c.3). -/
+def GameState.suddenDeathScorer (s : GameState) (es : List Event) : Option PlayerId := do
+  let clock ← s.clock
+  if s.phase != .setup && s.result.isNone && clock.allowsSuddenDeath &&
+      decide (clock.lastTurn < s.turn) then
+    es.findSome? (fun
+      | .pointsGained p (_ + 1) => some p
+      | _ => none)
+  else none
+
+/-- A card can award a win independently of the scoreboard (CR 002). -/
+def GameState.eventWinner (s : GameState) (es : List Event) : Option PlayerId :=
+  s.suddenDeathScorer es <|>
+    if s.phase == .setup || s.result.isSome then none
+    else es.findSome? (fun | .won p => some p | _ => none)
+
+/-- Events unrelated to a card-awarded win still use the ordinary sudden-death rule. -/
+theorem eventWinner_of_noWin (s : GameState) (es : List Event)
+    (h : es.findSome? (fun | .won p => some p | _ => none) = none) :
+    s.eventWinner es = s.suddenDeathScorer es := by
+  simp [GameState.eventWinner, h]
+
+/-- After a step, finish a won game or queue the abilities that fired outside setup. -/
 def GameState.withTriggers (s : GameState) (es : List Event) : GameState :=
   let next := s.recordTurnEvents es
-  if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
-    match next.detect es (next.firstCardTriggers s ++ s.delayedPlayTriggers es) with
-    | [] => next
-    | pend => { next with pending := insertDetectedTriggers next pend s.pending }
-  else next
+  match s.eventWinner es with
+  | some p => { next with result := some (.won (s.config.mode.sideSeats p)), pending := [] }
+  | none =>
+    if s.phase != .setup && s.pending.all (fun f => !f.isSetup) then
+      match next.detect es (next.cardResolutionTriggers s ++ s.delayedPlayTriggers es ++ s.delayedDamageTriggers es)
+          (some s.turnFx) with
+      | [] => next
+      | pend => { next with pending := insertDetectedTriggers next pend s.pending }
+    else next
+
+/-- A card-awarded win clears the remaining work and does not change the score. -/
+theorem withTriggers_win (s : GameState) (p : PlayerId) (ongoing : s.result = none)
+    (playing : s.phase ≠ .setup) :
+    s.withTriggers [.won p] = { s with result := some (.won (s.config.mode.sideSeats p)), pending := [] } := by
+  have noPoint : s.suddenDeathScorer [.won p] = none := by
+    cases hc : s.clock <;> simp [GameState.suddenDeathScorer, hc]
+  simp [GameState.withTriggers, GameState.eventWinner, noPoint, ongoing, playing,
+    GameState.recordTurnEvents, GameState.recordTurnEvent, GameState.recordPlayEvent]
 
 /-- Whether the source already chose this mode of the triggered ability in the current turn. -/
 def PendTrigger.choseMode (t : PendTrigger) (s : GameState) (mode : Nat) : Bool :=
@@ -1123,7 +1401,7 @@ def trigCost (s : GameState) (t : PendTrigger) : TriggerCost :=
 /-- The Energy and Power required by the trigger's printed cost. -/
 def TriggerCost.resources : TriggerCost → Cost
   | .energy n => ⟨n, []⟩
-  | .pay cost _ => cost
+  | .pay cost _ | .payAndReturnUnitHere cost => cost
   | _ => ⟨0, []⟩
 
 /-- A Burn cost must be payable in full. Burn Out on a short deck is for instructions
@@ -1135,23 +1413,68 @@ def canPayBurn (s : GameState) (p : PlayerId) (count : Nat) : Bool :=
 def canExhaustTriggerSource (s : GameState) (t : PendTrigger) : Bool :=
   (s.locate t.source).any Zone.isBoard && (s.obj? t.source).any (fun o => !o.exhausted)
 
+/-- Choose exactly the printed number of discards from the controller's hand. -/
+def triggerDiscardOptions (s : GameState) (p : PlayerId) (count : Nat) : List (List ObjId) :=
+  (subseqsUpTo count (s.zone (.player p .hand)).eraseDups).filter (·.length == count)
+
+/-- Units whose buff the controller can spend as the trigger's base cost (CR 702.2.b). -/
+def triggerBuffOptions (s : GameState) (t : PendTrigger) : List ObjId :=
+  (s.pickCandidates t.controller t.source {} .you .anywhere
+    (.ofList [.ofType .unit, .buffed]) false).getD []
+
+/-- Units the trigger's controller can return here as a cost. Costs do not choose targets. -/
+def triggerReturnUnitHereOptions (s : GameState) (t : PendTrigger) : List ObjId :=
+  (s.pickCandidates t.controller t.source {} .you .here (.ofList [.ofType .unit])
+    false).getD []
+
+/-- Distinct sets of permanents the given side can select for a Kill cost. -/
+def triggerKillOptions (s : GameState) (t : PendTrigger) (n : Nat)
+    (side : Side) (fs : FilterList) : List (List ObjId) :=
+  let env : Env := { passMight := s.mightTable }
+  let candidates := (s.pickCandidates t.controller t.source env side .anywhere fs false).getD []
+  (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
+
+/-- Pay a Deathknell's Recycle cost. A card that already left the Trash cannot pay it. -/
+def recycleTriggerSource (s : GameState) (t : PendTrigger) : Option (GameState × List Event) := do
+  let some (.player owner .trash) := s.locate t.source | none
+  let deck := Zone.player owner (recycleKind s t.source)
+  let (next, moved) ← moveObj s t.source deck .bottom
+  return (next, [.moved t.source moved deck, .recycled t.controller])
+
+/-- Recycling a Deathknell source as a cost preserves the state invariants. -/
+theorem recycleTriggerSource_safe {s : GameState} {t : PendTrigger} {r : GameState × List Event}
+    (h : recycleTriggerSource s t = some r) : Safe s r.1 := by
+  unfold recycleTriggerSource at h
+  split at h
+  · simp only [bind, Option.bind_eq_some_iff] at h
+    obtain ⟨⟨next, id⟩, moved, equal⟩ := h
+    cases equal
+    exact Safe.moveObj moved
+  · contradiction
+
 /-- The ways to pay the cost of a trigger. Killed objects are selected as costs (CR 355.10.c). -/
 def trigPayments (s : GameState) (t : PendTrigger) (checkPool : Bool := true) : List (List ObjId) :=
   match trigCost s t with
   | .free => [[]]
   | .energy n =>
     if !checkPool || (payByRunes s t.controller t.source ⟨n, []⟩).isSome then [[]] else []
+  | .spendXP n => if n ≤ s.xpOf t.controller then [[]] else []
   | .pay cost exhaustSelf =>
     if (!exhaustSelf || canExhaustTriggerSource s t) &&
         (!checkPool || (payByRunes s t.controller t.source cost).isSome) then [[]] else []
+  | .payAndReturnUnitHere cost =>
+    if !checkPool || (payByRunes s t.controller t.source cost).isSome then
+      (triggerReturnUnitHereOptions s t).map (fun id => [id])
+    else []
   | .exhaustSelf => if canExhaustTriggerSource s t then [[]] else []
   | .burn n => if canPayBurn s t.controller n then [[]] else []
-  | .discard n =>
-    (subseqsUpTo n (s.zone (.player t.controller .hand)).eraseDups).filter (·.length == n)
-  | .killFriendly n fs =>
-    let env : Env := { passMight := s.mightTable }
-    let candidates := (s.pickCandidates t.controller t.source env .friendly .anywhere fs false).getD []
-    (subseqsUpTo n candidates.eraseDups).filter (·.length == n)
+  | .discard n => triggerDiscardOptions s t.controller n
+  | .discardAndExhaust n =>
+    if canExhaustTriggerSource s t then triggerDiscardOptions s t.controller n else []
+  | .spendBuff => (triggerBuffOptions s t).map (fun id => [id])
+  | .killFriendly n fs => triggerKillOptions s t n .friendly fs
+  | .killControlled n fs => triggerKillOptions s t n .you fs
+  | .recycleSelfFromTrash => if (recycleTriggerSource s t).isSome then [[]] else []
 
 /-- The affected Units each choose how to replace their Kill. Compute the combinations against
 the same board, before paying any part of the simultaneous cost (CR 372, 373). -/
@@ -1169,7 +1492,8 @@ def triggerCostOptions (s : GameState) (t : PendTrigger) (checkPool : Bool := tr
     List (List ObjId × List (ObjId × PlayerId)) :=
   let payments := trigPayments s t checkPool
   match trigCost s t with
-  | .killFriendly .. => payments.flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
+  | .killFriendly .. | .killControlled .. =>
+    payments.flatMap (fun ids => (triggerBanisherOptions s ids).map (ids, ·))
   | _ => payments.map (·, [])
 
 /-- A direct trigger payment must leave enough Power for Deflect (CR 356, 809). -/
@@ -1343,6 +1667,21 @@ theorem prepareGearAnimation_safe (s : GameState) (t : PendTrigger) (targets : L
   · exact endGearAnimation_safe _ _ _
   · exact Safe.refl _
 
+/-- Store a location restriction that will be checked against each selected target on resolution. -/
+def recordTriggerLocations (s : GameState) (t : PendTrigger) (item : ObjId)
+    (targets : List ObjId) (mode : Option Nat) : GameState :=
+  if !targets.isEmpty && (trigChoices s t mode).any Choice.recordsLocations then
+    let locations := targets.filterMap (fun id => (s.boardLocationOf id).map (id, ·))
+    s.addTurnFxOn t.controller item (.declaredTargetLocations locations)
+  else s
+
+theorem recordTriggerLocations_safe (s : GameState) (t : PendTrigger) (item : ObjId)
+    (targets : List ObjId) (mode : Option Nat) : Safe s (recordTriggerLocations s t item targets mode) := by
+  unfold recordTriggerLocations
+  split
+  · exact addTurnFxOn_safe _ _ _ _
+  · exact Safe.refl s
+
 /-- The Chain gets the ability: it is used (CR 371), and it goes on top as an object of its own,
 controlled by the player, with the objects chosen. -/
 def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Option Nat := none)
@@ -1362,7 +1701,7 @@ def putTrigger (s : GameState) (t : PendTrigger) (ts : List ObjId) (mode : Optio
       targetPlayer := player }
   let s1 := prepareGearAnimation used t ts mode
   match addObject s1 item .chain with
-  | some r => r.1
+  | some r => recordTriggerLocations r.1 t r.2 ts mode
   | none => s1
 
 /-- Record the replacement selected for each object in the same cost. -/
@@ -1378,6 +1717,21 @@ theorem noteTriggerBanishers_safe (s : GameState) (banishers : List (ObjId × Pl
   | cons pick rest ih =>
     exact (addTurnFxOn_safe s pick.2 pick.1 .chosenDeathBanisher).trans (ih _)
 
+/-- Discard the selected hand cards only when the complete cost is legal. -/
+def payTriggerDiscards (s : GameState) (p : PlayerId) (ids : List ObjId) (n : Nat) :
+    Option (GameState × List Event) :=
+  if ids.length == n && ids.eraseDups.length == n && ids.all ((s.zone (.player p .hand)).contains) then
+    some (payDiscards p s ids)
+  else none
+
+/-- Discarding cards to finalize a trigger preserves the invariants. -/
+theorem payTriggerDiscards_safe {s : GameState} {p : PlayerId} {ids : List ObjId} {n : Nat}
+    {r : GameState × List Event} (h : payTriggerDiscards s p ids n = some r) : Safe s r.1 := by
+  unfold payTriggerDiscards at h
+  split at h
+  · cases h; exact payDiscards_safe _ _ _
+  · contradiction
+
 /-- Pay a trigger's cost without giving either player a chance to respond (CR 383.3.b.1). -/
 def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
     (banishers : List (ObjId × PlayerId) := []) (resourcesPaid : Bool := false) :
@@ -1386,6 +1740,7 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
   | .free => some (s, [])
   | .energy n => if resourcesPaid then some (s, []) else
       payByRunes s t.controller t.source ⟨n, []⟩
+  | .spendXP n => if n ≤ s.xpOf t.controller then some (s.spendXP t.controller n, []) else none
   | .pay cost exhaustSelf => do
     let payment := if resourcesPaid then some (s, []) else payByRunes s t.controller t.source cost
     let (paid, events) ← payment
@@ -1394,18 +1749,35 @@ def payTriggerCost (s : GameState) (t : PendTrigger) (ids : List ObjId)
       let (exhausted, costEvents) := setExhausted true paid t.source
       some (exhausted, events ++ costEvents)
     else none
+  | .payAndReturnUnitHere cost =>
+    match ids with
+    | [id] =>
+      if (triggerReturnUnitHereOptions s t).contains id then
+        let payment := if resourcesPaid then some (s, []) else payByRunes s t.controller t.source cost
+        payment.map fun (paid, events) =>
+          let (returned, moves) := sendObj .hand paid id
+          (returned, events ++ moves)
+      else none
+    | _ => none
   | .exhaustSelf =>
     if canExhaustTriggerSource s t then some (setExhausted true s t.source) else none
   | .burn n => if canPayBurn s t.controller n then some (burnTop s t.controller n) else none
-  | .killFriendly n _ =>
+  | .killFriendly n _ | .killControlled n _ =>
     if ids.length == n then
       some (resolveDeathGroupWith (noteTriggerBanishers s banishers) ids (killOrSaveInGroup s))
     else none
-  | .discard n =>
-    if ids.length == n && ids.eraseDups.length == n &&
-        ids.all ((s.zone (.player t.controller .hand)).contains) then
-      some (payDiscards t.controller s ids)
+  | .discard n => payTriggerDiscards s t.controller ids n
+  | .discardAndExhaust n =>
+    if canExhaustTriggerSource s t then do
+      let (discarded, discards) ← payTriggerDiscards s t.controller ids n
+      let (exhausted, exhausts) := setExhausted true discarded t.source
+      some (exhausted, discards ++ exhausts)
     else none
+  | .spendBuff =>
+    match ids with
+    | [id] => if (triggerBuffOptions s t).contains id then some (unbuffObj s id) else none
+    | _ => none
+  | .recycleSelfFromTrash => recycleTriggerSource s t
 
 /-- Dismiss a declined or unpayable trigger, or pay for it and finalize it (CR 355, 383.3). -/
 def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
@@ -1413,19 +1785,18 @@ def finalizePick (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List O
   match grp[i]?, payment with
   | some t, .pay ids mode player banishers =>
     if !(trigModes s t).contains mode || !(trigPlayerOptions s t).contains player ||
-        (ts.isEmpty && !(trigChoices s t mode).isEmpty &&
-          !((trigOptional s t || mode.isSome || player.isSome) && trigTargetOk s t mode [])) then (s, [])
+        (ts.isEmpty && !(trigChoices s t mode).isEmpty && !trigTargetOk s t mode []) then (s, [])
     else match payTriggerCost s t ids banishers with
       | some (paid, events) => (putTrigger paid t ts mode player, events)
       | none => (s, [])
   | _, _ => (s, [])
 
-/-- The frames to put beneath the work after the abilities have gone on the Chain: the turn player
-gets priority with the Chain, unless that is already so (CR 340). -/
+/-- The frames to put beneath the work after the abilities go on the Chain. When opening a
+Chain, its top item's controller gets priority (CR 337.4). -/
 def triggerFrames (s : GameState) (rest : List Frame) : List Frame :=
   match rest with
   | .chainPass .. :: _ => []
-  | _ => if (s.zone .chain).isEmpty then [] else [.chainPass (s.active.getD ⟨0⟩) 0]
+  | _ => if (s.zone .chain).isEmpty then [] else [.chainPass s.chainPrioritySeat 0]
 
 /-- The frames put under the work after the triggers are Chain priorities. -/
 theorem triggerFrames_mem {s : GameState} {rest : List Frame} {f : Frame}
@@ -1467,8 +1838,9 @@ theorem putTrigger_safe (s : GameState) (t : PendTrigger) (ts : List ObjId)
   dsimp only
   split
   · rename_i r hr
-    refine done.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
-      fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩
+    exact (done.trans ⟨fun hwf => addObject_wf hwf hr, fun hwf => addObject_physIds hwf hr rfl,
+      fun hwf hown => addObject_ownerOk hwf hown hr, addObject_sameMeta hr⟩).trans
+      (recordTriggerLocations_safe _ _ _ _ _)
   · exact done
 
 /-- Paying for a trigger preserves structural invariants. -/
@@ -1481,6 +1853,10 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
   · split at h
     · cases h; exact Safe.refl s
     · exact payByRunes_safe h
+  · rename_i xp _
+    split at h
+    · cases h; exact Safe.spendXP s t.controller xp
+    · simp at h
   · simp only [bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨paid, events⟩, hpay, hfinish⟩ := h
     have hsafe : Safe s paid := by
@@ -1493,6 +1869,18 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
       · cases hfinish; exact hsafe.trans (setExhausted_safe true paid t.source)
       · simp at hfinish
   · split at h
+    · split at h
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨⟨paid, events⟩, hpay, hfinish⟩ := h
+        have hsafe : Safe s paid := by
+          split at hpay
+          · cases hpay; exact Safe.refl s
+          · exact payByRunes_safe hpay
+        cases hfinish
+        exact hsafe.trans (sendObj_safe .hand paid _)
+      · contradiction
+    · contradiction
+  · split at h
     · cases h; exact setExhausted_safe true s t.source
     · simp at h
   · split at h
@@ -1504,8 +1892,23 @@ theorem payTriggerCost_safe {s : GameState} {t : PendTrigger} {ids : List ObjId}
         (resolveDeathGroupWith_safe _ ids (killOrSaveInGroup_safe s))
     · simp at h
   · split at h
-    · cases h; exact payDiscards_safe _ _ _
+    · cases h
+      exact (noteTriggerBanishers_safe s banishers).trans
+        (resolveDeathGroupWith_safe _ ids (killOrSaveInGroup_safe s))
     · simp at h
+  · exact payTriggerDiscards_safe h
+  · split at h
+    · simp only [bind, Option.bind_eq_some_iff] at h
+      obtain ⟨⟨discarded, _⟩, hp, hresult⟩ := h
+      cases hresult
+      exact (payTriggerDiscards_safe hp).trans (setExhausted_safe true discarded t.source)
+    · contradiction
+  · split at h
+    · split at h
+      · cases h; exact unbuffObj_safe _ _
+      · contradiction
+    · contradiction
+  · exact recycleTriggerSource_safe h
 
 /-- Putting the picked ability on the Chain is a safe change. -/
 theorem finalizePick_safe (s : GameState) (grp : List PendTrigger) (i : Nat) (ts : List ObjId)
@@ -1542,57 +1945,74 @@ theorem triggersStep_spec (s : GameState) (pend : List PendTrigger) (rest : List
 
 /-- After recording plays, triggers are inserted only outside the setup. -/
 theorem withTriggers_cases (s : GameState) (es : List Event) :
+    (∃ p, s.withTriggers es = { s.recordTurnEvents es with
+        result := some (.won (s.config.mode.sideSeats p)), pending := [] } ∧ s.phase ≠ .setup) ∨
     s.withTriggers es = s.recordTurnEvents es ∨ ∃ pend, s.withTriggers es = { s.recordTurnEvents es with
         pending := insertDetectedTriggers (s.recordTurnEvents es) pend s.pending } ∧ s.phase ≠ .setup ∧
       ∀ f ∈ s.pending, f.isSetup = false := by
   unfold GameState.withTriggers
-  by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
-  · cases hd : (s.recordTurnEvents es).detect es
-      ((s.recordTurnEvents es).firstCardTriggers s ++ s.delayedPlayTriggers es) with
-    | nil => simp [hg, hd]
-    | cons x xs =>
-      right
-      refine ⟨x :: xs, by simp [hg, hd], ?_, ?_⟩
-      · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hg
-        exact hg.1
-      · simp only [Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hg
-        exact hg.2
-  · simp [hg]
+  cases hs : s.eventWinner es with
+  | some p =>
+    refine Or.inl ⟨p, rfl, fun hp => ?_⟩
+    cases hc : s.clock <;> simp [GameState.eventWinner, GameState.suddenDeathScorer, hc, hp] at hs
+  | none =>
+    right
+    by_cases hg : (s.phase != .setup && s.pending.all (fun f => !f.isSetup)) = true
+    · cases hd : (s.recordTurnEvents es).detect es
+        ((s.recordTurnEvents es).cardResolutionTriggers s ++ (s.delayedPlayTriggers es ++ s.delayedDamageTriggers es))
+        (some s.turnFx) with
+      | nil => simp [hg, hd]
+      | cons x xs =>
+        right
+        refine ⟨x :: xs, by simp [hg, hd], ?_, ?_⟩
+        · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hg
+          exact hg.1
+        · simp only [Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hg
+          exact hg.2
+    · simp [hg]
 
-/-- Besides recording plays, `withTriggers` changes only the stack. -/
+/-- Besides recording plays, `withTriggers` changes only the stack and result. -/
 theorem withTriggers_pending (s : GameState) (es : List Event) :
-    ∃ p, s.withTriggers es = { s.recordTurnEvents es with pending := p } := by
-  rcases withTriggers_cases s es with h | ⟨pend, h, -⟩
-  · exact ⟨s.pending, by rw [h]; rfl⟩
-  · exact ⟨_, h⟩
+    ∃ p result, s.withTriggers es = { s.recordTurnEvents es with pending := p, result } := by
+  rcases withTriggers_cases s es with ⟨p, h, -⟩ | h | ⟨pend, h, -⟩
+  · exact ⟨[], _, h⟩
+  · exact ⟨s.pending, s.result, by rw [h]; rfl⟩
+  · exact ⟨_, s.result, h⟩
 
 /-- Finding the triggers keeps the game well formed. -/
 theorem withTriggers_wf {s : GameState} (es : List Event) (hwf : s.WF) :
     (s.withTriggers es).WF := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   exact hwf.congr rfl rfl rfl rfl
 
 /-- Finding the triggers keeps the physical cards. -/
 theorem withTriggers_physIds (s : GameState) (es : List Event) :
     (s.withTriggers es).physIds = s.physIds := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   rfl
 
 /-- Finding the triggers keeps `OwnerOk`. -/
 theorem withTriggers_ownerOk {s : GameState} (es : List Event) (hown : s.OwnerOk) :
     (s.withTriggers es).OwnerOk := by
-  obtain ⟨p, h⟩ := withTriggers_pending s es
+  obtain ⟨p, result, h⟩ := withTriggers_pending s es
   rw [h]
   exact hown.congr rfl rfl
 
 /-- With no event, nothing fires. -/
 theorem withTriggers_nil (s : GameState) : s.withTriggers [] = s := by
+  have empty (order : List PlayerId) : order.flatMap (fun _ => ([] : List PendTrigger)) = [] :=
+    List.flatMap_eq_nil_iff.mpr (fun _ _ => rfl)
+  have noScore : s.eventWinner [] = none := by
+    cases hc : s.clock <;> simp [GameState.eventWinner, GameState.suddenDeathScorer, hc]
   unfold GameState.withTriggers
+  rw [noScore]
+  dsimp only
   split
   · simp [GameState.recordTurnEvents, GameState.detect, GameState.deathGroupWatchers,
-      GameState.trimLimits, GameState.firstCardTriggers, GameState.delayedPlayTriggers]
+      GameState.stunGroupWatchers, GameState.trimLimits, GameState.cardResolutionTriggers, GameState.firstSpellFieldTriggers,
+      GameState.delayedPlayTriggers, GameState.delayedDamageTriggers, empty]
   · simp [GameState.recordTurnEvents]
 
 /-- The frames a `triggers` step puts are not `setupHands`, are not setup frames. -/

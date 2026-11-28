@@ -38,10 +38,14 @@ def PlayerSel.understood : PlayerSel → Bool
   | .you => true
   | .opponent => true
   | .eachPlayer => true
+  | .eachPlayerFromNext => true
   | .eachOpponent => true
+  | .eachOtherPlayer => true
   | .combatSides => true
   | .chosen _ => true
   | .controllerOf _ => true
+  | .ownerOf _ => true
+  | .playedBy _ => true
   | _ => false
 
 mutual
@@ -136,6 +140,7 @@ def Filter.understood : Filter → Bool
   | .tag _ => true
   | .named _ => true
   | .sameNameAsSource => true
+  | .chosenChampion => true
   | .hasKeyword _ => true
   | .domain _ => true
   | .might _ a => Amount.understood a
@@ -156,7 +161,7 @@ def Filter.understood : Filter → Bool
   | .unitsHere _ _ => true
   | .movedFromHere | .movedThisTurn | .notedOn _ => true
   | .hidden => true
-  | .top _ => true
+  | .top _ | .lookedAt => true
   | .openBf => true
   | .scoredByMine => true
   | .conqueredByMine => true
@@ -192,7 +197,7 @@ def Filter.understood : Filter → Bool
   | .isAttached => true
   | .attached => true
   | .token => true
-  | .choosesMine => true
+  | .choosesFriendly => true
   | .sharesGainedTag => true
   | .xpAtLeast _ => true
   | .mightLtOf .self => true
@@ -233,7 +238,7 @@ def Selector.understood : Selector → Bool
   | .var _ => true
   | .pick .all _ place fs => place.understood && FilterList.understood fs
   | .locationOf sel => Selector.understood sel
-  | .slotsFrom _ | .revealedDeck _ => true
+  | .slotsFrom _ | .revealedDeck _ | .eventObjects => true
   | _ => false
 
 end
@@ -247,7 +252,7 @@ def Condition.understood : Condition → Bool
   | .cmp _ a b => a.understoodC && b.understoodC
   | .exists s => s.understood
   | .matches s f => s.understood && f.understood
-  | .yourTurn => true
+  | .yourTurn | .opponentTurn => true
   | .inCombat => true
   | .inCombatHere => true
   | .legendReady => true
@@ -261,12 +266,12 @@ def Condition.understood : Condition → Bool
   | .opponentFinalizedOtherSpell s | .firstResolvedType _ s => s.understood
   | .empowered s => s.understood
   | .leftEmpowered => true
-  | .fewerRunesThanOpponent | .canPay _ => true
+  | .fewerRunesThanOpponent | .opponentNearVictory _ | .canPay _ => true
   | .enemyUnitDied => true
   | .marked _ => true
   | .fromHidden => true
   | .excessAtLeast _ => true
-  | .noted _ => true
+  | .noted _ | .friendlyNoted _ => true
   | .hidesWithEnergy => true
   | .hasFriendlyCard _ => true
   | .diedWith _ => true
@@ -304,18 +309,20 @@ def Prim.understood : Prim → Bool
   | .score p n => p.understood && n.understood
   | .win p => p.understood
   | .turnEffect _ => true
+  | .allowFacedownInspection whose => whose.understood
   | .playFirst fs => FilterList.understood fs
   | .markOn s _ => s.understood
   | .delayUntilDeath s _ => s.understood
+  | .delayUntilDamage _ unit => unit.all Selector.understood
   | .activateConquer s => s.understood
   | .choose s => s.understood
   | .lookTop _ => true
   | .predict n => n.understood
   | .extraTurn ps => ps.understood
   | .swapPlaces a b => a.understood && b.understood
-  | .returnChampion => true
+  | .returnChampion sel => sel.understood
   | .pay _ => true
-  | .addEnergy ps n none | .addUnitEnergy ps n => ps.understood && n.understoodC
+  | .addEnergy ps n none | .addUnitEnergy ps n | .addSpellEnergy ps n => ps.understood && n.understoodC
   | .addPower ps n (some _) none => ps.understood && n.understoodC
   | .addPower ps n none none => ps.understood && n.understoodC
   | .recycleTop p => p.understood
@@ -352,6 +359,7 @@ def Prim.understood : Prim → Bool
   | .exchangeDamage a b => a.understood && b.understood
   | .setBaseMight s n => s.understoodPick && n.understood
   | .heal s n => s.understoodPick && n.understood
+  | .healAll s => s.understoodPick
   | .kill s => s.understoodPick
   | .banish s => s.understoodPickAny
   | .returnToHand s => s.understoodPickAny
@@ -359,13 +367,14 @@ def Prim.understood : Prim → Bool
   | .exhaust s => s.understoodPickAny
   | .create _ n pl _ => n.understood && (pl == .atBase || pl == .here)
   | .createAt _ n bf _ => n.understood && bf.understoodPick
-  | .playUnitToken _ | .playUnitTokenAt _ _ => true
+  | .playUnitToken _ | .playUnitTokenAt _ _ | .playReadyUnitToken _ | .playReadyUnitTokenAt _ _ => true
   | .attach g t => g.understood && t.understood
   | .attachPaying g t _ => g.understood && t.understood
   | .detach s => s.understoodPick
   | .topdeck s => s.understoodPickAny
   | .double s | .grantActivation s _ => s.understoodPick
   | .move s .base => s.understoodPick
+  | .move s .declared => s.understoodPick
   | .move s (.at_ d) =>
     -- one object is chosen while the effect resolves: the moved one or the destination, not both
     s.understoodPick && (match s with | .pick .one .. => d.understood | _ => d.understoodPick)
@@ -390,6 +399,8 @@ mutual
 /-- An effect that is understood. -/
 def Effect.understood : Effect → Bool
   | .nop | .animateGear | .addReservedLegend => true
+  | .playUnitTokensThen _ n place _ _ target =>
+    decide (n > 0) && (place == .atBase || place == .here) && target.all Selector.understood
   | .addReservedLegendPicked | .addReservedLegendChosen _ => false
   | .seq es => EffectList.understood es
   | .ifThen c t e => c.understood && Effect.understood t && Effect.understood e
@@ -397,6 +408,7 @@ def Effect.understood : Effect → Bool
   | .fillSlot _ s => s.understoodPickAny
   | .remakeSpellChoices spell => spell.understood
   | .splitDamage targets _ => targets.understood
+  | .splitUnitDamage dealer targets _ => dealer.understood && targets.understood
   | .fillFromPick _ => true
   | .repeatN n e => n.understood && Effect.understood e
   | .bind _ a e => a.understood && Effect.understood e
@@ -411,18 +423,21 @@ def Effect.understood : Effect → Bool
   | .eachPlayer w e => w.understood && Effect.understood e
   | .revealHand w e | .revealDeckTops w e => w.understood && Effect.understood e
   | .killThenAtEnd targets _ => targets.understood
+  | .killThenForController _ body | .killThenIfKilled _ body => Effect.understood body
   | .lookAtTop _ body => Effect.understood body
   | .guessCardType who unit gear spell =>
     who.understood && unit.understood && gear.understood && spell.understood
   | .nameCard _ | .rememberNamedCard _ => true
   | .banishAndPlayLooked _ fs => FilterList.understood fs
-  | .recycleLooked | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
+  | .recycleLooked | .recycleTrashTargets | .recycleRunes | .banishTopForPlay | .playSelfFromTrash .. |
       .banishAndReplayGroup => true
+  | .recycleFromTrash _ _ _ picked => picked.isEmpty
   | .banishAndPlayCard sel _ => sel.understood
-  | .playCard sel _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
+  | .playCard sel _ _ | .mayPlayCard sel _ | .mayPlayPermanents sel _ _ => sel.understoodPickAny
   | .chooseObject _ place fs e =>
     (place.understood || place.zoneKind?.isSome) && FilterList.understood fs && Effect.understood e
-  | .pickOwn place fs e => place.understood && FilterList.understood fs && Effect.understood e
+  | .pickOwn place fs e | .pickRequired place fs e =>
+    place.understood && FilterList.understood fs && Effect.understood e
   | .preventNext s n .thisTurn => s.understoodPick && n.understood
   | .moveChoosing _ _ fs e _ => FilterList.understood fs && Effect.understood e
   | .forceMoveToBattlefield who destination => who.understood && destination.understood
@@ -498,7 +513,8 @@ def StaticMod.runs : StaticMod → Bool
   | .entersExhausted => true
   | .oppsPlayToBaseOnly | .oppsCantPlayNamed => true
   | .skipDrawPhase | .playFromTrash | .banishInsteadOfTrash => true
-  | .allUnitsEnterReady | .skipUnitAwaken | .unitsEnterReadyAtControlledBattlefields => true
+  | .allUnitsEnterReady | .skipUnitAwaken | .entersReadyAtBattlefield
+  | .unitsEnterReadyAtControlledBattlefields => true
   | .sharedBattlefieldActivation | .grantFriendlyLegendsActivations
   | .additionalExhaustedRunes _ => true
   | .assaultCount s => s.understood
@@ -514,11 +530,12 @@ def StaticMod.runs : StaticMod → Bool
       .gearPlayDiscount .. | .spellExhaustDiscount .. => true
   | .equipEach _ => true
   | .manaExtraEnergy s n => costSel s && n.understoodK
-  | .diesInsteadGear | .sacrificeToSaveSelf => true
-  | .rescueWeakerHere | .replaceUnitTokenWith _ => true
+  | .diesInsteadGear | .diesInsteadOfFriendly | .sacrificeToSaveSelf => true
+  | .rescueWeakerHere | .replaceUnitTokenWith _ | .duplicateUnitTokenOnce => true
   | .noMoveToBaseAny => true
   | .moveFeeHere _ => true
-  | .playToBf fs => FilterList.understood (FilterList.ofList fs)
+  | .moveExtraUnitPowerHere _ => true
+  | .playToBf fs | .ambushToBf fs => FilterList.understood (FilterList.ofList fs)
   | .playToBfAll fs => FilterList.understood (FilterList.ofList fs)
   | .playHereFor _ _ => true
   | .noPlayToBase => true
@@ -564,25 +581,29 @@ def Timing.runs : Timing → Bool
 
 /-- A trigger the engine detects: the event, whose subject it is about, and the condition. -/
 def Trigger.runs (t : Trigger) : Bool :=
-  (t.occurrence == .every || (t.occurrence == .deathGroup && t.event == .die &&
-    t.subject != .self)) && t.condition.understood &&
+  (t.occurrence == .every || (t.subject != .self &&
+    ((t.occurrence == .deathGroup && t.event == .die) ||
+      (t.occurrence == .stunGroup && t.event == .stunByYou)))) && t.condition.understood &&
     (match t.cost with
-     | .killFriendly _ fs => FilterList.understood fs
+     | .killFriendly _ fs | .killControlled _ fs => FilterList.understood fs
      | _ => true) &&
     (match t.event with
       | .play => true | .die => true | .move => true | .attack => true | .defend => true
       | .friendlyAttackGroupHere => t.subject == .self
       | .firstUnitDeathHere => t.subject != .self
       | .deathknell => t.subject == .self
-      | .firstCardResolved | .firstPermanentHere | .delayedPlay | .delayedEnd => t.subject == .self
-      | .stun => true | .discard => true | .ready => true | .exhaust => true
+      | .firstCardResolved | .secondCardResolved | .firstPermanentHere |
+        .delayedPlay | .delayedEnd | .delayedDamage =>
+        t.subject == .self
+      | .stun | .stunByYou | .discard | .ready | .exhaust => true
       | .youExhaustUnits minimum => t.subject == .self && decide (0 < minimum)
-      | .buff => true
+      | .buff | .buffByYou => true
       | .becomeMighty | .mightAtLeast _ => true
       | .mightReducedByYou => t.subject != .self
-      | .linkedBurnUnit | .linkedDiscardType => t.subject == .self
+      | .linkedBurnUnit | .linkedDiscardType | .linkedUnitTokens _ | .linkedDamageKill => t.subject == .self
       | .becomeEmpowered => true
       | .winCombat => t.subject == .self
+      | .showdownStart => t.subject == .self
       | .combatStart => t.subject == .self
       | .combatEnd => t.subject == .self
       | .chosen => true
@@ -608,10 +629,12 @@ def Trigger.runs (t : Trigger) : Bool :=
       | .leave => true
       | .revealedFromDeck => true
       | .playToken => true
+      | .playIncludingTokens => t.subject != .self
       | .scored => t.subject == .self
-      | .conquer => t.subject == .self | .hold => t.subject == .self
+      | .conquer | .hold => true
       | .youConquer => t.subject == .self | .youHold => t.subject == .self
       | .at_ tm => tm.runs && t.subject == .self
+      | .battlefieldBeginning | .moveFrom | .moveToBattlefield => t.subject == .self
       | _ => false) &&
     (t.subject == .self ||
       (match t.subject with
@@ -632,6 +655,9 @@ def Ability.runs : Ability → Bool
   | .activated costs _ body _ =>
     (body.playerTarget.isNone || (manaKind body).isNone) && ((costs.all (fun
       | .energyDiscount c a => c.understood && a.understoodK
+      | .killSelf => (manaKind body).isNone
+      | .spendXP _ => (manaKind body).isNone
+      | .recycleFromTrash _ filters => filters.understood && (manaKind body).isNone
       | .exhaustFriendly filters | .killFriendlyPermanent filters =>
         FilterList.understood filters && (manaKind body).isNone
       | _ => true) && (costPlan costs).isSome &&
@@ -667,6 +693,7 @@ carried out, and its keywords are known. -/
 def CardDef.runs (c : CardDef) : Bool :=
   (c.status == .drafted || c.status == .full) &&
     c.abilities.all Ability.runs && c.grants.all Ability.runs &&
+    c.equipEnergyDiscount.all Amount.understoodK &&
     c.keywords.all (fun k => k.keyword.runs || (k.keyword == .flow && c.types == [.spell] && k.flowCost?.isSome) ||
       (k.keyword == .empower && c.hasEmpowerAbility) ||
       (k.keyword == .showOff && c.showOffRequirement.any (·.filters.understood))) &&

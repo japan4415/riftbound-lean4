@@ -123,6 +123,32 @@ meta def tokensOn (s : GameState) (z : Zone) : List ObjId :=
     | _, _ => false
   | none => false
 
+-- Recruit the Vanguard offers four separate destinations and puts exhausted tokens there.
+#guard (do
+  let s ← mainTk
+  let field :: _ := s.battlefields | none
+  let p := s.active.getD ⟨0⟩
+  let q := otherPlayer p
+  let s := s.modObj field (fun o => { o with control := some p })
+  let unit := { newCard s.cards s p (cid "V0") with loc := some field }
+  let (s, _) ← addObject s unit .battlefieldZone
+  let (s, spell) ← addObject s (newCard s.cards s p (cid "OGS-015")) (.player p .hand)
+  let s := s.setPool p { energy := 6 }
+  let send (s : GameState) (actor : PlayerId) (kind : ActionKind) :=
+    (step 100 s ⟨.player actor, kind⟩).toOption.map Prod.fst
+  let cast ← send s p (.playCard spell ⟨6, []⟩ [])
+  let priority ← send cast p .pass
+  let deciding ← send priority q .pass
+  let mut next := deciding
+  for base in [true, false, true, false] do
+    next ← send next p (.decide base)
+  let base := tokensOn next (.player p .base)
+  let fieldTokens := (tokensOn next .battlefieldZone).filter fun id =>
+    (next.obj? id).any (fun o : Object => o.loc == some field)
+  return base.length == 2 && fieldTokens.length == 2 &&
+    (base ++ fieldTokens).all (fun id =>
+      (next.obj? id).any (fun o : Object => o.exhausted) && next.mightOf id == some 1)).getD false
+
 -- a token that is off the Board ceases to exist at the next Cleanup; the other objects there do not
 #guard match mainTk with
   | some s0 =>

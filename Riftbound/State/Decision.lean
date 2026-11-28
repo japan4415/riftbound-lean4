@@ -62,6 +62,32 @@ inductive TriggerPayment where
   | skip
 deriving DecidableEq, Repr
 
+/-- Resources committed to an activation and, when needed, the separately selected Deflect sources. -/
+structure ActivationPayment where
+  /-- The Energy in the ability's own payment. -/
+  energy : Nat
+  /-- The domains in the ability's own payment. -/
+  power : List Domain
+  /-- Alternative physical Power sources for a separate Deflect surcharge. -/
+  deflectPayment? : Option (List PowerBucket) := none
+deriving DecidableEq
+
+/-- The ability's own payment, due before any separate Deflect surcharge. -/
+def ActivationPayment.base (payment : ActivationPayment) : RunePool.Payment :=
+  ⟨payment.energy, payment.power⟩
+
+/-- An ordinary payment leaves the separate Deflect surcharge at its canonical allocation. -/
+def ActivationPayment.fromBase (pay : RunePool.Payment)
+    (deflectPayment : Option (List PowerBucket) := none) : ActivationPayment :=
+  ⟨pay.energy, pay.power, deflectPayment⟩
+
+instance : Coe RunePool.Payment ActivationPayment := ⟨fun pay => ActivationPayment.fromBase pay⟩
+
+instance : Repr ActivationPayment where
+  reprPrec payment precedence := match payment.deflectPayment? with
+    | none => reprPrec payment.base precedence
+    | some sources => reprPrec (payment.base, sources) precedence
+
 /-- An answer the engine can receive from a player, chance, clock or judge. -/
 inductive ActionKind where
   /-- An arrangement of cards: the result of a shuffle, or the order of a Recycle. -/
@@ -106,7 +132,7 @@ inductive ActionKind where
   | playCard (card : ObjId) (pay : RunePool.Payment) (targets : List ObjId)
       (flowCost : Option Cost := none) (discard : Option ObjId := none) (spellPick : SpellPick := .plain)
   /-- Move a Unit of the player's by a Standard Move: it is exhausted and goes to a Battlefield, or
-  back to the Base (CR 144). One Unit at a time; moving several together (CR 144.3) is later. -/
+  back to the Base (CR 144). -/
   | standardMove (unit : ObjId) (dest : MoveDest) (pay : Cost := Cost.zero)
   /-- In Combat Damage: the next Unit, among those of the other side, to be given lethal damage
   (CR 467.2.c). Tank Units come first (CR 815). -/
@@ -120,7 +146,7 @@ inductive ActionKind where
   before the ability goes on the Chain (CR 423.3). A declared player target is chosen separately
   from object targets (CR 355.7). The permanent in `costObject` pays a cost and is
   chosen independently of any target (CR 355.10.c). -/
-  | activate (source : ObjId) (idx : Nat) (pay : RunePool.Payment) (targets : List ObjId)
+  | activate (source : ObjId) (idx : Nat) (pay : ActivationPayment) (targets : List ObjId)
       (discards : List ObjId := []) (targetPlayer : Option PlayerId := none)
       (costBanisher : Option PlayerId := none) (costObject : Option ObjId := none)
   /-- Finalize the `idx`-th pending trigger with the given targets and cost, or remove it
@@ -136,6 +162,10 @@ inductive ActionKind where
   /-- Place the next looked-at card on top in the chosen order, or mark it for Recycle
   (CR 437). -/
   | predictPick (card : ObjId) (recycle : Bool)
+  /-- Offer the teammate one spell or ability using the turn player's priority (CR 316.5.b.1). -/
+  | inviteTeammate (guest : PlayerId)
+  /-- Declare the shared destination and any fee before choosing Units to move together (CR 144.3). -/
+  | startGroupMove (dest : MoveDest) (pay : Cost)
 deriving DecidableEq, Repr
 
 /-- An action: who acts, and what they say (design.md §6.2). -/
@@ -210,7 +240,7 @@ inductive Frame where
   | chanceBurnOut (p : PlayerId)
   /-- Choice: the opponent who gains the point of a Burn Out (CR 432.2.c). -/
   | chooseBurnOut (p : PlayerId)
-  /-- Work: lay out the opening hands and the mulligans of all players (CR 116-117). -/
+  /-- Work: lay out the opening hands and mulligans of participating players (CR 116-117). -/
   | setupHands
   /-- Work: player `p` draws `n` cards (CR 414); an empty deck is a Burn Out (CR 432). -/
   | draw (p : PlayerId) (n : Nat) (startingHand : Option Nat := none)
@@ -291,6 +321,22 @@ inductive Frame where
   /-- Chance: Recycle the selected group from the Main Deck in a random order
   (CR 417.5, 437). `n` is the length of the prefix partitioned into `top` and `bottom`. -/
   | chancePredict (p : PlayerId) (n : Nat) (top bottom : List ObjId)
+  /-- Chance: order selected cards from Trashes before putting them on the bottoms of their
+  owners' Main Decks (CR 417.5). Only their relative order within each deck is used. -/
+  | chanceRecycleTrash (controller : PlayerId) (source : ObjId) (cards : List ObjId)
+  /-- Choice: this player can cast a spell, activate an ability, or decline. The turn player's
+  normal priority frame is next on the stack (CR 491.8.a). -/
+  | teamInvitation (guest : PlayerId)
+  /-- Choice: where to open the next staged Showdown. Each option pairs its Battlefield with
+  the player who contested it (CR 323.11, 323.12, 463.1). -/
+  | chooseShowdown (p : PlayerId) (first : ObjId × PlayerId) (more : List (ObjId × PlayerId))
+  /-- Choice: select the moving Units, then confirm or cancel. The board and fee stay untouched
+  while the group is selected (CR 144.3). -/
+  | groupMove (p : PlayerId) (dest : MoveDest) (fee : Cost) (units : List ObjId)
+  /-- Work: resolve a Showdown whose remaining participants have passed (CR 652.5.b.2). -/
+  | endShowdown (bf : ObjId)
+  /-- Choice: after a concession, award the Burn Out point to one of the surviving opponents. -/
+  | chooseBurnOutAmong (p first : PlayerId) (more : List PlayerId)
 deriving DecidableEq, Repr
 
 /-- Whether this branch asks the player to pay resources during resolution. -/
@@ -313,7 +359,7 @@ def Frame.isPlay : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
-  | .showdown .. => true
+  | .showdown .. | .endShowdown _ => true
   | .combatDamage .. => true
   | .assign .. => true
   | .combatResolve .. => true
@@ -326,7 +372,8 @@ def Frame.isPlay : Frame → Bool
   | .eitherDo .. => true
   | .pickDo .. => true
   | .nameCard .. | .guessCardType .. => true
-  | .predict .. | .chancePredict .. => true
+  | .predict .. | .chancePredict .. | .chanceRecycleTrash .. => true
+  | .teamInvitation _ | .chooseShowdown .. | .groupMove .. => true
   | _ => false
 
 /-- Frames the engine advances by itself. -/
@@ -341,6 +388,7 @@ def Frame.isWork : Frame → Bool
   | .run .. => true
   | .finishSpell _ => true
   | .cleanup => true
+  | .endShowdown _ => true
   | .combatDamage .. => true
   | .combatResolve .. => true
   | .combatResult _ | .combatControl _ => true
