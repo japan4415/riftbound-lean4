@@ -34,14 +34,14 @@ theorem advance_combat_result {s : GameState} {bf : ObjId} {rest : List Frame}
   change ObservedWorkStack continuation mid.pending at route
   generalize stack : mid.pending = ready at route
   cases route with
-  | empty => exact ⟨mid, used, events, path, Or.inl (by rw [stack]; rfl)⟩
+  | empty => exact ⟨mid, used, events, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   | resume => exact ⟨mid, used, events, path, Or.inr ⟨stack, midWF, cards⟩⟩
   | queue q ne =>
     have waiting := stack.trans (insertTriggers_front q continuation front)
-    obtain ⟨t, elapsed, _, _, _, resolved, decisionStack, decision⟩ :=
-      advance_triggers_to_decision mid midWF q continuation waiting (cards ▸ reads) (Or.inl ne)
+    obtain ⟨t, elapsed, _, _, _, resolved, _, _, ready⟩ :=
+      advance_triggers_to_preparedDecision mid midWF q continuation waiting (cards ▸ reads) (Or.inl ne)
     exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append resolved,
-      Or.inl (by simp [decisionStack, decision])⟩
+      Or.inl ready⟩
 
 private theorem observed_cleanup_step {s raw : GameState} {f : Frame} {rest cleanupTail : List Frame}
     {events : List Event} {keeps : List Frame → Prop} (wf : s.WF)
@@ -58,8 +58,9 @@ private theorem observed_cleanup_step {s raw : GameState} {f : Frame} {rest clea
   intro state safe checked continued
   obtain ⟨tail, cleanup, kept⟩ := continued
   obtain ⟨t, used, emitted, _, ran, done⟩ :=
-    advance_cleanup_with_adds safe checked cleanup keeps kept inserted
-  exact ⟨t, used, emitted, ran, done⟩
+    advance_cleanup_with_adds_prepared safe checked cleanup keeps kept inserted
+  exact ⟨t, used, emitted, ran,
+    done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
 
 /-- Combat Cleanup heals, recalls and settles the board before the Combat result. -/
 theorem advance_combat_recall {s : GameState} {bf : ObjId} {att : PlayerId} {rest : List Frame}
@@ -131,13 +132,14 @@ theorem advance_combat_control {s : GameState} {bf : ObjId} {rest : List Frame}
   intro t drawWF drawReads after
   obtain ⟨tail, cleanup, tracked⟩ := after
   obtain ⟨u, used, events, _, path, done⟩ :=
-    advance_cleanup_with_adds drawWF drawReads cleanup keeps tracked inserted
-  exact ⟨u, used, events, path, done⟩
+    advance_cleanup_with_adds_prepared drawWF drawReads cleanup keeps tracked inserted
+  exact ⟨u, used, events, path,
+    done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
 
 private theorem advance_combat_leading {s : GameState} {rest : List Frame} (wf : s.WF)
     (reads : MightRead.database s.cards) (tail : TriggerWorkTail rest s.pending) :
     AdvanceTo s (fun frames => frames = rest) := by
-  obtain ⟨t, used, path, done⟩ := advance_trigger_tail s rest wf reads tail
+  obtain ⟨t, used, path, done⟩ := advance_trigger_tail_prepared s rest wf reads tail
   exact ⟨t, used, [], path, done⟩
 
 /-- Follow the automatic post-damage stages through the Combat result, Control and Cleanup.
@@ -186,7 +188,7 @@ private theorem choice_head {s : GameState} {bf : ObjId} {att side : PlayerId}
     {assigned : Frame} {done : List (ObjId × Nat)} {rest : List Frame}
     (ready : s.assignFrame bf att side done = some assigned) :
     ∃ f, (combatAssignmentChoices s bf side ++ assigned :: rest).head? = some f ∧
-      f.isWork = false ∧ f.isResolution = false := by
+      f.isResolution = false ∧ NonNeutralDecision (combatAssignmentChoices s bf side ++ assigned :: rest) := by
   unfold GameState.assignFrame at ready
   split at ready
   · obtain rfl := Option.some.inj ready
@@ -219,7 +221,7 @@ private theorem advance_to_boundary {s : GameState} {keeps : List Frame → Prop
     (work : AdvanceTo s keeps) (boundary : ∀ stack, keeps stack → stack.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, AdvancePrefix s t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
   obtain ⟨t, used, events, path, stop | ⟨tracked, _, _⟩⟩ := work
-  · exact ⟨t, used, events, path, stop⟩
+  · exact ⟨t, used, events, path, GameState.idle_of_prepared stop⟩
   · exact ⟨t, used, events, path, boundary t.pending tracked⟩
 
 private theorem advance_combat_damage_to_cleanup {s : GameState} {bf : ObjId} {att : PlayerId}
@@ -235,10 +237,11 @@ private theorem advance_combat_damage_to_cleanup {s : GameState} {bf : ObjId} {a
       continues (insertTriggers q tail) := tracked.insert (combat_result_head bf rest) q ne
   obtain ⟨tail, clear, waiting⟩ := pending
   obtain ⟨t, used, events, _, path, done⟩ :=
-    advance_cleanup_with_adds wf reads clear recalled ⟨tail, rfl, waiting⟩
+    advance_cleanup_with_adds_prepared wf reads clear recalled ⟨tail, rfl, waiting⟩
       (fun _ tracked q ne => tracked.insert
         (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) insertKeeps q ne)
-  have cleanup : AdvanceTo s recalled := ⟨t, used, events, path, done⟩
+  have cleanup : AdvanceTo s recalled := ⟨t, used, events, path,
+    done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
   apply cleanup.then reads
   intro mid safe checked ran
   obtain ⟨tail, atRecall, tracked⟩ := ran
@@ -276,20 +279,24 @@ theorem advance_combat_damage {s : GameState} {bf : ObjId} {att : PlayerId} {res
       (stack : raw.pending = orders ++ (combatAssignmentChoices s bf side ++ f :: final)) :
       AdvanceTo s keeps := by
     let choices := combatAssignmentChoices s bf side ++ f :: final
-    obtain ⟨choice, head, nonwork, nonresolution⟩ := choice_head (rest := final) assigned
+    obtain ⟨choice, head, nonresolution, ready⟩ := choice_head (rest := final) assigned
     change choices.head? = some choice at head
     have insertChoices (tail : List Frame) (tracked : TriggerWorkTail choices tail) (q : List PendTrigger)
         (ne : q ≠ []) : TriggerWorkTail choices (insertTriggers q tail) := by
       apply tracked.insert _ q ne
       intro first firstHead
       obtain rfl := Option.some.inj (head.symm.trans firstHead)
-      exact ⟨nonresolution, by intro q eq; cases eq; contradiction⟩
+      refine ⟨nonresolution, ?_⟩
+      intro q equal
+      have idle := ready.idle
+      rw [head, equal] at idle
+      cases idle
     have ordered := work (TriggerWorkTail choices) ⟨choices, stack, Or.inl rfl⟩ insertChoices
     refine ordered.then reads ?_
     intro t safe checked tracked
-    obtain ⟨u, used, path, stop | ⟨atChoice, _, _⟩⟩ := advance_trigger_tail t choices safe checked tracked
+    obtain ⟨u, used, path, stop | ⟨atChoice, _, _⟩⟩ := advance_trigger_tail_prepared t choices safe checked tracked
     · exact ⟨u, used, [], path, Or.inl stop⟩
-    · exact ⟨u, used, [], path, Or.inl (by simp [atChoice, head, nonwork])⟩
+    · exact ⟨u, used, [], path, Or.inl (GameState.prepared_idle_of_nonpriority (atChoice.symm ▸ ready.idle) (atChoice.symm ▸ ready.ne_priority))⟩
   cases attackerChoice : s.assignFrame bf att att [] with
   | some first =>
     apply assign attackerChoice
@@ -326,7 +333,7 @@ private theorem advance_action_observation (raw : GameState) (notices : List Eve
     exact cards
   generalize stack : t.pending = frames at route
   cases route with
-  | empty => exact ⟨t, used, events, path, Or.inl (by rw [stack]; rfl)⟩
+  | empty => exact ⟨t, used, events, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   | resume => exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ base, safe, known⟩⟩
   | queue q ne =>
     exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ inserted raw.pending base q ne, safe, known⟩⟩
@@ -374,9 +381,10 @@ private theorem advance_combat_cleanups {s : GameState} {rest : List Frame} (cle
     obtain ⟨tail, atCleanup, tracked⟩ := continuation
     let keeps := CombatContinuation remaining rest
     obtain ⟨t, used, events, _, path, done⟩ :=
-      advance_cleanup_with_adds wf reads atCleanup keeps ⟨tail, rfl, tracked⟩
+      advance_cleanup_with_adds_prepared wf reads atCleanup keeps ⟨tail, rfl, tracked⟩
         (fun _ continued q ne => continued.insert decision front q ne)
-    have before : AdvanceTo s keeps := ⟨t, used, events, path, done⟩
+    have before : AdvanceTo s keeps := ⟨t, used, events, path,
+      done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
     exact before.then reads (fun _ safe checked keeps => ih safe checked keeps)
 
 private theorem advance_combat_to_decision {s : GameState} {rest : List Frame} {cleanups : Nat}
@@ -577,20 +585,25 @@ theorem step_assignDone_to_decision {s : GameState} {bf : ObjId} {att side : Pla
     · let choices := combatAssignmentChoices s bf q ++ assigned :: tail
       have base : TriggerWorkTail choices next.pending := Or.inl
         (pendingEq.trans (congrArg GameState.pending atChoice))
-      obtain ⟨first, head, nonwork, nonresolution⟩ := choice_head (rest := tail) ready
+      obtain ⟨first, head, nonresolution, choiceReady⟩ := choice_head (rest := tail) ready
       change choices.head? = some first at head
       have insertChoices (stack : List Frame) (tracked : TriggerWorkTail choices stack)
           (q : List PendTrigger) (ne : q ≠ []) : TriggerWorkTail choices (insertTriggers q stack) := by
         apply tracked.insert _ q ne
         intro first' firstHead
         obtain rfl := Option.some.inj (head.symm.trans firstHead)
-        exact ⟨nonresolution, by intro q eq; cases eq; contradiction⟩
+        refine ⟨nonresolution, ?_⟩
+        intro q equal
+        have idle := choiceReady.idle
+        rw [head, equal] at idle
+        cases idle
       have entered := advance_action_observation next notices nextWF nextReads base insertChoices
       apply entered.then observedReads
       intro t safe reads tracked
-      obtain ⟨u, used, path, stop | ⟨atChoices, _, _⟩⟩ := advance_trigger_tail t choices safe reads tracked
+      obtain ⟨u, used, path, stop | ⟨atChoices, _, _⟩⟩ := advance_trigger_tail_prepared t choices safe reads tracked
       · exact ⟨u, used, [], path, Or.inl stop⟩
-      · exact ⟨u, used, [], path, Or.inl (by simp [atChoices, head, nonwork])⟩
+      · exact ⟨u, used, [], path, Or.inl (GameState.prepared_idle_of_nonpriority (atChoices.symm ▸ choiceReady.idle)
+          (atChoices.symm ▸ choiceReady.ne_priority))⟩
     · let program := EffectList.cons (.resolveEffectDamage batch none) (.cons (.endCombatDamage excess) .nil)
       let running := RunContinuation att bf program waiting
       have stack : next.pending = .run att bf {} program :: .cleanup :: .combatResolve bf att :: tail :=

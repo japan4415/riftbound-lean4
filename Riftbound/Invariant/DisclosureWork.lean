@@ -99,7 +99,7 @@ theorem Effect.ObservedFinite.nameCard (kind : CardType) : (Effect.nameCard kind
     simp [runEffect, Effect.pickSel?, runEffect1, listed]
   | cons first others =>
     apply advance_run_decision wf reads pending
-    simp [runEffect, Effect.pickSel?, runEffect1, listed, Frame.isWork]
+    simp [runEffect, Effect.pickSel?, runEffect1, listed] <;> rfl
 
 /-- A selected name is recorded on the source and emits the corresponding event. -/
 theorem Effect.ObservedFinite.rememberNamedCard (card : CardId) :
@@ -129,7 +129,7 @@ theorem Effect.ObservedFinite.guessCardType (who : PlayerSel) (unit gear spell :
       | nil =>
         apply advance_run_decision wf reads pending
         simp [runEffect, Effect.pickSel?, runEffect1, ← show live = env.withMight s.mightTable from rfl,
-          resolved, Frame.isWork]
+          resolved] <;> rfl
       | cons another others =>
         exact skip (by simp [runEffect, Effect.pickSel?, runEffect1, resolved])
 

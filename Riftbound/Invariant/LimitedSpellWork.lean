@@ -115,7 +115,7 @@ private def limitedRank (s : GameState) (height : Nat) : Nat :=
 
 private inductive LimitedRoute (s : GameState) (height : Nat) (p : PlayerId)
     (src : ObjId) (env : Env) (rest : List Frame) (raw : GameState) : Prop where
-  | decision : raw.pending.head?.all (fun f => !f.isWork) = true →
+  | decision : NonNeutralDecision raw.pending →
       LimitedRoute s height p src env rest raw
   | resume : raw.pending = .run p src env .nil :: rest →
       LimitedRoute s height p src env rest raw
@@ -292,7 +292,7 @@ private theorem advance_limited_work (keeps : List Frame → Prop)
     advance_rule_with_adds_geometry pending rfl rule (microStep_wf0 wf rule) known reads
   have midReads : MightRead.database mid.cards := cards ▸ reads
   have emptyStop (stack : mid.pending = []) : AdvanceTo s keeps :=
-    ⟨mid, used, events, path, Or.inl (by rw [stack]; rfl)⟩
+    ⟨mid, used, events, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   have thenFrom (reached : AdvanceTo mid keeps) : AdvanceTo s keeps := by
     obtain ⟨t, later, more, done, outcome⟩ := reached
     exact ⟨t, used + later, events ++ more, path.append done,
@@ -300,7 +300,7 @@ private theorem advance_limited_work (keeps : List Frame → Prop)
   have route : LimitedRoute s height p src live rest raw := limited_route s p src live rest stage wf
   cases route with
   | decision ready =>
-    obtain ⟨t, elapsed, run, stop⟩ := advance_observed_decision mid raw.pending midWF midReads observation ready
+    obtain ⟨t, elapsed, run, stop⟩ := advance_observed_nonNeutralDecision mid raw.pending midWF midReads observation ready
     exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append run, Or.inl stop⟩
   | resume ready =>
     rw [ready] at observation
@@ -354,7 +354,7 @@ theorem advance_limited_to_decision {s : GameState} {p : PlayerId} {src card : O
   obtain ⟨mid, used, events, path, stop | ⟨tracked, midWF, cards⟩⟩ :=
     advance_limited_finalization wf reads pending (TriggerWorkTail original) queued
       (fun _ tail q ne => tail.insert front q ne)
-  · exact ⟨mid, used, events, path, stop⟩
+  · exact ⟨mid, used, events, path, by simpa only [GameState.preparePriority_of_idle stop] using stop⟩
   · obtain ⟨t, elapsed, run, boundary | ⟨resumed, _, _⟩⟩ :=
       advance_trigger_tail mid original midWF (cards ▸ reads) tracked
     · exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append run, boundary⟩

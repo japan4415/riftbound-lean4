@@ -260,6 +260,16 @@ theorem step_playDeclaration_to_decision {s : Riftbound.GameState} {a : Riftboun
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_playDeclaration_to_decision wf (mightReads_of_registered cards) play legal
 
+/-- The registered cards support a prepared decision after a legal play or activation. -/
+theorem step_playDeclaration_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (play : Riftbound.isPlayDeclaration s a = true) (legal : Riftbound.Legal s a)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_playDeclaration_to_preparedDecision wf (mightReads_of_registered cards) play legal quiet
+
 /-- A checked replacement answer can resume a locked play or activation with the registered cards. -/
 theorem step_playCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
     (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
@@ -267,6 +277,18 @@ theorem step_playCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : R
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_playCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered replacement answer returns a prepared decision after retrying the declaration. -/
+theorem step_playCostAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.playCostAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted locked owner tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .resumeCost locked :: .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_playCostAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
 
 /-- A legal immediate resource activation with registered cards advances to a decision. -/
 theorem step_resourceActivation_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
@@ -422,6 +444,19 @@ theorem step_cleanupAnswer_checked_to_decision {s : Riftbound.GameState} {a : Ri
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_cleanupAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A registered checked answer returns a prepared decision after Cleanup. -/
+theorem step_cleanupAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.cleanupAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted stack rest owner tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame = .cleanup :: stack →
+      Riftbound.chainAnswerContinuation? stack = some rest → rest = .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_cleanupAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
 
 /-- A checked Predict answer with the registered cards can stop at the next input. -/
 theorem step_predictAnswer_waits_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}

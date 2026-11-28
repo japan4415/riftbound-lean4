@@ -48,6 +48,32 @@ theorem advance_observed_chain_runs_to_decision (raw : GameState) (notices : Lis
 
 /-- Process the event observers and the Run prefix, then follow a retained continuation if
 no decision interrupts it. -/
+private theorem advance_observed_run_prefix_then_core (raw : GameState) (notices : List Event)
+    {body : List Frame} {keeps : List Frame → Prop}
+    (boundary : GameState → Prop)
+    (accepted : ∀ t : GameState, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true → boundary t)
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (base : ResolutionPrefix body keeps raw.pending) (finite : ∀ f ∈ body, f.FiniteRun)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail))
+    (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → keeps t.pending →
+      ∃ u used events, AdvancePrefix t u used events ∧ boundary u) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      boundary t := by
+  obtain ⟨mid, entered, early, path, midWF, cards, route⟩ := advance_observed_work raw notices wf reads
+  have run (now : ResolutionPrefix body keeps mid.pending) : ∃ t used events,
+      AdvancePrefix (raw.withTriggers notices) t used events ∧ boundary t := by
+    obtain ⟨after, elapsed, later, done, stop | ⟨tail, safe, known⟩⟩ :=
+      advance_run_frames midWF (cards ▸ reads) now finite inserted
+    · exact ⟨after, entered + elapsed, early ++ later, path.append done, accepted after stop⟩
+    · obtain ⟨t, used, events, resumed, stop⟩ := resume after safe (known ▸ cards ▸ reads) tail
+      exact ⟨t, entered + elapsed + used, (early ++ later) ++ events, (path.append done).append resumed, stop⟩
+  generalize stack : mid.pending = frames at route
+  cases route with
+  | empty => exact ⟨mid, entered, early, path, accepted mid (GameState.prepared_idle_of_empty stack)⟩
+  | resume => exact run (stack.symm ▸ base)
+  | queue q ne => exact run (stack.symm ▸ base.insert (fun f h => (finite f h).isResolution) inserted q ne)
+
+/-- Follow the observed Run prefix to a decision or its supplied continuation. -/
 theorem advance_observed_run_prefix_then (raw : GameState) (notices : List Event)
     {body : List Frame} {keeps : List Frame → Prop}
     (wf : raw.WF) (reads : MightRead.database raw.cards)
@@ -56,20 +82,23 @@ theorem advance_observed_run_prefix_then (raw : GameState) (notices : List Event
     (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → keeps t.pending →
       ∃ u used events, AdvancePrefix t u used events ∧ u.pending.head?.all (fun f => !f.isWork) = true) :
     ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
-      t.pending.head?.all (fun f => !f.isWork) = true := by
-  obtain ⟨mid, entered, early, path, midWF, cards, route⟩ := advance_observed_work raw notices wf reads
-  have run (now : ResolutionPrefix body keeps mid.pending) : ∃ t used events,
-      AdvancePrefix (raw.withTriggers notices) t used events ∧ t.pending.head?.all (fun f => !f.isWork) = true := by
-    obtain ⟨after, elapsed, later, done, stop | ⟨tail, safe, known⟩⟩ :=
-      advance_run_frames midWF (cards ▸ reads) now finite inserted
-    · exact ⟨after, entered + elapsed, early ++ later, path.append done, stop⟩
-    · obtain ⟨t, used, events, resumed, stop⟩ := resume after safe (known ▸ cards ▸ reads) tail
-      exact ⟨t, entered + elapsed + used, (early ++ later) ++ events, (path.append done).append resumed, stop⟩
-  generalize stack : mid.pending = frames at route
-  cases route with
-  | empty => exact ⟨mid, entered, early, path, by rw [stack]; rfl⟩
-  | resume => exact run (stack.symm ▸ base)
-  | queue q ne => exact run (stack.symm ▸ base.insert (fun f h => (finite f h).isResolution) inserted q ne)
+      t.pending.head?.all (fun f => !f.isWork) = true :=
+  advance_observed_run_prefix_then_core raw notices (fun t => t.pending.head?.all (fun f => !f.isWork) = true)
+    (fun _ => GameState.idle_of_prepared) wf reads base finite inserted resume
+
+/-- Follow the observed Run prefix and require a prepared decision from its continuation. -/
+theorem advance_observed_run_prefix_then_prepared (raw : GameState) (notices : List Event)
+    {body : List Frame} {keeps : List Frame → Prop}
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (base : ResolutionPrefix body keeps raw.pending) (finite : ∀ f ∈ body, f.FiniteRun)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail))
+    (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → keeps t.pending →
+      ∃ u used events, AdvancePrefix t u used events ∧ u.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true :=
+  advance_observed_run_prefix_then_core raw notices
+    (fun t => t.preparePriority.pending.head?.all (fun f => !f.isWork) = true)
+    (fun _ ready => ready) wf reads base finite inserted resume
 
 /-- Run observed programs, handle their ordinary trigger queue, and resume the supplied
 continuation if no decision interrupts it. -/
@@ -86,6 +115,24 @@ theorem advance_observed_runs_then (raw : GameState) (notices : List Event) {bod
   intro state safe known tail
   obtain ⟨ready, queued, queuePath, stop | ⟨atRest, readyWF, readyCards⟩⟩ :=
     advance_trigger_tail state rest safe known tail
+  · exact ⟨ready, queued, [], queuePath, stop⟩
+  · obtain ⟨t, used, events, resumed, stop⟩ := resume ready readyWF (readyCards ▸ known) atRest
+    exact ⟨t, queued + used, events, by simpa only [List.nil_append] using queuePath.append resumed, stop⟩
+
+/-- Resolve observed Runs and any ordinary trigger queue before the prepared continuation. -/
+theorem advance_observed_runs_then_prepared (raw : GameState) (notices : List Event) {body rest : List Frame}
+    (wf : raw.WF) (reads : MightRead.database raw.cards)
+    (base : ResolutionPrefix body (TriggerWorkTail rest) raw.pending)
+    (finite : ∀ f ∈ body, f.FiniteRun)
+    (front : ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q)
+    (resume : ∀ t : GameState, t.WF → MightRead.database t.cards → t.pending = rest →
+      ∃ u used events, AdvancePrefix t u used events ∧ u.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ t used events, AdvancePrefix (raw.withTriggers notices) t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  apply advance_observed_run_prefix_then_prepared raw notices wf reads base finite (fun _ track q ne => track.insert front q ne)
+  intro state safe known tail
+  obtain ⟨ready, queued, queuePath, stop | ⟨atRest, readyWF, readyCards⟩⟩ :=
+    advance_trigger_tail_prepared state rest safe known tail
   · exact ⟨ready, queued, [], queuePath, stop⟩
   · obtain ⟨t, used, events, resumed, stop⟩ := resume ready readyWF (readyCards ▸ known) atRest
     exact ⟨t, queued + used, events, by simpa only [List.nil_append] using queuePath.append resumed, stop⟩
@@ -153,6 +200,21 @@ theorem step_observed_frame_to_decision {s raw : GameState} {a : Action} {notice
   simp only [step, ite_eq_left legal, declared]
   exact path extra before
 
+/-- Lift observed work ending at a prepared decision to the declared action. -/
+theorem advance_observed_frame_to_preparedDecision {s raw : GameState} {a : Action} {notices : List Event}
+    (noCostChoice : s.actionDeathCostChoice a = none) (regular : a.kind ≠ .concede)
+    (applied : applyFrame0 s a = some (raw, notices)) (rawWF : raw.WF)
+    (reads : MightRead.database raw.cards)
+    (run : let next := s.paySurcharge a raw
+      let observed := (notices ++ extraEvents a notices) ++ s.actionTransitionEvents next a
+      next.WF → MightRead.database next.cards → next.pending = raw.pending →
+      ∃ t used events, AdvancePrefix (next.withTriggers observed) t used events ∧
+        t.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ initial initialEvents t used events, applyDeclaredAction s a = some (initial, initialEvents) ∧
+      AdvancePrefix initial t used events ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true :=
+  advance_observed_frame_until (fun t => t.preparePriority.pending.head?.all (fun f => !f.isWork) = true)
+    noCostChoice regular applied rawWF reads run
+
 /-- A legal action succeeds with the fuel used by its observed work when the destination
 is already a prepared decision. The returned event list includes the action's own events. -/
 theorem step_observed_frame_to_preparedDecision {s raw : GameState} {a : Action} {notices : List Event}
@@ -168,8 +230,7 @@ theorem step_observed_frame_to_preparedDecision {s raw : GameState} {a : Action}
       (∀ extra, step (used + extra) s a = advance extra t events) ∧
       step used s a = .ok (t, events) := by
   obtain ⟨_, before, t, used, events, declared, path, ready⟩ :=
-    advance_observed_frame_until (fun t => t.preparePriority.pending.head?.all (fun f => !f.isWork) = true)
-      noCostChoice regular applied rawWF reads run
+    advance_observed_frame_to_preparedDecision noCostChoice regular applied rawWF reads run
   refine ⟨t, used, before ++ events, ready, ?_, ?_⟩
   · intro extra
     simp only [step, ite_eq_left legal, declared]

@@ -293,10 +293,43 @@ theorem advance_trigger_tail (s : GameState) (rest : List Frame) (wf : s.WF)
   · exact ⟨t, used, path, Or.inl (by simpa only [GameState.preparePriority_of_idle ready] using ready)⟩
   · exact ⟨t, used, path, Or.inr continues⟩
 
-/-- A finite dispatcher run reaches a decision, an empty stack, or the specified continuation. -/
+/-- An effect opens a decision other than neutral priority, or leaves an empty stack. -/
+def NonNeutralDecision (frames : List Frame) : Prop :=
+  frames.head?.all (fun f => !f.isWork && match f with
+    | .priority _ => false
+    | _ => true) = true
+
+theorem NonNeutralDecision.idle {frames : List Frame} (ready : NonNeutralDecision frames) :
+    frames.head?.all (fun f => !f.isWork) = true := by
+  cases frames with
+  | nil => rfl
+  | cons f rest =>
+    simp only [NonNeutralDecision, List.head?_cons, Option.all_some, Bool.and_eq_true] at ready
+    exact ready.1
+
+theorem NonNeutralDecision.ne_priority {frames : List Frame} (ready : NonNeutralDecision frames) :
+    ∀ p tail, frames ≠ .priority p :: tail := by
+  intro p tail stack
+  simp [NonNeutralDecision, stack] at ready
+
+/-- An observed effect that opened a non-neutral decision can stop after preparation. -/
+theorem advance_observed_nonNeutralDecision (s : GameState) (rest : List Frame) (wf : s.WF)
+    (reads : MightRead.database s.cards) (route : ObservedWorkStack rest s.pending)
+    (ready : NonNeutralDecision rest) :
+    ∃ t used, AdvancePrefix s t used [] ∧
+      t.preparePriority.pending.head?.all (fun frame => !frame.isWork) = true :=
+  advance_observed_prepared_decision s rest wf reads route ready.idle ready.ne_priority
+
+/-- A prepared decision has the same idle stack before preparation. -/
+theorem GameState.idle_of_prepared {s : GameState}
+    (ready : s.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    s.pending.head?.all (fun f => !f.isWork) = true := by
+  simpa only [GameState.preparePriority_of_idle ready] using ready
+
+/-- A finite dispatcher run reaches a prepared decision, an empty stack, or the specified continuation. -/
 def AdvanceTo (s : GameState) (keeps : List Frame → Prop) : Prop :=
   ∃ t used events, AdvancePrefix s t used events ∧
-    (t.pending.head?.all (fun f => !f.isWork) = true ∨
+    (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
       (keeps t.pending ∧ t.WF ∧ t.cards = s.cards))
 
 /-- A continuation already at the head of the stack is ready immediately. -/
@@ -328,7 +361,7 @@ theorem AdvanceTo.rule {s raw : GameState} {frame : Frame} {rest : List Frame}
     advance_rule_with_adds pending automatic rule wf cards reads
   generalize stack : t.pending = frames at route
   cases route with
-  | empty => exact ⟨t, used, events, path, Or.inl (by rw [stack]; rfl)⟩
+  | empty => exact ⟨t, used, events, path, Or.inl (GameState.prepared_idle_of_empty stack)⟩
   | resume => exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ base, lastWF, lastCards⟩⟩
   | queue q nonempty =>
     exact ⟨t, used, events, path, Or.inr ⟨stack.symm ▸ inserted raw.pending base q nonempty, lastWF, lastCards⟩⟩

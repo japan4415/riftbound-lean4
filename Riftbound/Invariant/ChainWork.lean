@@ -79,8 +79,9 @@ theorem advance_finished_item_until {s : GameState} {item : ObjId} {rest : List 
       (reached : cleanupContinuation state.pending) : AdvanceTo state keeps := by
     obtain ⟨tail, stack, tracked⟩ := reached
     obtain ⟨t, used, events, _, path, stop⟩ :=
-      advance_cleanup_with_adds stateWF stateReads stack keeps tracked inserted
-    exact ⟨t, used, events, path, stop⟩
+      advance_cleanup_with_adds_prepared stateWF stateReads stack keeps tracked inserted
+    exact ⟨t, used, events, path,
+      stop.imp_right (fun ⟨waiting, safe, known, _⟩ => ⟨waiting, safe, known⟩)⟩
   have insertCleanup : ∀ tail, cleanupContinuation tail → ∀ q, q ≠ [] →
       cleanupContinuation (insertTriggers q tail) :=
     fun _ tracked q ne => tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) inserted q ne
@@ -112,7 +113,7 @@ theorem advance_finish_chain_to_decision {s : GameState} {item : ObjId}
     obtain ⟨mid, used, events, path, stop | ⟨queued, midWF, cards⟩⟩ :=
       advance_finished_item_until wf reads pending (TriggerWorkTail base) waiting
         (fun _ route q ne => route.insert nonresolution q ne)
-    · exact ⟨mid, used, events, path, stop⟩
+    · exact ⟨mid, used, events, path, GameState.idle_of_prepared stop⟩
     · obtain ⟨t, elapsed, resolved, outcome⟩ := advance_trigger_tail mid base midWF (cards ▸ reads) queued
       refine ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append resolved, ?_⟩
       rcases outcome with choice | ⟨resume, _, _⟩
@@ -134,7 +135,7 @@ theorem advance_finish_chain_to_decision {s : GameState} {item : ObjId}
         advance_finished_item_until wf reads pending keeps base (fun _ route q ne => route.insert
           (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
           (fun _ waiting added ne' => waiting.insert front added ne') q ne)
-      · exact ⟨t, used, events, path, stop⟩
+      · exact ⟨t, used, events, path, GameState.idle_of_prepared stop⟩
       · obtain ⟨u, later, emitted, done, stop⟩ :=
           advance_limited_to_decision tWF (cards ▸ reads) stack queued front waits
         exact ⟨u, used + later, events ++ emitted, path.append done, stop⟩
@@ -169,7 +170,7 @@ theorem advance_chain_runs_to_decision {s : GameState} {item : ObjId} {body orig
     advance_run_frames wf reads pending finite (fun _ tracked q ne => tracked.insert
       (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
       (fun _ kept added nonempty => kept.insert front added nonempty) q ne)
-  · exact ⟨mid, used, events, path, stop⟩
+  · exact ⟨mid, used, events, path, GameState.idle_of_prepared stop⟩
   · obtain ⟨t, later, emitted, finished, stop⟩ :=
       advance_finish_chain_to_decision midWF (cards ▸ reads) ready queued front decision
     exact ⟨t, used + later, events ++ emitted, path.append finished, stop⟩

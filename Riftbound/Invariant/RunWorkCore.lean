@@ -276,7 +276,7 @@ theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env :
     (wf : s.WF) (reads : MightRead.database s.cards)
     (pending : s.pending = .run p src env (.cons effect more) :: rest)
     (waits : let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
-      (result.2.1 ++ rest).head?.all (fun f => !f.isWork) = true) :
+      NonNeutralDecision (result.2.1 ++ rest)) :
     AdvanceTo s keeps := by
   let result := runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy
   let raw := { result.1 with pending := result.2.1 ++ rest }
@@ -288,7 +288,7 @@ theorem advance_run_decision {s : GameState} {p : PlayerId} {src : ObjId} {env :
   obtain ⟨mid, used, events, _, path, midWF, midCards, route⟩ :=
     advance_rule_with_adds pending rfl step (microStep_wf0 wf step) cards reads
   obtain ⟨t, later, remaining, stop⟩ :=
-    advance_observed_decision mid raw.pending midWF (midCards ▸ reads) route waits
+    advance_observed_nonNeutralDecision mid raw.pending midWF (midCards ▸ reads) route waits
   exact ⟨t, used + later, events, by simpa only [List.append_nil] using path.append remaining, Or.inl stop⟩
 
 /-- A feasible optional instruction yields to its decision before running its body. -/
@@ -341,7 +341,7 @@ theorem advance_draw_frames {s : GameState} {frames : List Frame}
     let tracks := ResolutionPrefix frames keeps
     have work : AdvanceTo s tracks := by
       obtain ⟨t, used, events, _, path, outcome⟩ :=
-        advance_draw_until wf reads ready tracks ⟨tail, rfl, tracked⟩
+        advance_draw_until_prepared wf reads ready tracks ⟨tail, rfl, tracked⟩
           (fun _ route q ne => route.insert resolution inserted q ne)
       exact ⟨t, used, events, path, outcome⟩
     exact work.then reads (fun _ safe checked kept => ih following safe checked kept)
@@ -536,7 +536,7 @@ theorem Effect.SingleRun.drawRevealed (side : Side) : (Effect.prim (.drawLooked 
 private theorem retainTargetSetFrame_cases (p : PlayerId) (src : ObjId) (env : Env)
     (groups : List (List ObjId)) (more : EffectList) :
     (∃ newEnv, retainTargetSetFrame p src env groups more = .run p src newEnv more) ∨
-      (retainTargetSetFrame p src env groups more).isWork = false := by
+      NonNeutralDecision [retainTargetSetFrame p src env groups more] := by
   unfold retainTargetSetFrame
   dsimp only
   split
@@ -554,9 +554,7 @@ theorem Effect.ObservedFinite.retainTargetSet (groups : List (List ObjId)) :
     rw [resumes]
     exact ⟨retained, rest, rfl, base⟩
   · apply advance_run_decision wf reads pending
-    change (!(retainTargetSetFrame p src live groups more).isWork) = true
-    rw [choice]
-    rfl
+    exact choice
 
 /-- Any instruction that rechecks a target group is finite if its unchanged body is finite. -/
 theorem EffectDef.recheckTargetGroup_observed (e : EffectDef) (s : GameState) (p : PlayerId)
@@ -576,7 +574,7 @@ theorem EffectDef.recheckTargetGroup_observed (e : EffectDef) (s : GameState) (p
 /-- A dispatcher instruction with a direct continuation or a choice is finite in either case. -/
 private theorem Effect.ObservedFinite.ofDecisionOrRun {effect : Effect}
     (routes : ∀ s p src env more, let frames := (runEffect s p src env effect more effectAddPolicy).2.1
-      frames = [.run p src env more] ∨ ∃ f tail, frames = f :: tail ∧ f.isWork = false) :
+      frames = [.run p src env more] ∨ ∃ f tail, frames = f :: tail ∧ NonNeutralDecision (f :: tail)) :
     effect.ObservedFinite := by
   intro s p src env more rest keeps wf reads pending base inserted
   let live := env.withMight s.mightTable
@@ -588,7 +586,7 @@ private theorem Effect.ObservedFinite.ofDecisionOrRun {effect : Effect}
   · apply advance_run_decision wf reads pending
     dsimp only
     rw [choice]
-    simp [decision]
+    exact decision
 
 /-- Choosing an object either skips an unavailable choice or asks the player. -/
 theorem Effect.ObservedFinite.chooseObject (side : Side) (place : Place) (filters : FilterList)

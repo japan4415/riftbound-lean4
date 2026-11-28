@@ -559,7 +559,7 @@ private theorem Effect.ObservedFinite.withTargetPick {effect : Effect}
       cases others with
       | cons second remaining =>
         apply advance_run_decision wf reads pending
-        change (result.2.1 ++ rest).head?.all (fun f => !f.isWork) = true
+        change NonNeutralDecision (result.2.1 ++ rest)
         rw [frames, chosen]
         rfl
       | nil =>

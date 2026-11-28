@@ -118,7 +118,7 @@ private theorem advance_repeated_executions {s : GameState} {p : PlayerId} {src 
         obtain ⟨nextEnv, tail, atEnd, known⟩ := tracked
         exact advance_run_program tWF tReads atEnd .nil continuations known insertRest
       obtain ⟨mid, used, events, path, stop | ⟨tracked, midWF, cards⟩⟩ := run
-      · exact ⟨mid, used, events, path, Or.inl (.chain (.decision stop))⟩
+      · exact ⟨mid, used, events, path, Or.inl (.chain (.decision (GameState.idle_of_prepared stop)))⟩
       · obtain ⟨t, elapsed, emitted, resolved, outcome⟩ := ih midWF (cards ▸ reads) tracked
         exact ⟨t, used + elapsed, events ++ emitted, path.append resolved,
           outcome.imp_right (fun ⟨active, finalWF, finalCards⟩ => ⟨active, finalWF, finalCards.trans cards⟩)⟩

@@ -92,7 +92,8 @@ theorem advance_observed_cleanup_to_preparedDecision (raw : GameState) (notices 
   | resume => exact run (actual.symm ▸ base)
   | queue q nonempty => exact run (actual.symm ▸ cleanupContinuation_insert decision base q nonempty)
 
-private theorem advance_waiting_to_preparedDecision {s : GameState} (wf : s.WF)
+/-- Run any Cleanup that preparation schedules before returning a waiting decision. -/
+theorem advance_waiting_to_preparedDecision {s : GameState} (wf : s.WF)
     (reads : MightRead.database s.cards) (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
     (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
     ∃ t used events, AdvancePrefix s t used events ∧
@@ -405,6 +406,46 @@ theorem step_cleanupAnswer_checked_to_decision {s : GameState} {a : Action}
           (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member))
           (fun _ => cleanupContinuation_insert decision)
           (fun _ clean known kept => advance_cleanup_to_decision clean known kept decision)
+    · contradiction
+/-- An accepted effect answer immediately before Cleanup reaches the next decision or the
+empty stack, preserving the order of effects, Cleanup, and ordinary trigger decisions. -/
+theorem step_cleanupAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : cleanupAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted stack rest owner tail, applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile isRunFrame = .cleanup :: stack →
+      chainAnswerContinuation? stack = some rest → rest = .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  unfold cleanupAnswerWorkSupported at supported
+  obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at condition
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some, Bool.and_eq_true_iff] at condition
+    obtain ⟨programs, continuation⟩ := condition
+    split at continuation
+    · rename_i tail layout
+      cases parsed : chainAnswerContinuation? tail with
+      | none => simp [parsed] at continuation
+      | some rest =>
+        obtain ⟨tracked, decision⟩ := chainAnswerContinuation_sound parsed
+        obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule answer applied
+        apply step_observed_frame_to_preparedDecision legal noCost regular applied
+          (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+        intro next observed safe checked stack
+        have shape : raw.pending = raw.pending.takeWhile isRunFrame ++ .cleanup :: tail := by
+          rw [← layout, List.takeWhile_append_dropWhile]
+        exact advance_observed_run_prefix_then_prepared next observed safe checked
+          (keeps := ResolutionPrefix [.cleanup] (TriggerWorkTail rest))
+          ⟨.cleanup :: tail, stack.trans shape, tail, rfl, tracked⟩
+          (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member))
+          (fun _ => cleanupContinuation_insert decision)
+          (fun _ clean known kept => advance_cleanup_to_preparedDecision clean known kept decision
+            (quiet raw events tail rest · · applied layout parsed))
     · contradiction
 
 end Riftbound

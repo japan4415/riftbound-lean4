@@ -37,9 +37,10 @@ private theorem isPlayDeclaration_regular {s : GameState} {a : Action}
 private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : List Event}
     (play : isPlayDeclaration s a = true) (rawStep : applyFrame0 s a = some (raw, events)) :
     raw.cards = s.cards ∧
-      ((∃ rest, raw.pending = .cleanup :: rest ∧ isOrdinaryDecisionTail rest = true) ∨
+      ((∃ rest, raw.pending = .cleanup :: rest ∧ isOrdinaryDecisionTail rest = true ∧
+        (∀ p tail, rest = .priority p :: tail → s.pending = .priority p :: tail)) ∨
         ∃ body rest, raw.pending = body ++ rest ∧
-          (∀ f ∈ body, f.FiniteRun) ∧ isOrdinaryDecisionTail rest = true) := by
+          (∀ f ∈ body, f.FiniteRun) ∧ isOrdinaryDecisionTail rest = true ∧ NonNeutralDecision rest) := by
   cases pending : s.pending with
   | nil => simp [isPlayDeclaration, pending] at play
   | cons frame rest =>
@@ -49,16 +50,16 @@ private theorem playDeclaration_raw {s raw : GameState} {a : Action} {events : L
     case cons.priority.playCard =>
       obtain ⟨_, _, _, _, cards, stack⟩ := applyPlayCard_meta rawStep
       rcases stack with h | h
-      · exact ⟨cards, Or.inl ⟨_, h, by rw [pending]; rfl⟩⟩
-      · exact ⟨cards, Or.inr ⟨[], _, h, by simp, rfl⟩⟩
+      · exact ⟨cards, Or.inl ⟨_, h, by rw [pending]; rfl, fun _ _ eq => pending.symm.trans eq⟩⟩
+      · exact ⟨cards, Or.inr ⟨[], _, h, by simp, rfl, rfl⟩⟩
     case cons.chainPass.playCard | cons.showdown.playCard | cons.teamInvitation.playCard =>
       obtain ⟨_, _, _, _, cards, stack⟩ := reactStep_meta rawStep
       rcases stack with resumed | cleanup
-      · exact ⟨cards, Or.inr ⟨[], _, resumed, by simp, rfl⟩⟩
-      · exact ⟨cards, Or.inl ⟨_, cleanup, rfl⟩⟩
+      · exact ⟨cards, Or.inr ⟨[], _, resumed, by simp, rfl, rfl⟩⟩
+      · exact ⟨cards, Or.inl ⟨_, cleanup, rfl, by intro p tail eq; cases eq⟩⟩
     all_goals
       obtain ⟨_, _, _, _, cards, stack⟩ := activateStep_meta rawStep
-      exact ⟨cards, Or.inr ⟨_, _, stack, activationRecycleFrames_finite _ _ _ _ _, rfl⟩⟩
+      exact ⟨cards, Or.inr ⟨_, _, stack, activationRecycleFrames_finite _ _ _ _ _, rfl, rfl⟩⟩
 
 private theorem playDeclaration_isSome {s : GameState} {a : Action}
     (wf : s.WF) (play : isPlayDeclaration s a = true) (legal : LegalFrame s a) :
@@ -113,7 +114,7 @@ private theorem advance_playDeclaration_to_decision {s : GameState} {a : Action}
     apply advance_observed_frame_to_decision needs regular applied
       (applyFrame_wf0 wf (legal.frame regular) applied) (same.symm ▸ reads)
     intro next notices safe checked stack
-    rcases plan with ⟨rest, pending, decision⟩ | ⟨body, rest, pending, finite, decision⟩
+    rcases plan with ⟨rest, pending, decision, _⟩ | ⟨body, rest, pending, finite, decision, _⟩
     · exact advance_observed_cleanup_to_decision next notices safe checked (stack.trans pending) decision
     · refine advance_observed_runs_then next notices safe checked ⟨rest, stack.trans pending, Or.inl rfl⟩
         finite (isOrdinaryDecisionTail_front decision) ?_
@@ -132,6 +133,54 @@ theorem step_playDeclaration_to_decision {s : GameState} {a : Action}
   refine ⟨t, used, before ++ events, stopped, fun extra => ?_⟩
   simp only [step, ite_eq_left legal, declared]
   exact path extra before
+
+private theorem advance_playDeclaration_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (play : isPlayDeclaration s a = true) (legal : Legal s a)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ initial before t used events, applyDeclaredAction s a = some (initial, before) ∧
+      AdvancePrefix initial t used events ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  cases needs : s.actionDeathCostChoice a with
+  | some choice =>
+    obtain ⟨target, who, first, other⟩ := choice
+    let next := { s with pending := .eitherDo who target {} first other .nil :: .resumeCost a :: s.pending }
+    have applied : applyDeclaredAction s a = some (next, []) := by
+      simp only [applyDeclaredAction, needs, next]
+    exact ⟨next, [], next, 0, [], applied, by intro fuel prior; simp, rfl⟩
+  | none =>
+    have regular := isPlayDeclaration_regular play
+    obtain ⟨⟨raw, events⟩, applied⟩ := playDeclaration_isSome wf play (legal.frame regular)
+    obtain ⟨same, plan⟩ := playDeclaration_raw play applied
+    apply advance_observed_frame_to_preparedDecision needs regular applied
+      (applyFrame_wf0 wf (legal.frame regular) applied) (same.symm ▸ reads)
+    intro next notices safe checked stack
+    rcases plan with ⟨rest, pending, decision, fromOriginal⟩ | ⟨body, rest, pending, finite, decision, nonNeutral⟩
+    · exact advance_observed_cleanup_to_preparedDecision next notices safe checked (stack.trans pending) decision
+        (fun p tail atEnd => quiet p tail (fromOriginal p tail atEnd))
+    · refine advance_observed_runs_then_prepared next notices safe checked ⟨rest, stack.trans pending, Or.inl rfl⟩
+        finite (isOrdinaryDecisionTail_front decision) ?_
+      intro t _ _ resumed
+      have ready := GameState.prepared_idle_of_nonpriority (resumed.symm ▸ nonNeutral.idle)
+        (resumed.symm ▸ nonNeutral.ne_priority)
+      exact ⟨t, 0, [], by intro fuel prior; simp, ready⟩
+
+/-- A legal card play or activation returns a prepared decision after payment, replacement
+and observed Cleanup. The declared action and automatic work contribute their events in order. -/
+theorem step_playDeclaration_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (play : isPlayDeclaration s a = true) (legal : Legal s a)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  obtain ⟨_, before, t, used, events, declared, path, ready⟩ :=
+    advance_playDeclaration_to_preparedDecision wf reads play legal quiet
+  refine ⟨t, used, before ++ events, ready, ?_, ?_⟩
+  · intro extra
+    simp only [step, ite_eq_left legal, declared]
+    exact path extra before
+  · simp only [step, ite_eq_left legal, declared]
+    exact path.finish ready before
 
 private theorem isPlayDeclaration_resume {s : GameState} {a : Action}
     (play : isPlayDeclaration s a = true) :
@@ -167,6 +216,34 @@ theorem advance_locked_playDeclaration_to_decision {s : GameState} {a : Action} 
       rw [workRule, ite_eq_right (fun h => permitted h.2)]
     have stable : AdvancePrefix restored restored 0 [] := by intro _ _; simp
     exact ⟨restored, 1, [], stable.prepend pending rfl work, decision⟩
+
+/-- Resume the locked declaration, or prepare the restored decision if it became illegal. -/
+theorem advance_locked_playDeclaration_to_preparedDecision {s : GameState} {a : Action} {rest : List Frame}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .resumeCost a :: rest)
+    (play : isPlayDeclaration { s with pending := rest } a = true)
+    (quiet : ∀ p tail, rest = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  let restored := { s with pending := rest }
+  have restoredWF : restored.WF := wf.congr rfl rfl rfl rfl
+  obtain ⟨notTime, decision⟩ := isPlayDeclaration_resume play
+  have workRule : workStep s = if a.kind ≠ .timeCalled ∧ Legal restored a then
+      applyDeclaredAction restored a else some (restored, []) := by
+    simp only [workStep, pending]
+    rfl
+  by_cases permitted : Legal restored a
+  · obtain ⟨initial, before, t, used, events, applied, ran, ready⟩ :=
+      advance_playDeclaration_to_preparedDecision (s := restored) restoredWF reads play permitted quiet
+    have work : workStep s = some (initial, before) := by
+      rw [workRule, ite_eq_left ⟨notTime, permitted⟩]
+      exact applied
+    exact ⟨t, used + 1, before ++ events, ran.prepend pending rfl work, ready⟩
+  · have work : workStep s = some (restored, []) := by
+      rw [workRule, ite_eq_right (fun h => permitted h.2)]
+    obtain ⟨t, used, events, path, ready⟩ :=
+      advance_waiting_to_preparedDecision (s := restored) restoredWF reads decision quiet
+    exact ⟨t, used + 1, events, by simpa only [List.nil_append] using path.prepend pending rfl work, ready⟩
 
 /-- Check the replacement program and identify the card play or activation it resumes. -/
 def playCostAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
@@ -207,6 +284,44 @@ theorem step_playCostAnswer_checked_to_decision {s : GameState} {a : Action}
         exact ⟨rfl, by intro q eq; cases eq⟩
       · intro t wf reads resumed
         exact advance_locked_playDeclaration_to_decision wf reads resumed continuation
+    · contradiction
+/-- A checked replacement answer resumes the locked declaration and reaches the next
+decision through the actual dispatcher. -/
+theorem step_playCostAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : playCostAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted locked owner tail, applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile isRunFrame = .resumeCost locked :: .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  unfold playCostAnswerWorkSupported at supported
+  obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at condition
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some, Bool.and_eq_true_iff] at condition
+    obtain ⟨programs, continuation⟩ := condition
+    split at continuation
+    · rename_i locked rest layout
+      obtain ⟨noCost, regular, cards⟩ := chainEffectAnswer_rule answer applied
+      apply step_observed_frame_to_preparedDecision legal noCost regular applied
+        (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+      intro next observed safe checked stack
+      have shape : raw.pending = raw.pending.takeWhile isRunFrame ++ .resumeCost locked :: rest := by
+        rw [← layout, List.takeWhile_append_dropWhile]
+      refine advance_observed_runs_then_prepared next observed safe checked
+        ⟨_, stack.trans shape, Or.inl rfl⟩
+        (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member)) ?_ ?_
+      · intro f head
+        obtain rfl := Option.some.inj head
+        exact ⟨rfl, by intro q eq; cases eq⟩
+      · intro t wf reads resumed
+        apply advance_locked_playDeclaration_to_preparedDecision wf reads resumed continuation
+        intro owner tail neutral
+        exact quiet raw events locked owner tail applied (by rw [layout, neutral])
     · contradiction
 
 end Riftbound

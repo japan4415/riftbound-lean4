@@ -192,9 +192,9 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 ### 3w. カードのプレイ、能力起動、Recycle の支払い
 
-通常の優先権、Chain、Showdown、チームの招待で合法なカードのプレイや能力の起動を宣言すると、次の入力か空のスタックに着く。起動コストに Trash からの Recycle が含まれる場合は、対象の選択、Main Deck に戻す順番の抽選、Rune の持ち主による順番の選択を扱う。支払いの完了時に起動イベントを発行し、イベントで生じた誘発も実際の処理順で扱う。[PlayDeclarationWork.lean](../Riftbound/Invariant/PlayDeclarationWork.lean) [RecyclePaymentWork.lean](../Riftbound/Invariant/RecyclePaymentWork.lean)
+通常の優先権、Chain、Showdown、チームの招待で合法なカードのプレイや能力の起動を宣言すると、実際の `step` が有限の fuel で次の入力か空のスタックに着く。起動コストに Trash からの Recycle が含まれる場合は、対象や戻し順を決める入力まで追える。支払いの完了時に起動イベントを発行し、そこから生じた誘発も処理順どおりに扱う。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[PlayDeclarationWork.lean](../Riftbound/Invariant/PlayDeclarationWork.lean) [RecyclePaymentWork.lean](../Riftbound/Invariant/RecyclePaymentWork.lean)
 
-死亡置換に答えた後は、最初に宣言したプレイや起動を現在の状態で再検査する。合法ならその宣言を再開し、合法性を失っていれば元の入力に戻る。この経路は回答で実際に生成される Run を `playCostAnswerWorkSupported` で検査する。入力待ちに直接戻る対象選択や Recycle の順番の抽選は `decisionRunAnswerWorkSupported` が扱う。Chain の項目を完了する抽選は Chain 用の検査で扱う。どの定理でも、追加の fuel で結果とイベント列は変わらない。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+死亡置換に答えた後は、最初に宣言したプレイや起動を現在の状態で再検査する。合法ならその宣言を再開し、合法性を失っていれば元の入力に戻る。そのとき通常の優先権の準備が Cleanup を積む場合も処理する。`playCostAnswerWorkSupported` が回答で生成された Run を検査する。入力待ちに直接戻る対象選択や Recycle の順番の抽選は `decisionRunAnswerWorkSupported` が扱う。Chain の項目を完了する抽選は Chain 用の検査で扱う。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
 ### 3x. 通常移動、グループ移動、戦場の選択
 
@@ -202,7 +202,7 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 通常の優先権に戻る場合は、後続のフレームに Combat の参加者を更新するものがないことを仮定する。通常の優先権一つに戻る場合はこの条件を満たす。取り消し時に盤面処理が残っていれば、優先権を返す準備で積んだ Cleanup も処理する。[ObservedCleanupWork.lean](../Riftbound/Invariant/ObservedCleanupWork.lean)
 
-`cleanupAnswerWorkSupported` は、死亡置換などの回答が積む Run と、それに続く Cleanup を検査する。検査を通る合法手は、選んだ処理を行い、Cleanup に戻って次の判断まで進む。通常の誘発が待っている場合も扱う。登録済みカード用の定理は、必要量以上の fuel で状態とイベント列が一致することを示す。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+`cleanupAnswerWorkSupported` は、死亡置換などの回答が積む Run と、それに続く Cleanup を検査する。検査を通る合法手は、選んだ処理と Cleanup、残る通常の誘発を経て、実際の `step` で次の入力か空のスタックに着く。通常の優先権に戻る場合は、後ろに Combat の参加者を更新するフレームがないことを仮定する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
 ### 3y. 基本 Rune と即時 Add の起動
 
