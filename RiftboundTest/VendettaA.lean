@@ -4819,11 +4819,26 @@ meta def choosesRune (id : ObjId) (recycle : Bool) : Effect → Bool
     (advance 100 { t with pending := [.phase .beginning] } []).toOption
   let (early, es) ← beginning second
   let (late, laterEvents) ← beginning third
+  let deck := Zone.player p .mainDeck
+  let trash := Zone.player p .trash
+  let exhausted := { second with
+    zones := (second.zones.insert deck.key []).insert trash.key (second.zone deck)
+    pending := (turnFrames p).drop 1 }
+  let (shuffle, scored) ← (advance 100 exhausted []).toOption
+  let order : Action := ⟨.chance, .arrange (shuffle.zone trash).reverse⟩
+  let (choice, shuffled) ← (step 100 shuffle order).toOption
+  let target : Action := ⟨.player p, .burnOutTarget q⟩
+  let (resumed, continued) ← (step 100 choice target).toOption
   return early.handN p == second.handN p + 2 && early.pointsOf p == second.pointsOf p &&
     es.contains (.scoreDraw p a) && es.contains (.scoreDraw p b) &&
     [a, b].all (fun bf => (early.obj? bf).any (fun o => o.scored.contains p && !o.held.contains p)) &&
     late.handN p == third.handN p && late.pointsOf p == third.pointsOf p + 2 &&
-    laterEvents.contains (.pointsGained p 2)
+    laterEvents.contains (.pointsGained p 2) &&
+    burnOutAnswerWorkSupported shuffle order && burnOutAnswerWorkSupported choice target &&
+    scored.contains (.scoreDraw p a) && scored.contains (.scoreDraw p b) &&
+    shuffled.contains (.burnedOut p) && continued.contains (.pointsGained q 1) &&
+    continued.contains (.phaseStarted p .main) && resumed.pending == [.priority p] &&
+    resumed.handN p == second.handN p + 2 + second.drawCount
 
 -- The Conquer replacement applies only on the scorer's turn and does not duplicate the
 -- normal Final Point draw.

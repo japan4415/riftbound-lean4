@@ -60,16 +60,13 @@ private theorem advance_burn_out_prefix {s : GameState} {frames : List Frame} {k
 
 private inductive BurnOutBoundary : List Frame → Prop where
   | decision {rest : List Frame} (ready : isOrdinaryDecisionTail rest = true) : BurnOutBoundary rest
-  | main (p : PlayerId) : BurnOutBoundary [.phase .main, .priority p]
+  | turn {rest : List Frame} (suffix : TurnPhaseSuffix rest) : BurnOutBoundary rest
 
 private theorem BurnOutBoundary.front {rest : List Frame} (boundary : BurnOutBoundary rest) :
     ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q := by
   cases boundary with
   | decision ready => exact isOrdinaryDecisionTail_front ready
-  | main p =>
-    intro f head
-    obtain rfl := Option.some.inj head
-    exact ⟨rfl, by intro q equal; cases equal⟩
+  | turn suffix => exact suffix.front
 
 private inductive BurnOutTail (rest : List Frame) : List Frame → Prop where
   | waiting {frames : List Frame} (tracked : TriggerWorkTail rest frames) : BurnOutTail rest frames
@@ -90,7 +87,7 @@ private theorem BurnOutTail.insert {rest frames : List Frame} (tail : BurnOutTai
   | combatFinish field stage tracked =>
     exact .combatFinish field (stage.insert (combatFinish_head _ _) q ne) tracked
 
-/-- Locate the decision or Main Phase after outstanding Burn Out work. -/
+/-- Locate the decision or remaining turn phases after outstanding Burn Out work. -/
 def burnOutContinuation? (stack : List Frame) : Option (List Frame) :=
   match stack with
   | .finishSpell _ :: rest => waiting? rest
@@ -99,21 +96,29 @@ def burnOutContinuation? (stack : List Frame) : Option (List Frame) :=
   | _ => waiting? stack
 where
   waiting? : List Frame → Option (List Frame)
-    | [.phase .main, .priority p] => some [.phase .main, .priority p]
-    | [.triggers (_ :: _), .phase .main, .priority p] => some [.phase .main, .priority p]
-    | rest => chainAnswerContinuation? rest
+    | stack@(.triggers (_ :: _) :: rest) =>
+      if isTurnPhaseSuffix rest then some rest else chainAnswerContinuation? stack
+    | rest => if isTurnPhaseSuffix rest then some rest else chainAnswerContinuation? rest
 
 private theorem burnOutWaiting_sound {stack rest : List Frame}
     (ready : burnOutContinuation?.waiting? stack = some rest) :
     TriggerWorkTail rest stack ∧ BurnOutBoundary rest := by
+  have ordinary {frames original : List Frame} (parsed : chainAnswerContinuation? frames = some original) :
+      TriggerWorkTail original frames ∧ BurnOutBoundary original := by
+    obtain ⟨tracked, done⟩ := chainAnswerContinuation_sound parsed
+    exact ⟨tracked, .decision done⟩
   unfold burnOutContinuation?.waiting? at ready
   split at ready
-  · obtain rfl := Option.some.inj ready
-    exact ⟨Or.inl rfl, .main _⟩
-  · obtain rfl := Option.some.inj ready
-    exact ⟨Or.inr ⟨_, by simp, rfl⟩, .main _⟩
-  · obtain ⟨tracked, done⟩ := chainAnswerContinuation_sound ready
-    exact ⟨tracked, .decision done⟩
+  · split at ready
+    · rename_i phases
+      obtain rfl := Option.some.inj ready
+      exact ⟨Or.inr ⟨_, by simp, rfl⟩, .turn (isTurnPhaseSuffix_sound phases)⟩
+    · exact ordinary ready
+  · split at ready
+    · rename_i phases
+      obtain rfl := Option.some.inj ready
+      exact ⟨Or.inl rfl, .turn (isTurnPhaseSuffix_sound phases)⟩
+    · exact ordinary ready
 
 private theorem burnOutContinuation_sound {stack rest : List Frame}
     (ready : burnOutContinuation? stack = some rest) : BurnOutTail rest stack ∧ BurnOutBoundary rest := by
@@ -144,11 +149,11 @@ private theorem advance_burnOutEnd {s : GameState} {rest : List Frame} (wf : s.W
           (fun _ safe known kept => advance_trigger_tail_until_decision safe known kept)
   cases boundary with
   | decision ready => exact work.atPreparedDecision reads (isOrdinaryDecisionTail_boundary ready) quiet
-  | main p =>
-    obtain ⟨mid, used, events, path, ready | ⟨atMain, midWF, cards⟩⟩ := work
+  | turn suffix =>
+    obtain ⟨mid, used, events, path, ready | ⟨atPhase, midWF, cards⟩⟩ := work
     · exact ⟨mid, used, events, path, ready⟩
-    · obtain ⟨t, more, emitted, _, ran, stopped, _⟩ :=
-        advance_main_to_preparedDecision midWF (cards ▸ reads) atMain
+    · obtain ⟨t, more, emitted, _, ran, stopped⟩ :=
+        advance_turnPhaseSuffix_to_preparedDecision midWF (cards ▸ reads) atPhase suffix
       exact ⟨t, used + more, events ++ emitted, path.append ran, stopped⟩
 
 /-- A recorded Trash order or an opponent choice answering Burn Out. -/
@@ -187,7 +192,7 @@ def burnOutAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
       (burnOutContinuation? (result.1.pending.dropWhile isBurnOutWorkFrame)).isSome)
 
 /-- Both Burn Out answers reach the next prepared input, including a resumed draw batch,
-Main Phase, Chain conclusion or Combat finish when those frames pass the check. -/
+remaining turn phases, Chain conclusion or Combat finish when those frames pass the check. -/
 theorem step_burnOutAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
     (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
     (checked : burnOutAnswerWorkSupported s a = true)

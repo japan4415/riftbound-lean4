@@ -197,6 +197,94 @@ private def advancesToStack (s : GameState) (rest : List Frame) : Prop :=
     (t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∨
       (t.pending = rest ∧ t.WF ∧ t.cards = s.cards))
 
+/-- A remaining part of the standard turn, before the first Main priority. -/
+inductive TurnPhaseSuffix : List Frame → Prop where
+  /-- Start the Beginning Phase. -/
+  | beginning (p : PlayerId) : TurnPhaseSuffix [.phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority p]
+  /-- Resume before Hold scoring. -/
+  | holds (p : PlayerId) : TurnPhaseSuffix [.scoreHolds, .phase .channel, .phase .draw, .phase .main, .priority p]
+  /-- Resume before Channel. -/
+  | channel (p : PlayerId) : TurnPhaseSuffix [.phase .channel, .phase .draw, .phase .main, .priority p]
+  /-- Resume before the standard Draw Phase. -/
+  | draw (p : PlayerId) : TurnPhaseSuffix [.phase .draw, .phase .main, .priority p]
+  /-- Start Main with the turn player's priority. -/
+  | main (p : PlayerId) : TurnPhaseSuffix [.phase .main, .priority p]
+
+/-- Check the remaining frames against the standard turn phase order. -/
+def isTurnPhaseSuffix : List Frame → Bool
+  | [.phase .beginning, .phase .channel, .phase .draw, .phase .main, .priority _]
+  | [.scoreHolds, .phase .channel, .phase .draw, .phase .main, .priority _]
+  | [.phase .channel, .phase .draw, .phase .main, .priority _]
+  | [.phase .draw, .phase .main, .priority _]
+  | [.phase .main, .priority _] => true
+  | _ => false
+
+/-- An accepted phase stack has one of the standard suffixes. -/
+theorem isTurnPhaseSuffix_sound {rest : List Frame} (checked : isTurnPhaseSuffix rest = true) :
+    TurnPhaseSuffix rest := by
+  unfold isTurnPhaseSuffix at checked
+  split at checked
+  · exact .beginning _
+  · exact .holds _
+  · exact .channel _
+  · exact .draw _
+  · exact .main _
+  · contradiction
+
+/-- Ordinary triggers can be processed before the first frame in a phase suffix. -/
+theorem TurnPhaseSuffix.front {rest : List Frame} (suffix : TurnPhaseSuffix rest) :
+    ∀ f, rest.head? = some f → f.isResolution = false ∧ ∀ q, f ≠ .triggers q := by
+  cases suffix <;> intro f head <;> cases Option.some.inj head <;>
+    exact ⟨rfl, by intro q equal; cases equal⟩
+
+private theorem continueTurnWork {s : GameState} {rest : List Frame}
+    (segment : advancesToStack s rest) (reads : MightRead.database s.cards)
+    (next : ∀ t : GameState, t.pending = rest → t.WF → MightRead.database t.cards →
+      ∃ u used events, 0 < used ∧ AdvancePrefix t u used events ∧
+        u.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
+    ∃ u used events, 0 < used ∧ AdvancePrefix s u used events ∧
+      u.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  obtain ⟨t, used, events, positive, path, stop | ⟨atRest, tWF, cards⟩⟩ := segment
+  · exact ⟨t, used, events, positive, path, stop⟩
+  · obtain ⟨u, later, emitted, _, ran, done⟩ := next t atRest tWF (cards ▸ reads)
+    exact ⟨u, used + later, events ++ emitted, by omega, path.append ran, done⟩
+
+/-- Finish the remaining standard phases from the current frame, or stop at a new input. -/
+theorem advance_turnPhaseSuffix_to_preparedDecision {s : GameState} {rest : List Frame} (wf : s.WF)
+    (reads : MightRead.database s.cards) (pending : s.pending = rest) (suffix : TurnPhaseSuffix rest) :
+    ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+  let fromMain (state : GameState) (p : PlayerId) (stack : state.pending = [.phase .main, .priority p])
+      (safe : state.WF) (known : MightRead.database state.cards) :
+      ∃ t used events, 0 < used ∧ AdvancePrefix state t used events ∧
+        t.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
+    obtain ⟨t, used, events, positive, path, ready, _⟩ :=
+      advance_main_to_preparedDecision safe known stack
+    exact ⟨t, used, events, positive, path, ready⟩
+  let fromDraw (state : GameState) (p : PlayerId)
+      (stack : state.pending = [.phase .draw, .phase .main, .priority p])
+      (safe : state.WF) (known : MightRead.database state.cards) :=
+    continueTurnWork (advance_draw_phase_prepared safe known stack) known
+      (fun t pending wf reads => fromMain t p pending wf reads)
+  let fromChannel (state : GameState) (p : PlayerId)
+      (stack : state.pending = [.phase .channel, .phase .draw, .phase .main, .priority p])
+      (safe : state.WF) (known : MightRead.database state.cards) :=
+    continueTurnWork (advance_channel_to_draw_prepared safe known stack) known
+      (fun t pending wf reads => fromDraw t p pending wf reads)
+  let fromHolds (state : GameState) (p : PlayerId)
+      (stack : state.pending = [.scoreHolds, .phase .channel, .phase .draw, .phase .main, .priority p])
+      (safe : state.WF) (known : MightRead.database state.cards) :=
+    continueTurnWork (advance_holds_to_channel_prepared safe known stack) known
+      (fun t pending wf reads => fromChannel t p pending wf reads)
+  cases suffix with
+  | beginning p =>
+    exact continueTurnWork (advance_beginning_to_holds_prepared wf reads pending) reads
+      (fun t stack safe known => fromHolds t p stack safe known)
+  | holds p => exact fromHolds s p pending wf reads
+  | channel p => exact fromChannel s p pending wf reads
+  | draw p => exact fromDraw s p pending wf reads
+  | main p => exact fromMain s p pending wf reads
+
 /-- Execute the normal new turn from Beginning through Hold, Channel, Draw and Main.
 The actual engine reaches a decision or the end of the game in finitely many steps. -/
 theorem advance_beginning_to_preparedDecision {s : GameState} {p : PlayerId} (wf : s.WF)
@@ -204,33 +292,9 @@ theorem advance_beginning_to_preparedDecision {s : GameState} {p : PlayerId} (wf
     ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
       t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
       advance used s [] = .ok (t, events) := by
-  suffices completed : ∃ t used events, 0 < used ∧ AdvancePrefix s t used events ∧
-      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true by
-    obtain ⟨t, used, events, positive, path, ready⟩ := completed
-    exact ⟨t, used, events, positive, path, ready,
-      by simpa only [List.nil_append] using path.finish ready []⟩
-  have continueFrom {state : GameState} {rest : List Frame}
-      (segment : advancesToStack state rest) (known : MightRead.database state.cards)
-      (next : ∀ t : GameState, t.pending = rest → t.WF → MightRead.database t.cards →
-        ∃ u used events, 0 < used ∧ AdvancePrefix t u used events ∧
-          u.preparePriority.pending.head?.all (fun f => !f.isWork) = true) :
-      ∃ u used events, 0 < used ∧ AdvancePrefix state u used events ∧
-        u.preparePriority.pending.head?.all (fun f => !f.isWork) = true := by
-    obtain ⟨t, used, events, positive, path, stop | ⟨atRest, tWF, cards⟩⟩ := segment
-    · exact ⟨t, used, events, positive, path, stop⟩
-    · obtain ⟨u, later, emitted, _, ran, done⟩ := next t atRest tWF (cards ▸ known)
-      exact ⟨u, used + later, events ++ emitted, by omega, path.append ran, done⟩
-  refine continueFrom (advance_beginning_to_holds_prepared wf reads pending) reads ?_
-  intro atHolds ready holdsWF holdsReads
-  refine continueFrom (advance_holds_to_channel_prepared holdsWF holdsReads ready) holdsReads ?_
-  intro atChannel ready channelWF channelReads
-  refine continueFrom (advance_channel_to_draw_prepared channelWF channelReads ready) channelReads ?_
-  intro atDraw ready drawWF drawReads
-  refine continueFrom (advance_draw_phase_prepared drawWF drawReads ready) drawReads ?_
-  intro atMain ready mainWF mainReads
-  obtain ⟨t, used, events, positive, path, boundary, _⟩ :=
-    advance_main_to_preparedDecision mainWF mainReads ready
-  exact ⟨t, used, events, positive, path, boundary⟩
+  obtain ⟨t, used, events, positive, path, ready⟩ :=
+    advance_turnPhaseSuffix_to_preparedDecision wf reads pending (.beginning p)
+  exact ⟨t, used, events, positive, path, ready, by simpa only [List.nil_append] using path.finish ready []⟩
 
 /-- Run the normal automatic turn phases until a decision or the end of the stack. -/
 theorem advance_beginning_to_decision {s : GameState} {p : PlayerId} (wf : s.WF)

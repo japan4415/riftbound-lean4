@@ -56,4 +56,31 @@ meta def handsAt (rules : RuleSet) (empty : List ZoneKind) (n : Nat) : Option (N
   | some (a0, _), some (a1, _), some (c0, _), some (c1, _) => a1 == a0 && c1 == c0
   | _, _, _, _ => false
 
+-- A Burn Out during the extra Beginning draw leaves Hold scoring and the remaining phases.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let empty := GameState.empty { ruleSet := .tournament .sealed, mode := .duel } db
+  let trash := Zone.player p .trash
+  let (s, _) ← addObject empty (newCard db empty p (cid "V0")) trash
+  let (s, _) ← addObject s (newCard db s p (cid "V1")) trash
+  let (s, rune) ← addObject s (newCard db s p (cid "R1")) (.player p .runeDeck)
+  let start := { s with
+    active := some p, turnOrder := [p, q], turn := 1, phase := .awaken,
+    pending := (turnFrames p).drop 1 }
+  let (shuffle, _) ← (advance 100 start []).toOption
+  let order : Action := ⟨.chance, .arrange (shuffle.zone trash)⟩
+  let (choice, _) ← (step 100 shuffle order).toOption
+  let target : Action := ⟨.player p, .burnOutTarget q⟩
+  let (resumed, events) ← (step 100 choice target).toOption
+  let phases : List Phase := events.filterMap (fun
+    | .drew who => if who == p then some .draw else none
+    | .moved source _ _ => if source == rune then some .channel else none
+    | .phaseStarted _ .main => some .main
+    | _ => none)
+  return burnOutAnswerWorkSupported shuffle order && burnOutAnswerWorkSupported choice target &&
+    events.contains (.pointsGained q 1) && phases == [.draw, .channel, .draw, .main] &&
+    resumed.pending == [.priority p] && (resumed.zone (.player p .hand)).length == 2
+  : Option Bool).getD false
+
 end RiftboundTest
