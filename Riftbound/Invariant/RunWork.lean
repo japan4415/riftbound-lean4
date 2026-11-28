@@ -85,6 +85,8 @@ def Effect.observedWorkSupported : Effect → Bool
   | .ifThen _ yes no => yes.observedWorkSupported && no.observedWorkSupported
   | .lookAtTop _ body | .revealHand _ body | .revealDeckTops _ body => body.observedWorkSupported
   | .repeatN _ body | .bind _ _ body | .forEach _ body | .eachPlayer _ body => body.observedWorkSupported
+  | .doThen (.prim cost) body => cost.linkedCostSupported && body.observedWorkSupported
+  | .payThen _ body _ | .paySelected _ body _ => body.observedWorkSupported
   | .prim primitive => (Effect.prim primitive).isTriggerAdd
   | _ => false
 termination_by structural effect => effect
@@ -169,6 +171,13 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case bind name amount body => exact .bind (body.observedFinite_of_supported supported)
   case forEach target body => exact .forEach (body.observedFinite_of_supported supported)
   case eachPlayer who body => exact .eachPlayer (body.observedFinite_of_supported supported)
+  case doThen first body =>
+    cases first <;> try (simp [Effect.observedWorkSupported] at supported; done)
+    case prim cost =>
+      obtain ⟨checked, bodySupported⟩ := Bool.and_eq_true_iff.mp supported
+      exact .linkedCost cost checked (body.observedFinite_of_supported bodySupported)
+  case payThen cost body gearPower => exact .payThen cost gearPower (body.observedFinite_of_supported supported)
+  case paySelected cost body gearPower => exact .paySelected cost gearPower (body.observedFinite_of_supported supported)
   case may body => exact .may body
   case chooseObject side place filters body => exact .chooseObject side place filters body
   case retainTargetSet groups => exact .retainTargetSet groups

@@ -199,6 +199,50 @@ meta def afterUse : Option (GameState × List Event) :=
       Event.hiddenPlayed p, Event.moved card hidden hiddenZone]
   : Option Bool).getD false
 
+-- A cost paid through a resolution choice runs its follow-up only if it changed the state.
+#guard (do
+  let (s, p, _, source, ready, tired) ← scene
+  let s := s.modObj tired (fun o => { o with exhausted := true })
+  let sel := Selector.one .enemy .atBase [.ofType .unit]
+  let effect := Effect.doThen (.prim (.exhaust sel)) (.prim (.gainXP .you (.const 2)))
+  let frame := Frame.run p source {} (.cons effect .nil)
+  let started := { s with pending := [frame, .priority p] }
+  let (waiting, earlier) ← (advance 10 started []).toOption
+  let .pickDo _ _ _ _ _ _ _ :: _ := waiting.pending | none
+  let pay : Action := ⟨.player p, .choose ready⟩
+  let fail : Action := ⟨.player p, .choose tired⟩
+  let ((paid, events), seen) ← (stepWithDisclosures 10 waiting pay).toOption
+  let ((unpaid, skipped), otherSeen) ← (stepWithDisclosures 10 waiting fail).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported waiting pay &&
+    decisionRunAnswerWorkSupported waiting fail && earlier.isEmpty &&
+    (paid.obj? ready).any (·.exhausted) && paid.xpOf p == s.xpOf p + 2 &&
+    !(unpaid.obj? ready).any (·.exhausted) && unpaid.xpOf p == s.xpOf p &&
+    paid.pending == [Frame.priority p] && unpaid.pending == [Frame.priority p] &&
+    events == [Event.exhausted ready] && skipped.isEmpty && seen.isEmpty && otherSeen.isEmpty
+  : Option Bool).getD false
+
+-- With two available payments, the observer stops before spending either resource.
+#guard (do
+  let (s, p, _, source, _, _) ← scene
+  let cost : Cost := ⟨0, [.domain .fury]⟩
+  let effect := Effect.payThen cost (.prim (.gainXP .you (.const 2))) false
+  let frame := Frame.run p source {} (.cons effect .nil)
+  let started := { s with pending := [frame, .priority p] }
+  let rich := started.setPool p { fury := 1, any := 1 }
+  let (waiting, _) ← (advance 10 rich []).toOption
+  let .eitherDo _ _ _ (.paySelected chosen _ _) _ _ :: _ := waiting.pending | none
+  let expected ← spendResolutionPayment waiting p source chosen false
+  let answer : Action := ⟨.player p, .decide true⟩
+  let ((paid, events), seen) ← (stepWithDisclosures 10 waiting answer).toOption
+  let (unique, _) ← (advance 10 (started.setPool p { fury := 1 }) []).toOption
+  let (unable, _) ← (advance 10 (started.setPool p {}) []).toOption
+  return runFrameSupported frame && decisionRunAnswerWorkSupported waiting answer &&
+    waiting.poolOf p == rich.poolOf p && waiting.xpOf p == s.xpOf p &&
+    paid.poolOf p == expected && paid.xpOf p == s.xpOf p + 2 && paid.pending == [Frame.priority p] &&
+    unique.xpOf p == s.xpOf p + 2 && (unique.poolOf p).totalPower == 0 &&
+    unable.xpOf p == s.xpOf p && unable.pending == [Frame.priority p] && events.isEmpty && seen.isEmpty
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

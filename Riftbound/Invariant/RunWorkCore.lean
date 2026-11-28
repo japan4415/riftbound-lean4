@@ -710,23 +710,29 @@ theorem Effect.SingleRun.hideAt (cards battlefields : Selector) : (Effect.prim (
         · exact .nil
     · contradiction
 
-/-- A direct primitive can also choose one object during resolution, continuing its bound
-instruction after a singleton or yielding to the player when several candidates remain. -/
-private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
-    (direct : (Effect.prim pr).pickSel? = none → (Effect.prim pr).SingleRun)
-    (bound : (Effect.prim pr).withPick.SingleRun) : (Effect.prim pr).ObservedFinite := by
-  let effect := Effect.prim pr
-  cases pick : effect.pickSel? with
-  | none => exact (direct pick).observed
-  | some selector =>
-    obtain ⟨side, place, filters, rfl⟩ : ∃ side place filters, selector = .pick .one side place filters := by
-      have fromPrim := pick
-      change (match pr.pickSel? with
-        | some (.pick .one side place filters) => some (.pick .one side place filters)
-        | _ => none) = some selector at fromPrim
-      split at fromPrim
-      · exact ⟨_, _, _, (Option.some.inj fromPrim).symm⟩
+private theorem Effect.pickSel_one {effect : Effect} {selector : Selector}
+    (pick : effect.pickSel? = some selector) :
+    ∃ side place filters, selector = .pick .one side place filters := by
+  unfold Effect.pickSel? at pick
+  split at pick
+  all_goals
+    first
+    | contradiction
+    | obtain rfl := Option.some.inj pick
+      exact ⟨_, _, _, rfl⟩
+    | split at pick
+      · obtain rfl := Option.some.inj pick
+        exact ⟨_, _, _, rfl⟩
       · contradiction
+
+private theorem Effect.ObservedFinite.withResolutionPick (effect : Effect)
+    (direct : effect.pickSel? = none → effect.ObservedFinite) (bound : effect.withPick.ObservedFinite)
+    (automatic : ∀ side place filters body, effect ≠ .chooseObject side place filters body) :
+    effect.ObservedFinite := by
+  cases pick : effect.pickSel? with
+  | none => exact direct pick
+  | some selector =>
+    obtain ⟨side, place, filters, rfl⟩ := Effect.pickSel_one pick
     intro s p src env more rest keeps wf reads pending base inserted
     let live := env.withMight s.mightTable
     let selected := requiredPlayCandidates s p src live effect effectAddPolicy <|>
@@ -735,12 +741,25 @@ private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
       | some [o] => [.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)]
       | some (o :: other :: rest) => [.pickDo p src live o (other :: rest) effect.withPick more]
       | _ => [.run p src live more]
+    have single (o : ObjId) :
+        (match effect with
+        | .chooseObject .. => (s, [Frame.pickDo p src live o [] effect.withPick more], [])
+        | _ => (s, [.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)],
+            effect.pickEvents s p src o)) =
+          (s, [.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)],
+            effect.pickEvents s p src o) := by
+      cases effect <;> try rfl
+      case chooseObject who where_ fs body =>
+        exact False.elim (automatic who where_ fs body rfl)
     have route : (runEffect s p src live effect more effectAddPolicy).2.1 = frames := by
-      simp only [runEffect, pick]
+      unfold runEffect
+      rw [pick]
       change (match selected with
         | some [o] =>
-          (s, [Frame.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)],
-            effect.pickEvents s p src o)
+          match effect with
+          | .chooseObject .. => (s, [Frame.pickDo p src live o [] effect.withPick more], [])
+          | _ => (s, [.run p src (live.bindPick o (effect.pickIsTarget s o)) (.cons effect.withPick more)],
+              effect.pickEvents s p src o)
         | some (o :: other :: rest) => (s, [.pickDo p src live o (other :: rest) effect.withPick more], [])
         | _ => (s, [.run p src live more], [Event.skipped src])).2.1 = frames
       unfold frames
@@ -749,7 +768,10 @@ private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
       | some objects =>
         cases objects with
         | nil => rfl
-        | cons first rest => cases rest <;> rfl
+        | cons first rest =>
+          cases rest with
+          | nil => exact congrArg (fun result => result.2.1) (single first)
+          | cons other later => rfl
     have resumes (sel : frames = [.run p src live more]) :
         AdvanceTo s (RunContinuation p src more keeps) := by
       apply advance_run_rule wf reads pending ?_ (fun _ tracked q ne => tracked.insert inserted q ne)
@@ -774,12 +796,52 @@ private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
           apply firstRun.then reads
           intro t safe checked continued
           obtain ⟨chosen, tail, stack, kept⟩ := continued
-          exact bound.observed t p src chosen more tail keeps safe checked stack kept inserted
+          exact bound t p src chosen more tail keeps safe checked stack kept inserted
         | cons another later =>
           have waiting : NonNeutralDecision (frames ++ rest) := by simp [frames, candidates, NonNeutralDecision, Frame.isWork]
           apply advance_run_decision wf reads pending
           change NonNeutralDecision ((runEffect s p src live effect more effectAddPolicy).2.1 ++ rest)
           rwa [route]
+
+private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
+    (direct : (Effect.prim pr).pickSel? = none → (Effect.prim pr).SingleRun)
+    (bound : (Effect.prim pr).withPick.SingleRun) : (Effect.prim pr).ObservedFinite :=
+  .withResolutionPick _ (fun h => (direct h).observed) bound.observed
+    (fun _ _ _ _ impossible => by cases impossible)
+
+/-- The primitive costs handled directly by the linked-action Run rule. -/
+def Prim.linkedCostSupported : Prim → Bool
+  | .banish _ | .disempower _ | .exhaust _ | .spendBuff _ => true
+  | _ => false
+
+private theorem Effect.ObservedFinite.linkedCostDirect (cost : Prim) {body : Effect}
+    (supported : cost.linkedCostSupported = true)
+    (direct : (Effect.doThen (.prim cost) body).pickSel? = none) (finite : body.ObservedFinite) :
+    (Effect.doThen (.prim cost) body).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  have runs : (runEffect s p src env (.doThen (.prim cost) body) more effectAddPolicy).2.1 =
+      [.run p src env (if (linkedAction s p src env cost).2.1 then .cons body more else more)] := by
+    simp only [runEffect, direct]
+    cases cost <;> first | rfl | (simp [Prim.linkedCostSupported] at supported)
+  rw [runs]
+  cases paid : (linkedAction s p src env cost).2.1
+  · exact ⟨.nil, .nil, rfl⟩
+  · exact ⟨.cons body .nil, .cons finite .nil, rfl⟩
+
+/-- The linked follow-up runs only if the cost actually happened. A resolution choice,
+when the rule offers one, is an intermediate stopping point. -/
+theorem Effect.ObservedFinite.linkedCost (cost : Prim) {body : Effect}
+    (supported : cost.linkedCostSupported = true) (finite : body.ObservedFinite) :
+    (Effect.doThen (.prim cost) body).ObservedFinite := by
+  apply Effect.ObservedFinite.withResolutionPick
+  · exact fun direct => Effect.ObservedFinite.linkedCostDirect cost supported direct finite
+  · change (Effect.doThen (.prim (cost.withSel (.var pickVar))) body).ObservedFinite
+    refine Effect.ObservedFinite.linkedCostDirect _ ?_ ?_ finite
+    · cases cost <;> simp_all [Prim.linkedCostSupported, Prim.withSel]
+    · cases cost <;> simp_all [Prim.linkedCostSupported, Prim.withSel, Effect.pickSel?]
+  · intro _ _ _ _ impossible
+    cases impossible
 
 /-- Readying selected objects stops at any resolution choice or resumes the program. -/
 theorem Effect.ObservedFinite.ready (sel : Selector) : (Effect.prim (.ready sel)).ObservedFinite :=
@@ -1013,6 +1075,36 @@ theorem Effect.ObservedFinite.eitherChoice (first second : Effect) (rest : Effec
   intro s p src env more tail keeps wf reads pending _ _
   apply advance_run_decision wf reads pending
   cases rest <;> rfl
+
+/-- Paying a cost takes the unique payment or waits for a choice among several payments. -/
+theorem Effect.ObservedFinite.payThen (cost : Cost) (gearPower : Bool) {body : Effect}
+    (finite : body.ObservedFinite) : (Effect.payThen cost body gearPower).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  cases payments : resolutionPayments s p src cost gearPower with
+  | nil => exact ⟨.nil, .nil, by simp [runEffect, Effect.pickSel?, runEffect1, payments, EffectList.append]⟩
+  | cons first rest =>
+    cases rest with
+    | nil =>
+      obtain ⟨symbols, pool⟩ := first
+      exact ⟨.cons body .nil, .cons finite .nil,
+        by simp [runEffect, Effect.pickSel?, runEffect1, payments, EffectList.append]⟩
+    | cons second later =>
+      let one := Effect.paySelected first.1 body gearPower
+      let two := Effect.paySelected second.1 body gearPower
+      let rest := EffectList.ofList (later.map (fun plan => Effect.paySelected plan.1 body gearPower))
+      exact ⟨.cons (.eitherOf (.cons one (.cons two rest))) .nil, .cons (.eitherChoice one two rest) .nil,
+        by simp [runEffect, Effect.pickSel?, runEffect1, payments, EffectList.append, EffectList.ofList, one, two, rest]⟩
+
+/-- Resolving a selected payment either executes the checked body or skips it if payment fails. -/
+theorem Effect.ObservedFinite.paySelected (cost : Cost) (gearPower : Bool) {body : Effect}
+    (finite : body.ObservedFinite) : (Effect.paySelected cost body gearPower).ObservedFinite := by
+  apply Effect.ObservedFinite.ofPrograms
+  intro s p src env more
+  cases payment : spendResolutionPayment s p src cost gearPower with
+  | none => exact ⟨.nil, .nil, by simp [runEffect, Effect.pickSel?, runEffect1, payment, EffectList.append]⟩
+  | some pool => exact ⟨.cons body .nil, .cons finite .nil,
+      by simp [runEffect, Effect.pickSel?, runEffect1, payment, EffectList.append]⟩
 
 end Riftbound
 

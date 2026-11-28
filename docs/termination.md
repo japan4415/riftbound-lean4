@@ -280,6 +280,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 ターン中に残る効果の記録と伏せ札への移動、および Empower の付与・消費と Buff の消費を停止検査で扱う。テストでは Empower の上限、各イベントの順序、伏せたカードの現物と戦場、席ごとの見え方を確認する。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [Chain.lean](../RiftboundTest/Chain.lean)
 
+### 3am. 効果の解決中に払うコスト
+
+Banish、Disempower、Exhaust、Buff の消費を前段とする効果は、前段が実際に成立した場合にだけ後続の命令を実行する。エンジンが解決中の対象選択を提示した場合はその入力で止まる。Rune Pool からの支払いは、可能な内訳が1つなら支払い後に進み、複数なら内訳の選択を待つ。選択を受け取った後は支払いを再確認する。後続の命令が停止検査を通るときに、これらの処理を証明の対象にした。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
