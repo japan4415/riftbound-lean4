@@ -8,6 +8,7 @@ public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.ConcessionWork
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.BurnOutWork
+public import Riftbound.Invariant.DecisionHandoffs
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
@@ -117,6 +118,18 @@ theorem step_burnOutAnswer_checked_to_preparedDecision {s : Riftbound.GameState}
       (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
       Riftbound.step used s a = .ok (t, events) :=
   Riftbound.step_burnOutAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
+/-- With registered cards, a recorded time call reaches a prepared input with the new deadline. -/
+theorem step_timeCalled_to_preparedDecision {s : Riftbound.GameState}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s ⟨.clock, .timeCalled⟩)
+    (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.clock = some (s.config.ruleSet.callClock s.turn) ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.clock, .timeCalled⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.clock, .timeCalled⟩ = .ok (t, events) :=
+  Riftbound.step_timeCalled_to_preparedDecision wf (mightReads_of_registered cards) legal waiting quiet
 
 /-- A checked War concession with the registered cards reaches a decision or ends the game. -/
 theorem step_freeForAllConcede_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}

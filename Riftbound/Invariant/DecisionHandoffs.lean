@@ -2,6 +2,7 @@ module
 
 public import Riftbound.Invariant.ChainAnswerWork
 import Riftbound.Invariant.Sound
+import Riftbound.Invariant.ClockRun
 
 /-! # Decisions that hand play to another seat or keep an assignment open (I12) -/
 
@@ -87,6 +88,34 @@ theorem step_mulliganPick_to_decision {s : GameState} {p : PlayerId} {card : Obj
   have noCost : s.actionDeathCostChoice a = none := by
     simp only [GameState.actionDeathCostChoice, pending]
   exact step_observed_action_waits legal ordinary noCost applied finalWF finalReads rfl
+
+/-- A recorded time call at an input reaches a prepared decision and keeps the new deadline. -/
+theorem step_timeCalled_to_preparedDecision {s : GameState} (wf : s.WF)
+    (reads : MightRead.database s.cards) (legal : Legal s ⟨.clock, .timeCalled⟩)
+    (waiting : s.pending.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ p tail, s.pending = .priority p :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.clock = some (s.config.ruleSet.callClock s.turn) ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s ⟨.clock, .timeCalled⟩ = advance extra t events) ∧
+      step used s ⟨.clock, .timeCalled⟩ = .ok (t, events) := by
+  let action : Action := ⟨.clock, .timeCalled⟩
+  have regular : action.kind ≠ .concede := by decide
+  have noCost : s.actionDeathCostChoice action = none := by
+    cases stack : s.pending with
+    | nil => simp [GameState.actionDeathCostChoice, stack]
+    | cons frame rest =>
+      cases frame <;> simp [GameState.actionDeathCostChoice, GameState.actionKillCosts, stack, action,
+        GameState.deathGroupChoice, GameState.deathGroupChoiceWith_nil]
+  have applied := applyFrame0_timeCalled s .clock
+  obtain ⟨t, used, events, ready, path, done⟩ :=
+    step_observed_waiting_to_preparedDecision legal regular noCost applied
+      (wf.congr rfl rfl rfl rfl) reads waiting quiet
+  have noClock := (legal_timeCalled (a := action) rfl (legal.frame regular)).2.2.2.1
+  have clockOk : ClockOk s := by
+    intro clock old
+    rw [noClock] at old
+    cases old
+  exact ⟨t, used, events, (step_keep clockOk done).2.2 rfl, ready, path, done⟩
 
 end Riftbound
 

@@ -252,6 +252,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 `step_burnOutAnswer_checked_to_preparedDecision` は、Trash を山札へ戻す順番を記録した抽選と、1点を得る相手を選ぶ回答を扱う。投了で選べる相手が変わった場合も、実際の `applyFrame0` が残す処理を検査する。検査を通る合法手では、残りのドロー、対応する効果命令、Cleanup、Chain や Combat の終了処理を経て、次の入力待ちか空のスタックまで有限の fuel で進む。Beginning の追加ドローや Hold のドローで Burn Out した場合は、残るターンの段階を通常どおり進める。通常の優先権に戻る経路で後続スタックを検査する場合は、Combat の参加者を更新するフレームがないことを仮定する。[BurnOutWork.lean](../Riftbound/Invariant/BurnOutWork.lean) [TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
 
+### 3af. 制限時間のコール
+
+入力待ちでの合法な `timeCalled` は、そのターンを基準に制限時間を記録し、有限の fuel で次の入力待ちか空のスタックに進む。処理を終えた状態にも同じ制限時間が残る。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
