@@ -65,6 +65,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .prim (.score ..) | .prim (.win _)
   | .prim (.ready _) | .prim (.exhaust _) | .prim (.buff _) | .prim (.stun _)
   | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _)
+  | .prim (.turnEffect _) | .prim (.hideAt ..) | .prim (.empower _) | .prim (.disempower _) | .prim (.spendBuff _)
   | .prim (.allowFacedownInspection _)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
   | .prim (.lookTop _) | .prim (.recycleTop _) | .prim (.predict _)
@@ -127,6 +128,11 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case returnToHand selector => exact Effect.ObservedFinite.returnToHand selector
     case banish selector => exact Effect.ObservedFinite.banish selector
     case topdeck selector => exact Effect.ObservedFinite.topdeck selector
+    case turnEffect effect => exact (Effect.SingleRun.turnEffect effect).observed
+    case hideAt cards battlefields => exact (Effect.SingleRun.hideAt cards battlefields).observed
+    case empower selector => exact Effect.ObservedFinite.empower selector
+    case disempower selector => exact Effect.ObservedFinite.disempower selector
+    case spendBuff selector => exact Effect.ObservedFinite.spendBuff selector
     case allowFacedownInspection whose => exact (Effect.SingleRun.allowFacedownInspection whose).observed
     case deal target amount => exact Effect.ObservedFinite.deal target amount
     case exchangeDamage a b => exact Effect.ObservedFinite.exchangeDamage a b

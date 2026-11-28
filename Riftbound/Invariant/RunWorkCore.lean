@@ -635,6 +635,81 @@ private theorem Effect.SingleRun.topdeck (sel : Selector) (direct : (Effect.prim
   · intro _ _ s id
     exact sendObj_noAttach .mainDeck s id
 
+private theorem Effect.SingleRun.empower (sel : Selector) (direct : (Effect.prim (.empower sel)).pickSel? = none) :
+    (Effect.prim (.empower sel)).SingleRun := by
+  refine .selectedPrim (.empower sel) sel (fun p _ => empowerObj p) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro p _ s id
+    unfold empowerObj
+    split
+    · split <;> simp [NoAttach]
+    · exact .nil
+
+private theorem Effect.SingleRun.disempower (sel : Selector)
+    (direct : (Effect.prim (.disempower sel)).pickSel? = none) : (Effect.prim (.disempower sel)).SingleRun := by
+  refine .selectedPrim (.disempower sel) sel (fun _ _ => disempowerObj) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ _ _ _
+    exact .nil
+
+private theorem Effect.SingleRun.spendBuff (sel : Selector)
+    (direct : (Effect.prim (.spendBuff sel)).pickSel? = none) : (Effect.prim (.spendBuff sel)).SingleRun := by
+  refine .selectedPrim (.spendBuff sel) sel (fun _ _ => unbuffObj) direct ?_ (fun _ _ _ _ => rfl) ?_
+  · intro s p src env more
+    simp only [runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro _ _ s id
+    unfold unbuffObj
+    dsimp only
+    split
+    · split <;> simp [NoAttach]
+    · exact .nil
+
+/-- A turn effect records its note before resuming the Run, including the hidden-play events. -/
+theorem Effect.SingleRun.turnEffect (effect : TurnEffect) : (Effect.prim (.turnEffect effect)).SingleRun := by
+  refine .directPrim (.turnEffect effect) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim, Option.some.injEq, Prod.mk.injEq] at applied
+    rw [← applied.2]
+    split
+    · split <;> simp [NoAttach]
+    · exact .nil
+
+/-- Hiding a selected card moves it without scheduling an additional attachment action. -/
+theorem Effect.SingleRun.hideAt (cards battlefields : Selector) : (Effect.prim (.hideAt cards battlefields)).SingleRun := by
+  refine .directPrim (.hideAt cards battlefields) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, Effect.pickSel?, Prim.pickSel?, runEffect1, runPrimEffect,
+      effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim] at applied
+    split at applied
+    · rename_i field _ _
+      unfold onSelected at applied
+      cases selected : cards.eval s p src env with
+      | none => simp [selected] at applied
+      | some ids =>
+        simp only [selected, Option.map_some, Option.some.injEq] at applied
+        rw [← (Prod.mk.inj applied).2]
+        apply applyEach_noAttach (hideObj field) ?_ s ids
+        intro board id
+        unfold hideObj
+        split
+        · split
+          · exact .nil
+          · split <;> simp [NoAttach]
+        · exact .nil
+    · contradiction
+
 /-- A direct primitive can also choose one object during resolution, continuing its bound
 instruction after a singleton or yielding to the player when several candidates remain. -/
 private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
@@ -734,6 +809,18 @@ theorem Effect.ObservedFinite.banish (sel : Selector) : (Effect.prim (.banish se
 /-- Putting selected objects on top of their owners' decks reaches a choice or the next instruction. -/
 theorem Effect.ObservedFinite.topdeck (sel : Selector) : (Effect.prim (.topdeck sel)).ObservedFinite :=
   .selectedPrimitive (.topdeck sel) (Effect.SingleRun.topdeck sel) (Effect.SingleRun.topdeck (.var pickVar) rfl)
+
+/-- Empower follows the selected objects or stops for a choice during resolution. -/
+theorem Effect.ObservedFinite.empower (sel : Selector) : (Effect.prim (.empower sel)).ObservedFinite :=
+  .selectedPrimitive (.empower sel) (Effect.SingleRun.empower sel) (Effect.SingleRun.empower (.var pickVar) rfl)
+
+/-- Removing Empower follows the selected objects or stops for a choice during resolution. -/
+theorem Effect.ObservedFinite.disempower (sel : Selector) : (Effect.prim (.disempower sel)).ObservedFinite :=
+  .selectedPrimitive (.disempower sel) (Effect.SingleRun.disempower sel) (Effect.SingleRun.disempower (.var pickVar) rfl)
+
+/-- Spending a Buff follows the selected objects or stops for a choice during resolution. -/
+theorem Effect.ObservedFinite.spendBuff (sel : Selector) : (Effect.prim (.spendBuff sel)).ObservedFinite :=
+  .selectedPrimitive (.spendBuff sel) (Effect.SingleRun.spendBuff sel) (Effect.SingleRun.spendBuff (.var pickVar) rfl)
 
 /-- Awarding points consumes one Run step before any resulting win is observed. -/
 theorem Effect.SingleRun.score (who : PlayerSel) (amount : Amount) :

@@ -172,6 +172,33 @@ meta def afterUse : Option (GameState × List Event) :=
     d == toDeck && dZone == deck && (finished.zone deck).head? == some d' && samePhysical d d'
   : Option Bool).getD false
 
+-- Status changes and hiding run through the observer without disclosing the hidden card.
+#guard (do
+  let (s, p, q, unit, _, _) ← scene
+  let field ← s.battlefields.head?
+  let card ← (s.zone (.player p .hand)).head?
+  let original ← s.obj? card
+  let hiddenZone := Zone.player p .hidden
+  let env := ({ slots := [.obj unit, .obj field] } : Env).bindPick card false
+  let program := EffectList.ofList [
+    .prim (.empower (.slot 0)), .prim (.empower (.slot 0)), .prim (.disempower (.slot 0)),
+    .prim (.buff (.slot 0)), .prim (.spendBuff (.slot 0)), .prim (.turnEffect .hiddenPlayed),
+    .prim (.hideAt (.var pickVar) (.slot 1))]
+  let frame := Frame.run p unit env program
+  let started := { s with pending := [frame, .priority p] }
+  let ((finished, events), seen) ← (advanceWithDisclosures 12 started [] []).toOption
+  let hidden ← (finished.zone hiddenZone).head?
+  return runFrameSupported frame && finished.pending == [Frame.priority p] && seen.isEmpty &&
+    (finished.obj? unit).any (fun o => o.empowerCount == 0 && !o.buffed) &&
+    finished.turnFx.any (fun note => note.who == p && note.kind == TurnEffect.hiddenPlayed) &&
+    (finished.obj? hidden).any (fun o =>
+      o.kind.phys? == original.kind.phys? && o.hiddenAt == some field && o.hiddenTurn == some s.turn) &&
+    finished.zoneCardFaces q hiddenZone == some [none] &&
+    finished.zoneCardFaces p hiddenZone == some [original.kind.cardId?] &&
+    events == [Event.empowered p unit, Event.buffedBy unit p, Event.buffSpent p,
+      Event.hiddenPlayed p, Event.moved card hidden hiddenZone]
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

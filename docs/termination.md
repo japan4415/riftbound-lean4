@@ -276,6 +276,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 手札へ戻す、Banish する、山札の一番上に置く効果も、解決中の対象選択を含めて停止検査の対象にした。移動のイベントから装着置換の追加処理が生じないことを示し、誘発の観測は通常どおり行う。カード現物の保存、移動先、Banish を行った席、イベントの順序は再生経路で確認する。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
 
+### 3al. ターン中に残る効果、Empower、伏せ札
+
+ターン中に残る効果の記録と伏せ札への移動、および Empower の付与・消費と Buff の消費を停止検査で扱う。テストでは Empower の上限、各イベントの順序、伏せたカードの現物と戦場、席ごとの見え方を確認する。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [Chain.lean](../RiftboundTest/Chain.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
