@@ -242,6 +242,60 @@ theorem step_putTrigger_to_decision {s : Riftbound.GameState} {p : Riftbound.Pla
         Riftbound.advance extra t events :=
   Riftbound.step_putTrigger_to_decision wf (mightReads_of_registered cards) pending legal decision
 
+/-- Finalizing a registered trigger includes any Cleanup needed to return ordinary priority. -/
+theorem step_putTrigger_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger}
+    {funding : Option Riftbound.TriggerFunding} {index : Nat}
+    {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment} {rest : List Riftbound.Frame}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others funding :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .putTrigger index targets payment⟩)
+    (decision : rest.head?.all (fun f => !f.isWork) = true)
+    (quiet : ∀ owner tail, rest = .priority owner :: tail → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .putTrigger index targets payment⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .putTrigger index targets payment⟩ = .ok (t, events) :=
+  Riftbound.step_putTrigger_to_preparedDecision wf (mightReads_of_registered cards) pending legal decision quiet
+
+/-- Preparing the payment for a registered trigger reaches its funding decision. -/
+theorem step_prepareTrigger_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {index : Nat} {targets : List Riftbound.ObjId} {payment : Riftbound.TriggerPayment}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others none :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .prepareTrigger index targets payment⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .prepareTrigger index targets payment⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .prepareTrigger index targets payment⟩ = .ok (t, events) :=
+  Riftbound.step_prepareTrigger_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Selecting an Add during registered trigger funding reaches a prepared decision. -/
+theorem step_triggerAdd_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {plan : Riftbound.TriggerFunding} {add : Riftbound.EffectAdd}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .triggerAdd add⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .triggerAdd add⟩ =
+        Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .triggerAdd add⟩ = .ok (t, events) :=
+  Riftbound.step_triggerAdd_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
+/-- Cancelling registered trigger funding returns to a prepared decision. -/
+theorem step_cancelTriggerFunding_to_preparedDecision {s : Riftbound.GameState} {p : Riftbound.PlayerId}
+    {first : Riftbound.PendTrigger} {group others : List Riftbound.PendTrigger} {rest : List Riftbound.Frame}
+    {plan : Riftbound.TriggerFunding}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (pending : s.pending = .triggerOrder p first group others (some plan) :: rest)
+    (legal : Riftbound.Legal s ⟨.player p, .decide false⟩) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s ⟨.player p, .decide false⟩ = Riftbound.advance extra t events) ∧
+      Riftbound.step used s ⟨.player p, .decide false⟩ = .ok (t, events) :=
+  Riftbound.step_cancelTriggerFunding_to_preparedDecision wf (mightReads_of_registered cards) pending legal
+
 /-- A checked replacement answer can resume the locked trigger with the registered cards.
 Remaining fuel runs any further Cleanup required by the next decision. -/
 theorem step_triggerCostAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}
@@ -250,6 +304,20 @@ theorem step_triggerCostAnswer_checked_to_decision {s : Riftbound.GameState} {a 
     ∃ t used events, t.pending.head?.all (fun f => !f.isWork) = true ∧
       ∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events :=
   Riftbound.step_triggerCostAnswer_checked_to_decision wf (mightReads_of_registered cards) legal checked
+
+/-- A checked replacement answer for a registered trigger succeeds at a prepared decision. -/
+theorem step_triggerCostAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.triggerCostAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted locked p first group others funding owner tail,
+      Riftbound.applyFrame0 s a = some (raw, emitted) →
+      raw.pending.dropWhile Riftbound.isRunFrame =
+        .resumeCost locked :: .triggerOrder p first group others funding :: .priority owner :: tail →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_triggerCostAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
 
 /-- A legal play or activation with registered cards reaches the next decision,
 including a decision requested during payment. -/

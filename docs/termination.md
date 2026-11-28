@@ -186,9 +186,11 @@ Chain の検査はこれらの命令と、一時的な Might などの付与、�
 
 ### 3v. 誘発の確定と保留された支払いの再開
 
-`step_prepareTrigger_to_decision`、`step_triggerAdd_to_decision`、`step_cancelTriggerFunding_to_decision` は、支払いの準備、Add の選択、取り消しが次の判断に進むことを示す。誘発の確定は、現在の選択を支払って Chain に置く場合、見送る場合、確定前に死亡置換を求める場合を扱う。継続が入力待ちか空なら、残る通常の誘発も有限回で処理する。[TriggerAnswerWork.lean](../Riftbound/Invariant/TriggerAnswerWork.lean)
+`step_prepareTrigger_to_preparedDecision`、`step_triggerAdd_to_preparedDecision`、`step_cancelTriggerFunding_to_preparedDecision` は、支払いの準備、Add の選択、取り消しに対し、実際の `step` が有限の fuel で次の入力とイベント列を返すことを示す。誘発の確定は、現在の選択を支払って Chain に置く場合、見送る場合、確定前に死亡置換を求める場合を扱う。継続が入力待ちか空なら、残る通常の誘発も有限回で処理する。[TriggerAnswerWork.lean](../Riftbound/Invariant/TriggerAnswerWork.lean)
 
 `triggerCostAnswerWorkSupported` は、置換への回答が積む命令列と保留された誘発の宣言を確認する。検査を通る合法手は回答を記録し、宣言を現在の状態でもう一度検査する。引き続き合法なら宣言を再開し、別の死亡置換が必要ならその入力に進む。合法でなくなった場合は元の誘発の選択へ戻る。回答時に生じた通常の誘発が先に入力を求める場合も扱う。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
+
+確定や再開で通常の優先権に戻るときは、必要な Cleanup を済ませ、そのイベントも順番どおりに含める。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[TriggerAnswerWork.lean](../Riftbound/Invariant/TriggerAnswerWork.lean)
 
 ### 3w. カードのプレイ、能力起動、Recycle の支払い
 
