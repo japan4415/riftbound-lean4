@@ -54,6 +54,32 @@ meta def declare : Action := ⟨.judge, .declareDraw⟩
   | some s => (step 100 s declare).toOption.isNone
   | none => false
 
+-- The judge closes the replay even when removing Showdown would cross a Might threshold.
+#guard (do
+  let p : PlayerId := ⟨0⟩
+  let q : PlayerId := ⟨1⟩
+  let crossing : CardDef := { vanilla 0 with
+    id := cid "T-DRAW-THRESHOLD"
+    might := some 5
+    abilities := [.passive .inCombat [.mightMinus .self (.const 1)],
+      .triggered { event := .becomeMighty, optional := true }
+        (.of [] (.prim (.gainXP .you (.const 1)))) .unlimited] }
+  let cards := { db with cards := crossing :: db.cards }
+  let empty := GameState.empty { ruleSet := .tournament .constructed, mode := .duel } cards
+  let (s, field) ← addObject empty (newCard cards empty p (cid "B0")) .battlefieldZone
+  let (s, unit) ← addObject s { newCard cards s p crossing.id with loc := some field } .battlefieldZone
+  let (s, _) ← addObject s { newCard cards s q (cid "V1") with loc := some field } .battlefieldZone
+  let waiting := { s with
+    active := some p, turnOrder := [p, q], turn := 1, phase := .main
+    pending := [.showdown field p 0, .priority p] }
+  let input : GameInputs := { decks := .core [], answers := #[] }
+  let (action, completed, emitted) ←
+    (input.advance [ReplayPosition.fromState waiting] (.observed declare) 1 0 true).toOption
+  return waiting.mightNow unit == some 4 && completed.state.mightNow unit == some 5 &&
+    action == some declare && completed.answerExact && completed.state.result == some .draw &&
+    completed.state.pending.isEmpty && emitted.isEmpty && completed.disclosures.isEmpty
+  : Option Bool).getD false
+
 -- a draw can be declared in any open question, here before the first turn begins
 #guard match GameState.initial db { ruleSet := .tournament .constructed, mode := Mode.duel }
     [goodDeck, goodDeck] with

@@ -256,6 +256,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 入力待ちでの合法な `timeCalled` は、そのターンを基準に制限時間を記録し、有限の fuel で次の入力待ちか空のスタックに進む。処理を終えた状態にも同じ制限時間が残る。通常の優先権の後ろに Combat の参加者を更新するフレームがないことを仮定する。[DecisionHandoffs.lean](../Riftbound/Invariant/DecisionHandoffs.lean)
 
+### 3ag. ジャッジの引き分け宣言
+
+`step_declareDraw_terminal` は、合法な引き分け宣言が任意の fuel で引き分けを返し、残る入力と作業を空にすることを示す。スタックを空にした結果として Might の計算が変わる場合でも、終局後に誘発を積まない。[Draw.lean](../Riftbound/Invariant/Draw.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

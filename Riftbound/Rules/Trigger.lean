@@ -487,9 +487,11 @@ def GameState.workTransitionEvents (s s' : GameState) : List Event :=
 
 /-- State changes during an answer. Passing Chain priority cannot change Board objects. -/
 def GameState.actionTransitionEvents (s s' : GameState) (a : Action) : List Event :=
-  match s.pending, a.kind with
-  | .chainPass .. :: _, .pass => []
-  | _, kind =>
+  match a.kind, s.pending with
+  -- Clearing the stack for a judge's draw does not generate gameplay observations.
+  | .declareDraw, _ => []
+  | .pass, .chainPass .. :: _ => []
+  | kind, _ =>
     let who := match a.actor with | .player p => some p | _ => none
     let beforeMove := match s.pending, kind with
       | _, .standardMove .. | .groupMove .. :: _, .decide true => true
