@@ -69,7 +69,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .nameCard _ | .rememberNamedCard _ | .guessCardType ..
   | .prim (.deal ..) | .prim (.exchangeDamage ..) | .prim (.markOn ..) | .grant ..
   | .splitDamage .. | .splitUnitDamage .. | .applySplitDamage .. | .applyUnitSplitDamage ..
-  | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage ..
+  | .resolveEffectDamage .. | .chooseDamageReplacement .. | .orderCombatDamage .. | .endCombatDamage ..
   | .chooseDeathBanisher .. | .chooseDeathGear .. | .chooseDeathFree ..
   | .recordDeathSacrifice .. | .recordDeathOrder .. | .recordDeathReselection ..
   | .recordNestedDeathDecision .. | .orderRuneRecycle .. | .recordRuneRecycle ..
@@ -162,6 +162,7 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
   case resolveEffectDamage batch hit => exact .resolveDamage batch hit
   case chooseDamageReplacement batch hit replacement => exact .chooseDamage batch hit replacement
   case orderCombatDamage target chosen remaining => exact .orderCombatDamage target chosen remaining
+  case endCombatDamage excess => exact .endCombatDamage excess
   case chooseDeathBanisher unit banisher => exact .chooseDeathBanisher unit banisher
   case chooseDeathGear unit gear => exact .chooseDeathGear unit gear
   case chooseDeathFree unit source => exact .chooseDeathFree unit source

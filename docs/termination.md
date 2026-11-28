@@ -174,6 +174,8 @@ I12 のうち、エンジン上で連続する Cleanup と Expiration、初期�
 
 継続スタックには、通常の移動で残る Cleanup を含められる。通常の誘発は残る解決フレームの後ろに積み、即時 Add は観測時に実行する。ダメージ置換などの入力が出た場合はそこで止まる。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがない条件で、優先権を返す準備が積む Cleanup も扱う。登録カード用の定理は4人戦の投了後も使え、fuel を増やしても状態とイベント列は一致する。[RiftboundCards/MightRead.lean](../RiftboundCards/MightRead.lean)
 
+`combatAnswerWorkSupported` は、Combat 中の回答が積む命令列と、その後に残る Combat の段階を確認する。ダメージ直後、リコール後、支配確定後の Cleanup から再開でき、途中で生じた誘発や追加の判断も処理順どおりに扱う。検査を通った合法な回答は、上と同じ優先権の条件で、有限の fuel で状態とイベント列を返す。[CombatWork.lean](../Riftbound/Invariant/CombatWork.lean)
+
 ### 3t. Spell と能力によるダメージ
 
 `Effect.ObservedFinite.resolveDamage` は、ダメージの処理を「残りの対象別ダメージ件数、処理中の1件に残る置換数」の順に比較する。置換が一つしかなければ適用して先へ進み、複数の異なる置換や死亡置換があれば入力を待つ。通常の直接ダメージ、相互ダメージと振り分けも、実際のイベント観測を経て Run の続きか次の入力に進む。[DamageWork.lean](../Riftbound/Invariant/DamageWork.lean)

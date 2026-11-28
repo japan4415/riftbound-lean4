@@ -4185,6 +4185,33 @@ meta def activateAsIs (s : GameState) (p : PlayerId) (src : ObjId) (idx : Nat)
     saved.where? defender == some (.player p .base) &&
     (saved.obj? attacker).any (fun o => o.loc == some field)
 
+-- Both direct Kill from a combat hit and a later lethal-damage Cleanup may need a response.
+#guard tsf fun s => do
+  let p := s.me
+  let q := s.you
+  let field := s.bf0
+  let (s, defender) ← putAt (s.control p field) p "OGN-006" field
+  let (s, gear) ← put s p "SFD-051" .base
+  let (s, attacker) ← putAt (attachTo defender s gear).1 q "OGN-001" field
+  let contested := (s.addTurnFxOn p defender .saveOnce).modObj field (fun o => { o with contested := some q })
+  let assigning := { contested with
+    active := some q,
+    combat := some {
+      battlefield := field, attacker := q, defender := p, units := [attacker, defender] },
+    pending := .assign field q p [attacker] [(defender, 5)] :: combatSteps field ++ [.priority q] }
+  let finish (initial : GameState) (damagePending : Bool) := do
+    let (question, before) ← (step 100 initial ⟨.player p, .assignDone⟩).toOption
+    let answer : Action := ⟨.player p, .decide true⟩
+    let (completed, after) ← (step 100 question answer).toOption
+    return combatAnswerWorkSupported question answer &&
+      (completed.preparePriority.pending.head?.all (fun f => !f.isWork)) &&
+      (before.contains (.damaged defender 5) != damagePending) &&
+      (before ++ after).contains (.damaged defender 5) &&
+      (before ++ after).any (fun | .combatEnded bf _ => bf == field | _ => false)
+  let beforeDamage ← finish (assigning.addTurnFxOn q defender .killOnDamage) true
+  let duringCleanup ← finish assigning false
+  return beforeDamage && duringCleanup
+
 -- The Angel also saves the attached Unit from a direct Kill, but stays attached after a nonlethal hit.
 #guard tsf fun s => do
   let (s1, bf) ← putBf s s.me "OGN-275"

@@ -252,6 +252,18 @@ theorem step_assignDone_to_preparedDecision {s : Riftbound.GameState} {bf : Rift
   Riftbound.step_assignDone_to_preparedDecision wf (mightReads_of_registered cards)
     pending legal decision front quiet
 
+/-- A checked answer inside Combat with the registered cards reaches a prepared decision. -/
+theorem step_combatAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.combatAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted cleanups p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.combatAnswerContinuation? (raw.pending.dropWhile Riftbound.isRunFrame) =
+        some (cleanups, .priority p :: tail) → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_combatAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
+
 /-- With the registered cards, a checked answer to a Chain effect advances to the next
 decision's continuation or game end, preserving the state and events along that prefix. -/
 theorem step_chainAnswer_checked_to_decision {s : Riftbound.GameState} {a : Riftbound.Action}

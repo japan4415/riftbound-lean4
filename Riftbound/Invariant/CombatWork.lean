@@ -1,7 +1,6 @@
 module
 
-public import Riftbound.Invariant.ObservedCleanupWork
-public import Riftbound.Invariant.DamageWork
+public import Riftbound.Invariant.ChainAnswerWork
 public import Riftbound.Invariant.Step
 
 /-!
@@ -43,6 +42,17 @@ theorem advance_combat_result {s : GameState} {bf : ObjId} {rest : List Frame}
     exact ⟨t, used + elapsed, events, by simpa only [List.append_nil] using path.append resolved,
       Or.inl ready⟩
 
+private theorem advance_pending_cleanup {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : ResolutionPrefix [.cleanup] keeps s.pending)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  obtain ⟨tail, stack, kept⟩ := pending
+  obtain ⟨t, used, events, _, path, done⟩ :=
+    advance_cleanup_with_adds_prepared wf reads stack keeps kept inserted
+  exact ⟨t, used, events, path,
+    done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
+
 private theorem observed_cleanup_step {s raw : GameState} {f : Frame} {rest cleanupTail : List Frame}
     {events : List Event} {keeps : List Frame → Prop} (wf : s.WF)
     (reads : MightRead.database s.cards) (pending : s.pending = f :: rest) (automatic : f.isWork = true)
@@ -54,13 +64,7 @@ private theorem observed_cleanup_step {s raw : GameState} {f : Frame} {rest clea
   have entered : AdvanceTo s tracked :=
     .rule pending automatic rule (microStep_wf0 wf rule) known reads ⟨cleanupTail, after, base⟩
       (fun _ route q ne => route.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) inserted q ne)
-  apply entered.then reads
-  intro state safe checked continued
-  obtain ⟨tail, cleanup, kept⟩ := continued
-  obtain ⟨t, used, emitted, _, ran, done⟩ :=
-    advance_cleanup_with_adds_prepared safe checked cleanup keeps kept inserted
-  exact ⟨t, used, emitted, ran,
-    done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
+  exact entered.then reads (fun _ safe checked continued => advance_pending_cleanup safe checked continued inserted)
 
 /-- Combat Cleanup heals, recalls and settles the board before the Combat result. -/
 theorem advance_combat_recall {s : GameState} {bf : ObjId} {att : PlayerId} {rest : List Frame}
@@ -136,11 +140,31 @@ theorem advance_combat_control {s : GameState} {bf : ObjId} {rest : List Frame}
   exact ⟨u, used, events, path,
     done.imp_right (fun ⟨waiting, safe, cards, _⟩ => ⟨waiting, safe, cards⟩)⟩
 
-private theorem advance_combat_leading {s : GameState} {rest : List Frame} (wf : s.WF)
-    (reads : MightRead.database s.cards) (tail : TriggerWorkTail rest s.pending) :
-    AdvanceTo s (fun frames => frames = rest) := by
-  obtain ⟨t, used, path, done⟩ := advance_trigger_tail_prepared s rest wf reads tail
-  exact ⟨t, used, [], path, done⟩
+private theorem advance_combat_finish_queue {s : GameState} {bf : ObjId} {rest : List Frame}
+    {keeps : List Frame → Prop} (wf : s.WF) (reads : MightRead.database s.cards)
+    (waiting : TriggerWorkTail (.combatFinish bf :: rest) s.pending)
+    (base : keeps rest)
+    (inserted : ∀ stack, keeps stack → ∀ queue, queue ≠ [] → keeps (insertTriggers queue stack)) :
+    AdvanceTo s keeps := by
+  apply (advance_trigger_tail_until_decision wf reads waiting).then reads
+  intro finishState finishWF finishReads atFinish
+  exact advance_combat_finish finishWF finishReads atFinish base inserted
+
+private theorem advance_combat_result_queue {s : GameState} {bf : ObjId} {rest : List Frame}
+    {keeps : List Frame → Prop} (wf : s.WF) (reads : MightRead.database s.cards)
+    (waiting : TriggerWorkTail (combatSteps bf ++ rest) s.pending)
+    (base : keeps rest)
+    (inserted : ∀ stack, keeps stack → ∀ queue, queue ≠ [] → keeps (insertTriggers queue stack)) :
+    AdvanceTo s keeps := by
+  apply (advance_trigger_tail_until_decision wf reads waiting).then reads
+  intro resultState resultWF resultReads atResult
+  apply (advance_combat_result resultWF resultReads atResult).then resultReads
+  intro controlState controlWF controlReads atControl
+  have control : AdvanceTo controlState (TriggerWorkTail (.combatFinish bf :: rest)) :=
+    advance_combat_control controlWF controlReads atControl (Or.inl rfl)
+      (fun _ track q ne => track.insert
+        (by intro f h; cases Option.some.inj h; exact ⟨rfl, by intro _ e; cases e⟩) q ne)
+  exact control.then controlReads (fun _ safe checked final => advance_combat_finish_queue safe checked final base inserted)
 
 /-- Follow the automatic post-damage stages through the Combat result, Control and Cleanup.
 A decision or sudden-death finish can interrupt any stage. -/
@@ -156,21 +180,8 @@ theorem advance_combat_after_damage {s : GameState} {bf : ObjId} {att : PlayerId
     advance_combat_recall wf reads pending tracked
       (fun _ track q ne => track.insert
         (by intro f h; cases Option.some.inj h; exact ⟨rfl, by intro _ e; cases e⟩) q ne)
-  apply recalled.then reads
-  intro t safe checked waiting
-  apply (advance_combat_leading safe checked waiting).then checked
-  intro resultState resultWF resultReads atResult
-  apply (advance_combat_result resultWF resultReads atResult).then resultReads
-  intro controlState controlWF controlReads atControl
-  have control : AdvanceTo controlState (TriggerWorkTail (.combatFinish bf :: rest)) :=
-    advance_combat_control controlWF controlReads atControl (Or.inl rfl)
-      (fun _ track q ne => track.insert
-        (by intro f h; cases Option.some.inj h; exact ⟨rfl, by intro _ e; cases e⟩) q ne)
-  apply control.then controlReads
-  intro drawState drawWF drawReads atDrawEnd
-  apply (advance_combat_leading drawWF drawReads atDrawEnd).then drawReads
-  intro finishState finishWF finishReads atFinish
-  exact advance_combat_finish finishWF finishReads atFinish base inserted
+  exact recalled.then reads (fun _ safe checked waiting =>
+    advance_combat_result_queue safe checked waiting base inserted)
 
 private theorem damageOrderFrames_finite (s : GameState) (bf : ObjId) (att side : PlayerId)
     {f : Frame} (member : f ∈ damageOrderFrames s bf att side) : f.FiniteRun := by
@@ -369,7 +380,7 @@ private theorem advance_combat_cleanups {s : GameState} {rest : List Frame} (cle
   induction cleanups generalizing s with
   | zero =>
     obtain ⟨tail, atTail, tracked⟩ := continuation
-    exact advance_combat_leading wf reads (atTail.symm ▸ tracked)
+    exact advance_trigger_tail_until_decision wf reads (atTail.symm ▸ tracked)
   | succ remaining ih =>
     obtain ⟨tail, atCleanup, tracked⟩ := continuation
     let keeps := CombatContinuation remaining rest
@@ -515,10 +526,6 @@ theorem step_showdownPass_last_to_preparedDecision {s : GameState} {bf : ObjId} 
       (∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events) ∧
       step used s ⟨.player p, .pass⟩ = .ok (t, events) :=
   step_combat_prepared legal (advance_showdownPass_last_until_decision wf reads pending last boundary front) boundary quiet
-
-private theorem Effect.ObservedFinite.endCombatDamage (excess : Nat × Nat) :
-    (Effect.endCombatDamage excess).ObservedFinite :=
-  Effect.SingleRun.observed (fun s _ src _ _ => ⟨recordCombatDamage s src excess, [], rfl⟩)
 
 private theorem assignDoneStep_work_cases (s : GameState) (bf : ObjId) (att side : PlayerId)
     (acc : List ObjId) (done : List (ObjId × Nat)) (rest : List Frame) :
@@ -684,6 +691,227 @@ theorem step_assignDone_to_preparedDecision {s : GameState} {bf : ObjId} {att si
       (∀ extra, step (used + extra) s ⟨.player side, .assignDone⟩ = advance extra t events) ∧
       step used s ⟨.player side, .assignDone⟩ = .ok (t, events) :=
   step_combat_prepared legal (advance_assignDone_until_decision wf reads pending boundary front) boundary quiet
+
+/-- Find the waiting decision after a Combat answer's continuation and any later Cleanup. -/
+def combatAnswerContinuation? (stack : List Frame) : Option (Nat × List Frame) :=
+  match combatAnswerSuffix? stack with
+  | none => none
+  | some suffix => (chainAnswerContinuation? (suffix.dropWhile Frame.isCleanup)).map
+      (fun rest => ((suffix.takeWhile Frame.isCleanup).length, rest))
+where
+  combatQueuedTail? : List Frame → Option (List Frame)
+    | .triggers [] :: _ => none
+    | .triggers (_ :: _) :: rest => some rest
+    | rest => some rest
+
+  combatResultSuffix? (stack : List Frame) : Option (ObjId × List Frame) :=
+    match combatQueuedTail? stack with
+    | some (.combatResult field :: .combatControl control :: .combatFinish finish :: suffix) =>
+      if field = control ∧ field = finish then some (field, suffix) else none
+    | _ => none
+
+  combatDamageSuffix? (field : ObjId) (stack : List Frame) : Option (List Frame) :=
+    match combatResultSuffix? stack with
+    | some (found, suffix) => if found = field then some suffix else none
+    | none => none
+
+  combatAnswerSuffix? : List Frame → Option (List Frame)
+    | .cleanup :: .combatResolve field _ :: tail => combatDamageSuffix? field tail
+    | .combatResolve field _ :: tail => combatDamageSuffix? field tail
+    | .cleanup :: tail =>
+      match combatResultSuffix? tail with
+      | some (_, suffix) => some suffix
+      | none =>
+        match combatQueuedTail? tail with
+        | some (.combatFinish _ :: suffix) => some suffix
+        | _ => none
+    | _ => none
+
+/-- Select the continuation inside a Combat, allowing an ordinary trigger queue before its next stage. -/
+private theorem combatQueuedTail_sound {stack rest : List Frame}
+    (parsed : combatAnswerContinuation?.combatQueuedTail? stack = some rest) : TriggerWorkTail rest stack := by
+  unfold combatAnswerContinuation?.combatQueuedTail? at parsed
+  split at parsed
+  · contradiction
+  · obtain rfl := Option.some.inj parsed
+    exact Or.inr ⟨_, by simp, rfl⟩
+  · exact Or.inl (Option.some.inj parsed)
+
+private theorem combatResultSuffix_sound {stack suffix : List Frame} {bf : ObjId}
+    (parsed : combatAnswerContinuation?.combatResultSuffix? stack = some (bf, suffix)) :
+    TriggerWorkTail (combatSteps bf ++ suffix) stack := by
+  unfold combatAnswerContinuation?.combatResultSuffix? at parsed
+  split at parsed
+  · rename_i frames field control finish later queued
+    split at parsed
+    · rename_i same
+      rcases same with ⟨rfl, rfl⟩
+      cases Option.some.inj parsed
+      exact combatQueuedTail_sound queued
+    · contradiction
+  · contradiction
+
+private theorem combatDamageSuffix_sound {bf : ObjId} {stack suffix : List Frame}
+    (parsed : combatAnswerContinuation?.combatDamageSuffix? bf stack = some suffix) :
+    TriggerWorkTail (combatSteps bf ++ suffix) stack := by
+  unfold combatAnswerContinuation?.combatDamageSuffix? at parsed
+  split at parsed
+  · rename_i answer found rest result
+    split at parsed
+    · rename_i same
+      obtain rfl := Option.some.inj parsed
+      exact combatResultSuffix_sound (same ▸ result)
+    · contradiction
+  · contradiction
+
+private inductive CombatAnswerStage (suffix : List Frame) : List Frame → Prop where
+  | damage (bf : ObjId) (att : PlayerId) {stack : List Frame}
+      (tracked : ResolutionPrefix [.cleanup, .combatResolve bf att]
+        (TriggerWorkTail (combatSteps bf ++ suffix)) stack) : CombatAnswerStage suffix stack
+  | preRecall (bf : ObjId) (att : PlayerId) {stack : List Frame}
+      (tracked : ResolutionPrefix [.combatResolve bf att]
+        (TriggerWorkTail (combatSteps bf ++ suffix)) stack) : CombatAnswerStage suffix stack
+  | result (bf : ObjId) {stack : List Frame}
+      (tracked : ResolutionPrefix [.cleanup]
+        (TriggerWorkTail (combatSteps bf ++ suffix)) stack) : CombatAnswerStage suffix stack
+  | finish (bf : ObjId) {stack : List Frame}
+      (tracked : ResolutionPrefix [.cleanup] (TriggerWorkTail (.combatFinish bf :: suffix)) stack) :
+      CombatAnswerStage suffix stack
+
+private theorem combatAnswerSuffix_sound {stack suffix : List Frame}
+    (parsed : combatAnswerContinuation?.combatAnswerSuffix? stack = some suffix) : CombatAnswerStage suffix stack := by
+  unfold combatAnswerContinuation?.combatAnswerSuffix? at parsed
+  split at parsed
+  · exact .damage _ _ ⟨_, rfl, combatDamageSuffix_sound parsed⟩
+  · exact .preRecall _ _ ⟨_, rfl, combatDamageSuffix_sound parsed⟩
+  · split at parsed
+    · rename_i result bf rest shape
+      obtain rfl := Option.some.inj parsed
+      exact .result bf ⟨_, rfl, combatResultSuffix_sound shape⟩
+    · split at parsed
+      · rename_i frames bf rest queued
+        obtain rfl := Option.some.inj parsed
+        exact .finish bf ⟨_, rfl, combatQueuedTail_sound queued⟩
+      · contradiction
+  · contradiction
+
+private theorem combatFinish_head (bf : ObjId) (suffix : List Frame) :
+    ∀ f, (.combatFinish bf :: suffix : List Frame).head? = some f →
+      f.isResolution = false ∧ ∀ q, f ≠ .triggers q := by
+  intro f head
+  obtain rfl := Option.some.inj head
+  exact ⟨rfl, by intro _ eq; cases eq⟩
+
+private theorem CombatAnswerStage.insert {suffix stack : List Frame} (stage : CombatAnswerStage suffix stack)
+    (q : List PendTrigger) (nonempty : q ≠ []) : CombatAnswerStage suffix (insertTriggers q stack) := by
+  cases stage with
+  | damage bf att tracked =>
+    refine .damage bf att (tracked.insert ?_
+      (fun _ waiting added ne => waiting.insert (combat_result_head bf suffix) added ne) q nonempty)
+    intro f member
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl <;> rfl
+  | preRecall bf att tracked =>
+    exact .preRecall bf att (tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ waiting added ne => waiting.insert (combat_result_head bf suffix) added ne) q nonempty)
+  | result bf tracked =>
+    exact .result bf (tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ waiting added ne => waiting.insert (combat_result_head bf suffix) added ne) q nonempty)
+  | finish bf tracked =>
+    exact .finish bf (tracked.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ waiting added ne => waiting.insert (combatFinish_head bf suffix) added ne) q nonempty)
+
+private theorem advance_combat_answer_stage {s : GameState} {suffix : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (stage : CombatAnswerStage suffix s.pending)
+    (base : keeps suffix)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  cases stage with
+  | damage bf att tracked => exact advance_combat_damage_to_cleanup wf reads tracked base inserted
+  | preRecall bf att tracked =>
+    obtain ⟨tail, atRecall, waiting⟩ := tracked
+    exact advance_combat_after_damage wf reads atRecall waiting base inserted
+  | result bf tracked =>
+    have cleaned := advance_pending_cleanup wf reads tracked
+      (fun _ waiting q ne => waiting.insert (combat_result_head bf suffix) q ne)
+    exact cleaned.then reads (fun _ safe checked waiting =>
+      advance_combat_result_queue safe checked waiting base inserted)
+  | finish bf tracked =>
+    have cleaned := advance_pending_cleanup wf reads tracked
+      (fun _ waiting q ne => waiting.insert (combatFinish_head bf suffix) q ne)
+    exact cleaned.then reads (fun _ safe checked waiting =>
+      advance_combat_finish_queue safe checked waiting base inserted)
+
+private theorem combatAnswerContinuation_sound {stack rest : List Frame} {cleanups : Nat}
+    (parsed : combatAnswerContinuation? stack = some (cleanups, rest)) :
+    ∃ suffix, CombatAnswerStage suffix stack ∧ CombatContinuation cleanups rest suffix ∧
+      isOrdinaryDecisionTail rest = true := by
+  unfold combatAnswerContinuation? at parsed
+  cases identified : combatAnswerContinuation?.combatAnswerSuffix? stack with
+  | none => simp [identified] at parsed
+  | some suffix =>
+    cases decision : chainAnswerContinuation? (suffix.dropWhile Frame.isCleanup) with
+    | none => simp [identified, decision] at parsed
+    | some ready =>
+      simp only [identified, decision, Option.map_some, Option.some.injEq, Prod.mk.injEq] at parsed
+      obtain ⟨rfl, rfl⟩ := parsed
+      obtain ⟨tracked, ordinary⟩ := chainAnswerContinuation_sound decision
+      have leading : suffix.takeWhile Frame.isCleanup =
+          List.replicate (suffix.takeWhile Frame.isCleanup).length .cleanup := by
+        apply List.eq_replicate_of_mem
+        intro frame member
+        have isCleanup := List.all_eq_true.mp List.all_takeWhile frame member
+        cases frame <;> simp_all [Frame.isCleanup]
+      refine ⟨suffix, combatAnswerSuffix_sound identified, ⟨_, ?_, tracked⟩, ordinary⟩
+      rw [← leading, List.takeWhile_append_dropWhile]
+
+/-- Check all Runs generated by an answer and locate the remaining Combat stages. -/
+def combatAnswerWorkSupported (s : GameState) (a : Action) : Bool :=
+  isRunProgramAnswer s a && (applyFrame0 s a).any (fun result =>
+    (result.1.pending.takeWhile isRunFrame).all runFrameSupported &&
+      (combatAnswerContinuation? (result.1.pending.dropWhile isRunFrame)).isSome)
+
+/-- A checked answer inside Combat runs the selected program, remaining Combat and Cleanup
+until the prepared decision or an empty stack. -/
+theorem step_combatAnswer_checked_to_preparedDecision {s : GameState} {a : Action}
+    (wf : s.WF) (reads : MightRead.database s.cards) (legal : Legal s a)
+    (supported : combatAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted cleanups p tail, applyFrame0 s a = some (raw, emitted) →
+      combatAnswerContinuation? (raw.pending.dropWhile isRunFrame) = some (cleanups, .priority p :: tail) →
+      ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s a = advance extra t events) ∧
+      step used s a = .ok (t, events) := by
+  unfold combatAnswerWorkSupported at supported
+  obtain ⟨answer, condition⟩ := Bool.and_eq_true_iff.mp supported
+  cases applied : applyFrame0 s a with
+  | none => simp [applied] at condition
+  | some result =>
+    obtain ⟨raw, events⟩ := result
+    simp only [applied, Option.any_some, Bool.and_eq_true_iff] at condition
+    obtain ⟨programs, continuation⟩ := condition
+    cases parsed : combatAnswerContinuation? (raw.pending.dropWhile isRunFrame) with
+    | none => simp [parsed] at continuation
+    | some target =>
+      obtain ⟨cleanups, rest⟩ := target
+      obtain ⟨suffix, stage, resumed, ready⟩ := combatAnswerContinuation_sound parsed
+      have decision := isOrdinaryDecisionTail_boundary ready
+      have front (f : Frame) (head : rest.head? = some f) : f.isResolution = false :=
+        (isOrdinaryDecisionTail_front ready f head).1
+      obtain ⟨noCost, regular, cards⟩ := runProgramAnswer_rule answer applied
+      apply step_observed_frame_to_preparedDecision legal noCost regular applied
+        (applyFrame_wf0 wf (legal.frame regular) applied) (cards.symm ▸ reads)
+      intro next observed safe checked stack
+      refine advance_observed_run_prefix_then_prepared next observed safe checked
+        ⟨_, stack.trans List.takeWhile_append_dropWhile.symm, stage⟩
+        (fun f member => runFrameSupported_finite (List.all_eq_true.mp programs f member))
+        (fun _ kept q ne => kept.insert q ne) ?_
+      intro _ clean known kept
+      have combat := advance_combat_answer_stage clean known kept resumed
+        (fun _ continuing q ne => continuing.insert decision front q ne)
+      exact (advance_combat_until_decision known combat decision front).atPreparedDecision known decision
+        (fun p tail priority => quiet raw events cleanups p tail applied
+          (parsed.trans (congrArg (fun frames => some (cleanups, frames)) priority)))
 
 end Riftbound
 

@@ -14,6 +14,11 @@ The immediate damage route preserves the same Run continuation through event obs
 
 namespace Riftbound
 
+/-- Record the final excess damage for a Combat before resuming its Run program. -/
+theorem Effect.ObservedFinite.endCombatDamage (excess : Nat × Nat) :
+    (Effect.endCombatDamage excess).ObservedFinite :=
+  Effect.SingleRun.observed (fun s _ src _ _ => ⟨recordCombatDamage s src excess, [], rfl⟩)
+
 private def damageRank (batch : EffectDamageBatch) (hit : Option EffectDamageHit) : Nat × Nat :=
   (batch.incoming.length, (hit.map fun h => h.replacements.length + 1).getD 0)
 
