@@ -229,6 +229,46 @@ termination_by structural program
 
 end
 
+/-- Check the pending Play and the rest of its Run against the live checkpoint. -/
+def permanentPlayRunSupported (s : GameState) : Bool :=
+  match s.pending with
+  | .run p src env (.cons (.prim (.play sel)) more) :: _ =>
+    (Effect.prim (.play sel)).pickSel?.isNone &&
+      (playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy).isNone &&
+      more.observedWorkSupported
+  | _ => false
+
+/-- A checked Play in a live Run reaches a prepared decision or its retained continuation. -/
+theorem advance_permanentPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : permanentPlayRunSupported s = true)
+    (base : keeps s.pending.tail)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s keeps := by
+  cases pending : s.pending with
+  | nil => simp [permanentPlayRunSupported, pending] at checked
+  | cons f rest =>
+    cases f <;> try (simp [permanentPlayRunSupported, pending] at checked; done)
+    case run p src env program =>
+      cases program with
+      | nil => simp [permanentPlayRunSupported, pending] at checked
+      | cons effect more =>
+        cases effect <;> try (simp [permanentPlayRunSupported, pending] at checked; done)
+        case prim pr =>
+          cases pr <;> try (simp [permanentPlayRunSupported, pending] at checked; done)
+          case play sel =>
+            simp only [permanentPlayRunSupported, pending, Bool.and_eq_true_iff] at checked
+            obtain ⟨⟨direct, noSpell⟩, remaining⟩ := checked
+            have hp : (Effect.prim (.play sel)).pickSel? = none := by
+              cases found : (Effect.prim (.play sel)).pickSel? <;> simp_all
+            have hs : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy = none := by
+              cases spell : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy <;> simp_all
+            have start := advance_run_playPermanent wf reads pending hp hs (by simpa [pending] using base) inserted
+            apply start.then reads
+            intro t safe known next
+            obtain ⟨live, tail, stack, kept⟩ := next
+            exact advance_run_program safe known stack (EffectList.observedFinite_of_supported more remaining)
+              keeps kept inserted
+
 end Riftbound
 
 end

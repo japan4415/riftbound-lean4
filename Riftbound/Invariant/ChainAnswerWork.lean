@@ -645,6 +645,58 @@ theorem step_decisionRunAnswer_checked_to_preparedDecision {s : GameState} {a : 
         (fun p tail priority => quiet raw events p tail applied
           (parsed.trans (congrArg some (resumed.symm.trans priority))))
 
+/-- Finish a checked permanent Play and its Chain item, then prepare the next input.
+The check is performed on the live Run that begins resolving the item. -/
+theorem advance_permanentPlayChain_to_preparedDecision {s : GameState} {item : ObjId}
+    {tail original : List Frame} (wf : s.WF) (reads : MightRead.database s.cards)
+    (checked : permanentPlayRunSupported s = true)
+    (stack : s.pending.tail = .finishSpell item :: tail) (tracked : TriggerWorkTail original tail)
+    (ready : isOrdinaryDecisionTail original = true)
+    (quiet : ∀ p rest, original = .priority p :: rest → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, AdvancePrefix s t used events ∧
+      t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      advance used s [] = .ok (t, events) := by
+  let reachable := ResolutionPrefix [.finishSpell item] (TriggerWorkTail original)
+  have front := isOrdinaryDecisionTail_front ready
+  have keep : reachable s.pending.tail := ⟨tail, stack, tracked⟩
+  have insert (pending : List Frame) (held : reachable pending) (q : List PendTrigger) (ne : q ≠ []) :
+      reachable (insertTriggers q pending) :=
+    held.insert (fun f member => (List.mem_singleton.mp member).symm ▸ rfl)
+      (fun _ route added nonempty => route.insert front added nonempty) q ne
+  have ran := advance_permanentPlayRun_checked wf reads checked keep insert
+  have finished : AdvanceTo s (· = original) := ran.then reads (fun _ safe known held => by
+    obtain ⟨_, pending, waiting⟩ := held
+    exact advance_finish_chain_until_decision safe known pending waiting front)
+  obtain ⟨t, used, events, path, prepared⟩ :=
+    finished.atPreparedDecision reads (isOrdinaryDecisionTail_boundary ready) quiet
+  exact ⟨t, used, events, path, prepared, by simpa using path.finish prepared []⟩
+
+/-- Lift the checked permanent play back through the actual final Pass and its first
+automatic step, retaining the events from all three transitions. -/
+theorem step_permanentPlayChain_to_preparedDecision {s initial running : GameState} {p : PlayerId}
+    {before resolving : List Event} {workTail tail original : List Frame} {item : ObjId}
+    (wf : s.WF) (legal : Legal s ⟨.player p, .pass⟩)
+    (declared : applyDeclaredAction s ⟨.player p, .pass⟩ = some (initial, before))
+    (scheduled : initial.pending = .resolveChain :: workTail)
+    (opened : workStep initial = some (running, resolving))
+    (reads : MightRead.database running.cards) (checked : permanentPlayRunSupported running = true)
+    (stack : running.pending.tail = .finishSpell item :: tail) (tracked : TriggerWorkTail original tail)
+    (ready : isOrdinaryDecisionTail original = true)
+    (quiet : ∀ q rest, original = .priority q :: rest → ∀ f ∈ rest, f.observesCombat = false) :
+    ∃ t used events, 0 < used ∧ t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, step (used + extra) s ⟨.player p, .pass⟩ = advance extra t events) ∧
+      step used s ⟨.player p, .pass⟩ = .ok (t, events) := by
+  have safe := workStep_wf (applyDeclaredAction_wf wf legal declared) opened
+  obtain ⟨t, used, events, path, prepared, _⟩ :=
+    advance_permanentPlayChain_to_preparedDecision safe reads checked stack tracked ready quiet
+  have pathFromPass := path.prepend scheduled rfl opened
+  refine ⟨t, used + 1, before ++ (resolving ++ events), by omega, prepared, ?_, ?_⟩
+  · intro extra
+    simp only [step, ite_eq_left legal, declared]
+    exact pathFromPass extra before
+  · simp only [step, ite_eq_left legal, declared]
+    exact pathFromPass.finish prepared before
+
 end Riftbound
 
 end

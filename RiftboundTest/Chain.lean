@@ -264,6 +264,36 @@ meta def afterUse : Option (GameState × List Event) :=
     events.contains (Event.played p arrived) && events.contains (Event.buffedBy arrived p) && seen.isEmpty
   : Option Bool).getD false
 
+-- The actual Champion Zone ability uses a checked permanent Play when its Chain item resolves.
+#guard (do
+  let start ← mainC 11
+  let p ← start.active
+  let q := otherQ p
+  let champion ← (start.zone (.player p .championZone)).head?
+  let original ← start.obj? champion
+  let funded := start.setPool p { energy := 10, fury := 3, calm := 3, any := 3 }
+  let ability ← (legalActions funded).find? (fun a =>
+    match a.kind with | .activate source .. => source == champion | _ => false)
+  let (queued, _) ← (step 40 funded ability).toOption
+  let item ← (queued.zone .chain).head?
+  let (passed, _) ← (step 40 queued ⟨.player p, .pass⟩).toOption
+  let last : Action := ⟨.player q, .pass⟩
+  let (scheduled, earlier) ← applyDeclaredAction passed last
+  let (running, resolving) ← workStep scheduled
+  let ((finished, events), seen) ← (advanceWithDisclosures 40 running (earlier ++ resolving) []).toOption
+  let ((normal, fromPass), passSeen) ← (stepWithDisclosures 40 passed last).toOption
+  let arrived ← (finished.zone (.player p .base)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let (spellState, spell) ← addObject start (newCard start.cards start p (cid "SP0")) (.player p .hand)
+  let inlineSpell := { spellState with pending := [.run p spell {} (.cons (.prim (.play .self)) .nil), .priority p] }
+  return permanentPlayRunSupported running && !permanentPlayRunSupported inlineSpell &&
+    running.pending.tail == [Frame.finishSpell item, Frame.priority p] &&
+    finished.zone (.player p .championZone) == [] && finished.zone .chain == [] &&
+    finished.pending == [Frame.priority p] && normal.pending == finished.pending &&
+    normal.zone (.player p .base) == finished.zone (.player p .base) &&
+    events == fromPass && events.contains (Event.played p arrived) && seen.isEmpty && passSeen.isEmpty
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with

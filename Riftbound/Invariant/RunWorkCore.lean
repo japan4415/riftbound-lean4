@@ -202,13 +202,16 @@ theorem advance_run_frames {s : GameState} {frames : List Frame} {keeps : List F
       (fun _ keep q ne => keep.insert (fun f member => (remaining f member).isResolution) inserted q ne)
     exact work.then reads (fun state safe checked keep => ih safe checked keep remaining)
 
-private theorem Effect.ObservedFinite.ofForks {effect : Effect}
-    (forks : ∀ s p src env more, ∃ frames,
-      (runEffect s p src env effect more effectAddPolicy).2.1 = frames ++ [.run p src env more] ∧
-      ∀ f ∈ frames, Frame.FiniteRun f) :
-    effect.ObservedFinite := by
-  intro s p src env more rest keeps wf reads pending base inserted
-  obtain ⟨frames, scheduled, finite⟩ := forks s p src (env.withMight s.mightTable) more
+/-- Follow the certified Runs scheduled before the original invocation. -/
+private theorem advance_run_forks {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {effect : Effect} {more : EffectList} {rest frames : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons effect more) :: rest)
+    (scheduled : (runEffect s p src (env.withMight s.mightTable) effect more effectAddPolicy).2.1 =
+      frames ++ [.run p src (env.withMight s.mightTable) more])
+    (finite : ∀ f ∈ frames, Frame.FiniteRun f) (base : keeps rest)
+    (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s (RunContinuation p src more keeps) := by
   let resumes := RunContinuation p src more keeps
   have entered : AdvanceTo s (ResolutionPrefix frames resumes) := by
     refine advance_run_rule wf reads pending ?_ ?_
@@ -219,6 +222,15 @@ private theorem Effect.ObservedFinite.ofForks {effect : Effect}
         (fun _ resume q' ne' => resume.insert inserted q' ne') q ne
   exact entered.then reads (fun state safe checked queued =>
     advance_run_frames safe checked queued finite (fun _ resume q ne => resume.insert inserted q ne))
+
+private theorem Effect.ObservedFinite.ofForks {effect : Effect}
+    (forks : ∀ s p src env more, ∃ frames,
+      (runEffect s p src env effect more effectAddPolicy).2.1 = frames ++ [.run p src env more] ∧
+      ∀ f ∈ frames, Frame.FiniteRun f) :
+    effect.ObservedFinite := by
+  intro s p src env more rest keeps wf reads pending base inserted
+  obtain ⟨frames, scheduled, finite⟩ := forks s p src (env.withMight s.mightTable) more
+  exact advance_run_forks wf reads pending scheduled finite base inserted
 
 /-- A binding runs the certified body in the derived environment. -/
 theorem Effect.ObservedFinite.bind {name : VarId} {amount : Amount} {body : Effect}
@@ -1211,6 +1223,13 @@ theorem Effect.ObservedFinite.planBanishReplay (card : ObjId) (location : Option
   let options := fundedPermanentOptions s p card terms effectAddPolicy
   exact ⟨.cons options .nil, .cons (fundedPermanentOptions_observedFinite s p card terms _) .nil, rfl⟩
 
+private theorem EffectList.ObservedFinite.permanentPlans (cards : List ObjId) (terms : EffectPlayTerms) :
+    (EffectList.ofList (cards.map (Effect.planPermanentPlay · terms))).ObservedFinite := by
+  apply EffectList.ObservedFinite.ofList
+  intro e included
+  obtain ⟨card, _, rfl⟩ := List.mem_map.mp included
+  exact .planPermanentPlay card terms
+
 private theorem Effect.ObservedFinite.playAtBaseDirect (sel : Selector)
     (direct : (Effect.prim (.playAtBase sel)).pickSel? = none) :
     (Effect.prim (.playAtBase sel)).ObservedFinite := by
@@ -1223,15 +1242,48 @@ private theorem Effect.ObservedFinite.playAtBaseDirect (sel : Selector)
     by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
   · intro frame member
     obtain rfl := List.mem_singleton.mp member
-    refine ⟨_, _, _, _, rfl, EffectList.ObservedFinite.ofList ?_⟩
-    intro e included
-    obtain ⟨card, _, rfl⟩ := List.mem_map.mp included
-    exact .planPermanentPlay card terms
+    exact ⟨_, _, _, _, rfl, .permanentPlans _ terms⟩
 
 /-- Playing at the Base uses the permanent planner, including a resolution pick if needed. -/
 theorem Effect.ObservedFinite.playAtBase (sel : Selector) : (Effect.prim (.playAtBase sel)).ObservedFinite :=
   .withResolutionPick _ (.playAtBaseDirect sel) (.playAtBaseDirect (.var pickVar) rfl)
     (fun _ _ _ _ impossible => by cases impossible)
+
+/-- An actual Play whose current dispatch neither asks to pick an object nor enters the
+Spell-specific route can run its permanent plans and resume its caller. -/
+theorem advance_run_playPermanent {s : GameState} {p : PlayerId} {src : ObjId} {env : Env}
+    {sel : Selector} {more : EffectList} {rest : List Frame} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.prim (.play sel)) more) :: rest)
+    (direct : (Effect.prim (.play sel)).pickSel? = none)
+    (noSpell : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy = none)
+    (base : keeps rest) (inserted : ∀ tail, keeps tail → ∀ q, q ≠ [] → keeps (insertTriggers q tail)) :
+    AdvanceTo s (RunContinuation p src more keeps) := by
+  let live := env.withMight s.mightTable
+  have noInline : playSpellStep s p src live sel more effectAddPolicy = none := noSpell
+  cases planned : permanentPlayEffects s p src live (.play sel) with
+  | none =>
+    apply advance_run_rule wf reads pending ?_ (fun _ track q ne => track.insert inserted q ne)
+    change RunContinuation p src more keeps
+      ((runEffect s p src live (.prim (.play sel)) more effectAddPolicy).2.1 ++ rest)
+    simp only [runEffect, direct, runEffect1, runPrimEffect, noInline, planned]
+    split <;> exact ⟨live, rest, rfl, base⟩
+  | some program =>
+    obtain ⟨context, instructions⟩ := program
+    have finite : instructions.ObservedFinite := by
+      unfold permanentPlayEffects at planned
+      dsimp only at planned
+      split at planned
+      · rw [← (Prod.mk.inj (Option.some.inj planned)).2]
+        exact .permanentPlans _ _
+      · contradiction
+    apply advance_run_forks (frames := [.run p src context instructions]) wf reads pending ?_ ?_ base inserted
+    · change (runEffect s p src live (.prim (.play sel)) more effectAddPolicy).2.1 =
+        [.run p src context instructions] ++ [.run p src live more]
+      simp only [runEffect, direct, runEffect1, runPrimEffect, noInline, planned, List.cons_append, List.nil_append]
+    · intro f member
+      obtain rfl := List.mem_singleton.mp member
+      exact ⟨_, _, _, _, rfl, finite⟩
 
 /-- Paying a cost takes the unique payment or waits for a choice among several payments. -/
 theorem Effect.ObservedFinite.payThen (cost : Cost) (gearPower : Bool) {body : Effect}

@@ -288,6 +288,10 @@ Banish、Disempower、Exhaust、Buff の消費を前段とする効果は、前�
 
 効果によるプレイの計画、支払い候補の提示、プレイの確定を停止検査で扱う。追加コストの死亡置換を選ぶ局面では入力を待ち、成功した場合は場に出たカードの新しい識別子を同じ Run の後続命令に渡す。Base に置く指定と、Banishment から再プレイする計画も対象に含む。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean)
 
+### 3ao. 実行中の Play から Chain の終了まで
+
+実行中の `Play` を盤面に照らして検査する。その時点で対象選択と Spell の解決に進まない場合は、生成された Unit や Gear のプレイ計画と、検査済みの後続命令を有限の手順で処理する。Chain 上では検査を直前の合法な Pass につなぎ、処理中に新たな入力を待つか、Chain Item を片付けて次の入力を準備する。通常の優先権を準備する場合、後続に Combat の参加者を更新するフレームがないことを仮定する。Champion Zone の合法な起動が生成した命令列で、最後の Pass から進めた結果と照合する。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |
