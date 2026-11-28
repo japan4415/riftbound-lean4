@@ -7,6 +7,7 @@ public import Riftbound.Invariant.ResourceDecisionWork
 public import Riftbound.Invariant.CombatWork
 public import Riftbound.Invariant.ConcessionWork
 public import Riftbound.Invariant.SetupDrawBound
+public import Riftbound.Invariant.BurnOutWork
 public import Riftbound.Invariant.RepeatedSpellWork
 public import Riftbound.Invariant.ObservedAddWork
 public import RiftboundCards.MightObservation
@@ -104,6 +105,18 @@ theorem step_mulliganRecycle_to_decision {s : Riftbound.GameState} {p : Riftboun
         Riftbound.advance extra t events :=
   Riftbound.step_mulliganRecycle_to_decision wf owners phase (mightReads_of_registered cards)
     (ordinaryMight_of_registered cards) (ordinaryAwaken_of_registered cards) pending legal continuation
+
+/-- With the registered cards, a checked Burn Out answer reaches a prepared decision. -/
+theorem step_burnOutAnswer_checked_to_preparedDecision {s : Riftbound.GameState} {a : Riftbound.Action}
+    (wf : s.WF) (cards : s.cards = db ∨ s.cards = db.withConcessionBattlefield)
+    (legal : Riftbound.Legal s a) (checked : Riftbound.burnOutAnswerWorkSupported s a = true)
+    (quiet : ∀ raw emitted p tail, Riftbound.applyFrame0 s a = some (raw, emitted) →
+      Riftbound.burnOutContinuation? (raw.pending.dropWhile Riftbound.isBurnOutWorkFrame) =
+        some (.priority p :: tail) → ∀ f ∈ tail, f.observesCombat = false) :
+    ∃ t used events, t.preparePriority.pending.head?.all (fun f => !f.isWork) = true ∧
+      (∀ extra, Riftbound.step (used + extra) s a = Riftbound.advance extra t events) ∧
+      Riftbound.step used s a = .ok (t, events) :=
+  Riftbound.step_burnOutAnswer_checked_to_preparedDecision wf (mightReads_of_registered cards) legal checked quiet
 
 /-- A checked War concession with the registered cards reaches a decision or ends the game. -/
 theorem step_freeForAllConcede_checked_to_decision {s : Riftbound.GameState} {p : Riftbound.PlayerId}

@@ -248,6 +248,10 @@ Showdown の途中の Pass は次の参加者の判断に進む。2 対 2 の招
 
 `advance_main_to_preparedDecision` は、標準の Main の開始時点から、実際の `advance` がイベント列を返して成功するだけの fuel が存在することを示す。開始時に盤面処理が残っていても、Cleanup と即時 Add を経て、確認済みの通常の優先権、Showdown、誘発などの入力、または試合終了で止まる。Main の直後に盤面が整い、追加の処理が発生しない場合には、開始イベントを保ったまま2ステップで優先権に着く。[TurnPhaseWork.lean](../Riftbound/Invariant/TurnPhaseWork.lean)
 
+### 3ae. Burn Out の抽選と得点先の選択
+
+`step_burnOutAnswer_checked_to_preparedDecision` は、Trash を山札へ戻す順番を記録した抽選と、1点を得る相手を選ぶ回答を扱う。投了で選べる相手が変わった場合も、実際の `applyFrame0` が残す処理を検査する。検査を通る合法手では、残りのドロー、対応する効果命令、Cleanup、Main や Chain の終了処理を経て、次の入力待ちか空のスタックまで有限の fuel で進む。通常の優先権に戻る場合は、後続に Combat の参加者を更新するフレームがないことを仮定する。[BurnOutWork.lean](../Riftbound/Invariant/BurnOutWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

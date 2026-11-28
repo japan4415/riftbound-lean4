@@ -95,6 +95,7 @@ public import Riftbound.Invariant.ExpirationWork
 public import Riftbound.Invariant.SetupDrawBound
 public import Riftbound.Invariant.DrawWork
 public import Riftbound.Invariant.TurnDrawWork
+public import Riftbound.Invariant.BurnOutWork
 public import Riftbound.Invariant.TurnPhaseWork
 public import Riftbound.Invariant.TriggerWork
 public import Riftbound.Invariant.ObservedAddWork

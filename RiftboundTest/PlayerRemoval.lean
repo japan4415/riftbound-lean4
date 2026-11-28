@@ -8,6 +8,8 @@ import Riftbound.Rules.TeamSetup
 meta import Riftbound.Rules.TeamSetup
 import Riftbound.Invariant.ConcessionWork
 meta import Riftbound.Invariant.ConcessionWork
+import Riftbound.Invariant.BurnOutWork
+meta import Riftbound.Invariant.BurnOutWork
 import RiftboundDriver.Trace
 meta import RiftboundDriver.Trace
 import RiftboundDriver.Replay
@@ -310,6 +312,7 @@ private meta def removalState : GameState :=
   let (two, _) ← (step 100 choice ⟨.player c, .concede⟩).toOption
   let (scored, _) ← (step 100 two (target d)).toOption
   return concessionWorkSupported s b && concessionWorkSupported choice c &&
+    burnOutAnswerWorkSupported three ⟨.chance, .arrange []⟩ && burnOutAnswerWorkSupported two (target d) &&
     (legalFrameActions choice) == [target c, target d] &&
     !(legalActions choice).contains (target b) &&
     (legalFrameActions two) == [target d] && (step 100 two (target c)).toOption.isNone &&

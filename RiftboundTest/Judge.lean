@@ -144,10 +144,15 @@ meta def runeRewind (second channelRune : Bool) : Option Bool := do
   let apply (history : List ReplayPosition) (action : Action) :=
     (inputs.advance history (.observed action) history.length 100).toOption
   let (_, burned, _) ← apply [atTarget] ⟨.player p, .decide true⟩
-  let top ← (burned.state.zone trash).find? (· != discard)
-  let (_, recycled, _) ← apply [burned, atTarget] ⟨.chance, .arrange [top, discard]⟩
+  let candidates := burned.state.zone trash
+  let top ← candidates.find? (· != discard)
+  let order : Action := ⟨.chance, .arrange [top, discard]⟩
+  let recordedOrder : ReplayAnswer := .observedChance (.cardOrderByPosition
+    [⟨candidates.idxOf top, ⟨"OGN-136"⟩⟩, ⟨candidates.idxOf discard, ⟨"OGN-001"⟩⟩])
+  let (recorded, recycled, _) ← (inputs.advance [burned, atTarget] recordedOrder 2 100).toOption
   let recycledTop ← (recycled.state.zone deck).head?
-  let (_, drawn, events) ← apply [recycled, burned, atTarget] ⟨.player p, .burnOutTarget q⟩
+  let recipient : Action := ⟨.player p, .burnOutTarget q⟩
+  let (_, drawn, events) ← apply [recycled, burned, atTarget] recipient
   let drawnId ← events.findSome? (fun
     | .moved old next dst => if old == recycledTop && dst == hand then some next else none
     | _ => none)
@@ -155,7 +160,9 @@ meta def runeRewind (second channelRune : Bool) : Option Bool := do
     target := 0, returns := [⟨drawnId, [original, handCopy], handCopy⟩] }
   let (_, restored, _) ← (inputs.advance [drawn, recycled, burned, atTarget] rewind 4 100).toOption
   let physical (state : GameState) (id : ObjId) := (state.obj? id).bind (·.kind.phys?)
-  return recycledTop != original && physical drawn.state drawnId == physical target original &&
+  return recorded == some order && recycled.answerExact &&
+    burnOutAnswerWorkSupported burned.state order && burnOutAnswerWorkSupported recycled.state recipient &&
+    recycledTop != original && physical drawn.state drawnId == physical target original &&
     (restored.state.zone deck).map (physical restored.state) == [physical target handCopy] &&
     (restored.state.zone hand).map (physical restored.state) == [physical target original] &&
     restored.state.zone trash == [discard] && restored.state.pointsOf q == target.pointsOf q

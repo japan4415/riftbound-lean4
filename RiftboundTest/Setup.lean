@@ -4,6 +4,8 @@ import RiftboundDriver.Run
 meta import RiftboundDriver.Run
 import RiftboundDriver.Replay
 meta import RiftboundDriver.Replay
+import Riftbound.Invariant.BurnOutWork
+meta import Riftbound.Invariant.BurnOutWork
 import RiftboundTest.Fixtures
 meta import RiftboundTest.Fixtures
 
@@ -306,7 +308,7 @@ meta def atMulligan : Option GameState :=
 
 -- Burn Out (CR 432): a draw from an empty Main Deck recycles the Trash in a random order, an
 -- opponent gains a point, and the draw goes on. Here the whole deck is put in the Trash first.
-meta def burnOutScenario : Option (GameState × GameState) :=
+meta def burnOutScenario (resumeMain : Bool := false) : Option (GameState × GameState) :=
   match finished 4 with
   | none => none
   | some s =>
@@ -314,19 +316,21 @@ meta def burnOutScenario : Option (GameState × GameState) :=
     let s' : GameState :=
       { s with zones := (s.zones.insert (Zone.player p0 .mainDeck).key []).insert
                  (Zone.player p0 .trash).key deck,
-               pending := [.draw p0 1] }
+               pending := .draw p0 1 :: (if resumeMain then [.phase .main, .priority p0] else []) }
     match advance 10 s' [] with
     | .error _ => none
     | .ok (s1, _) =>
       match s1.pending with
       | .chanceBurnOut q :: _ =>
-        match step 100 s1 ⟨.chance, .arrange (s1.zone (.player p0 .trash)).reverse⟩ with
+        let order : Action := ⟨.chance, .arrange (s1.zone (.player p0 .trash)).reverse⟩
+        match step 100 s1 order with
         | .error _ => none
         | .ok (s2, _) =>
           match s2.pending with
           | .chooseBurnOut q' :: _ =>
-            if q == p0 && q' == p0 then
-              match step 100 s2 ⟨.player p0, .burnOutTarget p1⟩ with
+            let target : Action := ⟨.player p0, .burnOutTarget p1⟩
+            if q == p0 && q' == p0 && burnOutAnswerWorkSupported s1 order && burnOutAnswerWorkSupported s2 target then
+              match step 100 s2 target with
               | .ok (s3, _) => some (s', s3)
               | .error _ => none
             else none
@@ -339,6 +343,10 @@ meta def burnOutScenario : Option (GameState × GameState) :=
     count p0 .trash s3 == 0 && count p0 .mainDeck s3 == count p0 .trash s' - 1 &&
     count p0 .hand s3 == count p0 .hand s' + 1 && s3.pointsOf p1 == 1 && s3.pointsOf p0 == 0 &&
     s3.pending.isEmpty
+  | none => false
+
+#guard match burnOutScenario true with
+  | some (_, final) => final.pending == [.priority p0] && final.phase == .main && final.pointsOf p1 == 1
   | none => false
 
 -- illegal answers are refused
