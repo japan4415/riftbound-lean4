@@ -3,6 +3,7 @@ module
 public import Riftbound.Invariant.DamageWork
 public import Riftbound.Invariant.RecyclePaymentWork
 public import Riftbound.Invariant.DisclosureWork
+public import Riftbound.Invariant.ObservedCleanupWork
 
 /-!
 # Checking Run programs for termination (I12)
@@ -64,7 +65,7 @@ def Effect.observedWorkSupported : Effect → Bool
   | .nop | .retainTargetSet _ | .prim (.gainXP ..) | .prim (.draw ..) | .prim (.discard ..)
   | .prim (.score ..) | .prim (.win _)
   | .prim (.ready _) | .prim (.exhaust _) | .prim (.buff _) | .prim (.stun _)
-  | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _)
+  | .prim (.returnToHand _) | .prim (.banish _) | .prim (.topdeck _) | .prim (.bin _) | .prim (.castInline _)
   | .prim (.turnEffect _) | .prim (.hideAt ..) | .prim (.empower _) | .prim (.disempower _) | .prim (.spendBuff _)
   | .prim (.allowFacedownInspection _)
   | .prim (.recycle .self) | .prim (.recycle (.slot _)) | .may _ | .chooseObject ..
@@ -132,6 +133,8 @@ theorem Effect.observedFinite_of_supported (effect : Effect) (supported : effect
     case returnToHand selector => exact Effect.ObservedFinite.returnToHand selector
     case banish selector => exact Effect.ObservedFinite.banish selector
     case topdeck selector => exact Effect.ObservedFinite.topdeck selector
+    case bin selector => exact Effect.ObservedFinite.bin selector
+    case castInline selector => exact Effect.ObservedFinite.castInline selector
     case playAtBase selector => exact Effect.ObservedFinite.playAtBase selector
     case turnEffect effect => exact (Effect.SingleRun.turnEffect effect).observed
     case hideAt cards battlefields => exact (Effect.SingleRun.hideAt cards battlefields).observed
@@ -268,6 +271,153 @@ theorem advance_permanentPlayRun_checked {s : GameState} {keeps : List Frame →
             obtain ⟨live, tail, stack, kept⟩ := next
             exact advance_run_program safe known stack (EffectList.observedFinite_of_supported more remaining)
               keeps kept inserted
+
+/-- The inline Spell has a checked body and caller separated by Cleanup in the actual dispatch. -/
+def inlineSpellFramesSupported : List Frame → Bool
+  | [.run _ _ _ spell, .cleanup, .run _ _ _ caller] =>
+    spell.observedWorkSupported && caller.observedWorkSupported
+  | _ => false
+
+/-- Inspect the actual Spell branch and test the continuation it schedules. -/
+def spellPlayRunSupportedWith (accept : List Frame → Bool) (s : GameState) : Bool :=
+  match s.pending with
+  | .run p src env (.cons (.prim (.play sel)) more) :: _ =>
+    (Effect.prim (.play sel)).pickSel?.isNone &&
+      (playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy).any
+        (fun result => accept result.2.1)
+  | _ => false
+
+/-- Check a Spell that resolves inline before resuming the originating effect. -/
+def inlineSpellPlayRunSupported (s : GameState) : Bool := spellPlayRunSupportedWith inlineSpellFramesSupported s
+
+/-- Queuing a Spell for later finalization leaves the caller's Run at the head of the stack. -/
+def deferredSpellFramesSupported : List Frame → Bool
+  | [.run _ _ _ caller] => caller.observedWorkSupported
+  | _ => false
+
+/-- Check either Spell route of an actual Play. -/
+def spellPlayRunSupported (s : GameState) : Bool :=
+  spellPlayRunSupportedWith (fun frames => inlineSpellFramesSupported frames || deferredSpellFramesSupported frames) s
+
+private theorem advance_run_inlineSpell {s next : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {sel : Selector} {more : EffectList} {rest : List Frame} {events : List Event}
+    {caster resume : PlayerId} {item resumeSource : ObjId} {spellEnv resumeEnv : Env} {body caller : EffectList}
+    {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.prim (.play sel)) more) :: rest)
+    (direct : (Effect.prim (.play sel)).pickSel? = none)
+    (cast : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy =
+      some (next, [.run caster item spellEnv body, .cleanup, .run resume resumeSource resumeEnv caller], events))
+    (spell : body.ObservedFinite) (remaining : caller.ObservedFinite)
+    (base : keeps rest) (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  let last := Frame.run resume resumeSource resumeEnv caller
+  let first := Frame.run caster item spellEnv body
+  let resumes := ResolutionPrefix [last] keeps
+  let cleans := ResolutionPrefix [.cleanup] resumes
+  let runs := ResolutionPrefix [first] cleans
+  have insertLast (stack : List Frame) (held : resumes stack) (q : List PendTrigger) (ne : q ≠ []) :
+      resumes (insertTriggers q stack) :=
+    held.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) inserted q ne
+  have insertCleanup (stack : List Frame) (held : cleans stack) (q : List PendTrigger) (ne : q ≠ []) :
+      cleans (insertTriggers q stack) :=
+    held.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) insertLast q ne
+  have entered : AdvanceTo s runs := by
+    apply advance_run_rule wf reads pending ?_ (fun _ held q ne =>
+      held.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) insertCleanup q ne)
+    simp only [runEffect, direct, runEffect1, runPrimEffect, cast]
+    exact ⟨.cleanup :: last :: rest, rfl, ⟨last :: rest, rfl, ⟨rest, rfl, base⟩⟩⟩
+  have afterSpell : AdvanceTo s cleans := entered.then reads (fun _ safe known held => by
+    obtain ⟨_, stack, tail⟩ := held
+    exact advance_run_program safe known stack spell cleans tail insertCleanup)
+  have afterCleanup : AdvanceTo s resumes := afterSpell.then reads (fun _ safe known held => by
+    obtain ⟨_, stack, tail⟩ := held
+    obtain ⟨t, used, emitted, _, path, stop⟩ :=
+      advance_cleanup_with_adds_prepared safe known stack resumes tail insertLast
+    exact ⟨t, used, emitted, path, stop.imp_right (fun ⟨ready, wellFormed, cards, _⟩ =>
+      ⟨ready, wellFormed, cards⟩)⟩)
+  exact afterCleanup.then reads (fun _ safe known held => by
+    obtain ⟨_, stack, tail⟩ := held
+    exact advance_run_program safe known stack remaining keeps tail inserted)
+
+private theorem advance_run_deferredSpell {s next : GameState} {p : PlayerId} {src : ObjId}
+    {env : Env} {sel : Selector} {more : EffectList} {rest : List Frame} {events : List Event}
+    {resume : PlayerId} {resumeSource : ObjId} {resumeEnv : Env} {caller : EffectList}
+    {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards)
+    (pending : s.pending = .run p src env (.cons (.prim (.play sel)) more) :: rest)
+    (direct : (Effect.prim (.play sel)).pickSel? = none)
+    (cast : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy =
+      some (next, [.run resume resumeSource resumeEnv caller], events))
+    (remaining : caller.ObservedFinite) (base : keeps rest)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  let resumes := ResolutionPrefix [.run resume resumeSource resumeEnv caller] keeps
+  have insertRun (stack : List Frame) (held : resumes stack) (q : List PendTrigger) (ne : q ≠ []) :
+      resumes (insertTriggers q stack) :=
+    held.insert (fun _ member => (List.mem_singleton.mp member).symm ▸ rfl) inserted q ne
+  have queued : AdvanceTo s resumes := by
+    apply advance_run_rule wf reads pending ?_ insertRun
+    simp only [runEffect, direct, runEffect1, runPrimEffect, cast]
+    exact ⟨rest, rfl, base⟩
+  exact queued.then reads (fun _ safe known held => by
+    obtain ⟨_, stack, tail⟩ := held
+    exact advance_run_program safe known stack remaining keeps tail inserted)
+
+/-- A checked Spell either executes inline or queues its declaration, then resumes the caller. -/
+theorem advance_spellPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : spellPlayRunSupported s = true)
+    (base : keeps s.pending.tail)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  cases pending : s.pending with
+  | nil => simp [spellPlayRunSupported, spellPlayRunSupportedWith, pending] at checked
+  | cons f rest =>
+    cases f <;> try (simp [spellPlayRunSupported, spellPlayRunSupportedWith, pending] at checked; done)
+    case run p src env program =>
+      cases program with
+      | nil => simp [spellPlayRunSupported, spellPlayRunSupportedWith, pending] at checked
+      | cons effect more =>
+        cases effect <;> try (simp [spellPlayRunSupported, spellPlayRunSupportedWith, pending] at checked; done)
+        case prim pr =>
+          cases pr <;> try (simp [spellPlayRunSupported, spellPlayRunSupportedWith, pending] at checked; done)
+          case play sel =>
+            simp only [spellPlayRunSupported, spellPlayRunSupportedWith, pending, Bool.and_eq_true_iff] at checked
+            obtain ⟨hasNoPick, supported⟩ := checked
+            have noPick : (Effect.prim (.play sel)).pickSel? = none := by
+              cases found : (Effect.prim (.play sel)).pickSel? <;> simp_all
+            cases cast : playSpellStep s p src (env.withMight s.mightTable) sel more effectAddPolicy with
+            | none => simp [cast] at supported
+            | some result =>
+              obtain ⟨next, frames, events⟩ := result
+              simp only [cast, Option.any_some] at supported
+              rcases Bool.or_eq_true_iff.mp supported with inline | deferred
+              · unfold inlineSpellFramesSupported at inline
+                split at inline
+                · obtain ⟨body, caller⟩ := Bool.and_eq_true_iff.mp inline
+                  exact advance_run_inlineSpell wf reads pending noPick cast
+                    (EffectList.observedFinite_of_supported _ body) (EffectList.observedFinite_of_supported _ caller)
+                    (by simpa [pending] using base) inserted
+                · contradiction
+              · unfold deferredSpellFramesSupported at deferred
+                split at deferred
+                · exact advance_run_deferredSpell wf reads pending noPick cast
+                    (EffectList.observedFinite_of_supported _ deferred) (by simpa [pending] using base) inserted
+                · contradiction
+
+/-- Check a live Play for a permanent or a Spell using either resolution route. -/
+def effectPlayRunSupported (s : GameState) : Bool :=
+  permanentPlayRunSupported s || spellPlayRunSupported s
+
+/-- Dispatch either checked Play branch to the retained continuation or an input. -/
+theorem advance_effectPlayRun_checked {s : GameState} {keeps : List Frame → Prop}
+    (wf : s.WF) (reads : MightRead.database s.cards) (checked : effectPlayRunSupported s = true)
+    (base : keeps s.pending.tail)
+    (inserted : ∀ stack, keeps stack → ∀ q, q ≠ [] → keeps (insertTriggers q stack)) :
+    AdvanceTo s keeps := by
+  rcases Bool.or_eq_true_iff.mp checked with permanent | spell
+  · exact advance_permanentPlayRun_checked wf reads permanent base inserted
+  · exact advance_spellPlayRun_checked wf reads spell base inserted
 
 end Riftbound
 

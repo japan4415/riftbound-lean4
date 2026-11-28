@@ -292,6 +292,12 @@ Banish、Disempower、Exhaust、Buff の消費を前段とする効果は、前�
 
 実行中の `Play` を盤面に照らして検査する。その時点で対象選択と Spell の解決に進まない場合は、生成された Unit や Gear のプレイ計画と、検査済みの後続命令を有限の手順で処理する。Chain 上では検査を直前の合法な Pass につなぎ、処理中に新たな入力を待つか、Chain Item を片付けて次の入力を準備する。通常の優先権を準備する場合、後続に Combat の参加者を更新するフレームがないことを仮定する。Champion Zone の合法な起動が生成した命令列で、最後の Pass から進めた結果と照合する。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean)
 
+### 3ap. 効果の途中で Spell を解決する
+
+Spell を解決する実際の命令列を検査し、Spell 本体、Trash への移動、Cleanup、元の効果の残りを有限の手順で処理する。途中で入力が必要ならそこで待つ。この経路を Chain の最後の合法な Pass までつなぎ、カードをプレイしたイベント、ドロー、Spell の解決完了を順に記録することをテストする。[RunWork.lean](../Riftbound/Invariant/RunWork.lean) [ChainAnswerWork.lean](../Riftbound/Invariant/ChainAnswerWork.lean)
+
+追加コストなどの選択を後で行う Spell では、先に元の効果を終え、待機していた Spell を既存の確定処理に渡す。Trash から Spell をプレイする `castInline` 命令も、Spell の確定を予約して元の命令に戻るところまで停止検査で扱う。[RunWorkCore.lean](../Riftbound/Invariant/RunWorkCore.lean) [LimitedSpellWork.lean](../Riftbound/Invariant/LimitedSpellWork.lean)
+
 ## 4. 進め方の案（単位に分ける）
 
 | 単位 | 内容 | 大きさの見込み |

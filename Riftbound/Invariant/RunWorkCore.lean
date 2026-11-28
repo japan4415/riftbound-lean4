@@ -487,15 +487,17 @@ theorem applyEach_noAttach {α : Type} (g : GameState → α → GameState × Li
   | cons first next ih =>
     exact (trusted s first).append (ih (g s first).1)
 
-private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (events : List Event) :
-    NoAttach (spellCompletion s src events true) := by
-  unfold spellCompletion
-  simp only [ite_true]
-  split
-  · split
-    · split <;> simp [NoAttach]
-    · simp [NoAttach]
-  · simp [NoAttach]
+private theorem spellCompletion_noAttachments (s : GameState) (src : ObjId) (events : List Event)
+    (inPlace : Bool) : NoAttach (spellCompletion s src events inPlace) := by
+  cases inPlace
+  all_goals
+    unfold spellCompletion
+    simp only [Bool.false_eq_true, ite_false, ite_true]
+    split
+    · split
+      · split <;> simp [NoAttach]
+      · exact .nil
+    · exact .nil
 
 private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : ObjId} {env : Env}
     {sel : Selector} {events : List Event} (outcome : applyPrim s p src env (.recycle sel) = some (t, events)) :
@@ -511,7 +513,7 @@ private theorem recycle_noAttachments {s t : GameState} {p : PlayerId} {src : Ob
     · apply (applyEach_noAttach recycleOne recycleOne_noAttachments s ids).append
       split <;> simp [NoAttach]
     · split
-      · exact spellCompletion_noAttachments s src _
+      · exact spellCompletion_noAttachments s src _ true
       · simp [NoAttach]
 
 private def directPrimResult (s : GameState) (p : PlayerId) (src : ObjId) (env : Env) (pr : Prim)
@@ -533,6 +535,34 @@ private theorem Effect.SingleRun.directPrim (pr : Prim)
   · rename_i r applied
     rw [(plainEvents applied).replacementFrames _, List.nil_append]
     exact ⟨_, _, rfl⟩
+  · exact ⟨_, _, rfl⟩
+
+private theorem Effect.SingleRun.bin (sel : Selector) (direct : (Effect.prim (.bin sel)).pickSel? = none) :
+    (Effect.prim (.bin sel)).SingleRun := by
+  refine .directPrim (.bin sel) ?_ ?_
+  · intro s p src env more
+    simp only [runEffect, direct, runEffect1, runPrimEffect, effectDamageBatch?, permanentPlayEffects]
+    by_cases small : s.turnFx.length < 2 <;> simp only [small, ite_true, ite_false] <;> rfl
+  · intro s t p src env events applied
+    simp only [applyPrim, onSelected] at applied
+    cases selected : sel.eval s p src env with
+    | none => simp [selected] at applied
+    | some ids =>
+      simp only [selected, Option.map_some, Option.some.injEq] at applied
+      rw [← (Prod.mk.inj applied).2]
+      exact (applyEach_noAttach _ (sendObj_noAttach .trash) s ids).append
+        (spellCompletion_noAttachments s src _ false)
+
+private theorem Effect.SingleRun.castInline (sel : Selector)
+    (direct : (Effect.prim (.castInline sel)).pickSel? = none) : (Effect.prim (.castInline sel)).SingleRun := by
+  intro s p src env more
+  simp only [runEffect, direct, runEffect1, runPrimEffect, castInlineStep]
+  split
+  · unfold castLimitedStep
+    dsimp only
+    split
+    · exact ⟨_, _, rfl⟩
+    · split <;> exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 
 private theorem Effect.SingleRun.selectedPrim (pr : Prim) (selector : Selector)
@@ -828,6 +858,15 @@ private theorem Effect.ObservedFinite.selectedPrimitive (pr : Prim)
     (bound : (Effect.prim pr).withPick.SingleRun) : (Effect.prim pr).ObservedFinite :=
   .withResolutionPick _ (fun h => (direct h).observed) bound.observed
     (fun _ _ _ _ impossible => by cases impossible)
+
+/-- Binning selected objects also records completion of any resolving Spell. -/
+theorem Effect.ObservedFinite.bin (sel : Selector) : (Effect.prim (.bin sel)).ObservedFinite :=
+  .selectedPrimitive (.bin sel) (Effect.SingleRun.bin sel) (Effect.SingleRun.bin (.var pickVar) rfl)
+
+/-- Casting a Spell through the deferred declaration rule resumes the originating effect. -/
+theorem Effect.ObservedFinite.castInline (sel : Selector) : (Effect.prim (.castInline sel)).ObservedFinite :=
+  .selectedPrimitive (.castInline sel) (Effect.SingleRun.castInline sel)
+    (Effect.SingleRun.castInline (.var pickVar) rfl)
 
 /-- The primitive costs handled directly by the linked-action Run rule. -/
 def Prim.linkedCostSupported : Prim → Bool

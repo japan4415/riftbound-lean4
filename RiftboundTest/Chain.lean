@@ -294,6 +294,90 @@ meta def afterUse : Option (GameState × List Event) :=
     events == fromPass && events.contains (Event.played p arrived) && seen.isEmpty && passSeen.isEmpty
   : Option Bool).getD false
 
+-- A real Chain ability plays a choice-free Spell, bins it, and resumes the caller.
+#guard (do
+  let start ← mainC 13
+  let p ← start.active
+  let q := otherQ p
+  let play := EffectDef.of [Choice.targetOf .one .friendly .inTrash [.ofType .spell]]
+    (.prim (.play (.slot 0)))
+  let launcher : CardDef := { pinger with id := cid "T-INLINE", abilities :=
+    [.activated [.exhaustSelf] .normal play .unlimited] }
+  let cards := { start.cards with cards := launcher :: start.cards.cards }
+  let (s, source) ← putTok { start with cards := cards } p "T-INLINE" .base
+  let (s, spell) ← addObject s (newCard cards s p (cid "SP0")) (.player p .trash)
+  let original ← s.obj? spell
+  let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ [spell]⟩
+  let passed ← stepOk queued ⟨.player p, .pass⟩
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let (staged, firstEvents) ← applyDeclaredAction passed finalPass
+  let (running, atRun) ← workStep staged
+  let ((finished, events), seen) ← (advanceWithDisclosures 40 running (firstEvents ++ atRun) []).toOption
+  let ((normal, normalEvents), normalSeen) ← (stepWithDisclosures 40 passed finalPass).toOption
+  let discarded ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  let activeSpell ← events.findSome? (fun
+    | .moved from_ to .chain => if from_ == spell then some to else none
+    | _ => none)
+  let cast ← events.idxOf? (.played p activeSpell)
+  let draw ← events.idxOf? (.drew p)
+  let finish ← events.idxOf? (.spellResolved p discarded)
+  let .run player src env (.cons play rest) :: tail := running.pending | none
+  let continued := EffectList.cons play (rest.append (.cons (.prim (.gainXP .you (.const 2))) .nil))
+  let extended := { running with pending := Frame.run player src env continued :: tail }
+  let (resumed, extraEvents) ← (advance 40 extended (firstEvents ++ atRun)).toOption
+  return effectPlayRunSupported running && inlineSpellPlayRunSupported extended &&
+    finished.pending == [Frame.priority p] && finished.zone .chain == [] &&
+    (finished.zone (.player p .hand)).length == (s.zone (.player p .hand)).length + 1 &&
+    cast < draw && draw < finish &&
+    resumed.xpOf p == finished.xpOf p + 2 && extraEvents == events &&
+    normal.zone (.player p .hand) == finished.zone (.player p .hand) &&
+    normal.zone (.player p .trash) == finished.zone (.player p .trash) &&
+    normalEvents == events && seen.isEmpty && normalSeen.isEmpty
+  : Option Bool).getD false
+
+-- A separate Spell cost waits for the parent Chain item, then waits for its own input.
+#guard (do
+  let start ← mainC 14
+  let p ← start.active
+  let q := otherQ p
+  let play := EffectDef.of [Choice.targetOf .one .friendly .inTrash [.ofType .spell]]
+    (.prim (.play (.slot 0)))
+  let launcher : CardDef := { pinger with id := cid "T-QUEUE", abilities :=
+    [.activated [.exhaustSelf] .normal play .unlimited] }
+  let costed := { drawSpell with id := cid "T-REQUIRES-EXHAUST", playExtra := some (.exhaustUnit, true) }
+  let cards := { start.cards with cards := launcher :: costed :: start.cards.cards }
+  let (s, source) ← putTok { start with cards := cards } p "T-QUEUE" .base
+  let (s, first) ← putTok s p "V0" .base
+  let (s, second) ← putTok s p "V1" .base
+  let (s, spell) ← addObject s (newCard cards s p costed.id) (.player p .trash)
+  let original ← s.obj? spell
+  let queued ← stepOk s ⟨.player p, .activate source 0 ⟨0, [], none⟩ [spell]⟩
+  let parent ← (queued.zone .chain).head?
+  let passed ← stepOk queued ⟨.player p, .pass⟩
+  let finalPass : Action := ⟨.player q, .pass⟩
+  let (staged, _) ← applyDeclaredAction passed finalPass
+  let (running, _) ← workStep staged
+  let ((waiting, queuedEvents), queuedSeen) ← (stepWithDisclosures 40 passed finalPass).toOption
+  let .eitherDo chooser _ _ (.finishLimitedSpell item selected []) (.finishLimitedSpell _ alternative []) _ :: _ :=
+    waiting.pending | none
+  let elected ← selected.pick.extraObject
+  let unused ← alternative.pick.extraObject
+  let ((cast, paidEvents), paidSeen) ← (stepWithDisclosures 40 waiting ⟨.player p, .decide true⟩).toOption
+  let passedSpell ← stepOk cast ⟨.player p, .pass⟩
+  let ((finished, resolvedEvents), _) ← (stepWithDisclosures 40 passedSpell ⟨.player q, .pass⟩).toOption
+  let discarded ← (finished.zone (.player p .trash)).find? (fun id =>
+    (finished.obj? id).any (fun obj => obj.kind.phys? == original.kind.phys?))
+  return effectPlayRunSupported running && !inlineSpellPlayRunSupported running &&
+    (waiting.obj? parent).isNone && (waiting.pendingSpell item).isSome && chooser == p &&
+    [first, second].contains elected && [first, second].contains unused && elected != unused &&
+    !(waiting.obj? elected).any (·.exhausted) && !(queuedEvents.contains (Event.played p item)) &&
+    (cast.obj? elected).any (·.exhausted) && !(cast.obj? unused).any (·.exhausted) &&
+    paidEvents.contains (Event.played p item) && queuedSeen.isEmpty && paidSeen.isEmpty &&
+    finished.zone .chain == [] && (finished.zone (.player p .hand)).length == (s.zone (.player p .hand)).length + 1 &&
+    resolvedEvents.contains (Event.spellResolved p discarded)
+  : Option Bool).getD false
+
 -- the Pinger is exhausted and the use is noted; the ability is on the Chain as an object of its own
 -- with the targets chosen; the player has priority with the ability on the Chain (CR 337, 361)
 #guard match scene, afterUse with
